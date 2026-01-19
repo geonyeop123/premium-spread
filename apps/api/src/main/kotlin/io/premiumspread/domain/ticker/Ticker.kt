@@ -3,6 +3,7 @@ package io.premiumspread.domain.ticker
 import java.math.BigDecimal
 import java.time.Instant
 
+
 data class Ticker private constructor(
     val id: TickerId,
     val exchange: Exchange,
