@@ -1,17 +1,22 @@
 package io.premiumspread.domain.ticker
 
+import io.premiumspread.domain.BaseEntity
+import jakarta.persistence.Embedded
+import jakarta.persistence.Entity
+import jakarta.persistence.Table
 import java.math.BigDecimal
 import java.time.Instant
 
-
+@Entity
+@Table(name = "ticker")
 data class Ticker private constructor(
-    val id: TickerId,
     val exchange: Exchange,
     val exchangeRegion: ExchangeRegion,
+    @Embedded
     val quote: Quote,
     val price: BigDecimal,
     val observedAt: Instant,
-) {
+) : BaseEntity() {
     init {
         if (price <= BigDecimal.ZERO) {
             throw InvalidTickerException("Ticker price must be positive.")
@@ -24,10 +29,8 @@ data class Ticker private constructor(
             quote: Quote,
             price: BigDecimal,
             observedAt: Instant,
-            id: TickerId = TickerId.random(),
         ): Ticker {
             return Ticker(
-                id = id,
                 exchange = exchange,
                 exchangeRegion = exchange.region,
                 quote = quote,

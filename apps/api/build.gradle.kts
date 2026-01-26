@@ -4,6 +4,7 @@ plugins {
 
 dependencies {
     // add-ons
+    implementation(project(":modules:jpa"))
 
     // web
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -12,4 +13,7 @@ dependencies {
 
     // querydsl
     kapt("com.querydsl:querydsl-apt::jakarta")
+
+    // test-fixtures
+    testImplementation(testFixtures(project(":modules:jpa")))
 }

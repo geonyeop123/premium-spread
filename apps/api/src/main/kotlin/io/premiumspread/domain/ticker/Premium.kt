@@ -5,9 +5,9 @@ import java.math.RoundingMode
 import java.time.Instant
 
 data class Premium(
-    val koreaTickerId: TickerId,
-    val foreignTickerId: TickerId,
-    val fxTickerId: TickerId,
+    val koreaTickerId: Long,
+    val foreignTickerId: Long,
+    val fxTickerId: Long,
     val premiumRate: BigDecimal,
     val observedAt: Instant,
 ) {
