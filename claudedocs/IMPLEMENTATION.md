@@ -3,6 +3,17 @@
 > **Project**: 김치 프리미엄 트레이딩 플랫폼
 > **Last Updated**: 2026-01-28
 > **Branch**: `feature/premium`
+> **Status**: PR 생성 완료, 테스트 작업 진행 중
+
+## 🔄 Resume Instructions
+
+```bash
+# 새 세션에서 시작할 때
+cat claudedocs/IMPLEMENTATION.md
+
+# 남은 작업 확인 후
+"계속 진행해" 또는 "#12 UseCase Unit Tests 진행해"
+```
 
 ---
 
@@ -240,16 +251,30 @@ Domain Tests: 21 passed ✅
 
 ## ⏭️ Next Actions
 
-### Ready Now
-- [ ] **#12** UseCase Unit Tests (Mock Repository)
-- [ ] **#16** API Controller Tests
+### Ready Now (No Blockers)
+- [ ] **#12** UseCase Unit Tests - Mock Repository로 Facade 테스트
+- [ ] **#16** API Controller Tests - @WebMvcTest slice 테스트
 
 ### Requires Docker
-- [ ] **#7** Repository Integration Tests
+- [ ] **#7** Repository Integration Tests - TestContainers MySQL
 
 ### After Dependencies
-- [ ] **#17** Integration Tests
-- [ ] **#18** E2E Tests
+- [ ] **#17** Integration Tests - 전체 흐름 테스트
+- [ ] **#18** E2E Tests - HTTP 기반 테스트
+
+## 📊 Git Status
+
+```
+Commits (feature/premium):
+34ace18 chore: update configurations and existing domain
+dba85f5 docs: add implementation guide and progress tracker
+e6315b8 feat: add REST API layer (controllers)
+1f93b0c feat: add application layer (UseCase/Facade)
+6128260 feat: add repository layer and database schema
+b2f9a84 feat: implement Position domain entity
+
+PR: 생성 완료
+```
 
 ---
 
