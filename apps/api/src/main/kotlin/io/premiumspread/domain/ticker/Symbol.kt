@@ -1,12 +1,18 @@
 package io.premiumspread.domain.ticker
 
-data class Symbol(
-    val value: String,
+import jakarta.persistence.Column
+import jakarta.persistence.Embeddable
+
+@Embeddable
+data class Symbol private constructor(
+    @Column(name = "symbol")
+    override val code: String,
 ) : BaseAsset {
     init {
-        val normalized = value.trim()
-        require(normalized.isNotEmpty()) { "Symbol must not be blank." }
+        require(code.isNotBlank()) { "Symbol must not be blank." }
     }
 
-    override val code: String = value.trim()
+    companion object {
+        operator fun invoke(value: String): Symbol = Symbol(value.trim())
+    }
 }

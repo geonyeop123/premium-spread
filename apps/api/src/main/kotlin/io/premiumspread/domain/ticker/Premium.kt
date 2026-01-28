@@ -1,20 +1,42 @@
 package io.premiumspread.domain.ticker
 
+import io.premiumspread.domain.BaseEntity
+import jakarta.persistence.AttributeOverride
+import jakarta.persistence.Column
+import jakarta.persistence.Embedded
+import jakarta.persistence.Entity
+import jakarta.persistence.Table
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
 
-data class Premium(
+@Entity
+@Table(name = "premium")
+class Premium private constructor(
+    @Embedded
+    @AttributeOverride(name = "code", column = Column(name = "symbol"))
+    val symbol: Symbol,
+
+    @Column(name = "korea_ticker_id", nullable = false)
     val koreaTickerId: Long,
+
+    @Column(name = "foreign_ticker_id", nullable = false)
     val foreignTickerId: Long,
+
+    @Column(name = "fx_ticker_id", nullable = false)
     val fxTickerId: Long,
+
+    @Column(name = "premium_rate", nullable = false, precision = 10, scale = 2)
     val premiumRate: BigDecimal,
+
+    @Column(name = "observed_at", nullable = false)
     val observedAt: Instant,
-) {
+) : BaseEntity() {
+
     companion object {
-        private val premiumRateScale = 2
-        private val divisionScale = 10
-        private val hundred = BigDecimal("100")
+        private const val PREMIUM_RATE_SCALE = 2
+        private const val DIVISION_SCALE = 10
+        private val HUNDRED = BigDecimal("100")
 
         fun create(
             koreaTicker: Ticker,
@@ -51,6 +73,7 @@ data class Premium(
             )
 
             return Premium(
+                symbol = koreaSymbol,
                 koreaTickerId = koreaTicker.id,
                 foreignTickerId = foreignTicker.id,
                 fxTickerId = fxTicker.id,
@@ -80,9 +103,9 @@ data class Premium(
             val foreignPriceInKrw = foreignPriceUsd.multiply(fxRate)
             val diff = koreaPrice.subtract(foreignPriceInKrw)
             return diff
-                .divide(foreignPriceInKrw, divisionScale, RoundingMode.HALF_UP)
-                .multiply(hundred)
-                .setScale(premiumRateScale, RoundingMode.HALF_UP)
+                .divide(foreignPriceInKrw, DIVISION_SCALE, RoundingMode.HALF_UP)
+                .multiply(HUNDRED)
+                .setScale(PREMIUM_RATE_SCALE, RoundingMode.HALF_UP)
         }
 
         private fun latestObservedAt(first: Instant, second: Instant, third: Instant): Instant {
