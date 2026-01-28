@@ -41,6 +41,8 @@
 - 비즈니스 규칙 자체는 `domain`에 위치시키고, `application`은 **흐름을 조립**합니다.
 - `domain`이 필요로 하는 기능은 **인터페이스**로 의존하며 구현체는 `infrastructure`에 둡니다.
 - `application` DTO는 “유스케이스 입력/출력 모델”이며, API 계약(interfaces DTO)과 분리합니다.
+- `domain` Layer의 Service와 차이점은 서로 다른 `domain`과의 흐름을 조합할 때 Facade를 사용합니다.
+    - 예를 들어, `Order` 이후 `Payment`를 생성한다면, OrderFacade가 `OrderService`와 `PaymentService`를 호출합니다.
 
 ---
 
@@ -59,6 +61,7 @@
 - 도메인 DTO는 다음을 권장하며, Entity의 경우 prefix, suffix를 붙이지 않습니다.
     - `Command`: 도메인 행위(생성/변경)를 위한 입력 모델
     - `Domain`: 도메인 내부/결과 모델(VO 포함)
+- `domain` Layer에 존재하는 Service는 단일 domain의 로직을 책임집니다. 해당 Service는 타 doamin의 Service를 주입받지 않습니다.
 
 ---
 
