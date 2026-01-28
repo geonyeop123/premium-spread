@@ -2,12 +2,17 @@ package io.premiumspread.domain.position
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.PositionFixtures
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import java.math.BigDecimal
+import java.time.Instant
 
 class PositionServiceTest {
 
@@ -18,6 +23,39 @@ class PositionServiceTest {
     fun setUp() {
         positionRepository = mockk()
         service = PositionService(positionRepository)
+    }
+
+    @Nested
+    inner class Create {
+
+        @Test
+        fun `Command로 포지션을 생성한다`() {
+            val command = PositionCommand.Create(
+                symbol = "BTC",
+                exchange = Exchange.UPBIT,
+                quantity = BigDecimal("0.5"),
+                entryPrice = BigDecimal("129555000"),
+                entryFxRate = BigDecimal("1432.6"),
+                entryPremiumRate = BigDecimal("1.28"),
+                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            )
+
+            val positionSlot = slot<Position>()
+            every { positionRepository.save(capture(positionSlot)) } answers {
+                positionSlot.captured.withId(1L)
+            }
+
+            val result = service.create(command)
+
+            assertThat(result.id).isEqualTo(1L)
+            assertThat(result.symbol.code).isEqualTo("BTC")
+            assertThat(result.exchange).isEqualTo(Exchange.UPBIT)
+            assertThat(result.quantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(result.entryPrice).isEqualByComparingTo(BigDecimal("129555000"))
+            assertThat(result.status).isEqualTo(PositionStatus.OPEN)
+
+            verify(exactly = 1) { positionRepository.save(any()) }
+        }
     }
 
     @Nested

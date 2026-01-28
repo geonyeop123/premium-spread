@@ -2,12 +2,16 @@ package io.premiumspread.domain.ticker
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.PremiumFixtures
+import io.premiumspread.TickerFixtures
+import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import java.math.BigDecimal
 import java.time.Instant
 
 class PremiumServiceTest {
@@ -19,6 +23,39 @@ class PremiumServiceTest {
     fun setUp() {
         premiumRepository = mockk()
         service = PremiumService(premiumRepository)
+    }
+
+    @Nested
+    inner class Create {
+
+        @Test
+        fun `Command로 프리미엄을 생성한다`() {
+            val koreaTicker = TickerFixtures.koreaTicker(symbol = "BTC", price = BigDecimal("129555000"))
+            val foreignTicker = TickerFixtures.foreignTicker(symbol = "BTC", price = BigDecimal("89277"))
+            val fxTicker = TickerFixtures.fxTicker(price = BigDecimal("1432.6"))
+
+            val command = PremiumCommand.Create(
+                koreaTicker = koreaTicker,
+                foreignTicker = foreignTicker,
+                fxTicker = fxTicker,
+            )
+
+            val premiumSlot = slot<Premium>()
+            every { premiumRepository.save(capture(premiumSlot)) } answers {
+                premiumSlot.captured.withId(1L)
+            }
+
+            val result = service.create(command)
+
+            assertThat(result.id).isEqualTo(1L)
+            assertThat(result.symbol.code).isEqualTo("BTC")
+            assertThat(result.koreaTickerId).isEqualTo(koreaTicker.id)
+            assertThat(result.foreignTickerId).isEqualTo(foreignTicker.id)
+            assertThat(result.fxTickerId).isEqualTo(fxTicker.id)
+            assertThat(result.premiumRate).isEqualByComparingTo(BigDecimal("1.30"))
+
+            verify(exactly = 1) { premiumRepository.save(any()) }
+        }
     }
 
     @Nested

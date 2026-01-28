@@ -10,6 +10,16 @@ class PremiumService(
 ) {
 
     @Transactional
+    fun create(command: PremiumCommand.Create): Premium {
+        val premium = Premium.create(
+            koreaTicker = command.koreaTicker,
+            foreignTicker = command.foreignTicker,
+            fxTicker = command.fxTicker,
+        )
+        return premiumRepository.save(premium)
+    }
+
+    @Transactional
     fun save(premium: Premium): Premium {
         return premiumRepository.save(premium)
     }

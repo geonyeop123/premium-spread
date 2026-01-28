@@ -99,6 +99,29 @@
 - `application`: `XxxCriteria`, `XxxResult`
 - `domain`: `XxxCommand`, `XxxDomain`(또는 의미 있는 VO/Result 명칭)
 
+### DTO 파일 구조
+
+- Command/Criteria 등 DTO 객체는 **도메인별 1개 파일**로 구성합니다.
+- 행위(Action)에 따라 **inner class**로 구분합니다.
+- 예시:
+  ```kotlin
+  // domain/position/PositionCommand.kt
+  class PositionCommand private constructor() {
+      data class Create(
+          val symbol: String,
+          val exchange: Exchange,
+          ...
+      )
+
+      data class Close(
+          val positionId: Long,
+          ...
+      )
+  }
+
+  // 사용: PositionCommand.Create(...)
+  ```
+
 ### 예시 흐름
 
 - `interfaces` Request → Mapper → `application` Criteria → Facade → `domain` Command/Service → 결과 (

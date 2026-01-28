@@ -8,12 +8,11 @@ import io.premiumspread.PremiumFixtures
 import io.premiumspread.TickerFixtures
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.domain.ticker.Premium
+import io.premiumspread.domain.ticker.PremiumCommand
 import io.premiumspread.domain.ticker.PremiumService
 import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.TickerService
-import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -56,21 +55,19 @@ class PremiumFacadeTest {
                 tickerService.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW))
             } returns fxTicker
 
-            val premiumSlot = slot<Premium>()
-            every { premiumService.save(capture(premiumSlot)) } answers {
-                premiumSlot.captured.withId(1L)
-            }
+            val commandSlot = slot<PremiumCommand.Create>()
+            every { premiumService.create(capture(commandSlot)) } returns
+                PremiumFixtures.premium(symbol = "BTC", id = 1L)
 
             val result = facade.calculateAndSave(PremiumCreateCriteria(symbol = "BTC"))
 
             assertThat(result.id).isEqualTo(1L)
             assertThat(result.symbol).isEqualTo("BTC")
-            assertThat(result.koreaTickerId).isEqualTo(koreaTicker.id)
-            assertThat(result.foreignTickerId).isEqualTo(foreignTicker.id)
-            assertThat(result.fxTickerId).isEqualTo(fxTicker.id)
-            assertThat(result.premiumRate).isEqualByComparingTo(BigDecimal("1.30"))
 
-            verify(exactly = 1) { premiumService.save(any()) }
+            verify(exactly = 1) { premiumService.create(any()) }
+            assertThat(commandSlot.captured.koreaTicker).isEqualTo(koreaTicker)
+            assertThat(commandSlot.captured.foreignTicker).isEqualTo(foreignTicker)
+            assertThat(commandSlot.captured.fxTicker).isEqualTo(fxTicker)
         }
 
         @Test

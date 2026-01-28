@@ -1,6 +1,6 @@
 package io.premiumspread.application.position
 
-import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.ticker.PremiumService
 import io.premiumspread.domain.ticker.Symbol
@@ -15,8 +15,8 @@ class PositionFacade(
 
     @Transactional
     fun openPosition(criteria: PositionOpenCriteria): PositionResult {
-        val position = Position.create(
-            symbol = Symbol(criteria.symbol),
+        val command = PositionCommand.Create(
+            symbol = criteria.symbol,
             exchange = criteria.exchange,
             quantity = criteria.quantity,
             entryPrice = criteria.entryPrice,
@@ -24,8 +24,8 @@ class PositionFacade(
             entryPremiumRate = criteria.entryPremiumRate,
             entryObservedAt = criteria.entryObservedAt,
         )
-        val savedPosition = positionService.save(position)
-        return PositionResult.from(savedPosition)
+        val position = positionService.create(command)
+        return PositionResult.from(position)
     }
 
     @Transactional(readOnly = true)

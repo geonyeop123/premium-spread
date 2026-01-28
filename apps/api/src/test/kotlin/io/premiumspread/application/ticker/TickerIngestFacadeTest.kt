@@ -4,12 +4,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.premiumspread.withId
+import io.premiumspread.TickerFixtures
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.ExchangeRegion
-import io.premiumspread.domain.ticker.QuoteBaseType
-import io.premiumspread.domain.ticker.Ticker
+import io.premiumspread.domain.ticker.TickerCommand
 import io.premiumspread.domain.ticker.TickerService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -38,10 +37,9 @@ class TickerIngestFacadeTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        val tickerSlot = slot<Ticker>()
-        every { tickerService.save(capture(tickerSlot)) } answers {
-            tickerSlot.captured.withId(1L)
-        }
+        val commandSlot = slot<TickerCommand.Create>()
+        every { tickerService.create(capture(commandSlot)) } returns
+            TickerFixtures.koreaTicker(id = 1L)
 
         val result = facade.ingest(criteria)
 
@@ -50,11 +48,11 @@ class TickerIngestFacadeTest {
         assertThat(result.exchangeRegion).isEqualTo(ExchangeRegion.KOREA)
         assertThat(result.baseCode).isEqualTo("BTC")
         assertThat(result.quoteCurrency).isEqualTo(Currency.KRW)
-        assertThat(result.price).isEqualByComparingTo(BigDecimal("129555000"))
-        assertThat(result.observedAt).isEqualTo(Instant.parse("2024-01-01T00:00:00Z"))
 
-        verify(exactly = 1) { tickerService.save(any()) }
-        assertThat(tickerSlot.captured.quote.baseType).isEqualTo(QuoteBaseType.SYMBOL)
+        verify(exactly = 1) { tickerService.create(any()) }
+        assertThat(commandSlot.captured.exchange).isEqualTo(Exchange.UPBIT)
+        assertThat(commandSlot.captured.baseCode).isEqualTo("BTC")
+        assertThat(commandSlot.captured.quoteCurrency).isEqualTo(Currency.KRW)
     }
 
     @Test
@@ -67,10 +65,9 @@ class TickerIngestFacadeTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        val tickerSlot = slot<Ticker>()
-        every { tickerService.save(capture(tickerSlot)) } answers {
-            tickerSlot.captured.withId(2L)
-        }
+        val commandSlot = slot<TickerCommand.Create>()
+        every { tickerService.create(capture(commandSlot)) } returns
+            TickerFixtures.fxTicker(id = 2L)
 
         val result = facade.ingest(criteria)
 
@@ -78,10 +75,9 @@ class TickerIngestFacadeTest {
         assertThat(result.exchange).isEqualTo(Exchange.FX_PROVIDER)
         assertThat(result.baseCode).isEqualTo("USD")
         assertThat(result.quoteCurrency).isEqualTo(Currency.KRW)
-        assertThat(result.price).isEqualByComparingTo(BigDecimal("1432.6"))
 
-        verify(exactly = 1) { tickerService.save(any()) }
-        assertThat(tickerSlot.captured.quote.baseType).isEqualTo(QuoteBaseType.CURRENCY)
+        verify(exactly = 1) { tickerService.create(any()) }
+        assertThat(commandSlot.captured.baseCode).isEqualTo("USD")
     }
 
     @Test
@@ -94,10 +90,9 @@ class TickerIngestFacadeTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        val tickerSlot = slot<Ticker>()
-        every { tickerService.save(capture(tickerSlot)) } answers {
-            tickerSlot.captured.withId(3L)
-        }
+        val commandSlot = slot<TickerCommand.Create>()
+        every { tickerService.create(capture(commandSlot)) } returns
+            TickerFixtures.foreignTicker(id = 3L)
 
         val result = facade.ingest(criteria)
 
@@ -106,5 +101,7 @@ class TickerIngestFacadeTest {
         assertThat(result.exchangeRegion).isEqualTo(ExchangeRegion.FOREIGN)
         assertThat(result.baseCode).isEqualTo("BTC")
         assertThat(result.quoteCurrency).isEqualTo(Currency.USD)
+
+        verify(exactly = 1) { tickerService.create(any()) }
     }
 }

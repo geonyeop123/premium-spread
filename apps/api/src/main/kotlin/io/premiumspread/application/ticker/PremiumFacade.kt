@@ -2,7 +2,7 @@ package io.premiumspread.application.ticker
 
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.domain.ticker.Premium
+import io.premiumspread.domain.ticker.PremiumCommand
 import io.premiumspread.domain.ticker.PremiumService
 import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
@@ -36,10 +36,13 @@ class PremiumFacade(
             quote = Quote.fx(Currency.USD, Currency.KRW),
         ) ?: throw TickerNotFoundException("FX ticker not found")
 
-        val premium = Premium.create(koreaTicker, foreignTicker, fxTicker)
-        val savedPremium = premiumService.save(premium)
-
-        return PremiumResult.from(savedPremium)
+        val command = PremiumCommand.Create(
+            koreaTicker = koreaTicker,
+            foreignTicker = foreignTicker,
+            fxTicker = fxTicker,
+        )
+        val premium = premiumService.create(command)
+        return PremiumResult.from(premium)
     }
 
     @Transactional(readOnly = true)

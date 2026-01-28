@@ -7,6 +7,7 @@ import io.mockk.verify
 import io.premiumspread.PositionFixtures
 import io.premiumspread.PremiumFixtures
 import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
@@ -49,23 +50,21 @@ class PositionFacadeTest {
                 entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
-            val positionSlot = slot<Position>()
-            every { positionService.save(capture(positionSlot)) } answers {
-                positionSlot.captured.withId(1L)
-            }
+            val commandSlot = slot<PositionCommand.Create>()
+            every { positionService.create(capture(commandSlot)) } returns
+                PositionFixtures.openPosition(id = 1L)
 
             val result = facade.openPosition(criteria)
 
             assertThat(result.id).isEqualTo(1L)
             assertThat(result.symbol).isEqualTo("BTC")
             assertThat(result.exchange).isEqualTo(Exchange.UPBIT)
-            assertThat(result.quantity).isEqualByComparingTo(BigDecimal("0.5"))
-            assertThat(result.entryPrice).isEqualByComparingTo(BigDecimal("129555000"))
-            assertThat(result.entryFxRate).isEqualByComparingTo(BigDecimal("1432.6"))
-            assertThat(result.entryPremiumRate).isEqualByComparingTo(BigDecimal("1.28"))
             assertThat(result.status).isEqualTo(PositionStatus.OPEN)
 
-            verify(exactly = 1) { positionService.save(any()) }
+            verify(exactly = 1) { positionService.create(any()) }
+            assertThat(commandSlot.captured.symbol).isEqualTo("BTC")
+            assertThat(commandSlot.captured.exchange).isEqualTo(Exchange.UPBIT)
+            assertThat(commandSlot.captured.quantity).isEqualByComparingTo(BigDecimal("0.5"))
         }
     }
 
