@@ -1,0 +1,37 @@
+당신은 기획(PO) / 개발(Backend) / 디자인(UX) 3개 에이전트로 역할 분리해서 토론한 뒤 결론을 종합하라.
+토론의 기준 문서는 apps/api/docs/instructions.md 이다.
+
+목표: 1차 커밋에서는 "Premium 도메인 계산"만 TDD로 완결한다.
+다음 범위만 수행하라(범위 밖은 하지 말 것):
+
+[1차 커밋 범위]
+1) domain 레이어에 VO 최소 셋 구현:
+   - Currency(KRW, USD)
+   - Exchange(UPBIT, BITHUMB, BINANCE, FX_PROVIDER) + ExchangeRegion(KOREA, FOREIGN) 매핑 포함
+   - Symbol, Quote(base: Symbol or Currency / quote: Currency)  ※ 코인/환율 모두 표현 가능해야 한다.
+2) domain 레이어에 Ticker 엔티티 구현(불변):
+   - exchange, exchangeRegion, quote, price(BigDecimal), observedAt(Instant or LocalDateTime)
+   - 생성 시 price는 0/음수 금지
+3) domain 레이어에 Premium 엔티티 + Premium.create(koreaTicker, foreignTicker, fxTicker) 구현:
+   - 규칙: 한국 ticker는 region=KOREA, quote는 SYMBOL/KRW
+   - 외국 ticker는 region=FOREIGN, quote는 SYMBOL/USD
+   - fx ticker는 quote가 USD/KRW 여야 함
+   - 심볼 불일치, 통화/방향 불일치, region 불일치, 가격 0/음수 등은 명시적 도메인 예외로 실패
+   - 산식: foreignPriceInKRW = foreignPriceUSD * fx(USD/KRW)
+          premiumRate(%) = (koreaPriceKRW - foreignPriceInKRW) / foreignPriceInKRW * 100
+   - premiumRate는 scale=2, RoundingMode.HALF_UP로 고정
+   - Premium.observedAt는 "입력 티커 observedAt의 최대값"으로 설정한다(문서 7-1 결정사항 준수)
+   - Premium은 입력 tickerId를 반드시 가진다(추적성)
+4) 테스트 작성(JUnit5):
+   - 문서 5.1의 Premium 도메인 테스트 케이스를 전부 작성하고 통과시켜라.
+
+[기술 제약]
+- 이번 커밋은 domain + test만 다룬다(Repository/UseCase/API 금지).
+- BigDecimal scale/rounding 일관성 유지.
+- 패키지 경로는 io.cryptospread.domain.ticker (또는 기존 프로젝트의 domain/ticker)로 맞춘다.
+- 커밋 메시지는: "test: add premium domain rules and calculator" 한 번으로 끝낸다.
+
+[산출물]
+- 변경된/추가된 파일 목록을 마지막에 요약
+- 테스트 실행 방법(gradle task)을 마지막에 한 줄로 안내
+

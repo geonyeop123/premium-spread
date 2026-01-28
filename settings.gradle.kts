@@ -2,6 +2,7 @@ rootProject.name = "premium-spread"
 
 include(
     ":apps:api",
+    ":modules:jpa",
 )
 
 // configurations
