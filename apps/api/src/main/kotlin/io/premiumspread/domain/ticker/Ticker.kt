@@ -1,6 +1,7 @@
 package io.premiumspread.domain.ticker
 
 import io.premiumspread.domain.BaseEntity
+import io.premiumspread.domain.InvalidTickerException
 import jakarta.persistence.Embedded
 import jakarta.persistence.Entity
 import jakarta.persistence.Table

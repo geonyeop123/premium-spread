@@ -2,9 +2,9 @@ package io.premiumspread
 
 import io.premiumspread.domain.BaseEntity
 import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.domain.ticker.Premium
 import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker

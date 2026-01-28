@@ -1,5 +1,5 @@
 package io.premiumspread.domain.position
 
-import io.premiumspread.domain.ticker.DomainException
+import io.premiumspread.domain.DomainException
 
 class InvalidPositionException(message: String) : DomainException(message)

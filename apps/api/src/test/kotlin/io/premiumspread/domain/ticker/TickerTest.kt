@@ -1,9 +1,10 @@
 package io.premiumspread.domain.ticker
 
-import java.math.BigDecimal
-import java.time.Instant
+import io.premiumspread.domain.InvalidTickerException
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
+import java.math.BigDecimal
+import java.time.Instant
 
 class TickerTest {
     @Test

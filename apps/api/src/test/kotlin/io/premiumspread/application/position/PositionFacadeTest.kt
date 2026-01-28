@@ -10,10 +10,9 @@ import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.position.PositionStatus
+import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.domain.ticker.PremiumService
 import io.premiumspread.domain.ticker.Symbol
-import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -52,7 +51,7 @@ class PositionFacadeTest {
 
             val commandSlot = slot<PositionCommand.Create>()
             every { positionService.create(capture(commandSlot)) } returns
-                PositionFixtures.openPosition(id = 1L)
+                    PositionFixtures.openPosition(id = 1L)
 
             val result = facade.openPosition(criteria)
 

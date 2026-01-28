@@ -2,7 +2,7 @@ package io.premiumspread.application.position
 
 import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
-import io.premiumspread.domain.ticker.PremiumService
+import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
