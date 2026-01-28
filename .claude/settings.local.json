@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(./gradlew :apps:api:test:*)",
-      "Bash(./gradlew:*)"
+      "Bash(./gradlew:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: implement Position domain entity\n\n- Position entity with factory method and validation\n- PositionPnl value object for PnL calculation\n- PositionStatus enum \\(OPEN, CLOSED\\)\n- PositionExceptions for domain errors\n- 10 test cases for Position domain logic\n\nPremium diff calculation:\n- premiumDiff < 0 → profit \\(premium decreased\\)\n- premiumDiff > 0 → loss \\(premium increased\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)"
     ]
   }
 }
