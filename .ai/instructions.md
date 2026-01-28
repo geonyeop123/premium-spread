@@ -5,6 +5,12 @@
 
 ---
 
+## 1. Tech Stack
+
+- Language : Kotlin 2.0.20, Java 21
+- Framework : Spring Boot 3.4.4
+- In-Memory : Redis
+
 ## 1. Layered Architecture (4 Layers)
 
 ### 1) interfaces
@@ -121,7 +127,8 @@
     - 계산/정책/상태전이 중심의 단위 테스트
     - Repository/외부 의존은 Mock/Fake로 대체 가능
 - `application`:
-    - 유스케이스 오케스트레이션 테스트(포트 Mock/Fake 활용)
+    - 유스케이스 오케스트레이션 테스트
+    - Mock/Fake을 활용한 단위테스트와, 실제 Bean을 사용하는 통합테스트 작성
 - `interfaces`:
     - Controller 계약/매핑/Validation 중심 테스트(필요 시 slice)
 
@@ -129,7 +136,6 @@
 
 ## 5. Scope & Evolution Policy (변경 가능성을 전제로)
 
-- 초기에는 `domain`부터 작업합니다.
 - “현재 단계에서 필요 없는 제한(예: 외부 API 금지, DB 금지)”은 **고정 규칙으로 두지 않습니다.**
 - 대신 아래 원칙을 유지합니다:
     - 외부 연동이 필요해지면 `domain` interface 정의 → `infrastructure` 구현 추가
@@ -158,5 +164,5 @@
 
 - 각 변경은 “컴파일 가능 + 테스트 통과” 상태를 유지합니다.
 - 신규 기능 추가 시:
-    - 도메인 모델/서비스와 테스트를 먼저 추가
-    - 이후 application/interfaces/infrastructure 순으로 확장
+    - API가 제공되는 경우, Mock API 및 E2E Test 작성 (Top-Bottom 개발 방식)
+    - 이후 주요 비즈니스 로직 작성 (tdd-workflow)
