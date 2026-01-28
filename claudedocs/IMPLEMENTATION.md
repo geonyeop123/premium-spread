@@ -3,7 +3,7 @@
 > **Project**: 김치 프리미엄 트레이딩 플랫폼
 > **Last Updated**: 2026-01-28
 > **Branch**: `feature/premium`
-> **Status**: PR 생성 완료, 테스트 작업 진행 중
+> **Status**: UseCase/Controller 테스트 완료, Integration 테스트 대기
 
 ## 🔄 Resume Instructions
 
@@ -12,7 +12,7 @@
 cat claudedocs/IMPLEMENTATION.md
 
 # 남은 작업 확인 후
-"계속 진행해" 또는 "#12 UseCase Unit Tests 진행해"
+"계속 진행해" 또는 "#7 Repository Tests 진행해"
 ```
 
 ---
@@ -24,12 +24,12 @@ cat claudedocs/IMPLEMENTATION.md
 │                    IMPLEMENTATION PROGRESS                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase 1: Domain         [##########] 100%  ✅ Complete         │
-│  Phase 2: Infrastructure [########░░]  80%  🔄 In Progress      │
-│  Phase 3: Application    [########░░]  80%  🔄 In Progress      │
-│  Phase 4: API            [#######░░░]  75%  🔄 In Progress      │
-│  Phase 5: Integration    [░░░░░░░░░░]   0%  ⏳ Pending          │
+│  Phase 2: Infrastructure [########░░]  80%  🔄 Requires Docker  │
+│  Phase 3: Application    [##########] 100%  ✅ Complete         │
+│  Phase 4: API            [##########] 100%  ✅ Complete         │
+│  Phase 5: Integration    [░░░░░░░░░░]   0%  ⏳ Requires Docker  │
 ├─────────────────────────────────────────────────────────────────┤
-│  Overall: 13/18 tasks (72%)                                     │
+│  Overall: 15/18 tasks (83%)                                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -54,7 +54,7 @@ cat claudedocs/IMPLEMENTATION.md
 | 6 | Flyway Migrations | ✅ | `V1__ticker.sql`, `V2__premium.sql`, `V3__position.sql` |
 | 7 | Repository Tests | ⏳ | *Requires Docker* |
 
-### Phase 3: Application Layer
+### Phase 3: Application Layer ✅
 
 | # | Task | Status | Files |
 |---|------|--------|-------|
@@ -62,16 +62,16 @@ cat claudedocs/IMPLEMENTATION.md
 | 9 | TickerIngestUseCase | ✅ | `TickerIngestFacade.kt` |
 | 10 | PremiumUseCase | ✅ | `PremiumFacade.kt` |
 | 11 | PositionUseCase | ✅ | `PositionFacade.kt` |
-| 12 | UseCase Tests | ⏳ | *Next* |
+| 12 | UseCase Tests | ✅ | `TickerIngestFacadeTest.kt`, `PremiumFacadeTest.kt`, `PositionFacadeTest.kt` (22 tests) |
 
-### Phase 4: API Layer
+### Phase 4: API Layer ✅
 
 | # | Task | Status | Files |
 |---|------|--------|-------|
 | 13 | Controllers | ✅ | `TickerController.kt`, `PremiumController.kt`, `PositionController.kt` |
 | 14 | API DTOs | ✅ | Request/Response in controllers |
 | 15 | Exception Handler | ✅ | `GlobalExceptionHandler.kt` |
-| 16 | API Tests | ⏳ | *Next* |
+| 16 | API Tests | ✅ | `TickerControllerTest.kt`, `PremiumControllerTest.kt`, `PositionControllerTest.kt` (20 tests) |
 
 ### Phase 5: Integration
 
@@ -193,14 +193,26 @@ apps/api/src/main/resources/db/migration/
 ├── V2__create_premium_table.sql   ✅
 └── V3__create_position_table.sql  ✅
 
-apps/api/src/test/kotlin/.../domain/
-├── ticker/
-│   ├── SymbolTest.kt              ✅ 2 tests
-│   ├── QuoteTest.kt               ✅ 2 tests
-│   ├── TickerTest.kt              ✅ 1 test
-│   └── PremiumTest.kt             ✅ 6 tests
-└── position/
-    └── PositionTest.kt            ✅ 10 tests
+apps/api/src/test/kotlin/.../
+├── TestFixtures.kt                ✅ Test helpers
+├── domain/
+│   ├── ticker/
+│   │   ├── SymbolTest.kt          ✅ 2 tests
+│   │   ├── QuoteTest.kt           ✅ 2 tests
+│   │   ├── TickerTest.kt          ✅ 1 test
+│   │   └── PremiumTest.kt         ✅ 6 tests
+│   └── position/
+│       └── PositionTest.kt        ✅ 9 tests
+├── application/
+│   ├── ticker/
+│   │   ├── TickerIngestFacadeTest.kt  ✅ 3 tests
+│   │   └── PremiumFacadeTest.kt       ✅ 8 tests
+│   └── position/
+│       └── PositionFacadeTest.kt      ✅ 11 tests
+└── interfaces/api/
+    ├── TickerControllerTest.kt    ✅ 3 tests
+    ├── PremiumControllerTest.kt   ✅ 6 tests
+    └── PositionControllerTest.kt  ✅ 11 tests
 ```
 
 ---
@@ -208,12 +220,24 @@ apps/api/src/test/kotlin/.../domain/
 ## 🧪 Test Status
 
 ```
-Domain Tests: 21 passed ✅
+Total Tests: 62 passed ✅
+
+Domain Tests: 20 passed ✅
 ├── SymbolTest ............ 2 ✅
 ├── QuoteTest ............. 2 ✅
 ├── TickerTest ............ 1 ✅
 ├── PremiumTest ........... 6 ✅
-└── PositionTest ......... 10 ✅
+└── PositionTest .......... 9 ✅
+
+Application Tests: 22 passed ✅
+├── TickerIngestFacadeTest. 3 ✅
+├── PremiumFacadeTest ..... 8 ✅
+└── PositionFacadeTest ... 11 ✅
+
+Controller Tests: 20 passed ✅
+├── TickerControllerTest .. 3 ✅
+├── PremiumControllerTest . 6 ✅
+└── PositionControllerTest 11 ✅
 ```
 
 ---
@@ -224,8 +248,10 @@ Domain Tests: 21 passed ✅
 # Compile
 ./gradlew :apps:api:compileKotlin
 
-# Test (domain only - no Docker)
-./gradlew :apps:api:test --tests "io.premiumspread.domain.*"
+# Test (domain + application + api - no Docker)
+./gradlew :apps:api:test --tests "io.premiumspread.domain.*" \
+  --tests "io.premiumspread.application.*" \
+  --tests "io.premiumspread.interfaces.*"
 
 # Test (all - requires Docker)
 ./gradlew :apps:api:test
@@ -251,14 +277,12 @@ Domain Tests: 21 passed ✅
 
 ## ⏭️ Next Actions
 
-### Ready Now (No Blockers)
-- [ ] **#12** UseCase Unit Tests - Mock Repository로 Facade 테스트
-- [ ] **#16** API Controller Tests - @WebMvcTest slice 테스트
+### Completed ✅
+- [x] **#12** UseCase Unit Tests - Mock Repository로 Facade 테스트 (22 tests)
+- [x] **#16** API Controller Tests - @WebMvcTest slice 테스트 (20 tests)
 
 ### Requires Docker
 - [ ] **#7** Repository Integration Tests - TestContainers MySQL
-
-### After Dependencies
 - [ ] **#17** Integration Tests - 전체 흐름 테스트
 - [ ] **#18** E2E Tests - HTTP 기반 테스트
 
@@ -299,4 +323,4 @@ git status
 
 ---
 
-*Last generated: 2026-01-28*
+*Last updated: 2026-01-28 (UseCase + Controller Tests 완료)*
