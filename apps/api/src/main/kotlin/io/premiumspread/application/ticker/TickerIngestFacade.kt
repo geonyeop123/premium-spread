@@ -2,16 +2,15 @@ package io.premiumspread.application.ticker
 
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Quote
-import io.premiumspread.domain.ticker.QuoteBaseType
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
-import io.premiumspread.domain.ticker.TickerRepository
+import io.premiumspread.domain.ticker.TickerService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
 class TickerIngestFacade(
-    private val tickerRepository: TickerRepository,
+    private val tickerService: TickerService,
 ) {
 
     @Transactional
@@ -23,7 +22,7 @@ class TickerIngestFacade(
             price = criteria.price,
             observedAt = criteria.observedAt,
         )
-        val savedTicker = tickerRepository.save(ticker)
+        val savedTicker = tickerService.save(ticker)
         return TickerResult.from(savedTicker)
     }
 

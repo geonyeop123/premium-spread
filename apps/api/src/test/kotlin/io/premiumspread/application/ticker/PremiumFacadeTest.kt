@@ -9,10 +9,10 @@ import io.premiumspread.TickerFixtures
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Premium
-import io.premiumspread.domain.ticker.PremiumRepository
+import io.premiumspread.domain.ticker.PremiumService
 import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
-import io.premiumspread.domain.ticker.TickerRepository
+import io.premiumspread.domain.ticker.TickerService
 import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -24,15 +24,15 @@ import java.time.Instant
 
 class PremiumFacadeTest {
 
-    private lateinit var tickerRepository: TickerRepository
-    private lateinit var premiumRepository: PremiumRepository
+    private lateinit var tickerService: TickerService
+    private lateinit var premiumService: PremiumService
     private lateinit var facade: PremiumFacade
 
     @BeforeEach
     fun setUp() {
-        tickerRepository = mockk()
-        premiumRepository = mockk()
-        facade = PremiumFacade(tickerRepository, premiumRepository)
+        tickerService = mockk()
+        premiumService = mockk()
+        facade = PremiumFacade(tickerService, premiumService)
     }
 
     @Nested
@@ -45,19 +45,19 @@ class PremiumFacadeTest {
             val fxTicker = TickerFixtures.fxTicker(price = BigDecimal("1432.6"))
 
             every {
-                tickerRepository.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns koreaTicker
 
             every {
-                tickerRepository.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
+                tickerService.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
             } returns foreignTicker
 
             every {
-                tickerRepository.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW))
+                tickerService.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW))
             } returns fxTicker
 
             val premiumSlot = slot<Premium>()
-            every { premiumRepository.save(capture(premiumSlot)) } answers {
+            every { premiumService.save(capture(premiumSlot)) } answers {
                 premiumSlot.captured.withId(1L)
             }
 
@@ -70,13 +70,13 @@ class PremiumFacadeTest {
             assertThat(result.fxTickerId).isEqualTo(fxTicker.id)
             assertThat(result.premiumRate).isEqualByComparingTo(BigDecimal("1.30"))
 
-            verify(exactly = 1) { premiumRepository.save(any()) }
+            verify(exactly = 1) { premiumService.save(any()) }
         }
 
         @Test
         fun `한국 티커가 없으면 예외를 던진다`() {
             every {
-                tickerRepository.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns null
 
             assertThatThrownBy {
@@ -90,11 +90,11 @@ class PremiumFacadeTest {
             val koreaTicker = TickerFixtures.koreaTicker()
 
             every {
-                tickerRepository.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns koreaTicker
 
             every {
-                tickerRepository.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
+                tickerService.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
             } returns null
 
             assertThatThrownBy {
@@ -109,15 +109,15 @@ class PremiumFacadeTest {
             val foreignTicker = TickerFixtures.foreignTicker()
 
             every {
-                tickerRepository.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns koreaTicker
 
             every {
-                tickerRepository.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
+                tickerService.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
             } returns foreignTicker
 
             every {
-                tickerRepository.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW))
+                tickerService.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW))
             } returns null
 
             assertThatThrownBy {
@@ -134,7 +134,7 @@ class PremiumFacadeTest {
         fun `심볼로 최신 프리미엄을 조회한다`() {
             val premium = PremiumFixtures.premium(symbol = "BTC")
 
-            every { premiumRepository.findLatestBySymbol(Symbol("BTC")) } returns premium
+            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns premium
 
             val result = facade.findLatest("BTC")
 
@@ -145,7 +145,7 @@ class PremiumFacadeTest {
 
         @Test
         fun `프리미엄이 없으면 null을 반환한다`() {
-            every { premiumRepository.findLatestBySymbol(Symbol("BTC")) } returns null
+            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns null
 
             val result = facade.findLatest("BTC")
 
@@ -166,7 +166,7 @@ class PremiumFacadeTest {
             )
 
             every {
-                premiumRepository.findAllBySymbolAndPeriod(Symbol("BTC"), from, to)
+                premiumService.findAllBySymbolAndPeriod(Symbol("BTC"), from, to)
             } returns premiums
 
             val result = facade.findByPeriod("BTC", from, to)
@@ -182,7 +182,7 @@ class PremiumFacadeTest {
             val to = Instant.parse("2024-01-02T00:00:00Z")
 
             every {
-                premiumRepository.findAllBySymbolAndPeriod(Symbol("BTC"), from, to)
+                premiumService.findAllBySymbolAndPeriod(Symbol("BTC"), from, to)
             } returns emptyList()
 
             val result = facade.findByPeriod("BTC", from, to)

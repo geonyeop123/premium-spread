@@ -8,11 +8,9 @@ import io.premiumspread.withId
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.ExchangeRegion
-import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.QuoteBaseType
-import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
-import io.premiumspread.domain.ticker.TickerRepository
+import io.premiumspread.domain.ticker.TickerService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -21,13 +19,13 @@ import java.time.Instant
 
 class TickerIngestFacadeTest {
 
-    private lateinit var tickerRepository: TickerRepository
+    private lateinit var tickerService: TickerService
     private lateinit var facade: TickerIngestFacade
 
     @BeforeEach
     fun setUp() {
-        tickerRepository = mockk()
-        facade = TickerIngestFacade(tickerRepository)
+        tickerService = mockk()
+        facade = TickerIngestFacade(tickerService)
     }
 
     @Test
@@ -41,7 +39,7 @@ class TickerIngestFacadeTest {
         )
 
         val tickerSlot = slot<Ticker>()
-        every { tickerRepository.save(capture(tickerSlot)) } answers {
+        every { tickerService.save(capture(tickerSlot)) } answers {
             tickerSlot.captured.withId(1L)
         }
 
@@ -55,7 +53,7 @@ class TickerIngestFacadeTest {
         assertThat(result.price).isEqualByComparingTo(BigDecimal("129555000"))
         assertThat(result.observedAt).isEqualTo(Instant.parse("2024-01-01T00:00:00Z"))
 
-        verify(exactly = 1) { tickerRepository.save(any()) }
+        verify(exactly = 1) { tickerService.save(any()) }
         assertThat(tickerSlot.captured.quote.baseType).isEqualTo(QuoteBaseType.SYMBOL)
     }
 
@@ -70,7 +68,7 @@ class TickerIngestFacadeTest {
         )
 
         val tickerSlot = slot<Ticker>()
-        every { tickerRepository.save(capture(tickerSlot)) } answers {
+        every { tickerService.save(capture(tickerSlot)) } answers {
             tickerSlot.captured.withId(2L)
         }
 
@@ -82,7 +80,7 @@ class TickerIngestFacadeTest {
         assertThat(result.quoteCurrency).isEqualTo(Currency.KRW)
         assertThat(result.price).isEqualByComparingTo(BigDecimal("1432.6"))
 
-        verify(exactly = 1) { tickerRepository.save(any()) }
+        verify(exactly = 1) { tickerService.save(any()) }
         assertThat(tickerSlot.captured.quote.baseType).isEqualTo(QuoteBaseType.CURRENCY)
     }
 
@@ -97,7 +95,7 @@ class TickerIngestFacadeTest {
         )
 
         val tickerSlot = slot<Ticker>()
-        every { tickerRepository.save(capture(tickerSlot)) } answers {
+        every { tickerService.save(capture(tickerSlot)) } answers {
             tickerSlot.captured.withId(3L)
         }
 

@@ -5,12 +5,13 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.PositionFixtures
-import io.premiumspread.application.ticker.PremiumFacade
-import io.premiumspread.application.ticker.PremiumResult
+import io.premiumspread.PremiumFixtures
 import io.premiumspread.domain.position.Position
-import io.premiumspread.domain.position.PositionRepository
+import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.PremiumService
+import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -22,15 +23,15 @@ import java.time.Instant
 
 class PositionFacadeTest {
 
-    private lateinit var positionRepository: PositionRepository
-    private lateinit var premiumFacade: PremiumFacade
+    private lateinit var positionService: PositionService
+    private lateinit var premiumService: PremiumService
     private lateinit var facade: PositionFacade
 
     @BeforeEach
     fun setUp() {
-        positionRepository = mockk()
-        premiumFacade = mockk()
-        facade = PositionFacade(positionRepository, premiumFacade)
+        positionService = mockk()
+        premiumService = mockk()
+        facade = PositionFacade(positionService, premiumService)
     }
 
     @Nested
@@ -49,7 +50,7 @@ class PositionFacadeTest {
             )
 
             val positionSlot = slot<Position>()
-            every { positionRepository.save(capture(positionSlot)) } answers {
+            every { positionService.save(capture(positionSlot)) } answers {
                 positionSlot.captured.withId(1L)
             }
 
@@ -64,7 +65,7 @@ class PositionFacadeTest {
             assertThat(result.entryPremiumRate).isEqualByComparingTo(BigDecimal("1.28"))
             assertThat(result.status).isEqualTo(PositionStatus.OPEN)
 
-            verify(exactly = 1) { positionRepository.save(any()) }
+            verify(exactly = 1) { positionService.save(any()) }
         }
     }
 
@@ -75,7 +76,7 @@ class PositionFacadeTest {
         fun `ID로 포지션을 조회한다`() {
             val position = PositionFixtures.openPosition(id = 1L)
 
-            every { positionRepository.findById(1L) } returns position
+            every { positionService.findById(1L) } returns position
 
             val result = facade.findById(1L)
 
@@ -86,7 +87,7 @@ class PositionFacadeTest {
 
         @Test
         fun `포지션이 없으면 null을 반환한다`() {
-            every { positionRepository.findById(999L) } returns null
+            every { positionService.findById(999L) } returns null
 
             val result = facade.findById(999L)
 
@@ -104,7 +105,7 @@ class PositionFacadeTest {
                 PositionFixtures.openPosition(symbol = "ETH", id = 2L),
             )
 
-            every { positionRepository.findAllOpen() } returns positions
+            every { positionService.findAllOpen() } returns positions
 
             val result = facade.findAllOpen()
 
@@ -115,7 +116,7 @@ class PositionFacadeTest {
 
         @Test
         fun `열린 포지션이 없으면 빈 목록을 반환한다`() {
-            every { positionRepository.findAllOpen() } returns emptyList()
+            every { positionService.findAllOpen() } returns emptyList()
 
             val result = facade.findAllOpen()
 
@@ -132,18 +133,13 @@ class PositionFacadeTest {
                 id = 1L,
                 entryPremiumRate = BigDecimal("3.00"),
             )
-            val currentPremiumResult = PremiumResult(
-                id = 1L,
+            val currentPremium = PremiumFixtures.premiumWithRate(
                 symbol = "BTC",
-                koreaTickerId = 1L,
-                foreignTickerId = 2L,
-                fxTickerId = 3L,
                 premiumRate = BigDecimal("1.00"),
-                observedAt = Instant.now(),
             )
 
-            every { positionRepository.findById(1L) } returns position
-            every { premiumFacade.findLatest("BTC") } returns currentPremiumResult
+            every { positionService.findById(1L) } returns position
+            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns currentPremium
 
             val result = facade.calculatePnl(1L)
 
@@ -160,18 +156,13 @@ class PositionFacadeTest {
                 id = 1L,
                 entryPremiumRate = BigDecimal("1.00"),
             )
-            val currentPremiumResult = PremiumResult(
-                id = 1L,
+            val currentPremium = PremiumFixtures.premiumWithRate(
                 symbol = "BTC",
-                koreaTickerId = 1L,
-                foreignTickerId = 2L,
-                fxTickerId = 3L,
                 premiumRate = BigDecimal("3.00"),
-                observedAt = Instant.now(),
             )
 
-            every { positionRepository.findById(1L) } returns position
-            every { premiumFacade.findLatest("BTC") } returns currentPremiumResult
+            every { positionService.findById(1L) } returns position
+            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns currentPremium
 
             val result = facade.calculatePnl(1L)
 
@@ -181,7 +172,7 @@ class PositionFacadeTest {
 
         @Test
         fun `포지션이 없으면 예외를 던진다`() {
-            every { positionRepository.findById(999L) } returns null
+            every { positionService.findById(999L) } returns null
 
             assertThatThrownBy {
                 facade.calculatePnl(999L)
@@ -193,8 +184,8 @@ class PositionFacadeTest {
         fun `프리미엄이 없으면 예외를 던진다`() {
             val position = PositionFixtures.openPosition(id = 1L)
 
-            every { positionRepository.findById(1L) } returns position
-            every { premiumFacade.findLatest("BTC") } returns null
+            every { positionService.findById(1L) } returns position
+            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns null
 
             assertThatThrownBy {
                 facade.calculatePnl(1L)
@@ -210,10 +201,10 @@ class PositionFacadeTest {
         fun `포지션을 청산한다`() {
             val position = PositionFixtures.openPosition(id = 1L)
 
-            every { positionRepository.findById(1L) } returns position
+            every { positionService.findById(1L) } returns position
 
             val positionSlot = slot<Position>()
-            every { positionRepository.save(capture(positionSlot)) } answers {
+            every { positionService.save(capture(positionSlot)) } answers {
                 positionSlot.captured
             }
 
@@ -222,12 +213,12 @@ class PositionFacadeTest {
             assertThat(result.id).isEqualTo(1L)
             assertThat(result.status).isEqualTo(PositionStatus.CLOSED)
 
-            verify(exactly = 1) { positionRepository.save(any()) }
+            verify(exactly = 1) { positionService.save(any()) }
         }
 
         @Test
         fun `포지션이 없으면 예외를 던진다`() {
-            every { positionRepository.findById(999L) } returns null
+            every { positionService.findById(999L) } returns null
 
             assertThatThrownBy {
                 facade.closePosition(999L)
