@@ -9,6 +9,10 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
 
+# External API 설정
+exchange-rate:
+  api-key: ${EXCHANGE_RATE_API_KEY:}
+
 # Actuator 설정
 management:
   endpoints:

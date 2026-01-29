@@ -15,4 +15,6 @@ dependencies {
 
     // Test
     testImplementation("org.testcontainers:testcontainers")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${project.properties["kotlinCoroutinesVersion"]}")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
