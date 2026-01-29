@@ -1,9 +1,9 @@
 # Premium Spread MVP - Implementation Guide & Progress
 
 > **Project**: 프리미엄 트레이딩 플랫폼
-> **Last Updated**: 2026-01-28
+> **Last Updated**: 2026-01-29
 > **Branch**: `feature/premium`
-> **Status**: Domain Service + Command 패턴 리팩토링 완료, Integration 테스트 대기
+> **Status**: Repository Integration Tests 작성 완료, Docker 권한 설정 대기
 
 ## Resume Instructions
 
@@ -24,12 +24,12 @@ cat claudedocs/IMPLEMENTATION.md
 │                    IMPLEMENTATION PROGRESS                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Phase 1: Domain         [##########] 100%  ✅ Complete         │
-│  Phase 2: Infrastructure [########░░]  80%  🔄 Requires Docker  │
+│  Phase 2: Infrastructure [#########░]  90%  🔄 Docker 권한 대기  │
 │  Phase 3: Application    [##########] 100%  ✅ Complete         │
 │  Phase 4: API            [##########] 100%  ✅ Complete         │
 │  Phase 5: Integration    [░░░░░░░░░░]   0%  ⏳ Requires Docker  │
 ├─────────────────────────────────────────────────────────────────┤
-│  Overall: 15/18 tasks (83%)                                     │
+│  Overall: 16/18 tasks (89%) - #7 테스트 작성 완료, 실행 대기    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,7 +55,7 @@ cat claudedocs/IMPLEMENTATION.md
 | 4 | JPA Implementations   | ✅      | `*JpaRepository.kt`, `*RepositoryImpl.kt`                              |
 | 5 | Premium → Entity      | ✅      | `Premium.kt` (converted), `Symbol.kt` (@Embeddable)                    |
 | 6 | Flyway Migrations     | ✅      | `V1__ticker.sql`, `V2__premium.sql`, `V3__position.sql`                |
-| 7 | Repository Tests      | ⏳      | *Requires Docker*                                                      |
+| 7 | Repository Tests      | 🔄      | `TickerRepositoryTest.kt` (10), `PremiumRepositoryTest.kt` (9), `PositionRepositoryTest.kt` (8) - Docker 대기 |
 
 ### Phase 3: Application Layer ✅
 
@@ -232,11 +232,18 @@ apps/api/src/test/kotlin/.../
 │   │   ├── QuoteTest.kt           ✅ 2 tests
 │   │   ├── TickerTest.kt          ✅ 1 test
 │   │   ├── PremiumTest.kt         ✅ 6 tests
-│   │   ├── TickerServiceTest.kt   ✅ 7 tests (NEW)
-│   │   └── PremiumServiceTest.kt  ✅ 6 tests (NEW)
+│   │   ├── TickerServiceTest.kt   ✅ 7 tests
+│   │   └── PremiumServiceTest.kt  ✅ 6 tests
 │   └── position/
 │       ├── PositionTest.kt        ✅ 9 tests
-│       └── PositionServiceTest.kt ✅ 6 tests (NEW)
+│       └── PositionServiceTest.kt ✅ 6 tests
+├── infrastructure/persistence/    🆕 NEW
+│   ├── ticker/
+│   │   └── TickerRepositoryTest.kt    🔄 10 tests (Docker 대기)
+│   ├── premium/
+│   │   └── PremiumRepositoryTest.kt   🔄 9 tests (Docker 대기)
+│   └── position/
+│       └── PositionRepositoryTest.kt  🔄 8 tests (Docker 대기)
 ├── application/
 │   ├── ticker/
 │   │   ├── TickerIngestFacadeTest.kt  ✅ 3 tests
@@ -254,7 +261,8 @@ apps/api/src/test/kotlin/.../
 ## Test Status
 
 ```
-Total Tests: 81 passed ✅
+Unit Tests: 81 passed ✅
+Repository Tests: 27 pending 🔄 (Docker 대기)
 
 Domain Tests: 39 passed ✅
 ├── SymbolTest ............. 2 ✅
@@ -262,9 +270,14 @@ Domain Tests: 39 passed ✅
 ├── TickerTest ............. 1 ✅
 ├── PremiumTest ............ 6 ✅
 ├── PositionTest ........... 9 ✅
-├── TickerServiceTest ...... 7 ✅ (NEW)
-├── PremiumServiceTest ..... 6 ✅ (NEW)
-└── PositionServiceTest .... 6 ✅ (NEW)
+├── TickerServiceTest ...... 7 ✅
+├── PremiumServiceTest ..... 6 ✅
+└── PositionServiceTest .... 6 ✅
+
+Repository Tests: 27 pending 🔄
+├── TickerRepositoryTest ... 10 🔄 (Docker 대기)
+├── PremiumRepositoryTest .. 9 🔄 (Docker 대기)
+└── PositionRepositoryTest . 8 🔄 (Docker 대기)
 
 Application Tests: 22 passed ✅
 ├── TickerIngestFacadeTest.. 3 ✅
@@ -285,10 +298,13 @@ Controller Tests: 20 passed ✅
 # Compile
 ./gradlew :apps:api:compileKotlin
 
-# Test (domain + application + api - no Docker)
+# Test (unit tests - no Docker)
 ./gradlew :apps:api:test --tests "io.premiumspread.domain.*" \
   --tests "io.premiumspread.application.*" \
   --tests "io.premiumspread.interfaces.*"
+
+# Test (repository integration - requires Docker)
+./gradlew :apps:api:test --tests "io.premiumspread.infrastructure.persistence.*"
 
 # Test (all - requires Docker)
 ./gradlew :apps:api:test
@@ -314,9 +330,25 @@ Controller Tests: 20 passed ✅
 
 ---
 
-## Recent Changes (2026-01-28)
+## Recent Changes
 
-### Refactoring: Domain Services + Command Pattern
+### 2026-01-29: Repository Integration Tests
+
+**추가된 파일:**
+
+- `TickerRepositoryTest.kt` - 10 tests (save, findById, findLatest, findAllByExchangeAndSymbol)
+- `PremiumRepositoryTest.kt` - 9 tests (save, findById, findLatestBySymbol, findAllBySymbolAndPeriod)
+- `PositionRepositoryTest.kt` - 8 tests (save, findById, findAllByStatus)
+
+**의존성 추가:**
+
+- `build.gradle.kts`: `testImplementation("org.testcontainers:mysql")` 추가
+
+**Blocker:**
+
+- WSL2 Docker 권한 문제 → `sudo usermod -aG docker $USER` 후 재시작 필요
+
+### 2026-01-28: Domain Services + Command Pattern
 
 **이전 구조:**
 
@@ -352,9 +384,14 @@ Facade → Service → Repository
 - [x] **#12** UseCase Unit Tests - Mock Repository로 Facade 테스트 (22 tests)
 - [x] **#16** API Controller Tests - @WebMvcTest slice 테스트 (20 tests)
 
+### In Progress 🔄
+
+- [x] **#7** Repository Integration Tests - 테스트 코드 작성 완료 (27 tests)
+  - Docker 권한 설정 후 실행 필요
+  - `sudo usermod -aG docker $USER && wsl --shutdown`
+
 ### Requires Docker
 
-- [ ] **#7** Repository Integration Tests - TestContainers MySQL
 - [ ] **#17** Integration Tests - 전체 흐름 테스트
 - [ ] **#18** E2E Tests - HTTP 기반 테스트
 
@@ -376,7 +413,14 @@ PR: 생성 완료
 
 ## Known Issues
 
-1. **TestContainers**: Docker not available in WSL2 → Skip integration tests
+1. **WSL2 Docker 권한**: 사용자가 docker 그룹에 없음
+   ```bash
+   # 해결 방법
+   sudo groupadd docker          # docker 그룹 생성 (없는 경우)
+   sudo usermod -aG docker $USER # 사용자를 docker 그룹에 추가
+   # PowerShell에서: wsl --shutdown
+   # WSL 재시작 후 docker 명령 테스트
+   ```
 
 ---
 
@@ -395,4 +439,4 @@ git status
 
 ---
 
-*Last updated: 2026-01-28 (Domain Services + Command 패턴 리팩토링 완료)*
+*Last updated: 2026-01-29 (Repository Integration Tests 작성 완료, Docker 권한 대기)*

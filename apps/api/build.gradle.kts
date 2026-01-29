@@ -3,8 +3,13 @@ plugins {
 }
 
 dependencies {
-    // add-ons
+    // modules
     implementation(project(":modules:jpa"))
+    implementation(project(":modules:redis"))
+
+    // supports
+    implementation(project(":supports:logging"))
+    implementation(project(":supports:monitoring"))
 
     // flyway
     implementation("org.flywaydb:flyway-core")
@@ -20,4 +25,5 @@ dependencies {
 
     // test-fixtures
     testImplementation(testFixtures(project(":modules:jpa")))
+    testImplementation(testFixtures(project(":modules:redis")))
 }

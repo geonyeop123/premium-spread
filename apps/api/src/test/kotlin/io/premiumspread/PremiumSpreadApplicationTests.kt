@@ -9,5 +9,4 @@ class PremiumSpreadApplicationTests {
     @Test
     fun contextLoads() {
     }
-
 }
