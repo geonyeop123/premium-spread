@@ -2,7 +2,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.jpa")
 }
 
-tasks.withType<Test> {
+tasks.named<Test>("test") {
     useJUnitPlatform {
         // 기본 테스트 실행 시 integration 태그 제외
         excludeTags("integration")
@@ -16,6 +16,7 @@ tasks.register<Test>("integrationTest") {
     useJUnitPlatform {
         includeTags("integration")
     }
+    shouldRunAfter(tasks.named("test"))
 }
 
 dependencies {
