@@ -4,6 +4,7 @@ import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.infrastructure.cache.PositionCacheWriter
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -11,10 +12,11 @@ import org.springframework.transaction.annotation.Transactional
 class PositionFacade(
     private val positionService: PositionService,
     private val premiumService: PremiumService,
+    private val positionCacheWriter: PositionCacheWriter,
 ) {
 
     @Transactional
-    fun openPosition(criteria: PositionOpenCriteria): PositionResult {
+    fun openPosition(criteria: PositionCriteria.Open): PositionResult.Detail {
         val command = PositionCommand.Create(
             symbol = criteria.symbol,
             exchange = criteria.exchange,
@@ -25,23 +27,27 @@ class PositionFacade(
             entryObservedAt = criteria.entryObservedAt,
         )
         val position = positionService.create(command)
-        return PositionResult.from(position)
+
+        // 포지션 캐시 갱신
+        updatePositionCache()
+
+        return PositionResult.Detail.from(position)
     }
 
     @Transactional(readOnly = true)
-    fun findById(id: Long): PositionResult? {
+    fun findById(id: Long): PositionResult.Detail? {
         return positionService.findById(id)
-            ?.let { PositionResult.from(it) }
+            ?.let { PositionResult.Detail.from(it) }
     }
 
     @Transactional(readOnly = true)
-    fun findAllOpen(): List<PositionResult> {
+    fun findAllOpen(): List<PositionResult.Detail> {
         return positionService.findAllOpen()
-            .map { PositionResult.from(it) }
+            .map { PositionResult.Detail.from(it) }
     }
 
     @Transactional(readOnly = true)
-    fun calculatePnl(positionId: Long): PositionPnlResult {
+    fun calculatePnl(positionId: Long): PositionResult.Pnl {
         val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
 
@@ -49,17 +55,32 @@ class PositionFacade(
             ?: throw PremiumNotFoundException("Premium not found for symbol: ${position.symbol.code}")
 
         val pnl = position.calculatePremiumDiff(currentPremium.premiumRate)
-        return PositionPnlResult.from(positionId, pnl)
+        return PositionResult.Pnl.from(positionId, pnl)
     }
 
     @Transactional
-    fun closePosition(positionId: Long): PositionResult {
+    fun closePosition(positionId: Long): PositionResult.Detail {
         val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
 
         position.close()
         val savedPosition = positionService.save(position)
-        return PositionResult.from(savedPosition)
+
+        // 포지션 캐시 갱신
+        updatePositionCache()
+
+        return PositionResult.Detail.from(savedPosition)
+    }
+
+    /**
+     * 포지션 캐시 갱신 (배치 서버의 조건부 캐싱용)
+     */
+    private fun updatePositionCache() {
+        val openPositions = positionService.findAllOpen()
+        val hasOpen = openPositions.isNotEmpty()
+        val count = openPositions.size
+
+        positionCacheWriter.updateOpenPositionStatus(hasOpen, count)
     }
 }
 

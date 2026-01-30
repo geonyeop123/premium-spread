@@ -3,10 +3,9 @@ package io.premiumspread.interfaces.api.position
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
+import io.premiumspread.application.position.PositionCriteria
 import io.premiumspread.application.position.PositionFacade
 import io.premiumspread.application.position.PositionNotFoundException
-import io.premiumspread.application.position.PositionOpenCriteria
-import io.premiumspread.application.position.PositionPnlResult
 import io.premiumspread.application.position.PositionResult
 import io.premiumspread.application.position.PremiumNotFoundException
 import io.premiumspread.domain.position.PositionStatus
@@ -39,7 +38,7 @@ class PositionControllerTest {
 
         @Test
         fun `포지션을 생성한다`() {
-            val request = PositionOpenRequest(
+            val request = PositionRequest.Open(
                 symbol = "BTC",
                 exchange = "UPBIT",
                 quantity = BigDecimal("0.5"),
@@ -49,7 +48,7 @@ class PositionControllerTest {
                 entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
-            val result = PositionResult(
+            val result = PositionResult.Detail(
                 id = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
@@ -61,7 +60,7 @@ class PositionControllerTest {
                 status = PositionStatus.OPEN,
             )
 
-            every { positionFacade.openPosition(any<PositionOpenCriteria>()) } returns result
+            every { positionFacade.openPosition(any<PositionCriteria.Open>()) } returns result
 
             mockMvc.post("/api/v1/positions") {
                 contentType = MediaType.APPLICATION_JSON
@@ -103,7 +102,7 @@ class PositionControllerTest {
 
         @Test
         fun `ID로 포지션을 조회한다`() {
-            val result = PositionResult(
+            val result = PositionResult.Detail(
                 id = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
@@ -142,7 +141,7 @@ class PositionControllerTest {
         @Test
         fun `열린 포지션 목록을 조회한다`() {
             val results = listOf(
-                PositionResult(
+                PositionResult.Detail(
                     id = 1L,
                     symbol = "BTC",
                     exchange = Exchange.UPBIT,
@@ -153,7 +152,7 @@ class PositionControllerTest {
                     entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
                     status = PositionStatus.OPEN,
                 ),
-                PositionResult(
+                PositionResult.Detail(
                     id = 2L,
                     symbol = "ETH",
                     exchange = Exchange.UPBIT,
@@ -194,7 +193,7 @@ class PositionControllerTest {
 
         @Test
         fun `포지션의 PnL을 조회한다 - 이익`() {
-            val result = PositionPnlResult(
+            val result = PositionResult.Pnl(
                 positionId = 1L,
                 premiumDiff = BigDecimal("-2.00"),
                 entryPremiumRate = BigDecimal("3.00"),
@@ -248,7 +247,7 @@ class PositionControllerTest {
 
         @Test
         fun `포지션을 청산한다`() {
-            val result = PositionResult(
+            val result = PositionResult.Detail(
                 id = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,

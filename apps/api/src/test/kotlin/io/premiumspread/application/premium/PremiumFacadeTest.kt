@@ -59,7 +59,7 @@ class PremiumFacadeTest {
             every { premiumService.create(capture(commandSlot)) } returns
                     PremiumFixtures.premium(symbol = "BTC", id = 1L)
 
-            val result = facade.calculateAndSave(PremiumCreateCriteria(symbol = "BTC"))
+            val result = facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
 
             assertThat(result.id).isEqualTo(1L)
             assertThat(result.symbol).isEqualTo("BTC")
@@ -77,7 +77,7 @@ class PremiumFacadeTest {
             } returns null
 
             assertThatThrownBy {
-                facade.calculateAndSave(PremiumCreateCriteria(symbol = "BTC"))
+                facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
             }.isInstanceOf(TickerNotFoundException::class.java)
                 .hasMessageContaining("Korea ticker not found")
         }
@@ -95,7 +95,7 @@ class PremiumFacadeTest {
             } returns null
 
             assertThatThrownBy {
-                facade.calculateAndSave(PremiumCreateCriteria(symbol = "BTC"))
+                facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
             }.isInstanceOf(TickerNotFoundException::class.java)
                 .hasMessageContaining("Foreign ticker not found")
         }
@@ -118,7 +118,7 @@ class PremiumFacadeTest {
             } returns null
 
             assertThatThrownBy {
-                facade.calculateAndSave(PremiumCreateCriteria(symbol = "BTC"))
+                facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
             }.isInstanceOf(TickerNotFoundException::class.java)
                 .hasMessageContaining("FX ticker not found")
         }

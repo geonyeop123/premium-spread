@@ -2,7 +2,7 @@ package io.premiumspread.interfaces.api.premium
 
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
-import io.premiumspread.application.premium.PremiumCreateCriteria
+import io.premiumspread.application.premium.PremiumCriteria
 import io.premiumspread.application.premium.PremiumFacade
 import io.premiumspread.application.premium.PremiumResult
 import io.premiumspread.application.premium.TickerNotFoundException
@@ -30,7 +30,7 @@ class PremiumControllerTest {
 
         @Test
         fun `프리미엄을 계산하고 저장한다`() {
-            val result = PremiumResult(
+            val result = PremiumResult.Detail(
                 id = 1L,
                 symbol = "BTC",
                 koreaTickerId = 1L,
@@ -40,7 +40,7 @@ class PremiumControllerTest {
                 observedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
-            every { premiumFacade.calculateAndSave(PremiumCreateCriteria("BTC")) } returns result
+            every { premiumFacade.calculateAndSave(PremiumCriteria.Create("BTC")) } returns result
 
             mockMvc.post("/api/v1/premiums/calculate/BTC")
                 .andExpect {
@@ -57,7 +57,7 @@ class PremiumControllerTest {
         @Test
         fun `티커가 없으면 404를 반환한다`() {
             every {
-                premiumFacade.calculateAndSave(PremiumCreateCriteria("BTC"))
+                premiumFacade.calculateAndSave(PremiumCriteria.Create("BTC"))
             } throws TickerNotFoundException("Korea ticker not found for symbol: BTC")
 
             mockMvc.post("/api/v1/premiums/calculate/BTC")
@@ -74,7 +74,7 @@ class PremiumControllerTest {
 
         @Test
         fun `최신 프리미엄을 조회한다`() {
-            val result = PremiumResult(
+            val result = PremiumResult.Detail(
                 id = 1L,
                 symbol = "BTC",
                 koreaTickerId = 1L,
@@ -115,7 +115,7 @@ class PremiumControllerTest {
             val to = Instant.parse("2024-01-02T00:00:00Z")
 
             val results = listOf(
-                PremiumResult(
+                PremiumResult.Detail(
                     id = 1L,
                     symbol = "BTC",
                     koreaTickerId = 1L,
@@ -124,7 +124,7 @@ class PremiumControllerTest {
                     premiumRate = BigDecimal("1.30"),
                     observedAt = Instant.parse("2024-01-01T01:00:00Z"),
                 ),
-                PremiumResult(
+                PremiumResult.Detail(
                     id = 2L,
                     symbol = "BTC",
                     koreaTickerId = 4L,

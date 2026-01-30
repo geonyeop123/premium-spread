@@ -1,6 +1,5 @@
 package io.premiumspread.domain.position
 
-import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
 import org.assertj.core.api.Assertions.assertThat

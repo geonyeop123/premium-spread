@@ -1,8 +1,15 @@
 rootProject.name = "premium-spread"
 
 include(
+    // apps
     ":apps:api",
+    ":apps:batch",
+    // modules
     ":modules:jpa",
+    ":modules:redis",
+    // supports
+    ":supports:logging",
+    ":supports:monitoring",
 )
 
 // configurations
