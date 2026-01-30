@@ -45,9 +45,10 @@ class PremiumScheduler(
         val lockKey = RedisKeyGenerator.lockPremiumKey()
         val leaseTime = RedisTtl.Lock.PREMIUM_LEASE.seconds
 
+        // 즉시 시도, 실패 시 skip
         val result = lockManager.withLock(
             lockKey = lockKey,
-            waitTime = 0, // 즉시 시도, 실패 시 skip
+            waitTime = 0,
             leaseTime = leaseTime,
             timeUnit = TimeUnit.SECONDS,
         ) {

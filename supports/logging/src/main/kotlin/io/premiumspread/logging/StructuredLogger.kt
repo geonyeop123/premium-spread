@@ -41,9 +41,11 @@ object StructuredLogger {
             "event" to "premium_calc",
             "symbol" to symbol,
         ) {
-            logger.info(
-                """{"event":"premium_calc","symbol":"$symbol","rate":"$rate","korea_price":"$koreaPrice","foreign_price":"$foreignPrice","fx_rate":"$fxRate"}""",
-            )
+            val json = buildString {
+                append("""{"event":"premium_calc","symbol":"$symbol","rate":"$rate",""")
+                append(""""korea_price":"$koreaPrice","foreign_price":"$foreignPrice","fx_rate":"$fxRate"}""")
+            }
+            logger.info(json)
         }
     }
 

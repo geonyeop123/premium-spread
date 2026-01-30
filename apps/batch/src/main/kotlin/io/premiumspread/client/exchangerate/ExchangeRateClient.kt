@@ -45,9 +45,8 @@ class ExchangeRateClient(
             val response = fetchWithRetry(baseCurrency, quoteCurrency)
 
             if (response.result != "success") {
-                throw ExchangeRateApiException(
-                    "Exchange rate API error: ${response.errorType ?: "Unknown error"}"
-                )
+                val errorMessage = "Exchange rate API error: ${response.errorType ?: "Unknown error"}"
+                throw ExchangeRateApiException(errorMessage)
             }
 
             FxRateData(
@@ -67,9 +66,11 @@ class ExchangeRateClient(
             log.error("Failed to fetch exchange rate for $baseCurrency/$quoteCurrency", e)
             throw e
         } finally {
-            sample.stop(Timer.builder("fx.fetch.latency")
-                .tag("provider", PROVIDER)
-                .register(meterRegistry))
+            sample.stop(
+                Timer.builder("fx.fetch.latency")
+                    .tag("provider", PROVIDER)
+                    .register(meterRegistry),
+            )
         }
     }
 

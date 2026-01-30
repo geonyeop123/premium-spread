@@ -59,9 +59,11 @@ class BinanceClient(
             log.error("Failed to fetch Binance futures ticker for $symbol", e)
             throw e
         } finally {
-            sample.stop(Timer.builder("ticker.fetch.latency")
-                .tag("exchange", EXCHANGE)
-                .register(meterRegistry))
+            sample.stop(
+                Timer.builder("ticker.fetch.latency")
+                    .tag("exchange", EXCHANGE)
+                    .register(meterRegistry),
+            )
         }
     }
 
@@ -91,9 +93,11 @@ class BinanceClient(
             log.error("Failed to fetch Binance futures 24hr ticker for $symbol", e)
             throw e
         } finally {
-            sample.stop(Timer.builder("ticker.fetch.latency")
-                .tag("exchange", EXCHANGE)
-                .register(meterRegistry))
+            sample.stop(
+                Timer.builder("ticker.fetch.latency")
+                    .tag("exchange", EXCHANGE)
+                    .register(meterRegistry),
+            )
         }
     }
 

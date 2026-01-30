@@ -2,7 +2,6 @@ package io.premiumspread.monitoring
 
 import org.springframework.boot.actuate.health.Health
 import org.springframework.boot.actuate.health.HealthIndicator
-import org.springframework.stereotype.Component
 import java.lang.management.ManagementFactory
 
 /**
@@ -11,7 +10,6 @@ import java.lang.management.ManagementFactory
  * Redis 헬스체크는 Spring Boot Actuator의 자동 설정으로 처리됨
  * (spring-boot-starter-data-redis 의존성 시 자동 등록)
  */
-@Component
 class ApplicationHealthIndicator : HealthIndicator {
 
     override fun health(): Health {

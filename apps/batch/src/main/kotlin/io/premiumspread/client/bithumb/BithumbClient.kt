@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.awaitBody
-import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 
@@ -67,9 +66,11 @@ class BithumbClient(
             log.error("Failed to fetch Bithumb ticker for $symbol/$currency", e)
             throw e
         } finally {
-            sample.stop(Timer.builder("ticker.fetch.latency")
-                .tag("exchange", EXCHANGE)
-                .register(meterRegistry))
+            sample.stop(
+                Timer.builder("ticker.fetch.latency")
+                    .tag("exchange", EXCHANGE)
+                    .register(meterRegistry),
+            )
         }
     }
 

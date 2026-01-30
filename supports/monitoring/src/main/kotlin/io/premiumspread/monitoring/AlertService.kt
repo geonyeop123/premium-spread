@@ -1,14 +1,12 @@
 package io.premiumspread.monitoring
 
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Service
 
 /**
  * 알람 서비스
  *
  * TODO: Slack, PagerDuty 등 외부 알람 시스템 연동
  */
-@Service
 class AlertService {
 
     private val logger = LoggerFactory.getLogger(AlertService::class.java)

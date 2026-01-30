@@ -5,7 +5,6 @@ import io.premiumspread.client.TickerData
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.time.Instant
 
 @Component
 class PremiumCalculator {

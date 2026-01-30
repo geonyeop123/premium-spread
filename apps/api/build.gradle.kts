@@ -2,6 +2,22 @@ plugins {
     id("org.jetbrains.kotlin.plugin.jpa")
 }
 
+tasks.withType<Test> {
+    useJUnitPlatform {
+        // 기본 테스트 실행 시 integration 태그 제외
+        excludeTags("integration")
+    }
+}
+
+// 통합 테스트 태스크 별도 정의
+tasks.register<Test>("integrationTest") {
+    description = "Runs integration tests (requires Docker)"
+    group = "verification"
+    useJUnitPlatform {
+        includeTags("integration")
+    }
+}
+
 dependencies {
     // modules
     implementation(project(":modules:jpa"))
