@@ -16,7 +16,7 @@ class PositionFacade(
 ) {
 
     @Transactional
-    fun openPosition(criteria: PositionOpenCriteria): PositionResult {
+    fun openPosition(criteria: PositionCriteria.Open): PositionResult.Detail {
         val command = PositionCommand.Create(
             symbol = criteria.symbol,
             exchange = criteria.exchange,
@@ -31,23 +31,23 @@ class PositionFacade(
         // 포지션 캐시 갱신
         updatePositionCache()
 
-        return PositionResult.from(position)
+        return PositionResult.Detail.from(position)
     }
 
     @Transactional(readOnly = true)
-    fun findById(id: Long): PositionResult? {
+    fun findById(id: Long): PositionResult.Detail? {
         return positionService.findById(id)
-            ?.let { PositionResult.from(it) }
+            ?.let { PositionResult.Detail.from(it) }
     }
 
     @Transactional(readOnly = true)
-    fun findAllOpen(): List<PositionResult> {
+    fun findAllOpen(): List<PositionResult.Detail> {
         return positionService.findAllOpen()
-            .map { PositionResult.from(it) }
+            .map { PositionResult.Detail.from(it) }
     }
 
     @Transactional(readOnly = true)
-    fun calculatePnl(positionId: Long): PositionPnlResult {
+    fun calculatePnl(positionId: Long): PositionResult.Pnl {
         val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
 
@@ -55,11 +55,11 @@ class PositionFacade(
             ?: throw PremiumNotFoundException("Premium not found for symbol: ${position.symbol.code}")
 
         val pnl = position.calculatePremiumDiff(currentPremium.premiumRate)
-        return PositionPnlResult.from(positionId, pnl)
+        return PositionResult.Pnl.from(positionId, pnl)
     }
 
     @Transactional
-    fun closePosition(positionId: Long): PositionResult {
+    fun closePosition(positionId: Long): PositionResult.Detail {
         val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
 
@@ -69,7 +69,7 @@ class PositionFacade(
         // 포지션 캐시 갱신
         updatePositionCache()
 
-        return PositionResult.from(savedPosition)
+        return PositionResult.Detail.from(savedPosition)
     }
 
     /**

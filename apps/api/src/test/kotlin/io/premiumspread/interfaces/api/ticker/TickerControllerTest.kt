@@ -3,7 +3,7 @@ package io.premiumspread.interfaces.api.ticker
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
-import io.premiumspread.application.ticker.TickerIngestCriteria
+import io.premiumspread.application.ticker.TickerCriteria
 import io.premiumspread.application.ticker.TickerIngestFacade
 import io.premiumspread.application.ticker.TickerResult
 import io.premiumspread.domain.ticker.Currency
@@ -32,7 +32,7 @@ class TickerControllerTest {
 
     @Test
     fun `코인 티커를 등록한다`() {
-        val request = TickerIngestRequest(
+        val request = TickerRequest.Ingest(
             exchange = "UPBIT",
             baseCode = "BTC",
             quoteCurrency = "KRW",
@@ -40,7 +40,7 @@ class TickerControllerTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        val result = TickerResult(
+        val result = TickerResult.Detail(
             id = 1L,
             exchange = Exchange.UPBIT,
             exchangeRegion = ExchangeRegion.KOREA,
@@ -50,7 +50,7 @@ class TickerControllerTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        every { tickerIngestFacade.ingest(any<TickerIngestCriteria>()) } returns result
+        every { tickerIngestFacade.ingest(any<TickerCriteria.Ingest>()) } returns result
 
         mockMvc.post("/api/v1/tickers") {
             contentType = MediaType.APPLICATION_JSON
@@ -68,7 +68,7 @@ class TickerControllerTest {
 
     @Test
     fun `환율 티커를 등록한다`() {
-        val request = TickerIngestRequest(
+        val request = TickerRequest.Ingest(
             exchange = "FX_PROVIDER",
             baseCode = "USD",
             quoteCurrency = "KRW",
@@ -76,7 +76,7 @@ class TickerControllerTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        val result = TickerResult(
+        val result = TickerResult.Detail(
             id = 2L,
             exchange = Exchange.FX_PROVIDER,
             exchangeRegion = ExchangeRegion.FOREIGN,
@@ -86,7 +86,7 @@ class TickerControllerTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        every { tickerIngestFacade.ingest(any<TickerIngestCriteria>()) } returns result
+        every { tickerIngestFacade.ingest(any<TickerCriteria.Ingest>()) } returns result
 
         mockMvc.post("/api/v1/tickers") {
             contentType = MediaType.APPLICATION_JSON

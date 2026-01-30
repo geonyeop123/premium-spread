@@ -18,7 +18,7 @@ class PremiumFacade(
 ) {
 
     @Transactional
-    fun calculateAndSave(criteria: PremiumCreateCriteria): PremiumResult {
+    fun calculateAndSave(criteria: PremiumCriteria.Create): PremiumResult.Detail {
         val symbol = Symbol(criteria.symbol)
 
         val koreaTicker = tickerService.findLatest(
@@ -42,19 +42,19 @@ class PremiumFacade(
             fxTicker = fxTicker,
         )
         val premium = premiumService.create(command)
-        return PremiumResult.from(premium)
+        return PremiumResult.Detail.from(premium)
     }
 
     @Transactional(readOnly = true)
-    fun findLatest(symbol: String): PremiumResult? {
+    fun findLatest(symbol: String): PremiumResult.Detail? {
         return premiumService.findLatestBySymbol(Symbol(symbol))
-            ?.let { PremiumResult.from(it) }
+            ?.let { PremiumResult.Detail.from(it) }
     }
 
     @Transactional(readOnly = true)
-    fun findByPeriod(symbol: String, from: Instant, to: Instant): List<PremiumResult> {
+    fun findByPeriod(symbol: String, from: Instant, to: Instant): List<PremiumResult.Detail> {
         return premiumService.findAllBySymbolAndPeriod(Symbol(symbol), from, to)
-            .map { PremiumResult.from(it) }
+            .map { PremiumResult.Detail.from(it) }
     }
 }
 

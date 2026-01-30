@@ -11,7 +11,7 @@ class TickerIngestFacade(
 ) {
 
     @Transactional
-    fun ingest(criteria: TickerIngestCriteria): TickerResult {
+    fun ingest(criteria: TickerCriteria.Ingest): TickerResult.Detail {
         val command = TickerCommand.Create(
             exchange = criteria.exchange,
             baseCode = criteria.baseCode,
@@ -20,6 +20,6 @@ class TickerIngestFacade(
             observedAt = criteria.observedAt,
         )
         val ticker = tickerService.create(command)
-        return TickerResult.from(ticker)
+        return TickerResult.Detail.from(ticker)
     }
 }

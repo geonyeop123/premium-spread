@@ -29,7 +29,7 @@ class TickerIngestFacadeTest {
 
     @Test
     fun `코인 티커를 저장한다`() {
-        val criteria = TickerIngestCriteria(
+        val criteria = TickerCriteria.Ingest(
             exchange = Exchange.UPBIT,
             baseCode = "BTC",
             quoteCurrency = Currency.KRW,
@@ -57,7 +57,7 @@ class TickerIngestFacadeTest {
 
     @Test
     fun `환율 티커를 저장한다`() {
-        val criteria = TickerIngestCriteria(
+        val criteria = TickerCriteria.Ingest(
             exchange = Exchange.FX_PROVIDER,
             baseCode = "USD",
             quoteCurrency = Currency.KRW,
@@ -82,7 +82,7 @@ class TickerIngestFacadeTest {
 
     @Test
     fun `해외 거래소 코인 티커를 저장한다`() {
-        val criteria = TickerIngestCriteria(
+        val criteria = TickerCriteria.Ingest(
             exchange = Exchange.BINANCE,
             baseCode = "BTC",
             quoteCurrency = Currency.USD,
