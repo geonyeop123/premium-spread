@@ -1,80 +1,99 @@
 # Progress Log
 
+## Current Status: 92% Complete
+
+```
+Phase 1-4: API 서버     [##########] 100% ✅
+Phase 5:   Batch 모듈   [##########] 100% ✅
+Phase 6:   Support 모듈 [##########] 100% ✅
+Phase 7:   Tests        [########░░]  80% 🔄
+Phase 8:   Production   [░░░░░░░░░░]   0% ⏳
+```
+
+---
+
 ## Session: 2026-01-30
 
-### Status
-**구현 완료 92%** - Batch 모듈 및 Cache 레이어 구현 완료
+### Completed Today
+- [x] Integration Tests 수정 및 28개 전체 통과
+  - Ticker 엔티티 `@Enumerated(EnumType.STRING)` 추가
+  - build.gradle.kts 테스트 태스크 태그 충돌 해결
+  - PremiumSpreadApplicationTests에 TestConfig 적용
+- [x] 문서 최신화
+  - IMPLEMENTATION.md 진행률 업데이트
+  - instructions.md 재구성 (토큰 효율화)
 
-### Completed (Today)
-- [x] 문서 최신화 (IMPLEMENTATION.md)
-
----
-
-## Session: 2026-01-29 ~ 2026-01-30
-
-### Completed - Phase 5: Batch Module ✅
-- [x] **외부 API 클라이언트 구현**
-  - BithumbClient: BTC/KRW 시세 조회, 재시도 로직
-  - BinanceClient: BTCUSDT 선물 시세 조회
-  - ExchangeRateClient: USD/KRW 환율 조회
-- [x] **배치 스케줄러 구현**
-  - TickerScheduler: 1초 간격, 분산 락
-  - PremiumScheduler: 1초 간격, 프리미엄 계산
-  - ExchangeRateScheduler: 10분 간격
-- [x] **캐시 서비스 구현**
-  - TickerCacheService: Redis Hash, TTL 5초
-  - PremiumCacheService: Hash + Sorted Set
-  - FxCacheService: 환율 캐시, TTL 15분
-  - PositionCacheService: Position 상태 캐시
-- [x] **프리미엄 계산 엔진**
-  - PremiumCalculator: BigDecimal 정밀 계산
-
-### Completed - Phase 6: Support Modules ✅
-- [x] **modules/redis**
-  - RedisConfig, RedissonConfig
-  - DistributedLockManager: Redisson 분산 락
-  - RedisKeyGenerator, RedisTtl
-- [x] **supports/logging**
-  - StructuredLogger: JSON 구조화 로깅
-  - LogMaskingFilter: 민감정보 마스킹
-  - RequestLoggingInterceptor: HTTP 요청 로깅
-- [x] **supports/monitoring**
-  - AlertService: 알람 서비스
-  - PremiumMetrics: Micrometer 메트릭
-  - BatchHealthIndicator, ApplicationHealthIndicator
-
-### Completed - API Cache Layer ✅
-- [x] API 서버 캐시 우선 조회 구현
-
-### Pending
-- [ ] Integration Tests (Docker 환경 필요)
-- [ ] E2E Tests
-- [ ] Production 설정 (application-prod.yml)
-- [ ] Docker 설정 (Dockerfile, docker-compose)
+### Commits
+```
+47a4475 fix: Repository Integration Tests 수정 및 통과
+a4c79e5 refactor: 배치 모듈 개선 및 supports 모듈 자동 설정 추가
+```
 
 ---
 
-## Session: 2026-01-29 (Earlier)
+## Implementation Summary
 
-### Completed - Design Phase
-- [x] 시스템 아키텍처 설계
-- [x] Redis 캐싱 전략 설계
-- [x] 배치 스케줄링 전략 설계
-- [x] 멀티모듈 구조 설계
-- [x] ARCHITECTURE_DESIGN.md 작성
+### apps/api ✅
+| 레이어 | 상태 | 주요 파일 |
+|--------|------|-----------|
+| domain | ✅ | Ticker, Premium, Position, Services |
+| infrastructure | ✅ | *RepositoryImpl, JpaRepository |
+| application | ✅ | *Facade, DTOs |
+| interfaces | ✅ | Controllers, GlobalExceptionHandler |
 
-### Key Specifications
-| 항목 | 값 |
-|------|-----|
-| 티커 갱신 주기 | 1초 |
-| 환율 갱신 주기 | 10분 |
-| Ticker/Premium TTL | 5초 |
-| FX TTL | 15분 |
-| Lock Lease Time | 2초 (ticker/premium), 30초 (fx) |
+### apps/batch ✅
+| 컴포넌트 | 상태 | 주요 파일 |
+|----------|------|-----------|
+| Scheduler | ✅ | TickerScheduler(1s), PremiumScheduler(1s), ExchangeRateScheduler(10m) |
+| Client | ✅ | BithumbClient, BinanceClient, ExchangeRateClient |
+| Cache | ✅ | TickerCacheService, PremiumCacheService, FxCacheService |
+| Calculator | ✅ | PremiumCalculator |
+
+### modules ✅
+| 모듈 | 상태 | 주요 기능 |
+|------|------|-----------|
+| jpa | ✅ | BaseEntity, JpaConfig, TestContainers |
+| redis | ✅ | RedisConfig, DistributedLockManager, RedisTtl |
+
+### supports ✅
+| 모듈 | 상태 | 주요 기능 |
+|------|------|-----------|
+| logging | ✅ | StructuredLogger, LogMaskingFilter, RequestLoggingInterceptor |
+| monitoring | ✅ | PremiumMetrics, AlertService, HealthIndicators |
+
+---
+
+## Pending Tasks
+
+### High Priority
+1. **E2E Tests** - API + Batch 연동 테스트
+2. **Production 설정** - application-prod.yml, 환경변수
+
+### Medium Priority
+3. **Docker 설정** - Dockerfile (api, batch), docker-compose.yml
+4. **CI/CD** - GitHub Actions 파이프라인
+
+### Low Priority
+5. **문서화** - API 문서 (Swagger 설정 확인)
+6. **성능 테스트** - 부하 테스트, 메모리 프로파일링
+
+---
+
+## Key Decisions
+
+| 결정 | 선택 |
+|------|------|
+| 아키텍처 | Clean + Layered |
+| 캐시 전략 | Redis Hash + Sorted Set |
+| 분산 락 | Redisson (tryLock) |
+| 갱신 주기 | Ticker/Premium 1초, FX 10분 |
+| TTL | Ticker 5초, FX 15분, Premium 5초 |
+| Enum 매핑 | `@Enumerated(EnumType.STRING)` |
+| 테스트 | Unit + Integration (Testcontainers) |
 
 ---
 
 ## Files Updated
-- `claudedocs/IMPLEMENTATION.md` - 구현 가이드 (최신화)
-- `claudedocs/ARCHITECTURE_DESIGN.md` - 아키텍처 설계
-- `.ai/planning/progress.md` - 진행 로그 (현재 파일)
+- `.ai/instructions.md` - 재구성 (토큰 효율화)
+- `.ai/planning/progress.md` - 현재 파일
+- `claudedocs/IMPLEMENTATION.md` - 진행률 업데이트
