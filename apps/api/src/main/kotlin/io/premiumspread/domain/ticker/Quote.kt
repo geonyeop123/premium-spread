@@ -1,5 +1,6 @@
 package io.premiumspread.domain.ticker
 
+import io.premiumspread.domain.InvalidQuoteException
 import jakarta.persistence.Column
 import jakarta.persistence.Embeddable
 import jakarta.persistence.EnumType

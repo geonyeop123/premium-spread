@@ -1,22 +1,22 @@
 package io.premiumspread.application.position
 
-import io.premiumspread.application.ticker.PremiumFacade
-import io.premiumspread.domain.position.Position
-import io.premiumspread.domain.position.PositionRepository
+import io.premiumspread.domain.position.PositionCommand
+import io.premiumspread.domain.position.PositionService
+import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
 class PositionFacade(
-    private val positionRepository: PositionRepository,
-    private val premiumFacade: PremiumFacade,
+    private val positionService: PositionService,
+    private val premiumService: PremiumService,
 ) {
 
     @Transactional
     fun openPosition(criteria: PositionOpenCriteria): PositionResult {
-        val position = Position.create(
-            symbol = Symbol(criteria.symbol),
+        val command = PositionCommand.Create(
+            symbol = criteria.symbol,
             exchange = criteria.exchange,
             quantity = criteria.quantity,
             entryPrice = criteria.entryPrice,
@@ -24,28 +24,28 @@ class PositionFacade(
             entryPremiumRate = criteria.entryPremiumRate,
             entryObservedAt = criteria.entryObservedAt,
         )
-        val savedPosition = positionRepository.save(position)
-        return PositionResult.from(savedPosition)
+        val position = positionService.create(command)
+        return PositionResult.from(position)
     }
 
     @Transactional(readOnly = true)
     fun findById(id: Long): PositionResult? {
-        return positionRepository.findById(id)
+        return positionService.findById(id)
             ?.let { PositionResult.from(it) }
     }
 
     @Transactional(readOnly = true)
     fun findAllOpen(): List<PositionResult> {
-        return positionRepository.findAllOpen()
+        return positionService.findAllOpen()
             .map { PositionResult.from(it) }
     }
 
     @Transactional(readOnly = true)
     fun calculatePnl(positionId: Long): PositionPnlResult {
-        val position = positionRepository.findById(positionId)
+        val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
 
-        val currentPremium = premiumFacade.findLatest(position.symbol.code)
+        val currentPremium = premiumService.findLatestBySymbol(Symbol(position.symbol.code))
             ?: throw PremiumNotFoundException("Premium not found for symbol: ${position.symbol.code}")
 
         val pnl = position.calculatePremiumDiff(currentPremium.premiumRate)
@@ -54,11 +54,11 @@ class PositionFacade(
 
     @Transactional
     fun closePosition(positionId: Long): PositionResult {
-        val position = positionRepository.findById(positionId)
+        val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
 
         position.close()
-        val savedPosition = positionRepository.save(position)
+        val savedPosition = positionService.save(position)
         return PositionResult.from(savedPosition)
     }
 }

@@ -2,12 +2,12 @@ package io.premiumspread.interfaces.api
 
 import io.premiumspread.application.position.PositionNotFoundException
 import io.premiumspread.application.position.PremiumNotFoundException
-import io.premiumspread.application.ticker.TickerNotFoundException
+import io.premiumspread.application.premium.TickerNotFoundException
+import io.premiumspread.domain.DomainException
+import io.premiumspread.domain.InvalidPremiumInputException
+import io.premiumspread.domain.InvalidQuoteException
+import io.premiumspread.domain.InvalidTickerException
 import io.premiumspread.domain.position.InvalidPositionException
-import io.premiumspread.domain.ticker.DomainException
-import io.premiumspread.domain.ticker.InvalidPremiumInputException
-import io.premiumspread.domain.ticker.InvalidQuoteException
-import io.premiumspread.domain.ticker.InvalidTickerException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
