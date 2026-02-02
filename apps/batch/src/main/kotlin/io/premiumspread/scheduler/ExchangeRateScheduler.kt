@@ -28,7 +28,7 @@ class ExchangeRateScheduler(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Scheduled(fixedRate = 600_000) // 10분
+    @Scheduled(fixedRate = 1_800_000) // 30분 (무료 API 한도 고려)
     fun fetchExchangeRate() {
         val lockKey = RedisKeyGenerator.lockFxKey()
         val leaseTime = RedisTtl.Lock.FX_LEASE.seconds

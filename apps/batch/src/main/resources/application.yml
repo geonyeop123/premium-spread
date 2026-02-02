@@ -1,13 +1,12 @@
+server:
+  port: 8081
+
 spring:
   application:
     name: premium-spread-batch
-
-  # Redis 설정
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+  config:
+    import:
+      - redis.yml
 
 # External API 설정
 exchange-rate:
