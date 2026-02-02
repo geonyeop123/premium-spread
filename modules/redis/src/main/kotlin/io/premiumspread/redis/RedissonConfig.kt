@@ -15,8 +15,8 @@ class RedissonConfig(
     private val host: String,
     @Value("\${spring.data.redis.port:6379}")
     private val port: Int,
-    @Value("\${spring.data.redis.password:}")
-    private val password: String,
+    @Value("\${spring.data.redis.password:#{null}}")
+    private val password: String?,
 ) {
 
     @Bean
@@ -24,7 +24,7 @@ class RedissonConfig(
         val config = Config().apply {
             useSingleServer().apply {
                 address = "redis://$host:$port"
-                if (password.isNotBlank()) {
+                if (!password.isNullOrBlank()) {
                     setPassword(password)
                 }
                 connectionMinimumIdleSize = 2
