@@ -9,6 +9,7 @@ import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
 import io.premiumspread.domain.ticker.TickerRepository
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
+import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -26,7 +27,7 @@ import java.time.Instant
 @Tag("integration")
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(MySqlTestContainersConfig::class, io.premiumspread.config.TestConfig::class)
+@Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, io.premiumspread.config.TestConfig::class)
 class PremiumRepositoryTest @Autowired constructor(
     private val premiumRepository: PremiumRepository,
     private val tickerRepository: TickerRepository,

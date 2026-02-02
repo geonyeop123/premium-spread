@@ -15,7 +15,7 @@
 ```
 apps/
 ├── api/          # REST API 서버 (Port 8080)
-└── batch/        # 배치 스케줄러 (1초/10분 주기)
+└── batch/        # 배치 스케줄러 (Port 8081, 1초/30분 주기)
 
 modules/
 ├── jpa/          # JPA 공통 설정, BaseEntity
@@ -123,7 +123,7 @@ class PositionResult private constructor() {
 @Tag("integration")
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(MySqlTestContainersConfig::class, TestConfig::class)
+@Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, TestConfig::class)
 class RepositoryTest { ... }
 ```
 
@@ -155,10 +155,12 @@ class RepositoryTest { ... }
 # 빌드
 ./gradlew compileKotlin
 
-# 실행 (Docker infra 필요)
+# 인프라 실행 (Docker)
 docker compose -f docker/infra-compose.yml up -d
-./gradlew :apps:api:bootRun
-./gradlew :apps:batch:bootRun
+
+# 서버 실행 (동시 실행)
+./gradlew :apps:api:bootRun &      # Port 8080
+./gradlew :apps:batch:bootRun &    # Port 8081
 
 # 테스트
 ./gradlew test
@@ -173,6 +175,126 @@ docker compose -f docker/infra-compose.yml up -d
 2. **순수 함수** - 도메인 계산은 부작용 최소화
 3. **과도한 추상화 금지** - 필요할 때만 인터페이스
 4. **컴파일 가능 + 테스트 통과** 상태 유지
+
+---
+
+## HTTP 파일 작성 규칙
+
+### 파일 위치
+```
+http/
+├── http-client.env.json   # 환경 변수 정의
+└── api/
+    ├── premiums.http      # Premium API
+    ├── positions.http     # Position API
+    └── tickers.http       # Ticker API
+```
+
+### API 추가 시 필수 작업
+
+**새로운 Controller 생성 시:**
+1. `http/api/{도메인}.http` 파일 생성
+2. 모든 endpoint에 대한 요청 샘플 작성
+
+**기존 Controller에 endpoint 추가 시:**
+1. 해당 `http/api/{도메인}.http` 파일에 요청 추가
+
+### HTTP 파일 작성 형식
+
+```http
+### {API 설명}
+{METHOD} {{commerce-api}}/api/v1/{path}
+Content-Type: application/json  # POST/PUT 요청 시 필수
+
+{
+  "field": "value"  # RequestBody 있을 경우
+}
+```
+
+### 예시
+
+```http
+### 포지션 오픈
+POST {{commerce-api}}/api/v1/positions
+Content-Type: application/json
+
+{
+  "symbol": "BTC",
+  "exchange": "UPBIT",
+  "quantity": 0.1
+}
+
+### 포지션 조회
+GET {{commerce-api}}/api/v1/positions/1
+```
+
+---
+
+## Git Conventions
+
+### Commit Message
+
+```
+<type>: <subject>
+
+- 변경 사항 1
+- 변경 사항 2
+```
+
+**Type 종류:**
+
+| Type | 용도 |
+|------|------|
+| `feat` | 새로운 기능 추가 |
+| `fix` | 버그 수정 |
+| `refactor` | 코드 리팩토링 (기능 변경 없음) |
+| `docs` | 문서 수정 |
+| `test` | 테스트 추가/수정 |
+| `chore` | 빌드, 설정 변경 |
+
+**규칙:**
+- 한글로 작성
+- subject는 명령형 (`추가`, `수정`, `개선`)
+- Co-Author 라인 추가하지 않음
+- 본문은 bullet points로 변경 사항 나열
+
+**예시:**
+```
+refactor: Redis 테스트를 Testcontainers로 전환
+
+- 통합 테스트에서 Redis Mock 대신 실제 Redis 컨테이너 사용
+- TestConfig에서 Redis Mock Bean 제거
+- redis.yml에 spring.data.redis 설정 추가
+```
+
+### Branch Naming
+
+```
+<type>/<short-description>
+```
+
+**예시:**
+- `feature/position-api`
+- `fix/redis-connection`
+- `refactor/redis-testcontainers`
+
+### Pull Request
+
+**제목:** 커밋 메시지 첫 줄과 동일
+
+**본문 템플릿:**
+```markdown
+## Summary
+- 변경 사항 요약 (bullet points)
+
+## Test plan
+- [ ] 테스트 항목 1
+- [ ] 테스트 항목 2
+```
+
+**규칙:**
+- base branch: `feature/premium` (현재 메인 개발 브랜치)
+- 불필요한 파일 커밋 금지 (`.claude/settings.local.json`, `logs/` 등)
 
 ---
 

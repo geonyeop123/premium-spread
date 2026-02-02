@@ -1,0 +1,25 @@
+### 포지션 오픈
+POST {{premium-api}}/api/v1/positions
+Content-Type: application/json
+
+{
+  "symbol": "BTC",
+  "exchange": "UPBIT",
+  "quantity": 0.1,
+  "entryPrice": 50000000,
+  "entryFxRate": 1350.00,
+  "entryPremiumRate": 3.5,
+  "entryObservedAt": "2024-01-15T10:30:00Z"
+}
+
+### 포지션 단건 조회
+GET {{premium-api}}/api/v1/positions/1
+
+### 열린 포지션 전체 조회
+GET {{premium-api}}/api/v1/positions
+
+### 포지션 PnL 조회
+GET {{premium-api}}/api/v1/positions/1/pnl
+
+### 포지션 종료
+POST {{premium-api}}/api/v1/positions/1/close

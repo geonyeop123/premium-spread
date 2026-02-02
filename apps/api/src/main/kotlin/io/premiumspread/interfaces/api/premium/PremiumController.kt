@@ -1,5 +1,6 @@
 package io.premiumspread.interfaces.api.premium
 
+import io.premiumspread.application.premium.PremiumCacheFacade
 import io.premiumspread.application.premium.PremiumCriteria
 import io.premiumspread.application.premium.PremiumFacade
 import org.springframework.http.ResponseEntity
@@ -15,6 +16,7 @@ import java.time.Instant
 @RequestMapping("/api/v1/premiums")
 class PremiumController(
     private val premiumFacade: PremiumFacade,
+    private val premiumCacheFacade: PremiumCacheFacade,
 ) {
 
     @PostMapping("/calculate/{symbol}")
@@ -24,10 +26,10 @@ class PremiumController(
     }
 
     @GetMapping("/current/{symbol}")
-    fun getCurrent(@PathVariable symbol: String): ResponseEntity<PremiumResponse.Detail> {
-        val result = premiumFacade.findLatest(symbol)
+    fun getCurrent(@PathVariable symbol: String): ResponseEntity<PremiumResponse.Current> {
+        val result = premiumCacheFacade.findLatest(symbol)
             ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(PremiumResponse.Detail.from(result))
+        return ResponseEntity.ok(PremiumResponse.Current.from(result))
     }
 
     @GetMapping("/history/{symbol}")

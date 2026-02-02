@@ -1,0 +1,8 @@
+### 프리미엄 계산 및 저장
+POST {{premium-api}}/api/v1/premiums/calculate/BTC
+
+### 현재 프리미엄 조회
+GET {{premium-api}}/api/v1/premiums/current/BTC
+
+### 프리미엄 히스토리 조회
+GET {{premium-api}}/api/v1/premiums/history/BTC?from=2024-01-01T00:00:00Z&to=2024-12-31T23:59:59Z
