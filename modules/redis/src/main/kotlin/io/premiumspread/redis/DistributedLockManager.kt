@@ -3,7 +3,7 @@ package io.premiumspread.redis
 import org.redisson.api.RLock
 import org.redisson.api.RedissonClient
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.util.concurrent.TimeUnit
 
@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
  * Redisson을 사용한 분산 락 관리
  */
 @Component
-@ConditionalOnBean(RedissonClient::class)
+@ConditionalOnProperty(name = ["redis.enabled"], havingValue = "true", matchIfMissing = true)
 class DistributedLockManager(
     private val redissonClient: RedissonClient,
 ) {
