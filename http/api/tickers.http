@@ -1,0 +1,23 @@
+### 티커 수집 (국내 거래소)
+POST {{premium-api}}/api/v1/tickers
+Content-Type: application/json
+
+{
+  "exchange": "UPBIT",
+  "baseCode": "BTC",
+  "quoteCurrency": "KRW",
+  "price": 50000000,
+  "observedAt": "2024-01-15T10:30:00Z"
+}
+
+### 티커 수집 (해외 거래소)
+POST {{premium-api}}/api/v1/tickers
+Content-Type: application/json
+
+{
+  "exchange": "BINANCE",
+  "baseCode": "BTC",
+  "quoteCurrency": "USDT",
+  "price": 42000.50,
+  "observedAt": "2024-01-15T10:30:00Z"
+}

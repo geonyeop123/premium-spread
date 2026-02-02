@@ -1,5 +1,6 @@
 dependencies {
     // modules
+    implementation(project(":modules:jpa"))
     implementation(project(":modules:redis"))
 
     // supports

@@ -6,11 +6,12 @@ spring:
     name: premium-spread-batch
   config:
     import:
+      - jpa.yml
       - redis.yml
 
 # External API 설정
 exchange-rate:
-  api-key: ${EXCHANGE_RATE_API_KEY:}
+  api-key: 6b3707324e1b85989002df17
 
 # Actuator 설정
 management:
