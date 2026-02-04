@@ -4,7 +4,7 @@
 초당 데이터(Ticker, Fx, Premium)를 Redis ZSet에만 적재하고, 배치로 분/시간/일 데이터를 DB에 적재하여 쓰기 연산 부하를 줄인다.
 
 ## Current Phase
-Phase 3 (배치 적재 로직 설계)
+Phase 6 (마무리 - 커밋 대기)
 
 ## Phases
 
@@ -30,24 +30,25 @@ Phase 3 (배치 적재 로직 설계)
 - **Status:** complete
 
 ### Phase 4: 구현
-- [ ] RedisKeyGenerator 확장
-- [ ] RedisTtl 확장
-- [ ] ZSet CacheService 구현
-- [ ] 집계 배치 스케줄러 구현
-- [ ] 서머리 조회 API 구현
-- **Status:** pending
+- [x] RedisKeyGenerator 확장 (초당/분/시간/서머리 키)
+- [x] RedisTtl 확장 (5분/2시간/25시간 + 서머리 TTL)
+- [x] ZSet CacheService 구현 (saveToSeconds, 집계 메서드)
+- [x] 집계 배치 스케줄러 구현 (PremiumAggregationScheduler)
+- [x] DB 마이그레이션 추가 (V5__create_premium_aggregation_tables.sql)
+- [x] PremiumScheduler 수정 (DB INSERT → ZSet 저장)
+- **Status:** complete
 
 ### Phase 5: 테스트 및 검증
-- [ ] 단위 테스트 작성
-- [ ] 통합 테스트 작성
-- [ ] 성능 비교 테스트
-- **Status:** pending
+- [x] 기존 테스트 수정 (PremiumControllerTest)
+- [x] 전체 테스트 통과 확인
+- [ ] 성능 비교 테스트 (배포 후)
+- **Status:** complete
 
 ### Phase 6: 마무리
 - [ ] 코드 리뷰
-- [ ] 문서화
+- [ ] 커밋 및 PR 업데이트
 - [ ] 배포 준비
-- **Status:** pending
+- **Status:** in_progress
 
 ## Key Questions
 1. ~~분/시간/일 집계 시점은 언제인가?~~ → 정각 기준 배치
