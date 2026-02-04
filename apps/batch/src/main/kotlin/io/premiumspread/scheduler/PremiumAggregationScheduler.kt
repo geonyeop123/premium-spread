@@ -2,6 +2,7 @@ package io.premiumspread.scheduler
 
 import io.micrometer.core.instrument.MeterRegistry
 import io.premiumspread.cache.PremiumCacheService
+import io.premiumspread.redis.AggregationTimeUnit
 import io.premiumspread.redis.DistributedLockManager
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
@@ -66,7 +67,8 @@ class PremiumAggregationScheduler(
             }
 
             // 1시간 서머리: 분 집계 데이터 기반
-            premiumCacheService.calculateSummaryFromMinutes(
+            premiumCacheService.calculateSummary(
+                AggregationTimeUnit.MINUTES,
                 BTC,
                 now.minus(1, ChronoUnit.HOURS),
                 now,
@@ -75,7 +77,8 @@ class PremiumAggregationScheduler(
             }
 
             // 1일 서머리: 시간 집계 데이터 기반
-            premiumCacheService.calculateSummaryFromHours(
+            premiumCacheService.calculateSummary(
+                AggregationTimeUnit.HOURS,
                 BTC,
                 now.minus(24, ChronoUnit.HOURS),
                 now,
@@ -113,7 +116,7 @@ class PremiumAggregationScheduler(
 
                 if (agg != null) {
                     // ZSet에 저장
-                    premiumCacheService.saveToMinutes(BTC, minuteStart, agg)
+                    premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, BTC, minuteStart, agg)
 
                     // DB에 저장
                     val minuteAt = LocalDateTime.ofInstant(minuteStart, ZoneId.systemDefault())
@@ -161,11 +164,11 @@ class PremiumAggregationScheduler(
                 val hourEnd = hourStart.plus(1, ChronoUnit.HOURS)
 
                 // 분 데이터 집계
-                val agg = premiumCacheService.aggregateMinutesData(BTC, hourStart, hourEnd)
+                val agg = premiumCacheService.aggregateData(AggregationTimeUnit.MINUTES, BTC, hourStart, hourEnd)
 
                 if (agg != null) {
                     // ZSet에 저장
-                    premiumCacheService.saveToHours(BTC, hourStart, agg)
+                    premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, BTC, hourStart, agg)
 
                     // DB에 저장
                     val hourAt = LocalDateTime.ofInstant(hourStart, ZoneId.systemDefault())
@@ -212,7 +215,7 @@ class PremiumAggregationScheduler(
                 val dayEnd = dayStart.plus(1, ChronoUnit.DAYS)
 
                 // 시간 데이터 집계
-                val agg = premiumCacheService.aggregateHoursData(BTC, dayStart, dayEnd)
+                val agg = premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, BTC, dayStart, dayEnd)
 
                 if (agg != null) {
                     // DB에 저장 (ZSet은 저장하지 않음)

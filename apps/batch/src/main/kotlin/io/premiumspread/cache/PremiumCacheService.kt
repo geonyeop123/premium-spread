@@ -1,10 +1,12 @@
 package io.premiumspread.cache
 
+import io.premiumspread.redis.AggregationTimeUnit
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
 import io.premiumspread.repository.PremiumAggregation
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.ZSetOperations.TypedTuple
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -135,92 +137,69 @@ class PremiumCacheService(
         }
     }
 
-    // ========== 분/시간 집계 ZSet 저장 ==========
+    // ========== 통합 집계 데이터 저장/조회 ==========
 
     /**
-     * 분 집계 데이터 ZSet에 저장
+     * 집계 데이터 ZSet에 저장 (통합)
      */
-    fun saveToMinutes(symbol: String, minuteTimestamp: Instant, agg: PremiumAggregation) {
-        val key = RedisKeyGenerator.premiumMinutesKey(symbol.lowercase())
-        val score = minuteTimestamp.toEpochMilli().toDouble()
+    fun saveAggregation(
+        timeUnit: AggregationTimeUnit,
+        symbol: String,
+        timestamp: Instant,
+        agg: PremiumAggregation,
+    ) {
+        val key = timeUnit.keyFor(symbol)
+        val score = timestamp.toEpochMilli().toDouble()
         val value = "${agg.high}:${agg.low}:${agg.open}:${agg.close}:${agg.avg}:${agg.count}"
 
         redisTemplate.opsForZSet().add(key, value, score)
-        redisTemplate.expire(key, RedisTtl.MINUTES_DATA)
+        redisTemplate.expire(key, timeUnit.ttl)
 
-        // 2시간 이전 데이터 삭제
-        val cutoff = Instant.now().minus(RedisTtl.MINUTES_DATA).toEpochMilli().toDouble()
+        // TTL 이전 데이터 삭제
+        val cutoff = Instant.now().minus(timeUnit.ttl).toEpochMilli().toDouble()
         redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
+
+        log.debug("Saved aggregation to {}: {} at {}", timeUnit, symbol, timestamp)
     }
 
     /**
-     * 시간 집계 데이터 ZSet에 저장
+     * 집계 데이터 조회 (통합)
      */
-    fun saveToHours(symbol: String, hourTimestamp: Instant, agg: PremiumAggregation) {
-        val key = RedisKeyGenerator.premiumHoursKey(symbol.lowercase())
-        val score = hourTimestamp.toEpochMilli().toDouble()
-        val value = "${agg.high}:${agg.low}:${agg.open}:${agg.close}:${agg.avg}:${agg.count}"
-
-        redisTemplate.opsForZSet().add(key, value, score)
-        redisTemplate.expire(key, RedisTtl.HOURS_DATA)
-
-        // 25시간 이전 데이터 삭제
-        val cutoff = Instant.now().minus(RedisTtl.HOURS_DATA).toEpochMilli().toDouble()
-        redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
-    }
-
-    /**
-     * 분 집계 데이터 조회
-     */
-    fun getMinutesData(symbol: String, from: Instant, to: Instant): List<Pair<Instant, PremiumAggregation>> {
-        val key = RedisKeyGenerator.premiumMinutesKey(symbol.lowercase())
+    fun getAggregationData(
+        timeUnit: AggregationTimeUnit,
+        symbol: String,
+        from: Instant,
+        to: Instant,
+    ): List<Pair<Instant, PremiumAggregation>> {
+        val key = timeUnit.keyFor(symbol)
         val entries = redisTemplate.opsForZSet().rangeByScoreWithScores(
             key,
             from.toEpochMilli().toDouble(),
             to.toEpochMilli().toDouble(),
         ) ?: return emptyList()
 
-        return entries.mapNotNull { entry ->
-            val parts = entry.value?.split(":") ?: return@mapNotNull null
-            if (parts.size < 6) return@mapNotNull null
-            val timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) } ?: return@mapNotNull null
-            timestamp to PremiumAggregation(
-                symbol = symbol,
-                high = parts[0].toBigDecimalOrNull() ?: return@mapNotNull null,
-                low = parts[1].toBigDecimalOrNull() ?: return@mapNotNull null,
-                open = parts[2].toBigDecimalOrNull() ?: return@mapNotNull null,
-                close = parts[3].toBigDecimalOrNull() ?: return@mapNotNull null,
-                avg = parts[4].toBigDecimalOrNull() ?: return@mapNotNull null,
-                count = parts[5].toIntOrNull() ?: return@mapNotNull null,
-            )
-        }
+        return entries.mapNotNull { entry -> parseAggregation(symbol, entry) }
     }
 
     /**
-     * 시간 집계 데이터 조회
+     * ZSet entry를 PremiumAggregation으로 파싱
      */
-    fun getHoursData(symbol: String, from: Instant, to: Instant): List<Pair<Instant, PremiumAggregation>> {
-        val key = RedisKeyGenerator.premiumHoursKey(symbol.lowercase())
-        val entries = redisTemplate.opsForZSet().rangeByScoreWithScores(
-            key,
-            from.toEpochMilli().toDouble(),
-            to.toEpochMilli().toDouble(),
-        ) ?: return emptyList()
-
-        return entries.mapNotNull { entry ->
-            val parts = entry.value?.split(":") ?: return@mapNotNull null
-            if (parts.size < 6) return@mapNotNull null
-            val timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) } ?: return@mapNotNull null
-            timestamp to PremiumAggregation(
-                symbol = symbol,
-                high = parts[0].toBigDecimalOrNull() ?: return@mapNotNull null,
-                low = parts[1].toBigDecimalOrNull() ?: return@mapNotNull null,
-                open = parts[2].toBigDecimalOrNull() ?: return@mapNotNull null,
-                close = parts[3].toBigDecimalOrNull() ?: return@mapNotNull null,
-                avg = parts[4].toBigDecimalOrNull() ?: return@mapNotNull null,
-                count = parts[5].toIntOrNull() ?: return@mapNotNull null,
-            )
-        }
+    private fun parseAggregation(
+        symbol: String,
+        entry: TypedTuple<String>,
+    ): Pair<Instant, PremiumAggregation>? {
+        val parts = entry.value?.split(":") ?: return null
+        if (parts.size < 6) return null
+        val timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) } ?: return null
+        return timestamp to PremiumAggregation(
+            symbol = symbol,
+            high = parts[0].toBigDecimalOrNull() ?: return null,
+            low = parts[1].toBigDecimalOrNull() ?: return null,
+            open = parts[2].toBigDecimalOrNull() ?: return null,
+            close = parts[3].toBigDecimalOrNull() ?: return null,
+            avg = parts[4].toBigDecimalOrNull() ?: return null,
+            count = parts[5].toIntOrNull() ?: return null,
+        )
     }
 
     // ========== 서머리 캐시 ==========
@@ -309,28 +288,15 @@ class PremiumCacheService(
     }
 
     /**
-     * 분 집계 데이터로부터 서머리 계산
+     * 집계 데이터로부터 서머리 계산 (통합)
      */
-    fun calculateSummaryFromMinutes(symbol: String, from: Instant, to: Instant): PremiumSummary? {
-        val data = getMinutesData(symbol, from, to)
-        if (data.isEmpty()) return null
-
-        val (_, lastAgg) = data.last()
-
-        return PremiumSummary(
-            high = data.maxOf { it.second.high },
-            low = data.minOf { it.second.low },
-            current = lastAgg.close,
-            currentTimestamp = data.last().first,
-            updatedAt = Instant.now(),
-        )
-    }
-
-    /**
-     * 시간 집계 데이터로부터 서머리 계산
-     */
-    fun calculateSummaryFromHours(symbol: String, from: Instant, to: Instant): PremiumSummary? {
-        val data = getHoursData(symbol, from, to)
+    fun calculateSummary(
+        timeUnit: AggregationTimeUnit,
+        symbol: String,
+        from: Instant,
+        to: Instant,
+    ): PremiumSummary? {
+        val data = getAggregationData(timeUnit, symbol, from, to)
         if (data.isEmpty()) return null
 
         val (_, lastAgg) = data.last()
@@ -368,10 +334,15 @@ class PremiumCacheService(
     }
 
     /**
-     * 분 집계 데이터를 집계
+     * 집계 데이터를 재집계 (통합)
      */
-    fun aggregateMinutesData(symbol: String, from: Instant, to: Instant): PremiumAggregation? {
-        val data = getMinutesData(symbol, from, to)
+    fun aggregateData(
+        timeUnit: AggregationTimeUnit,
+        symbol: String,
+        from: Instant,
+        to: Instant,
+    ): PremiumAggregation? {
+        val data = getAggregationData(timeUnit, symbol, from, to)
         if (data.isEmpty()) return null
 
         val aggs = data.map { it.second }
@@ -389,25 +360,4 @@ class PremiumCacheService(
         )
     }
 
-    /**
-     * 시간 집계 데이터를 집계
-     */
-    fun aggregateHoursData(symbol: String, from: Instant, to: Instant): PremiumAggregation? {
-        val data = getHoursData(symbol, from, to)
-        if (data.isEmpty()) return null
-
-        val aggs = data.map { it.second }
-        val totalCount = aggs.sumOf { it.count }
-
-        return PremiumAggregation(
-            symbol = symbol,
-            high = aggs.maxOf { it.high },
-            low = aggs.minOf { it.low },
-            open = aggs.first().open,
-            close = aggs.last().close,
-            avg = aggs.fold(BigDecimal.ZERO) { acc, a -> acc + a.avg * a.count.toBigDecimal() }
-                .divide(totalCount.toBigDecimal(), 4, RoundingMode.HALF_UP),
-            count = totalCount,
-        )
-    }
 }
