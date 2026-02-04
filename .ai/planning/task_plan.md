@@ -1,100 +1,75 @@
-# Task Plan: Premium Spread Real-time System Architecture Design
+# Task Plan: Redis ZSet 기반 쓰기연산 부하 줄이기
 
 ## Goal
-빗썸 BTC 현물, 바이낸스 BTC 선물, 환율(KRW/USD) 데이터를 수집하여 실시간 프리미엄을 계산하는 시스템 설계.
-Redis 캐시 기반의 배치 서버와 API 서버 분리, 멀티모듈 구조, 보안, 관측성, 테스트 전략까지 포함.
+초당 데이터(Ticker, Fx, Premium)를 Redis ZSet에만 적재하고, 배치로 분/시간/일 데이터를 DB에 적재하여 쓰기 연산 부하를 줄인다.
 
-## Deliverables
-1. 아키텍처 다이어그램 (텍스트)
-2. Redis 키/TTL 설계
-3. 배치 스케줄/락 전략
-4. 모듈 구조 (Gradle)
-5. 리스크/대안 비교표
+## Current Phase
+Phase 3 (배치 적재 로직 설계)
 
 ## Phases
 
-### Phase 1: 현재 프로젝트 구조 분석
-- Status: complete
-- Tasks:
-  - [x] 기존 모듈 구조 확인 (apps:api, modules:jpa)
-  - [x] 도메인 모델 파악 (Premium, Ticker, Position)
-  - [x] 현재 의존성 방향 확인
+### Phase 1: 현재 구조 분석 및 요구사항 정의
+- [x] 현재 Redis/DB 저장 방식 분석
+- [x] 문제점 파악 (1초마다 DB INSERT)
+- [x] 요구사항 상세화 (사용자 결정: 5분 보관, 캐시 서머리, 분+시간+일 DB)
+- **Status:** complete
 
-### Phase 2: 시스템 아키텍처 설계
-- Status: complete
-- Tasks:
-  - [x] 전체 아키텍처 다이어그램 작성
-  - [x] 데이터 흐름 설계
-  - [x] 컴포넌트 역할 정의
+### Phase 2: ZSet 키/TTL/데이터 전략 설계
+- [x] Key 전략 설계 (*:seconds:*, *:minutes:*, *:hours:*, summary:*)
+- [x] TTL 전략 설계 (5분/2시간/25시간)
+- [x] 데이터 구조 설계 (ZSet member: "rate:price:...")
+- [x] 서머리 데이터 구조 설계 (Hash: high/low/current)
+- **Status:** complete
 
-### Phase 3: Redis 캐싱 전략 설계
-- Status: complete
-- Tasks:
-  - [x] Redis 키 네이밍 규칙 정의
-  - [x] TTL 정책 설계 (5초/15분)
-  - [x] Open Position 기반 캐싱 정책
+### Phase 3: 배치 적재 로직 설계
+- [x] 분 단위 집계 배치 설계 (1분 스케줄러, 정각 실행)
+- [x] 시간 단위 집계 배치 설계 (1시간 스케줄러, 정시 실행)
+- [x] 일 단위 집계 배치 설계 (1일 스케줄러, 자정 실행)
+- [x] DB 테이블 구조 설계 (premium_minute, premium_hour, premium_day)
+- [x] 서머리 갱신 배치 설계 (10초 스케줄러)
+- **Status:** complete
 
-### Phase 4: 배치 스케줄링 및 동시성 제어
-- Status: complete
-- Tasks:
-  - [x] 배치 스케줄 설계 (1초/10분)
-  - [x] 분산 락 전략 (Redisson, leaseTime 2초)
-  - [x] 장애 복구 정책
+### Phase 4: 구현
+- [ ] RedisKeyGenerator 확장
+- [ ] RedisTtl 확장
+- [ ] ZSet CacheService 구현
+- [ ] 집계 배치 스케줄러 구현
+- [ ] 서머리 조회 API 구현
+- **Status:** pending
 
-### Phase 5: 멀티모듈 구조 설계
-- Status: complete
-- Tasks:
-  - [x] 모듈 분리 방안 (apps, modules, supports)
-  - [x] 의존성 방향 정의
-  - [x] infrastructure 패키지 구조 (persistence 제거)
+### Phase 5: 테스트 및 검증
+- [ ] 단위 테스트 작성
+- [ ] 통합 테스트 작성
+- [ ] 성능 비교 테스트
+- **Status:** pending
 
-### Phase 6: 보안 설계
-- Status: complete
-- Tasks:
-  - [x] API Key 암호화 저장
-  - [x] 시크릿 관리 (Vault/AWS SM)
-  - [x] 로깅 마스킹 (supports/logging)
-  - [x] 권한 최소화
-  - [x] 키 로테이션 전략
+### Phase 6: 마무리
+- [ ] 코드 리뷰
+- [ ] 문서화
+- [ ] 배포 준비
+- **Status:** pending
 
-### Phase 7: 관측성 및 운영
-- Status: complete
-- Tasks:
-  - [x] 메트릭 설계 (Micrometer/Prometheus)
-  - [x] 알람 정책
-  - [x] 로깅 전략
+## Key Questions
+1. ~~분/시간/일 집계 시점은 언제인가?~~ → 정각 기준 배치
+2. ~~과거 초당 데이터는 얼마나 유지할 것인가?~~ → **5분**
+3. ~~서머리 데이터의 기준 시간대는?~~ → 1분, 10분, 1시간, 1일
+4. ~~차트용 데이터는 실시간 조회 vs 캐시?~~ → **캐시된 서머리**
+5. DB 저장 단위는? → **분 + 시간 + 일**
 
-### Phase 8: 테스트 전략
-- Status: complete
-- Tasks:
-  - [x] 단위 테스트 (TDD)
-  - [x] 통합 테스트
-  - [x] E2E 테스트
-
-### Phase 9: 리스크 분석 및 대안
-- Status: complete
-- Tasks:
-  - [x] 리스크 식별
-  - [x] 대안 비교표 작성
-
-### Phase 10: 최종 문서화
-- Status: complete
-- Tasks:
-  - [x] 설계 문서 작성 (ARCHITECTURE_DESIGN.md)
-  - [x] 구현 Todo List 작성 (TaskCreate)
-  - [x] 설계 변경 반영 (1초 갱신, 모듈 구조)
-
-## Key Decisions
-| Decision | Rationale | Date |
-|----------|-----------|------|
-| Redis를 캐시로 선택 | 낮은 지연시간, 분산 락 지원, TTL 지원 | 2026-01-29 |
-| 배치 서버 분리 | API 서버 부하 격리, 독립 배포/스케일링 | 2026-01-29 |
-| Redisson 분산 락 | Redis 기반 검증된 분산 락 구현체 | 2026-01-29 |
-| AWS Secrets Manager | 키 로테이션 자동화, IAM 통합 | 2026-01-29 |
-| 1초 갱신 주기 | Rate Limit 여유 (빗썸 15/s, 바이낸스 20/s) | 2026-01-29 |
-| supports 루트 모듈 | Cross-cutting concerns 분리 (logging, monitoring) | 2026-01-29 |
+## Decisions Made
+| Decision | Rationale |
+|----------|-----------|
+| ZSet 사용 | 타임스탬프 기반 range query 지원, 오래된 데이터 자동 삭제 용이 |
+| 초당 5분 보관 | 10분 서머리까지 실시간 계산 가능 |
+| 캐시된 서머리 | 조회 성능 최적화, 별도 Hash에 저장 |
+| 분+시간+일 DB 저장 | 세분화된 히스토리, 98.3% 쓰기 부하 감소 |
+| 10초마다 서머리 갱신 | 실시간성과 부하 균형 |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
-| (none) | - | - |
+|       | 1       |            |
+
+## Notes
+- 현재 PremiumScheduler가 1초마다 DB INSERT 수행 중 → 이것이 부하의 원인
+- 기존 premium:btc:history (ZSet) 패턴 이미 존재 → 확장 가능

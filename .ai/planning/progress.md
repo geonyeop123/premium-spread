@@ -1,99 +1,69 @@
-# Progress Log
+# Progress Log: Redis ZSet 쓰기연산 최적화
 
-## Current Status: 92% Complete
+## Session: 2026-02-04
 
-```
-Phase 1-4: API 서버     [##########] 100% ✅
-Phase 5:   Batch 모듈   [##########] 100% ✅
-Phase 6:   Support 모듈 [##########] 100% ✅
-Phase 7:   Tests        [########░░]  80% 🔄
-Phase 8:   Production   [░░░░░░░░░░]   0% ⏳
-```
+### Phase 1: 현재 구조 분석
+- **Status:** complete
+- **Started:** 2026-02-04 11:40
+- **Completed:** 2026-02-04 11:45
 
----
+- Actions taken:
+  - 프로젝트 구조 탐색 완료
+  - Redis 설정 파일 분석
+  - 현재 저장 방식 파악 (Hash + ZSet + DB)
+  - 문제점 식별: 1초마다 DB INSERT (86,400건/일)
+  - 사용자 요구사항 확인: 5분 보관, 캐시 서머리, 분+시간+일 DB
 
-## Session: 2026-01-30
+- Files analyzed:
+  - modules/redis/src/main/kotlin/io/premiumspread/redis/RedisConfig.kt
+  - modules/redis/src/main/kotlin/io/premiumspread/redis/RedisKeyGenerator.kt
+  - modules/redis/src/main/kotlin/io/premiumspread/redis/RedisTtl.kt
+  - apps/batch/src/main/kotlin/io/premiumspread/cache/PremiumCacheService.kt
+  - apps/batch/src/main/kotlin/io/premiumspread/scheduler/PremiumScheduler.kt
+  - apps/batch/src/main/kotlin/io/premiumspread/repository/PremiumSnapshotRepository.kt
 
-### Completed Today
-- [x] Integration Tests 수정 및 28개 전체 통과
-  - Ticker 엔티티 `@Enumerated(EnumType.STRING)` 추가
-  - build.gradle.kts 테스트 태스크 태그 충돌 해결
-  - PremiumSpreadApplicationTests에 TestConfig 적용
-- [x] 문서 최신화
-  - IMPLEMENTATION.md 진행률 업데이트
-  - instructions.md 재구성 (토큰 효율화)
+### Phase 2 & 3: ZSet 전략 및 배치 설계
+- **Status:** complete
+- **Started:** 2026-02-04 11:45
+- **Completed:** 2026-02-04 11:50
 
-### Commits
-```
-47a4475 fix: Repository Integration Tests 수정 및 통과
-a4c79e5 refactor: 배치 모듈 개선 및 supports 모듈 자동 설정 추가
-```
+- Actions taken:
+  - Key 전략 설계 (*:seconds:*, *:minutes:*, *:hours:*, summary:*)
+  - TTL 전략 설계 (5분/2시간/25시간)
+  - ZSet member 포맷 설계 ("rate:price:...")
+  - 서머리 Hash 구조 설계 (high/low/current)
+  - 배치 스케줄 설계 (10초/1분/1시간/1일)
+  - DB 테이블 구조 설계 (premium_minute/hour/day)
+  - 부하 비교 분석: 86,400 → 1,465건 (98.3% 감소)
 
----
+- Files created/modified:
+  - .ai/planning/findings.md (전략 문서화)
 
-## Implementation Summary
+### Phase 4: 구현
+- **Status:** pending
+- Actions taken:
+  -
+- Files created/modified:
+  -
 
-### apps/api ✅
-| 레이어 | 상태 | 주요 파일 |
-|--------|------|-----------|
-| domain | ✅ | Ticker, Premium, Position, Services |
-| infrastructure | ✅ | *RepositoryImpl, JpaRepository |
-| application | ✅ | *Facade, DTOs |
-| interfaces | ✅ | Controllers, GlobalExceptionHandler |
+## Test Results
+| Test | Input | Expected | Actual | Status |
+|------|-------|----------|--------|--------|
+|      |       |          |        |        |
 
-### apps/batch ✅
-| 컴포넌트 | 상태 | 주요 파일 |
-|----------|------|-----------|
-| Scheduler | ✅ | TickerScheduler(1s), PremiumScheduler(1s), ExchangeRateScheduler(10m) |
-| Client | ✅ | BithumbClient, BinanceClient, ExchangeRateClient |
-| Cache | ✅ | TickerCacheService, PremiumCacheService, FxCacheService |
-| Calculator | ✅ | PremiumCalculator |
+## Error Log
+| Timestamp | Error | Attempt | Resolution |
+|-----------|-------|---------|------------|
+|           |       | 1       |            |
 
-### modules ✅
-| 모듈 | 상태 | 주요 기능 |
-|------|------|-----------|
-| jpa | ✅ | BaseEntity, JpaConfig, TestContainers |
-| redis | ✅ | RedisConfig, DistributedLockManager, RedisTtl |
-
-### supports ✅
-| 모듈 | 상태 | 주요 기능 |
-|------|------|-----------|
-| logging | ✅ | StructuredLogger, LogMaskingFilter, RequestLoggingInterceptor |
-| monitoring | ✅ | PremiumMetrics, AlertService, HealthIndicators |
-
----
-
-## Pending Tasks
-
-### High Priority
-1. **E2E Tests** - API + Batch 연동 테스트
-2. **Production 설정** - application-prod.yml, 환경변수
-
-### Medium Priority
-3. **Docker 설정** - Dockerfile (api, batch), docker-compose.yml
-4. **CI/CD** - GitHub Actions 파이프라인
-
-### Low Priority
-5. **문서화** - API 문서 (Swagger 설정 확인)
-6. **성능 테스트** - 부하 테스트, 메모리 프로파일링
+## 5-Question Reboot Check
+| Question | Answer |
+|----------|--------|
+| Where am I? | Phase 4 - 구현 대기 |
+| Where am I going? | RedisKeyGenerator/TTL 확장, 스케줄러 구현 |
+| What's the goal? | 초당 데이터 ZSet 저장 → 배치 집계 → DB 저장 (98.3% 부하 감소) |
+| What have I learned? | 키 전략, TTL, 데이터 구조, 배치 스케줄, DB 스키마 설계 완료 |
+| What have I done? | Phase 1-3 완료: 분석, 설계, 전략 수립 |
 
 ---
-
-## Key Decisions
-
-| 결정 | 선택 |
-|------|------|
-| 아키텍처 | Clean + Layered |
-| 캐시 전략 | Redis Hash + Sorted Set |
-| 분산 락 | Redisson (tryLock) |
-| 갱신 주기 | Ticker/Premium 1초, FX 10분 |
-| TTL | Ticker 5초, FX 15분, Premium 5초 |
-| Enum 매핑 | `@Enumerated(EnumType.STRING)` |
-| 테스트 | Unit + Integration (Testcontainers) |
-
----
-
-## Files Updated
-- `.ai/instructions.md` - 재구성 (토큰 효율화)
-- `.ai/planning/progress.md` - 현재 파일
-- `claudedocs/IMPLEMENTATION.md` - 진행률 업데이트
+*Update after completing each phase or encountering errors*
