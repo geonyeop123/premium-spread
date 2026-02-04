@@ -300,6 +300,8 @@ refactor: Redis 테스트를 Testcontainers로 전환
 
 ## 관련 문서
 
-- 비즈니스 도메인: `.ai/context/project-overview.md`
-- 구현 상세: `claudedocs/IMPLEMENTATION.md`
-- 아키텍처 설계: `claudedocs/ARCHITECTURE_DESIGN.md`
+| 문서 | 용도 |
+|------|------|
+| `.ai/PROJECT_STATUS.md` | 현재 상태, TODO, 진행 상황 |
+| `.ai/architecture/ARCHITECTURE_DESIGN.md` | 시스템 아키텍처, 데이터 흐름 |
+| `.ai/context/project-overview.md` | 비즈니스 도메인 설명 |

@@ -19,13 +19,21 @@
 - **Build**: Gradle (멀티모듈)
 - **Testing**: JUnit 5, AssertJ, Testcontainers
 
+## 문서
+
+| 문서 | 설명 |
+|------|------|
+| [Architecture Design](.ai/architecture/ARCHITECTURE_DESIGN.md) | 시스템 아키텍처, 데이터 흐름, Redis 설계 |
+| [Development Guide](.ai/instructions.md) | 개발 지침, 코딩 컨벤션 |
+| [Project Status](.ai/PROJECT_STATUS.md) | 현재 진행 상황, TODO |
+
 ## 프로젝트 구조
 
 ```
 premium-spread/
 ├── apps/
 │   ├── api/                    # REST API 서버 (Port 8080)
-│   └── batch/                  # 배치 스케줄러
+│   └── batch/                  # 배치 스케줄러 (Port 8081)
 ├── modules/
 │   ├── jpa/                    # JPA 공통 설정
 │   └── redis/                  # Redis, 분산 락
