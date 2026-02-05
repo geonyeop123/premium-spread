@@ -1,70 +1,48 @@
 # Project Status
 
-> Last Updated: 2026-02-02
-> Branch: `refactor/redis-testcontainers`
+> Last updated: 2025-02-05
 
 ## Current State
 
-| 모듈                  | 상태 | 비고                   |
-|---------------------|----|----------------------|
-| apps/api            | ✅  | 프리미엄 캐시 우선 조회 추가     |
-| apps/batch          | ✅  | DB 저장 추가, JPA 의존성 추가 |
-| modules/jpa         | ✅  | -                    |
-| modules/redis       | ✅  | Testcontainers 전환 완료 |
-| supports/logging    | ✅  | -                    |
-| supports/monitoring | ✅  | -                    |
+| Module | Status | Notes |
+|--------|--------|-------|
+| apps/api | Active | 티커/환율 집계 테이블 조회 추가 |
+| apps/batch | Active | Redis ZSet 기반 초당 데이터 저장 및 집계 구현 |
+| modules/redis | Active | TickerAggregationTimeUnit 추가 |
+| modules/jpa | Stable | - |
+| supports/logging | Stable | - |
+| supports/monitoring | Stable | - |
 
 ## Recent Changes
 
 ```
-5b56e2e feat: 프리미엄 API Redis 캐시 조회 및 DB 저장 추가
-212740b fix: 배치 서버 구동 오류 수정
-396cdf4 refactor: Redis 테스트를 Testcontainers로 전환
+b396c2a refactor: PremiumCacheService 중복 코드 통합 (AggregationTimeUnit)
+d4d3fc8 feat: Redis ZSet 기반 초당 데이터 저장 및 배치 집계 구현
+0611756 docs: Redis ZSet 기반 쓰기 최적화 설계 문서 작성
 ```
 
 ## TODO
 
-GPT 5.2 / Opus 4.5 Sonet 4.5 5.0
+### In Progress
 
-### High Priority
+- [ ] Redis ZSet 기반 티커 집계 시스템 완성
+  - [x] TickerCacheService에 ZSet 저장/조회/집계 메서드 추가
+  - [x] TickerAggregationTimeUnit enum 추가
+  - [ ] TickerAggregationScheduler 구현 (분/시간 집계)
+  - [ ] DB 저장 스케줄러 구현
 
-- [ ] E2E 테스트 (API + Batch 연동)
-- [ ] Production 설정 (application-prod.yml, 환경변수)
+### Pending
 
-### Medium Priority
-
-- [ ] Docker 설정 (Dockerfile, docker-compose.yml)
-- [ ] CI/CD 파이프라인 (GitHub Actions)
-
-### Low Priority
-
-- [ ] 성능 테스트 (부하 테스트)
-- [ ] 멀티 코인 지원 (ETH, SOL)
+- [ ] E2E Tests (API + Batch 연동)
+- [ ] Production 설정 (application-prod.yml)
+- [ ] Docker 설정 (Dockerfile, docker-compose)
+- [ ] CI/CD 파이프라인
 
 ## Known Issues
 
-- (현재 없음)
+- 없음
 
-## Test Status
+## Notes
 
-```bash
-./gradlew test                        # Unit tests
-./gradlew :apps:api:integrationTest   # Integration (Docker 필요)
-```
-
-- Unit Tests: 통과
-- Integration Tests: 28개 통과
-
-## Quick Commands
-
-```bash
-# 인프라 실행
-docker compose -f docker/infra-compose.yml up -d
-
-# 서버 실행
-./gradlew :apps:api:bootRun      # Port 8080
-./gradlew :apps:batch:bootRun    # Port 8081
-
-# API 테스트
-curl http://localhost:8080/api/v1/premiums/current/BTC
-```
+- FX 캐시 TTL이 15분에서 31분으로 변경됨 (30분 스케줄 + 1분 버퍼)
+- 설계 문서: `.ai/planning/refactoring/ticker/`

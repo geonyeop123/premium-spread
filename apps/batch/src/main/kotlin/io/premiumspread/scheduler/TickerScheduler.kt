@@ -52,8 +52,12 @@ class TickerScheduler(
                     val bithumbTicker = bithumbDeferred.await()
                     val binanceTicker = binanceDeferred.await()
 
-                    // Redis에 저장
+                    // Redis에 저장 (Hash)
                     tickerCacheService.saveAll(bithumbTicker, binanceTicker)
+
+                    // 초당 데이터 ZSet에 저장
+                    tickerCacheService.saveToSeconds(bithumbTicker)
+                    tickerCacheService.saveToSeconds(binanceTicker)
 
                     // 마지막 실행 시각 기록
                     updateLastRunTime()

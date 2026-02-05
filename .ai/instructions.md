@@ -50,10 +50,10 @@ interfaces → application → domain ← infrastructure
 
 ### Facade vs Service
 
-| 구분 | Facade | Service |
-|------|--------|---------|
-| 위치 | application | domain |
-| 역할 | 유스케이스 조합, 트랜잭션 | 단일 도메인 로직 |
+| 구분 | Facade           | Service             |
+|----|------------------|---------------------|
+| 위치 | application      | domain              |
+| 역할 | 유스케이스 조합, 트랜잭션   | 단일 도메인 로직           |
 | 의존 | 여러 Service 조합 가능 | 타 도메인 Service 주입 금지 |
 
 ---
@@ -64,11 +64,11 @@ interfaces → application → domain ← infrastructure
 
 모든 레이어의 DTO는 컨테이너 클래스 내 inner class 패턴을 사용:
 
-| Layer | 컨테이너 | Inner Class | 예시 |
-|-------|----------|-------------|------|
-| interfaces | `*Request`, `*Response` | 동작 | `PositionRequest.Open` |
-| application | `*Criteria`, `*Result` | 동작 | `PositionCriteria.Open`, `PositionResult.Detail` |
-| domain | `*Command` | 동작 | `PositionCommand.Create` |
+| Layer       | 컨테이너                    | Inner Class | 예시                                               |
+|-------------|-------------------------|-------------|--------------------------------------------------|
+| interfaces  | `*Request`, `*Response` | 동작          | `PositionRequest.Open`                           |
+| application | `*Criteria`, `*Result`  | 동작          | `PositionCriteria.Open`, `PositionResult.Detail` |
+| domain      | `*Command`              | 동작          | `PositionCommand.Create`                         |
 
 ### DTO 파일 구조
 
@@ -80,7 +80,9 @@ class PositionCriteria private constructor() {
 
 class PositionResult private constructor() {
     data class Detail(val id: Long, ...) {
-        companion object { fun from(entity: Position): Detail = ... }
+        companion object {
+            fun from(entity: Position): Detail = ...
+        }
     }
     data class Pnl(val positionId: Long, ...)
 }
@@ -95,12 +97,15 @@ class PositionResult private constructor() {
 
 ## Redis Keys (apps/batch)
 
-| Key | TTL | 용도 |
-|-----|-----|------|
-| `ticker:{exchange}:{symbol}` | 5s | 시세 |
-| `fx:{base}:{quote}` | 15m | 환율 |
-| `premium:{symbol}` | 5s | 프리미엄 |
-| `lock:*` | 2-30s | 분산 락 |
+| Key                                   | TTL | 용도          |
+|---------------------------------------|-----|-------------|
+| `ticker:{exchange}:{symbol}`          | 5s  | 최신 시세       |
+| `fx:{base}:{quote}`                   | 31m | 환율          |
+| `premium:{symbol}`                    | 5s  | 프리미엄        |
+| `lock:*`                              | 2-30s | 분산 락        |
+| `ticker:seconds:{exchange}:{symbol}`  | 5m  | 초당 시세 (ZSet) |
+| `ticker:minutes:{exchange}:{symbol}`  | 2h  | 분당 집계 (ZSet) |
+| `ticker:hours:{exchange}:{symbol}`    | 25h | 시간 집계 (ZSet) |
 
 ---
 
@@ -115,7 +120,7 @@ class PositionResult private constructor() {
 
 ### 테스트 규칙
 
-- **도구**: AssertJ 필수
+- **도구**: AssertJ 필수!!
 - **Unit Test**: Mock Repository 사용
 - **Integration Test**: `@Tag("integration")`, TestConfig Import
 
@@ -181,6 +186,7 @@ docker compose -f docker/infra-compose.yml up -d
 ## HTTP 파일 작성 규칙
 
 ### 파일 위치
+
 ```
 http/
 ├── http-client.env.json   # 환경 변수 정의
@@ -193,10 +199,12 @@ http/
 ### API 추가 시 필수 작업
 
 **새로운 Controller 생성 시:**
+
 1. `http/api/{도메인}.http` 파일 생성
 2. 모든 endpoint에 대한 요청 샘플 작성
 
 **기존 Controller에 endpoint 추가 시:**
+
 1. 해당 `http/api/{도메인}.http` 파일에 요청 추가
 
 ### HTTP 파일 작성 형식
@@ -243,22 +251,24 @@ GET {{commerce-api}}/api/v1/positions/1
 
 **Type 종류:**
 
-| Type | 용도 |
-|------|------|
-| `feat` | 새로운 기능 추가 |
-| `fix` | 버그 수정 |
+| Type       | 용도                 |
+|------------|--------------------|
+| `feat`     | 새로운 기능 추가          |
+| `fix`      | 버그 수정              |
 | `refactor` | 코드 리팩토링 (기능 변경 없음) |
-| `docs` | 문서 수정 |
-| `test` | 테스트 추가/수정 |
-| `chore` | 빌드, 설정 변경 |
+| `docs`     | 문서 수정              |
+| `test`     | 테스트 추가/수정          |
+| `chore`    | 빌드, 설정 변경          |
 
 **규칙:**
+
 - 한글로 작성
 - subject는 명령형 (`추가`, `수정`, `개선`)
 - Co-Author 라인 추가하지 않음
 - 본문은 bullet points로 변경 사항 나열
 
 **예시:**
+
 ```
 refactor: Redis 테스트를 Testcontainers로 전환
 
@@ -274,6 +284,7 @@ refactor: Redis 테스트를 Testcontainers로 전환
 ```
 
 **예시:**
+
 - `feature/position-api`
 - `fix/redis-connection`
 - `refactor/redis-testcontainers`
@@ -283,16 +294,20 @@ refactor: Redis 테스트를 Testcontainers로 전환
 **제목:** 커밋 메시지 첫 줄과 동일
 
 **본문 템플릿:**
+
 ```markdown
 ## Summary
+
 - 변경 사항 요약 (bullet points)
 
 ## Test plan
+
 - [ ] 테스트 항목 1
 - [ ] 테스트 항목 2
 ```
 
 **규칙:**
+
 - base branch: `feature/premium` (현재 메인 개발 브랜치)
 - 불필요한 파일 커밋 금지 (`.claude/settings.local.json`, `logs/` 등)
 

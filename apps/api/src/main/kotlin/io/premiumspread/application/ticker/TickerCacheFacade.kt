@@ -9,6 +9,10 @@ import io.premiumspread.infrastructure.cache.CachedTicker
 import io.premiumspread.infrastructure.cache.FxCacheReader
 import io.premiumspread.infrastructure.cache.TickerCacheReader
 import io.premiumspread.infrastructure.cache.CachedFxRate
+import io.premiumspread.infrastructure.exchangerate.ExchangeRateQueryRepository
+import io.premiumspread.infrastructure.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.infrastructure.ticker.TickerAggregationQueryRepository
+import io.premiumspread.infrastructure.ticker.TickerAggregationSnapshot
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -25,6 +29,8 @@ class TickerCacheFacade(
     private val tickerCacheReader: TickerCacheReader,
     private val fxCacheReader: FxCacheReader,
     private val tickerService: TickerService,
+    private val exchangeRateQueryRepository: ExchangeRateQueryRepository,
+    private val tickerAggregationQueryRepository: TickerAggregationQueryRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -77,9 +83,18 @@ class TickerCacheFacade(
 
     /**
      * DB에서 티커 조회 (fallback)
+     * ticker_minute 테이블에서 최신 집계 데이터의 close 가격 사용
      */
     @Transactional(readOnly = true)
     fun findFromDb(exchange: String, symbol: String): TickerCacheResult? {
+        // 1. 먼저 집계 테이블에서 조회 (ticker_minute)
+        val aggregation = tickerAggregationQueryRepository.findLatestMinute(exchange, symbol)
+        if (aggregation != null) {
+            log.debug("Ticker found in aggregation table: {}:{} = {}", exchange, symbol, aggregation.close)
+            return TickerCacheResult.fromAggregation(aggregation)
+        }
+
+        // 2. 집계 데이터도 없으면 기존 ticker 테이블에서 조회
         val exchangeEnum = try {
             Exchange.valueOf(exchange.uppercase())
         } catch (e: Exception) {
@@ -95,27 +110,18 @@ class TickerCacheFacade(
 
     /**
      * DB에서 환율 조회 (fallback)
+     * exchange_rate 테이블에서 최신 스냅샷 조회
      */
     @Transactional(readOnly = true)
     fun findFxFromDb(baseCurrency: String, quoteCurrency: String): FxRateCacheResult? {
-        val base = try {
-            Currency.valueOf(baseCurrency.uppercase())
-        } catch (e: Exception) {
-            log.warn("Unknown currency: {}", baseCurrency)
-            return null
+        val snapshot = exchangeRateQueryRepository.findLatest(baseCurrency, quoteCurrency)
+        if (snapshot != null) {
+            log.debug("FX rate found in DB: {}/{} = {}", baseCurrency, quoteCurrency, snapshot.rate)
+            return FxRateCacheResult.fromSnapshot(snapshot)
         }
 
-        val quote = try {
-            Currency.valueOf(quoteCurrency.uppercase())
-        } catch (e: Exception) {
-            log.warn("Unknown currency: {}", quoteCurrency)
-            return null
-        }
-
-        return tickerService.findLatest(
-            exchange = Exchange.FX_PROVIDER,
-            quote = Quote.fx(base, quote),
-        )?.let { FxRateCacheResult.fromDomain(it, base.name, quote.name) }
+        log.warn("FX rate not found in DB: {}/{}", baseCurrency, quoteCurrency)
+        return null
     }
 
     /**
@@ -160,6 +166,16 @@ data class TickerCacheResult(
             timestamp = ticker.observedAt,
             source = DataSource.DATABASE,
         )
+
+        fun fromAggregation(agg: TickerAggregationSnapshot) = TickerCacheResult(
+            exchange = agg.exchange,
+            symbol = agg.symbol,
+            currency = "KRW", // 집계 데이터는 KRW 기준
+            price = agg.close, // 종가 사용
+            volume = null,
+            timestamp = agg.observedAt,
+            source = DataSource.DATABASE,
+        )
     }
 }
 
@@ -189,6 +205,14 @@ data class FxRateCacheResult(
             quoteCurrency = quote,
             rate = ticker.price,
             timestamp = ticker.observedAt,
+            source = DataSource.DATABASE,
+        )
+
+        fun fromSnapshot(snapshot: ExchangeRateSnapshot) = FxRateCacheResult(
+            baseCurrency = snapshot.baseCurrency,
+            quoteCurrency = snapshot.quoteCurrency,
+            rate = snapshot.rate,
+            timestamp = snapshot.observedAt,
             source = DataSource.DATABASE,
         )
     }
