@@ -6,6 +6,7 @@ import io.premiumspread.client.exchangerate.ExchangeRateClient
 import io.premiumspread.redis.DistributedLockManager
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
+import io.premiumspread.repository.ExchangeRateRepository
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -16,12 +17,13 @@ import java.util.concurrent.TimeUnit
 /**
  * 환율 수집 스케줄러
  *
- * 10분 간격으로 USD/KRW 환율을 수집하여 Redis에 저장
+ * 30분 간격으로 USD/KRW 환율을 수집하여 Redis와 DB에 저장
  */
 @Component
 class ExchangeRateScheduler(
     private val exchangeRateClient: ExchangeRateClient,
     private val fxCacheService: FxCacheService,
+    private val exchangeRateRepository: ExchangeRateRepository,
     private val lockManager: DistributedLockManager,
     private val redisTemplate: StringRedisTemplate,
     private val meterRegistry: MeterRegistry,
@@ -46,6 +48,14 @@ class ExchangeRateScheduler(
 
                     // Redis에 저장
                     fxCacheService.save(fxRate)
+
+                    // DB에 저장 (30분 단위 스냅샷)
+                    exchangeRateRepository.save(
+                        baseCurrency = fxRate.baseCurrency,
+                        quoteCurrency = fxRate.quoteCurrency,
+                        rate = fxRate.rate,
+                        observedAt = fxRate.timestamp,
+                    )
 
                     // 마지막 실행 시각 기록
                     updateLastRunTime()

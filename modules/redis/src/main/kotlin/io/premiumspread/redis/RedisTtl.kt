@@ -9,8 +9,8 @@ object RedisTtl {
     // Ticker 캐시: 5초 (1초 갱신 * 5회 여유)
     val TICKER: Duration = Duration.ofSeconds(5)
 
-    // FX 캐시: 15분 (10분 갱신 * 1.5 여유)
-    val FX: Duration = Duration.ofMinutes(15)
+    // FX 캐시: 31분 (30분 스케줄 + 1분 버퍼)
+    val FX: Duration = Duration.ofMinutes(31)
 
     // Premium 캐시: 5초
     val PREMIUM: Duration = Duration.ofSeconds(5)
