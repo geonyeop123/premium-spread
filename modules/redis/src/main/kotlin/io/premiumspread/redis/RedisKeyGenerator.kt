@@ -22,6 +22,24 @@ object RedisKeyGenerator {
     fun premiumHistoryKey(symbol: String): String =
         "premium:$symbol:history"
 
+    // 초당 데이터 키 (ZSet)
+    fun tickerSecondsKey(exchange: String, symbol: String): String =
+        "ticker:seconds:$exchange:$symbol"
+
+    fun premiumSecondsKey(symbol: String): String =
+        "premium:seconds:$symbol"
+
+    // 집계 데이터 키 (ZSet)
+    fun premiumMinutesKey(symbol: String): String =
+        "premium:minutes:$symbol"
+
+    fun premiumHoursKey(symbol: String): String =
+        "premium:hours:$symbol"
+
+    // 서머리 캐시 키 (Hash)
+    fun summaryKey(interval: String, symbol: String): String =
+        "summary:$interval:$symbol"
+
     // Position 키
     fun positionOpenExistsKey(): String =
         "position:open:exists"

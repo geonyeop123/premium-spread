@@ -9,7 +9,6 @@ import io.premiumspread.calculator.PremiumCalculator
 import io.premiumspread.redis.DistributedLockManager
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
-import io.premiumspread.repository.PremiumSnapshotRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.scheduling.annotation.Scheduled
@@ -29,7 +28,6 @@ class PremiumScheduler(
     private val premiumCacheService: PremiumCacheService,
     private val positionCacheService: PositionCacheService,
     private val premiumCalculator: PremiumCalculator,
-    private val premiumSnapshotRepository: PremiumSnapshotRepository,
     private val lockManager: DistributedLockManager,
     private val redisTemplate: StringRedisTemplate,
     private val meterRegistry: MeterRegistry,
@@ -79,11 +77,11 @@ class PremiumScheduler(
                     fxRate = fxRate,
                 )
 
-                // 프리미엄 캐시 저장
+                // 프리미엄 캐시 저장 (현재값 Hash)
                 premiumCacheService.save(premium)
 
-                // DB에 스냅샷 저장
-                premiumSnapshotRepository.save(premium)
+                // 초당 데이터 ZSet에 저장 (DB INSERT 대체)
+                premiumCacheService.saveToSeconds(premium)
 
                 // Open Position이 있으면 히스토리도 저장
                 if (positionCacheService.hasOpenPosition()) {

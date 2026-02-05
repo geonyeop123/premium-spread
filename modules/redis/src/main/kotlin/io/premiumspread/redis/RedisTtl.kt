@@ -21,6 +21,23 @@ object RedisTtl {
     // Position 캐시: 30초
     val POSITION: Duration = Duration.ofSeconds(30)
 
+    // 초당 데이터 (ZSet): 5분
+    val SECONDS_DATA: Duration = Duration.ofMinutes(5)
+
+    // 분 집계 데이터: 2시간
+    val MINUTES_DATA: Duration = Duration.ofHours(2)
+
+    // 시간 집계 데이터: 25시간
+    val HOURS_DATA: Duration = Duration.ofHours(25)
+
+    // 서머리 캐시
+    object Summary {
+        val ONE_MINUTE: Duration = Duration.ofSeconds(10)
+        val TEN_MINUTES: Duration = Duration.ofSeconds(30)
+        val ONE_HOUR: Duration = Duration.ofMinutes(1)
+        val ONE_DAY: Duration = Duration.ofMinutes(5)
+    }
+
     // 배치 헬스 체크: 5분
     val BATCH_HEALTH: Duration = Duration.ofMinutes(5)
 
