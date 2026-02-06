@@ -8,6 +8,7 @@ import io.premiumspread.PremiumFixtures
 import io.premiumspread.TickerFixtures
 import io.premiumspread.domain.premium.PremiumCommand
 import io.premiumspread.domain.premium.PremiumService
+import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Quote
@@ -145,6 +146,41 @@ class PremiumFacadeTest {
             every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns null
 
             val result = facade.findLatest("BTC")
+
+            assertThat(result).isNull()
+        }
+    }
+
+    @Nested
+    inner class FindLatestSnapshot {
+
+        @Test
+        fun `심볼로 최신 프리미엄 스냅샷을 조회한다`() {
+            val snapshot = PremiumSnapshot(
+                symbol = "BTC",
+                premiumRate = BigDecimal("1.30"),
+                koreaPrice = BigDecimal("129555000"),
+                foreignPrice = BigDecimal("89277"),
+                foreignPriceInKrw = BigDecimal("127916893.2"),
+                fxRate = BigDecimal("1432.6"),
+                observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            )
+
+            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns snapshot
+
+            val result = facade.findLatestSnapshot("BTC")
+
+            assertThat(result).isNotNull
+            assertThat(result!!.symbol).isEqualTo("BTC")
+            assertThat(result.premiumRate).isEqualByComparingTo(BigDecimal("1.30"))
+            assertThat(result.koreaPrice).isEqualByComparingTo(BigDecimal("129555000"))
+        }
+
+        @Test
+        fun `스냅샷이 없으면 null을 반환한다`() {
+            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns null
+
+            val result = facade.findLatestSnapshot("BTC")
 
             assertThat(result).isNull()
         }

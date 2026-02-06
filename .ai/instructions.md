@@ -35,8 +35,8 @@ supports/
 ```
 interfaces/api/   → Controller, Request/Response DTO
 application/      → Facade, Criteria/Result DTO
-domain/           → Service, Command, Entity, Repository(interface)
-infrastructure/   → RepositoryImpl (JPA)
+domain/           → Service, Command, Entity, Repository(interface), Read Model
+infrastructure/   → RepositoryImpl (JPA + Cache), Cache Reader
 ```
 
 ### 의존성 방향
@@ -46,15 +46,57 @@ interfaces → application → domain ← infrastructure
 ```
 
 - **domain은 외부 의존 금지** (프레임워크 독립)
+- **application은 infrastructure 직접 참조 금지** (domain 인터페이스를 통해서만 접근)
 - Repository는 domain에 interface, infrastructure에 구현체
 
-### Facade vs Service
+### 계층별 역할
 
-| 구분 | Facade           | Service             |
-|----|------------------|---------------------|
-| 위치 | application      | domain              |
-| 역할 | 유스케이스 조합, 트랜잭션   | 단일 도메인 로직           |
-| 의존 | 여러 Service 조합 가능 | 타 도메인 Service 주입 금지 |
+| 구분 | Facade (application) | Service (domain) | RepositoryImpl (infrastructure) |
+|----|---------------------|-------------------|--------------------------------|
+| 역할 | 유스케이스 조합, DTO 변환 | 단일 도메인 로직 위임 | 데이터 접근 전략 (cache→DB fallback) |
+| 의존 | 여러 Service 조합 가능 | 타 도메인 Service 주입 금지 | Cache Reader, JPA, 타 Repository 가능 |
+
+### Cache→DB Fallback 규칙
+
+캐시 우선 조회 + DB fallback 로직은 **infrastructure의 RepositoryImpl 내부**에서 처리한다.
+application은 "데이터를 조회한다"만 요청하고, cache hit/miss 여부를 알지 못한다.
+
+```
+// Good: infrastructure가 전략 결정
+Controller → Facade → Service → Repository(interface)
+                                    └→ RepositoryImpl: cache hit → 반환
+                                                       cache miss → DB + ticker 조합 → 반환
+
+// Bad: application이 cache/DB를 직접 분기
+Controller → CacheFacade → CacheReader (infrastructure 직접 참조)
+                         → Service → Repository
+```
+
+### Read Model 패턴
+
+조회 시 여러 엔티티를 조합해야 하는 경우 domain에 **Read Model**을 정의한다.
+
+```kotlin
+// domain에 정의 — 조회 전용, JPA 엔티티 아님
+data class PremiumSnapshot(
+    val symbol: String,
+    val premiumRate: BigDecimal,
+    val koreaPrice: BigDecimal, // cache or ticker에서 조합
+    ...
+)
+
+// Repository 인터페이스에 메서드 추가
+interface PremiumRepository {
+    fun findLatestSnapshotBySymbol(symbol: Symbol): PremiumSnapshot?
+}
+
+// RepositoryImpl에서 cache→DB+ticker enrichment로 구현
+```
+
+**적용 기준:**
+- Entity 단독 반환으로 충분하면 Read Model 불필요
+- 캐시 데이터와 DB 데이터의 shape이 다를 때 도입
+- DB fallback 시 관련 엔티티를 추가 조회하여 enrichment 필요할 때
 
 ---
 
@@ -69,6 +111,7 @@ interfaces → application → domain ← infrastructure
 | interfaces  | `*Request`, `*Response` | 동작          | `PositionRequest.Open`                           |
 | application | `*Criteria`, `*Result`  | 동작          | `PositionCriteria.Open`, `PositionResult.Detail` |
 | domain      | `*Command`              | 동작          | `PositionCommand.Create`                         |
+| domain      | `*Snapshot` (Read Model) | —           | `PremiumSnapshot` (조회 전용, 단독 data class)           |
 
 ### DTO 파일 구조
 

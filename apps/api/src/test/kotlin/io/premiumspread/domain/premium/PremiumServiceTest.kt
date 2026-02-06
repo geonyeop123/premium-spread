@@ -103,6 +103,41 @@ class PremiumServiceTest {
     }
 
     @Nested
+    inner class FindLatestSnapshotBySymbol {
+
+        @Test
+        fun `심볼로 최신 프리미엄 스냅샷을 조회한다`() {
+            val symbol = Symbol("BTC")
+            val snapshot = PremiumSnapshot(
+                symbol = "BTC",
+                premiumRate = BigDecimal("1.30"),
+                koreaPrice = BigDecimal("129555000"),
+                foreignPrice = BigDecimal("89277"),
+                foreignPriceInKrw = BigDecimal("127916893.2"),
+                fxRate = BigDecimal("1432.6"),
+                observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            )
+
+            every { premiumRepository.findLatestSnapshotBySymbol(symbol) } returns snapshot
+
+            val result = service.findLatestSnapshotBySymbol(symbol)
+
+            assertThat(result).isEqualTo(snapshot)
+        }
+
+        @Test
+        fun `스냅샷이 없으면 null을 반환한다`() {
+            val symbol = Symbol("BTC")
+
+            every { premiumRepository.findLatestSnapshotBySymbol(symbol) } returns null
+
+            val result = service.findLatestSnapshotBySymbol(symbol)
+
+            assertThat(result).isNull()
+        }
+    }
+
+    @Nested
     inner class FindAllBySymbolAndPeriod {
 
         @Test

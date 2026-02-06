@@ -2,12 +2,11 @@ package io.premiumspread.interfaces.api.premium
 
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
-import io.premiumspread.application.premium.PremiumCacheFacade
-import io.premiumspread.application.premium.PremiumCacheResult
 import io.premiumspread.application.premium.PremiumCriteria
 import io.premiumspread.application.premium.PremiumFacade
 import io.premiumspread.application.premium.PremiumResult
 import io.premiumspread.application.premium.TickerNotFoundException
+import io.premiumspread.domain.premium.PremiumSnapshot
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -26,9 +25,6 @@ class PremiumControllerTest {
 
     @MockkBean
     private lateinit var premiumFacade: PremiumFacade
-
-    @MockkBean
-    private lateinit var premiumCacheFacade: PremiumCacheFacade
 
     @Nested
     inner class Calculate {
@@ -79,7 +75,7 @@ class PremiumControllerTest {
 
         @Test
         fun `최신 프리미엄을 조회한다`() {
-            val result = PremiumCacheResult(
+            val snapshot = PremiumSnapshot(
                 symbol = "BTC",
                 premiumRate = BigDecimal("1.30"),
                 koreaPrice = BigDecimal("50000000"),
@@ -87,22 +83,24 @@ class PremiumControllerTest {
                 foreignPriceInKrw = BigDecimal("49350000"),
                 fxRate = BigDecimal("1233.75"),
                 observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                source = PremiumCacheResult.DataSource.CACHE,
             )
 
-            every { premiumCacheFacade.findLatest("BTC") } returns result
+            every { premiumFacade.findLatestSnapshot("BTC") } returns snapshot
 
             mockMvc.get("/api/v1/premiums/current/BTC")
                 .andExpect {
                     status { isOk() }
                     jsonPath("$.symbol") { value("BTC") }
                     jsonPath("$.premiumRate") { value(1.30) }
+                    jsonPath("$.koreaPrice") { value(50000000) }
+                    jsonPath("$.foreignPrice") { value(40000) }
+                    jsonPath("$.source") { doesNotExist() }
                 }
         }
 
         @Test
         fun `프리미엄이 없으면 404를 반환한다`() {
-            every { premiumCacheFacade.findLatest("BTC") } returns null
+            every { premiumFacade.findLatestSnapshot("BTC") } returns null
 
             mockMvc.get("/api/v1/premiums/current/BTC")
                 .andExpect {

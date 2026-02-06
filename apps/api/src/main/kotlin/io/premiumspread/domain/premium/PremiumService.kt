@@ -31,6 +31,11 @@ class PremiumService(
     }
 
     @Transactional(readOnly = true)
+    fun findLatestSnapshotBySymbol(symbol: Symbol): PremiumSnapshot? {
+        return premiumRepository.findLatestSnapshotBySymbol(symbol)
+    }
+
+    @Transactional(readOnly = true)
     fun findAllBySymbolAndPeriod(symbol: Symbol, from: Instant, to: Instant): List<Premium> {
         return premiumRepository.findAllBySymbolAndPeriod(symbol, from, to)
     }
