@@ -39,17 +39,17 @@
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         API SERVER (apps:api)                            │
 │                                                                          │
-│   ┌─────────────┐    ┌─────────────────────┐    ┌─────────────────┐    │
-│   │ Controller  │───▶│  Cache Reader       │───▶│  JPA Repository │    │
-│   │             │    │  (Primary)          │    │  (Fallback)     │    │
-│   └─────────────┘    └─────────────────────┘    └─────────────────┘    │
+│   ┌─────────────┐    ┌─────────────┐    ┌───────────────────────┐      │
+│   │ Controller  │───▶│   Facade    │───▶│  RepositoryImpl       │      │
+│   │             │    │   Service   │    │  (Cache→DB Fallback)  │      │
+│   └─────────────┘    └─────────────┘    └───────────────────────┘      │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         DATABASE (MySQL)                                 │
 │                                                                          │
-│   ticker  │  premium  │  premium_snapshot  │  position                  │
+│   ticker  │  premium  │  position                                       │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -104,14 +104,14 @@ premium-spread/
 | 3 | `PremiumCacheService` | Redis에 저장 |
 | 4 | `PremiumSnapshotRepository` | DB에 히스토리 저장 |
 
-### 3. 프리미엄 조회 (Client → API → Redis)
+### 3. 프리미엄 조회 (Client → API → Redis/DB)
 
 | 단계 | 컴포넌트 | 설명 |
 |------|----------|------|
 | 1 | `PremiumController` | REST API 요청 수신 |
-| 2 | `PremiumCacheFacade` | 캐시 우선 조회 |
-| 3 | `PremiumCacheReader` | Redis에서 조회 |
-| 4 | `PremiumRepository` | 캐시 미스 시 DB Fallback |
+| 2 | `PremiumFacade` → `PremiumService` | 유스케이스 위임 (cache/DB 전략 무관) |
+| 3 | `PremiumRepositoryImpl` | 캐시 우선 조회 (cache hit → `PremiumSnapshot` 반환) |
+| 4 | (cache miss) DB + Ticker 조합 | `Premium` + 3개 Ticker 가격으로 `PremiumSnapshot` enrichment |
 
 ---
 

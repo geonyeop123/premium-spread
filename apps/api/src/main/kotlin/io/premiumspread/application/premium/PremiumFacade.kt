@@ -2,6 +2,7 @@ package io.premiumspread.application.premium
 
 import io.premiumspread.domain.premium.PremiumCommand
 import io.premiumspread.domain.premium.PremiumService
+import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Quote
@@ -49,6 +50,11 @@ class PremiumFacade(
     fun findLatest(symbol: String): PremiumResult.Detail? {
         return premiumService.findLatestBySymbol(Symbol(symbol))
             ?.let { PremiumResult.Detail.from(it) }
+    }
+
+    @Transactional(readOnly = true)
+    fun findLatestSnapshot(symbol: String): PremiumSnapshot? {
+        return premiumService.findLatestSnapshotBySymbol(Symbol(symbol))
     }
 
     @Transactional(readOnly = true)
