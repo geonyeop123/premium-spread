@@ -16,19 +16,11 @@
 ## Recent Changes
 
 ```
+bc0d844 refactor: premium 조회 캐시 전략을 infrastructure로 이동
 88864df Merge branch 'refs/heads/refactor/premium' into feature/premium
 0eed724 test: TickerCacheFacade, PremiumCacheFacade 테스트 추가
 d6eef34 feat: Redis ZSet 기반 티커 집계 인프라 구축
-b396c2a refactor: PremiumCacheService 중복 코드 통합 (AggregationTimeUnit)
 ```
-
-### Premium 아키텍처 리팩토링 (미커밋)
-
-- `PremiumCacheFacade` 제거 → `PremiumRepositoryImpl`에 cache→DB fallback 통합
-- `PremiumSnapshot` read model 도입 (domain)
-- application 계층의 infrastructure 직접 참조 0건 달성
-- API 응답에서 `source` 필드 제거
-- 상세: `.ai/planning/refactoring/architecture/progress.md`
 
 ## TODO
 
@@ -54,7 +46,7 @@ b396c2a refactor: PremiumCacheService 중복 코드 통합 (AggregationTimeUnit)
 
 ## Known Issues
 
-- 없음
+- ~~Premium -100.0000 버그: koreaPrice=0일 때 발생~~ → 수정 완료 (다층 방어)
 
 ## Notes
 

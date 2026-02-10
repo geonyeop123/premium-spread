@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.math.BigDecimal
 import java.util.concurrent.TimeUnit
 
 /**
@@ -67,6 +68,18 @@ class PremiumScheduler(
                         fxRate != null,
                     )
                     meterRegistry.counter("scheduler.premium.skipped", "reason", "missing_data").increment()
+                    return@withLock
+                }
+
+                // 가격 유효성 검증 (price=0이면 프리미엄 -100.0000 버그 발생)
+                if (bithumbTicker.price <= BigDecimal.ZERO || binanceTicker.price <= BigDecimal.ZERO || fxRate <= BigDecimal.ZERO) {
+                    log.warn(
+                        "Invalid price detected - skip calculation. Bithumb: {}, Binance: {}, FX: {}",
+                        bithumbTicker.price,
+                        binanceTicker.price,
+                        fxRate,
+                    )
+                    meterRegistry.counter("scheduler.premium.skipped", "reason", "invalid_price").increment()
                     return@withLock
                 }
 

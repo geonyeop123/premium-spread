@@ -29,6 +29,10 @@ class PremiumCalculator {
         foreignTicker: TickerData,
         fxRate: BigDecimal,
     ): PremiumCacheData {
+        require(koreaTicker.price > BigDecimal.ZERO) { "Korea ticker price must be positive: ${koreaTicker.price}" }
+        require(foreignTicker.price > BigDecimal.ZERO) { "Foreign ticker price must be positive: ${foreignTicker.price}" }
+        require(fxRate > BigDecimal.ZERO) { "FX rate must be positive: $fxRate" }
+
         // 해외 가격을 원화로 환산
         val foreignPriceInKrw = foreignTicker.price.multiply(fxRate)
             .setScale(0, RoundingMode.HALF_UP)
@@ -59,6 +63,10 @@ class PremiumCalculator {
         foreignPrice: BigDecimal,
         fxRate: BigDecimal,
     ): BigDecimal {
+        require(koreaPrice > BigDecimal.ZERO) { "Korea price must be positive: $koreaPrice" }
+        require(foreignPrice > BigDecimal.ZERO) { "Foreign price must be positive: $foreignPrice" }
+        require(fxRate > BigDecimal.ZERO) { "FX rate must be positive: $fxRate" }
+
         val foreignPriceInKrw = foreignPrice.multiply(fxRate)
         val priceDiff = koreaPrice.subtract(foreignPriceInKrw)
 
