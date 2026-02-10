@@ -2,6 +2,7 @@ package io.premiumspread.calculator
 
 import io.premiumspread.client.TickerData
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -109,6 +110,58 @@ class PremiumCalculatorTest {
         }
 
         @Test
+        fun `should throw exception when korea price is zero`() {
+            // given
+            val koreaTicker = createTicker("BITHUMB", "BTC", "KRW", "0")
+            val foreignTicker = createTicker("BINANCE", "BTC", "USDT", "89277")
+            val fxRate = BigDecimal("1432.6")
+
+            // when & then
+            assertThatThrownBy { calculator.calculate(koreaTicker, foreignTicker, fxRate) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("Korea ticker price must be positive")
+        }
+
+        @Test
+        fun `should throw exception when foreign price is zero`() {
+            // given
+            val koreaTicker = createTicker("BITHUMB", "BTC", "KRW", "129555000")
+            val foreignTicker = createTicker("BINANCE", "BTC", "USDT", "0")
+            val fxRate = BigDecimal("1432.6")
+
+            // when & then
+            assertThatThrownBy { calculator.calculate(koreaTicker, foreignTicker, fxRate) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("Foreign ticker price must be positive")
+        }
+
+        @Test
+        fun `should throw exception when fxRate is zero`() {
+            // given
+            val koreaTicker = createTicker("BITHUMB", "BTC", "KRW", "129555000")
+            val foreignTicker = createTicker("BINANCE", "BTC", "USDT", "89277")
+            val fxRate = BigDecimal.ZERO
+
+            // when & then
+            assertThatThrownBy { calculator.calculate(koreaTicker, foreignTicker, fxRate) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("FX rate must be positive")
+        }
+
+        @Test
+        fun `should throw exception when price is negative`() {
+            // given
+            val koreaTicker = createTicker("BITHUMB", "BTC", "KRW", "-1000")
+            val foreignTicker = createTicker("BINANCE", "BTC", "USDT", "89277")
+            val fxRate = BigDecimal("1432.6")
+
+            // when & then
+            assertThatThrownBy { calculator.calculate(koreaTicker, foreignTicker, fxRate) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("Korea ticker price must be positive")
+        }
+
+        @Test
         fun `should set foreignPriceInKrw correctly`() {
             // given
             val koreaTicker = createTicker("BITHUMB", "BTC", "KRW", "129555000")
@@ -142,6 +195,33 @@ class PremiumCalculatorTest {
             // then
             assertThat(rate).isPositive
             assertThat(rate).isBetween(BigDecimal("1.0"), BigDecimal("2.0"))
+        }
+
+        @Test
+        fun `should throw exception when korea price is zero`() {
+            assertThatThrownBy {
+                calculator.calculateRate(BigDecimal.ZERO, BigDecimal("89277"), BigDecimal("1432.6"))
+            }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("Korea price must be positive")
+        }
+
+        @Test
+        fun `should throw exception when foreign price is zero`() {
+            assertThatThrownBy {
+                calculator.calculateRate(BigDecimal("129555000"), BigDecimal.ZERO, BigDecimal("1432.6"))
+            }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("Foreign price must be positive")
+        }
+
+        @Test
+        fun `should throw exception when fxRate is zero`() {
+            assertThatThrownBy {
+                calculator.calculateRate(BigDecimal("129555000"), BigDecimal("89277"), BigDecimal.ZERO)
+            }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("FX rate must be positive")
         }
     }
 }
