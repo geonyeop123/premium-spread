@@ -6,7 +6,7 @@
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | premium 아키텍처 리팩토링 완료 (cache→DB fallback을 infrastructure로 이동) |
+| apps/api | Active | premium + ticker 아키텍처 리팩토링 완료, exchangerate 도메인 분리 |
 | apps/batch | Active | Redis ZSet 기반 초당 데이터 저장 및 집계 구현 |
 | modules/redis | Active | TickerAggregationTimeUnit 추가 |
 | modules/jpa | Stable | - |
@@ -34,8 +34,9 @@ d6eef34 feat: Redis ZSet 기반 티커 집계 인프라 구축
 
 ### Refactoring Backlog
 
-- [ ] ticker 도메인: `TickerCacheFacade` → 동일 패턴으로 infrastructure 이동
-- [ ] position 도메인: `PositionFacade`의 infrastructure 참조 정리
+- [x] ~~ticker 도메인: `TickerCacheFacade` → infrastructure 이동~~ → 완료
+- [x] ~~exchangerate 도메인 분리~~ → `domain/exchangerate/` 신규 패키지
+- [ ] position 도메인: `PositionFacade`의 `PositionCacheWriter` infrastructure 참조 정리
 
 ### Pending
 
