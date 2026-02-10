@@ -1,6 +1,6 @@
 package io.premiumspread.interfaces.api.ticker
 
-import io.premiumspread.application.ticker.TickerResult
+import io.premiumspread.domain.ticker.Ticker
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -25,14 +25,14 @@ class TickerResponse private constructor() {
         val observedAt: Instant,
     ) {
         companion object {
-            fun from(result: TickerResult.Detail): Detail = Detail(
-                id = result.id,
-                exchange = result.exchange.name,
-                exchangeRegion = result.exchangeRegion.name,
-                baseCode = result.baseCode,
-                quoteCurrency = result.quoteCurrency.name,
-                price = result.price,
-                observedAt = result.observedAt,
+            fun from(ticker: Ticker): Detail = Detail(
+                id = ticker.id,
+                exchange = ticker.exchange.name,
+                exchangeRegion = ticker.exchangeRegion.name,
+                baseCode = ticker.quote.baseCode,
+                quoteCurrency = ticker.quote.currency.name,
+                price = ticker.price,
+                observedAt = ticker.observedAt,
             )
         }
     }

@@ -6,7 +6,7 @@
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | premium + ticker 아키텍처 리팩토링 완료, exchangerate 도메인 분리 |
+| apps/api | Active | premium + ticker 아키텍처 리팩토링 완료, TickerFacade 제거 (Controller→Service 직접 호출) |
 | apps/batch | Active | Redis ZSet 기반 초당 데이터 저장 및 집계 구현 |
 | modules/redis | Active | TickerAggregationTimeUnit 추가 |
 | modules/jpa | Stable | - |
@@ -16,10 +16,9 @@
 ## Recent Changes
 
 ```
-bc0d844 refactor: premium 조회 캐시 전략을 infrastructure로 이동
-88864df Merge branch 'refs/heads/refactor/premium' into feature/premium
-0eed724 test: TickerCacheFacade, PremiumCacheFacade 테스트 추가
-d6eef34 feat: Redis ZSet 기반 티커 집계 인프라 구축
+249fe00 refactor: ticker 조회 캐시 전략을 infrastructure로 이동, exchangerate 도메인 분리
+2a33fa9 Merge pull request #13 from geonyeop123/fix/premium-negative-bug
+109a53b fix: 프리미엄 -100.0000 버그 수정 (다층 방어)
 ```
 
 ## TODO

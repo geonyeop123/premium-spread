@@ -3,12 +3,9 @@ package io.premiumspread.interfaces.api.ticker
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
-import io.premiumspread.application.ticker.TickerCriteria
-import io.premiumspread.application.ticker.TickerIngestFacade
-import io.premiumspread.application.ticker.TickerResult
-import io.premiumspread.domain.ticker.Currency
-import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.domain.ticker.ExchangeRegion
+import io.premiumspread.TickerFixtures
+import io.premiumspread.domain.ticker.TickerCommand
+import io.premiumspread.domain.ticker.TickerService
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
@@ -28,7 +25,7 @@ class TickerControllerTest {
     private lateinit var objectMapper: ObjectMapper
 
     @MockkBean
-    private lateinit var tickerIngestFacade: TickerIngestFacade
+    private lateinit var tickerService: TickerService
 
     @Test
     fun `코인 티커를 등록한다`() {
@@ -40,17 +37,8 @@ class TickerControllerTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        val result = TickerResult.Detail(
-            id = 1L,
-            exchange = Exchange.UPBIT,
-            exchangeRegion = ExchangeRegion.KOREA,
-            baseCode = "BTC",
-            quoteCurrency = Currency.KRW,
-            price = BigDecimal("129555000"),
-            observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-        )
-
-        every { tickerIngestFacade.ingest(any<TickerCriteria.Ingest>()) } returns result
+        every { tickerService.create(any<TickerCommand.Create>()) } returns
+                TickerFixtures.koreaTicker(id = 1L)
 
         mockMvc.post("/api/v1/tickers") {
             contentType = MediaType.APPLICATION_JSON
@@ -76,17 +64,8 @@ class TickerControllerTest {
             observedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
-        val result = TickerResult.Detail(
-            id = 2L,
-            exchange = Exchange.FX_PROVIDER,
-            exchangeRegion = ExchangeRegion.FOREIGN,
-            baseCode = "USD",
-            quoteCurrency = Currency.KRW,
-            price = BigDecimal("1432.6"),
-            observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-        )
-
-        every { tickerIngestFacade.ingest(any<TickerCriteria.Ingest>()) } returns result
+        every { tickerService.create(any<TickerCommand.Create>()) } returns
+                TickerFixtures.fxTicker(id = 2L)
 
         mockMvc.post("/api/v1/tickers") {
             contentType = MediaType.APPLICATION_JSON
