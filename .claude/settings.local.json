@@ -10,7 +10,29 @@
       "Bash(gh auth status:*)",
       "Bash(find:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(docker info:*)",
+      "Bash(grep:*)",
+      "Bash(docker run:*)",
+      "Bash(docker:*)",
+      "Bash(gh repo view:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl:*)",
+      "Bash(git checkout:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(export EXCHANGE_RATE_API_KEY:*)",
+      "Bash(git reset:*)",
+      "Bash(claude plugins install OthmanAdi/planning-with-files)",
+      "Bash(git clone:*)",
+      "Bash(git config:*)",
+      "Bash(sudo tee:*)",
+      "Bash(sudo chmod:*)",
+      "Bash(sudo apt update:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(gh auth:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)"
     ]
   }
 }

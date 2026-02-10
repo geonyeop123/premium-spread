@@ -1,190 +1,129 @@
 # Premium Spread System Architecture
 
-> 김치 프리미엄 실시간 모니터링 시스템 아키텍처
+> 구현 기준(As-Is) 아키텍처 문서
 
 ## System Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                            EXTERNAL APIs                                 │
-│   Bithumb (1s)        Binance Futures (1s)        ExchangeRate (10m)    │
-└───────────┬───────────────────┬──────────────────────────┬──────────────┘
-            │                   │                          │
-            ▼                   ▼                          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         BATCH SERVER (apps:batch)                        │
-│                                                                          │
-│   ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────┐    │
-│   │  Scheduler  │───▶│   Client    │───▶│   Cache Writer (Redis)  │    │
-│   │  (1s/10m)   │    │ (WebClient) │    │   + DB Writer (JPA)     │    │
-│   └─────────────┘    └─────────────┘    └─────────────────────────┘    │
-│                                                   │                      │
-│                    ┌──────────────────────────────┘                      │
-│                    ▼                                                     │
-│   ┌──────────────────────────┐                                          │
-│   │  Distributed Lock        │                                          │
-│   │  (Redisson)              │                                          │
-│   └──────────────────────────┘                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              REDIS                                       │
-│                                                                          │
-│   ticker:bithumb:btc (5s)  │  fx:usd:krw (15m)  │  premium:btc (5s)     │
-│   ticker:binance:btc (5s)  │  lock:* (2-30s)    │  premium:btc:history  │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         API SERVER (apps:api)                            │
-│                                                                          │
-│   ┌─────────────┐    ┌─────────────┐    ┌───────────────────────┐      │
-│   │ Controller  │───▶│   Facade    │───▶│  RepositoryImpl       │      │
-│   │             │    │   Service   │    │  (Cache→DB Fallback)  │      │
-│   └─────────────┘    └─────────────┘    └───────────────────────┘      │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         DATABASE (MySQL)                                 │
-│                                                                          │
-│   ticker  │  premium  │  position                                       │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
+- 목적: 한국/해외 거래소 가격과 환율을 수집해 프리미엄을 계산하고, Redis + DB 집계 데이터를 API 조회 경로에 제공
+- 실행 주기:
+  - Ticker 수집: 1초
+  - Premium 계산: 1초
+  - FX 수집: 30분 (+ 앱 시작 후 1회)
+  - 집계: 1분 / 1시간 / 1일
 
 ## Module Structure
 
-```
+```text
 premium-spread/
 ├── apps/
 │   ├── api/              # REST API 서버 (Port 8080)
-│   │   ├── interfaces/   # Controller, Request/Response DTO
-│   │   ├── application/  # Facade (UseCase 조합)
-│   │   ├── domain/       # Entity, Service, Repository Interface
-│   │   └── infrastructure/
-│   │       ├── cache/    # Redis Cache Reader
-│   │       └── {domain}/ # JPA Repository 구현체
-│   │
 │   └── batch/            # 배치 스케줄러 (Port 8081)
-│       ├── scheduler/    # @Scheduled 작업 (1s/10m)
+│       ├── scheduler/    # @Scheduled 작업
 │       ├── client/       # External API Client (WebClient)
 │       ├── cache/        # Redis Cache Writer
 │       └── repository/   # DB Writer (JdbcTemplate)
-│
 ├── modules/
-│   ├── jpa/              # JPA 공통 설정, BaseEntity
+│   ├── jpa/              # JPA 공통 설정
 │   └── redis/            # Redis/Redisson 설정, 분산 락
-│
 └── supports/
-    ├── logging/          # 구조화 로깅, 민감정보 마스킹
-    └── monitoring/       # Micrometer 메트릭, 헬스체크
+    ├── logging/          # 구조화 로깅
+    └── monitoring/       # 메트릭, 헬스체크
 ```
 
----
+## Batch Data Flow (As-Is)
 
-## Data Flow
+### 1) Ticker 수집
 
-### 1. 시세 수집 (Batch → Redis)
+1. `TickerScheduler`가 1초마다 실행 (`lock:ticker:all`)
+2. `BithumbClient`, `BinanceClient` 병렬 호출
+3. `TickerCacheService` 저장
+   - 현재값 Hash: `ticker:{exchange}:{symbol}`
+   - 초당 ZSet: `ticker:seconds:{exchange}:{symbol}`
 
-| 단계 | 컴포넌트 | 설명 |
-|------|----------|------|
-| 1 | `TickerScheduler` | 1초마다 실행, 분산 락 획득 |
-| 2 | `BithumbClient`, `BinanceClient` | 외부 API 호출 (병렬) |
-| 3 | `TickerCacheService` | Redis Hash에 저장 (TTL 5초) |
+### 2) Premium 계산
 
-### 2. 프리미엄 계산 (Batch → Redis/DB)
+1. `PremiumScheduler`가 1초마다 실행 (`lock:premium`)
+2. 캐시에서 ticker/fx 조회 후 `PremiumCalculator` 계산
+3. `PremiumCacheService` 저장
+   - 현재값 Hash: `premium:{symbol}`
+   - 초당 ZSet: `premium:seconds:{symbol}`
+   - 포지션 open 시 history ZSet: `premium:{symbol}:history`
 
-| 단계 | 컴포넌트 | 설명 |
-|------|----------|------|
-| 1 | `PremiumScheduler` | 1초마다 실행 |
-| 2 | `PremiumCalculator` | 캐시에서 시세 조회, 프리미엄 계산 |
-| 3 | `PremiumCacheService` | Redis에 저장 |
-| 4 | `PremiumSnapshotRepository` | DB에 히스토리 저장 |
+### 3) FX 수집
 
-### 3. 프리미엄 조회 (Client → API → Redis/DB)
+1. `ExchangeRateScheduler`가 30분마다 실행 (`lock:fx`)
+2. `ExchangeRateClient`로 USD/KRW 조회
+3. Redis(`fx:usd:krw`) + MySQL(`exchange_rate`) 저장
+4. 앱 시작 5초 후 1회 즉시 실행
 
-| 단계 | 컴포넌트 | 설명 |
-|------|----------|------|
-| 1 | `PremiumController` | REST API 요청 수신 |
-| 2 | `PremiumFacade` → `PremiumService` | 유스케이스 위임 (cache/DB 전략 무관) |
-| 3 | `PremiumRepositoryImpl` | 캐시 우선 조회 (cache hit → `PremiumSnapshot` 반환) |
-| 4 | (cache miss) DB + Ticker 조합 | `Premium` + 3개 Ticker 가격으로 `PremiumSnapshot` enrichment |
+### 4) 집계 파이프라인
 
----
+- `PremiumAggregationScheduler`
+  - 10초: summary 캐시 갱신 (`summary:{interval}:{symbol}`)
+  - 1분: `premium:seconds:*` -> `premium:minutes:*` + `premium_minute`
+  - 1시간: `premium:minutes:*` -> `premium:hours:*` + `premium_hour`
+  - 1일: `premium:hours:*` -> `premium_day`
+- `TickerAggregationScheduler`
+  - 1분: `ticker:seconds:*` -> `ticker:minutes:*` + `ticker_minute`
+  - 1시간: `ticker:minutes:*` -> `ticker:hours:*` + `ticker_hour`
+  - 1일: `ticker:hours:*` -> `ticker_day`
 
-## Redis Cache Design
+## Redis Key Patterns
 
-### Key Patterns
+| Key | Example | Type | TTL |
+|-----|---------|------|-----|
+| `ticker:{exchange}:{symbol}` | `ticker:bithumb:btc` | Hash | 5초 |
+| `fx:{base}:{quote}` | `fx:usd:krw` | Hash | 31분 |
+| `premium:{symbol}` | `premium:btc` | Hash | 5초 |
+| `premium:{symbol}:history` | `premium:btc:history` | ZSet | 1시간 |
+| `ticker:seconds:{exchange}:{symbol}` | `ticker:seconds:binance:btc` | ZSet | 5분 |
+| `ticker:minutes:{exchange}:{symbol}` | `ticker:minutes:binance:btc` | ZSet | 2시간 |
+| `ticker:hours:{exchange}:{symbol}` | `ticker:hours:binance:btc` | ZSet | 25시간 |
+| `premium:seconds:{symbol}` | `premium:seconds:btc` | ZSet | 5분 |
+| `premium:minutes:{symbol}` | `premium:minutes:btc` | ZSet | 2시간 |
+| `premium:hours:{symbol}` | `premium:hours:btc` | ZSet | 25시간 |
+| `summary:{interval}:{symbol}` | `summary:1h:btc` | Hash | interval별 상이 |
+| `lock:*` | `lock:premium` | String | lease 2~120초 |
+| `batch:last_run:{job}` | `batch:last_run:premium` | String | 5분 |
 
-| Key | 예시 | TTL | 용도 |
-|-----|------|-----|------|
-| `ticker:{exchange}:{symbol}` | `ticker:bithumb:btc` | 5초 | 거래소 시세 |
-| `fx:{base}:{quote}` | `fx:usd:krw` | 15분 | 환율 |
-| `premium:{symbol}` | `premium:btc` | 5초 | 현재 프리미엄 |
-| `premium:{symbol}:history` | `premium:btc:history` | 1시간 | 프리미엄 히스토리 (SortedSet) |
-| `lock:*` | `lock:premium` | 2-30초 | 분산 락 |
+### Summary TTL
 
-### Cache Strategy
-
-- **Cache-Aside (Write)**: Batch가 외부 API 조회 후 Redis에 저장
-- **Cache-First (Read)**: API가 Redis 먼저 조회, 미스 시 DB Fallback
-- **Position-Aware**: 열린 포지션 있을 때만 히스토리 저장
-
----
+- `summary:1m:*` -> 10초
+- `summary:10m:*` -> 30초
+- `summary:1h:*` -> 1분
+- `summary:1d:*` -> 5분
 
 ## Distributed Lock Strategy
 
-| 락 | Wait | Lease | 용도 |
-|----|------|-------|------|
-| `lock:ticker:all` | 0초 | 2초 | 티커 갱신 독점 |
-| `lock:fx` | 0초 | 30초 | 환율 갱신 독점 |
-| `lock:premium` | 0초 | 2초 | 프리미엄 계산 독점 |
+| Lock | Wait | Lease | Job |
+|------|------|-------|-----|
+| `lock:ticker:all` | 0초 | 2초 | ticker 수집 |
+| `lock:premium` | 0초 | 2초 | premium 계산 |
+| `lock:fx` | 0초 | 30초 | FX 수집 |
+| `lock:aggregation:*` | 0초 | 30/60/120초 | premium 집계 |
+| `lock:ticker:aggregation:*` | 0초 | 30/60/120초 | ticker 집계 |
 
-- **tryLock(0, leaseTime)**: 즉시 시도, 실패 시 skip
-- **Failover**: 서버 다운 시 Lease Time 후 자동 해제
+## Persistence (MySQL)
 
----
+- 원시/조회용
+  - `exchange_rate`
+- 집계용
+  - `premium_minute`, `premium_hour`, `premium_day`
+  - `ticker_minute`, `ticker_hour`, `ticker_day`
 
-## Key Design Decisions
+## Observability (As-Is)
 
-| 결정 | 선택 | 이유 |
-|------|------|------|
-| 캐시 | Redis | 분산 환경, TTL, 분산 락 지원 |
-| 분산 락 | Redisson | 검증된 Redis 분산 락 구현체 |
-| 외부 API 호출 | WebClient | 비동기, Reactor 기반 |
-| 갱신 주기 | 1초/10분 | Rate Limit 여유, 실시간성 |
-| 배치 다중화 | Active-Passive | 분산 락으로 단일 실행 보장 |
+- 주요 카운터/게이지 예시:
+  - `scheduler.ticker.success|error|skipped`
+  - `scheduler.premium.success|error|skipped`
+  - `scheduler.fx.success|error|skipped`
+  - `scheduler.aggregation.*`, `scheduler.ticker.aggregation.*`
+  - `premium.rate.current`, `fx.rate.current`
+- 외부 호출 타이머:
+  - `ticker.fetch.latency`
+  - `fx.fetch.latency`
 
----
+## Notes
 
-## Observability
-
-### Metrics (Micrometer)
-
-| 메트릭 | 타입 | 용도 |
-|--------|------|------|
-| `ticker.fetch.latency` | Timer | API 응답 시간 |
-| `premium.rate.current` | Gauge | 현재 프리미엄율 |
-| `batch.last_run.epoch_seconds` | Gauge | 배치 헬스 체크 |
-| `cache.hit/miss.total` | Counter | 캐시 효율 |
-
-### Alerts
-
-- 배치 작업 지연 (5초 이상)
-- 외부 API 에러율 (10% 이상)
-- 캐시 미스율 (30% 이상)
-- 프리미엄 급변 (5분간 2% 이상 변동)
-
----
-
-## Future Scalability
-
-| Phase | 확장 |
-|-------|------|
-| 현재 | BTC, 빗썸-바이낸스, 1초 폴링 |
-| Phase 2 | ETH, SOL 추가 |
-| Phase 3 | 업비트, OKX 추가 |
-| Phase 4 | WebSocket 실시간 스트리밍 |
+- 문서의 수치/키/플로우는 현재 코드 기준으로 유지한다.
+- 설계 변경 시 문서와 코드(스케줄 주기, TTL, key pattern)를 같은 커밋에서 함께 수정한다.

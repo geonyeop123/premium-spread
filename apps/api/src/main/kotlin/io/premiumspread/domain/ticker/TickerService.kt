@@ -35,6 +35,11 @@ class TickerService(
         return tickerRepository.findById(id)
     }
 
+    @Transactional(readOnly = true)
+    fun findLatestSnapshot(exchange: String, symbol: String): TickerSnapshot? {
+        return tickerRepository.findLatestSnapshotByExchangeAndSymbol(exchange, symbol)
+    }
+
     private fun createQuote(baseCode: String, quoteCurrency: Currency): Quote {
         return if (isCurrencyCode(baseCode)) {
             Quote.fx(Currency.valueOf(baseCode), quoteCurrency)

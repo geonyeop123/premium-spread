@@ -23,13 +23,13 @@
 
 | 문서 | 설명 |
 |------|------|
-| [Architecture Design](.ai/architecture/ARCHITECTURE_DESIGN.md) | 시스템 아키텍처, 데이터 흐름, Redis 설계 |
+| [Architecture Design](.ai/architecture/ARCHITECTURE_DESIGN.md) | 구현 기준 시스템 아키텍처, 데이터 흐름, Redis 설계 |
 | [Development Guide](.ai/instructions.md) | 개발 지침, 코딩 컨벤션 |
 | [Project Status](.ai/PROJECT_STATUS.md) | 현재 진행 상황, TODO |
 
 ## 프로젝트 구조
 
-```
+```text
 premium-spread/
 ├── apps/
 │   ├── api/                    # REST API 서버 (Port 8080)
@@ -44,7 +44,7 @@ premium-spread/
 
 ### API 서버 아키텍처
 
-```
+```text
 interfaces/api/   → Controller, Request/Response DTO
 application/      → Facade, Criteria/Result DTO
 domain/           → Service, Command, Entity
@@ -62,8 +62,8 @@ premium = ((koreaPrice - foreignPrice * fxRate) / (foreignPrice * fxRate)) * 100
 | 항목 | 설명 |
 |------|------|
 | `koreaPrice` | 한국 거래소 현물 가격 (KRW) |
-| `foreignPrice` | 해외 거래소 선물 가격 (USD) |
-| `fxRate` | 원/달러 환율 |
+| `foreignPrice` | 해외 거래소 선물 가격 (USD/USDT) |
+| `fxRate` | 원/달러 환율 (USD/KRW) |
 
 ### 2. 포지션 관리
 
@@ -71,14 +71,15 @@ premium = ((koreaPrice - foreignPrice * fxRate) / (foreignPrice * fxRate)) * 100
 - 포지션 청산 (Close): 손익 확정
 - PnL 계산: 진입 프리미엄과 현재 프리미엄 차이로 손익 산출
 
-### 3. 실시간 데이터 수집 (Batch)
+### 3. 실시간 데이터 수집 및 집계 (Batch)
 
-| 데이터 | 주기 | 소스 |
-|--------|------|------|
-| 한국 시세 | 1초 | 빗썸 API |
-| 해외 시세 | 1초 | 바이낸스 API |
-| 환율 | 10분 | ExchangeRate API |
-| 프리미엄 | 1초 | 계산 후 캐싱 |
+| 데이터 | 주기 | 소스/처리 |
+|--------|------|-----------|
+| 한국 시세 | 1초 | 빗썸 API 수집 후 Redis 저장 |
+| 해외 시세 | 1초 | 바이낸스 API 수집 후 Redis 저장 |
+| 환율 | 30분 | ExchangeRate API 수집 후 Redis + DB 저장 |
+| 프리미엄 | 1초 | 계산 후 Redis 저장 |
+| 프리미엄/티커 집계 | 1분/1시간/1일 | Redis ZSet 집계 후 DB 저장 |
 
 ## 시작하기
 
