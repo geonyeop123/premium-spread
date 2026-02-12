@@ -32,7 +32,9 @@
       "Bash(gh auth:*)",
       "Bash(gh pr create:*)",
       "Bash(gh pr view:*)",
-      "Bash(gh pr list:*)"
+      "Bash(gh pr list:*)",
+      "WebSearch",
+      "Bash(git restore:*)"
     ]
   }
 }
