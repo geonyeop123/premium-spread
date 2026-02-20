@@ -152,6 +152,44 @@ class PremiumRealtimeJobTest {
         }
 
         @Test
+        fun `환율이 0이면 Skipped를 반환한다`() {
+            // given
+            every { tickerCacheService.get("bithumb", "btc") } returns bithumbTicker()
+            every { tickerCacheService.get("binance", "btc") } returns binanceTicker()
+            every { fxCacheService.getUsdKrw() } returns BigDecimal.ZERO
+
+            // when
+            val result = job.run()
+
+            // then
+            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
+            assertThat((result as JobResult.Skipped).reason).isEqualTo("invalid_price")
+        }
+
+        @Test
+        fun `캐시 저장 중 예외 발생 시 Failure를 반환한다`() {
+            // given
+            val bithumb = bithumbTicker()
+            val binance = binanceTicker()
+            val fxRate = BigDecimal("1432.6")
+            val premium = premiumData()
+
+            every { tickerCacheService.get("bithumb", "btc") } returns bithumb
+            every { tickerCacheService.get("binance", "btc") } returns binance
+            every { fxCacheService.getUsdKrw() } returns fxRate
+            every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
+            every { positionCacheService.hasOpenPosition() } returns false
+            every { premiumCacheService.save(premium) } throws RuntimeException("redis error")
+
+            // when
+            val result = job.run()
+
+            // then
+            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+            assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
+        }
+
+        @Test
         fun `성공 시 프리미엄을 계산하고 저장한다`() {
             // given
             val bithumb = bithumbTicker()

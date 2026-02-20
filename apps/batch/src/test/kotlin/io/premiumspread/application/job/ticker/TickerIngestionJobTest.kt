@@ -1,6 +1,9 @@
 package io.premiumspread.application.job.ticker
 
-import io.mockk.*
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.client.TickerData
@@ -101,6 +104,21 @@ class TickerIngestionJobTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat((result as JobResult.Failure).exception.message).isEqualTo("binance api error")
+        }
+
+        @Test
+        fun `캐시 저장 예외 시 Failure를 반환한다`() {
+            // given
+            coEvery { bithumbClient.getBtcTicker() } returns bithumbTicker()
+            coEvery { binanceClient.getBtcFuturesTicker() } returns binanceTicker()
+            every { tickerCacheService.saveAll(any(), any()) } throws RuntimeException("redis error")
+
+            // when
+            val result = job.run()
+
+            // then
+            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+            assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
         }
     }
 }

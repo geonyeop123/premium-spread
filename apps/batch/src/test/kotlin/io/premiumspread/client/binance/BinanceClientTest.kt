@@ -114,6 +114,17 @@ class BinanceClientTest {
         }
 
         @Test
+        fun `should throw exception when all retries are exhausted`() {
+            // given - 3번 모두 실패
+            repeat(3) { mockWebServer.enqueue(MockResponse().setResponseCode(500)) }
+
+            // when & then
+            assertThatThrownBy { runBlocking { binanceClient.getBtcFuturesTicker() } }
+                .isInstanceOf(Exception::class.java)
+            assertThat(mockWebServer.requestCount).isEqualTo(3)
+        }
+
+        @Test
         fun `should record metrics on success`() = runBlocking {
             // given
             mockWebServer.enqueue(

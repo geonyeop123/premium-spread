@@ -91,6 +91,18 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             assertThat(result.close).isEqualByComparingTo("1.80")
             assertThat(result.count).isEqualTo(3)
         }
+
+        @Test
+        fun `소스 데이터 없으면 DB에 저장하지 않는다`() {
+            // given - 소스 데이터 없음 (cleanUp에서 Redis 비워짐)
+
+            // when
+            premiumAggregationScheduler.aggregateMinute()
+
+            // then
+            assertThat(aggregationRepository.findLatestMinute("btc")).isNull()
+            assertThat(redisTemplate.opsForZSet().size("premium:minutes:btc")).isEqualTo(0)
+        }
     }
 
     @Nested
@@ -133,6 +145,17 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             assertThat(result.low).isEqualByComparingTo("1.50")
             assertThat(result.count).isEqualTo(30) // 3 entries * 10 count each
         }
+
+        @Test
+        fun `소스 데이터 없으면 DB에 저장하지 않는다`() {
+            // given - 소스 데이터 없음
+
+            // when
+            premiumAggregationScheduler.aggregateHour()
+
+            // then
+            assertThat(aggregationRepository.findLatestHour("btc")).isNull()
+        }
     }
 
     @Nested
@@ -163,6 +186,20 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
     @Nested
     @DisplayName("updateSummaryCache")
     inner class UpdateSummaryCache {
+
+        @Test
+        fun `소스 데이터 없으면 summary 캐시가 저장되지 않는다`() {
+            // given - 소스 데이터 없음
+
+            // when
+            premiumAggregationScheduler.updateSummaryCache()
+
+            // then - 4개 구간 모두 키 없음
+            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:1m:btc")).isEmpty()
+            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:10m:btc")).isEmpty()
+            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:1h:btc")).isEmpty()
+            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:1d:btc")).isEmpty()
+        }
 
         @Test
         fun `모든 구간의 서머리 캐시가 저장된다`() {

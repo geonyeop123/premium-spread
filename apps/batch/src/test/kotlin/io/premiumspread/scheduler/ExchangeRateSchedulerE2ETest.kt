@@ -75,6 +75,24 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             assertThat(results[0]["rate"] as BigDecimal).isEqualByComparingTo(BigDecimal("1432.60"))
             assertThat(results[0]["observed_at"]).isNotNull()
         }
+
+        @Test
+        fun `API 최종 실패 시 Redis 캐시와 DB 레코드가 저장되지 않는다`() {
+            // given - 3회 모두 서버 오류
+            repeat(3) { exchangeRateMockServer.enqueue(MockResponse().setResponseCode(500)) }
+
+            // when
+            exchangeRateScheduler.fetchExchangeRate()
+
+            // then - 캐시 없음
+            assertThat(redisTemplate.opsForHash<String, String>().entries("fx:usd:krw")).isEmpty()
+
+            // then - DB 레코드 없음
+            val results = jdbcTemplate.queryForList(
+                "SELECT * FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
+            )
+            assertThat(results).isEmpty()
+        }
     }
 
     @Nested

@@ -1,6 +1,11 @@
 package io.premiumspread.application.job.fx
 
-import io.mockk.*
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.runs
+import io.mockk.verify
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.cache.FxCacheService
 import io.premiumspread.client.FxRateData
@@ -80,6 +85,40 @@ class FxIngestionJobTest {
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat((result as JobResult.Failure).exception.message).isEqualTo("api error")
             verify(exactly = 0) { fxCacheService.save(any()) }
+        }
+
+        @Test
+        fun `캐시 저장 예외 시 Failure를 반환한다`() {
+            // given
+            val fxRate = fxRate()
+            coEvery { exchangeRateClient.getUsdKrwRate() } returns fxRate
+            every { fxCacheService.save(fxRate) } throws RuntimeException("redis error")
+
+            // when
+            val result = job.run()
+
+            // then
+            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+            assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
+            verify(exactly = 0) { exchangeRateRepository.save(any(), any(), any(), any()) }
+        }
+
+        @Test
+        fun `DB 저장 예외 시 Failure를 반환하고 캐시는 저장된 상태다`() {
+            // given
+            val fxRate = fxRate()
+            coEvery { exchangeRateClient.getUsdKrwRate() } returns fxRate
+            every { fxCacheService.save(fxRate) } just runs
+            every {
+                exchangeRateRepository.save(any(), any(), any(), any())
+            } throws RuntimeException("db error")
+
+            // when
+            val result = job.run()
+
+            // then
+            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+            verify(exactly = 1) { fxCacheService.save(fxRate) }
         }
     }
 }
