@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
 import io.premiumspread.TickerFixtures
+import io.premiumspread.domain.InvalidTickerException
 import io.premiumspread.domain.ticker.TickerCommand
 import io.premiumspread.domain.ticker.TickerService
 import org.junit.jupiter.api.Test
@@ -94,6 +95,30 @@ class TickerControllerTest {
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_ARGUMENT") }
+        }
+    }
+
+    @Test
+    fun `도메인 유효성 오류면 400과 INVALID_TICKER 코드를 반환한다`() {
+        val request = TickerRequest.Ingest(
+            exchange = "UPBIT",
+            baseCode = "BTC",
+            quoteCurrency = "KRW",
+            price = BigDecimal("-1"),
+            observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+        )
+
+        every {
+            tickerService.create(any<TickerCommand.Create>())
+        } throws InvalidTickerException("가격은 0보다 커야 합니다")
+
+        mockMvc.post("/api/v1/tickers") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(request)
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_TICKER") }
+            jsonPath("$.message") { value("가격은 0보다 커야 합니다") }
         }
     }
 }

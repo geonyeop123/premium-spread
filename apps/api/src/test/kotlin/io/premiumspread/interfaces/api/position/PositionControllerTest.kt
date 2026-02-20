@@ -8,6 +8,7 @@ import io.premiumspread.application.position.PositionFacade
 import io.premiumspread.application.position.PositionNotFoundException
 import io.premiumspread.application.position.PositionResult
 import io.premiumspread.application.position.PremiumNotFoundException
+import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
 import org.junit.jupiter.api.Nested
@@ -93,6 +94,32 @@ class PositionControllerTest {
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_ARGUMENT") }
+            }
+        }
+
+        @Test
+        fun `도메인 유효성 오류면 400과 INVALID_POSITION 코드를 반환한다`() {
+            val request = PositionRequest.Open(
+                symbol = "BTC",
+                exchange = "UPBIT",
+                quantity = BigDecimal("0.5"),
+                entryPrice = BigDecimal("129555000"),
+                entryFxRate = BigDecimal("1432.6"),
+                entryPremiumRate = BigDecimal("1.28"),
+                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            )
+
+            every {
+                positionFacade.openPosition(any<PositionCriteria.Open>())
+            } throws InvalidPositionException("수량은 0보다 커야 합니다")
+
+            mockMvc.post("/api/v1/positions") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(request)
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_POSITION") }
+                jsonPath("$.message") { value("수량은 0보다 커야 합니다") }
             }
         }
     }

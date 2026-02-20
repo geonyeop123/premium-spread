@@ -1,12 +1,12 @@
 # Project Status
 
-> Last updated: 2026-02-20
+> Last updated: 2026-02-20 (session 2)
 
 ## Current State
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | premium + ticker 아키텍처 리팩토링 완료, exchangerate 도메인 분리 |
+| apps/api | Active | 아키텍처 리팩토링 완료, 단위 143건 GREEN (CacheReader 4파일 신규 + 컨트롤러 DomainException 커버) |
 | apps/batch | Active | 4-layer 정렬 완료, 단위 138건 + 통합 167건 GREEN |
 | modules/redis | Active | AggregationTimeUnit, TickerAggregationTimeUnit 및 TTL 정책 반영 |
 | modules/jpa | Stable | - |
@@ -16,11 +16,9 @@
 ## Recent Changes
 
 ```text
+204f7a8 test: batch 모듈 테스트 커버리지 전면 보강
 551883c docs: E2E 테스트 플래닝 문서 작성
 7af7c6b chore: 프로젝트 설정 및 루트 문서 최신화
-c7c2f3d docs: AI 문서 구조 개편 및 batch 리팩토링 계획 문서 추가
-dbaa08e refactor: batch ingestion jobs 분리 및 scheduler thin entrypoint 전환
-0503ac7 refactor: batch 공통 실행 기반 도입 (JobExecutor, AggregationJob)
 ```
 
 ## TODO
