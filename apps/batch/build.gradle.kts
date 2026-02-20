@@ -1,3 +1,18 @@
+tasks.named<Test>("test") {
+    useJUnitPlatform {
+        excludeTags("integration")
+    }
+}
+
+tasks.register<Test>("integrationTest") {
+    description = "Runs integration tests (requires Docker)"
+    group = "verification"
+    useJUnitPlatform {
+        includeTags("integration")
+    }
+    shouldRunAfter(tasks.named("test"))
+}
+
 dependencies {
     // modules
     implementation(project(":modules:jpa"))
@@ -18,4 +33,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${project.properties["kotlinCoroutinesVersion"]}")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+
+    // test-fixtures (TestContainers, DatabaseCleanUp)
+    testImplementation(testFixtures(project(":modules:jpa")))
+    testImplementation(testFixtures(project(":modules:redis")))
 }

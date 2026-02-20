@@ -100,4 +100,41 @@ class PremiumAggregationRepository(
             Timestamp.from(Instant.now()),
         )
     }
+
+    fun findLatestMinute(symbol: String): PremiumAggregation? {
+        val results = jdbcTemplate.query(
+            "SELECT * FROM premium_minute WHERE symbol = ? ORDER BY minute_at DESC LIMIT 1",
+            { rs, _ -> mapToAggregation(rs) },
+            symbol.uppercase(),
+        )
+        return results.firstOrNull()
+    }
+
+    fun findLatestHour(symbol: String): PremiumAggregation? {
+        val results = jdbcTemplate.query(
+            "SELECT * FROM premium_hour WHERE symbol = ? ORDER BY hour_at DESC LIMIT 1",
+            { rs, _ -> mapToAggregation(rs) },
+            symbol.uppercase(),
+        )
+        return results.firstOrNull()
+    }
+
+    fun findLatestDay(symbol: String): PremiumAggregation? {
+        val results = jdbcTemplate.query(
+            "SELECT * FROM premium_day WHERE symbol = ? ORDER BY day_at DESC LIMIT 1",
+            { rs, _ -> mapToAggregation(rs) },
+            symbol.uppercase(),
+        )
+        return results.firstOrNull()
+    }
+
+    private fun mapToAggregation(rs: java.sql.ResultSet) = PremiumAggregation(
+        symbol = rs.getString("symbol"),
+        high = rs.getBigDecimal("high"),
+        low = rs.getBigDecimal("low"),
+        open = rs.getBigDecimal("open"),
+        close = rs.getBigDecimal("close"),
+        avg = rs.getBigDecimal("avg"),
+        count = rs.getInt("count"),
+    )
 }

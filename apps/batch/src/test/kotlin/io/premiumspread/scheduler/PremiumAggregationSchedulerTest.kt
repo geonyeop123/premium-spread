@@ -180,8 +180,24 @@ class PremiumAggregationSchedulerTest {
     inner class UpdateSummaryCache {
 
         @Test
+        fun `호출 시 jobExecutor execute를 호출한다`() {
+            // given
+            every { jobExecutor.execute(any(), any()) } returns JobResult.Success
+
+            // when
+            scheduler.updateSummaryCache()
+
+            // then
+            verify(exactly = 1) { jobExecutor.execute(any(), any()) }
+        }
+
+        @Test
         fun `각 구간을 독립적으로 실행하며 특정 구간 실패 시에도 나머지 구간을 계속 처리한다`() {
             // given
+            every { jobExecutor.execute(any(), any()) } answers {
+                val action = secondArg<() -> JobResult>()
+                action()
+            }
             every { premiumCacheService.calculateSummaryFromSeconds(eq("btc"), any(), any()) } returnsMany listOf(
                 summary("1.11"),
                 summary("1.22"),
@@ -201,6 +217,10 @@ class PremiumAggregationSchedulerTest {
         @Test
         fun `구간별 계산 결과가 있을 때만 저장하고 실패한 구간은 건너뛴다`() {
             // given
+            every { jobExecutor.execute(any(), any()) } answers {
+                val action = secondArg<() -> JobResult>()
+                action()
+            }
             every { premiumCacheService.calculateSummaryFromSeconds(eq("btc"), any(), any()) } returnsMany listOf(
                 null,
                 summary("1.22"),
@@ -216,6 +236,19 @@ class PremiumAggregationSchedulerTest {
             verify(exactly = 1) { premiumCacheService.saveSummary("10m", "btc", any()) }
             verify(exactly = 0) { premiumCacheService.saveSummary("1h", "btc", any()) }
             verify(exactly = 1) { premiumCacheService.saveSummary("1d", "btc", any()) }
+        }
+
+        @Test
+        fun `핵심 계약 스모크로 summary jobName aggregation summary를 전달한다`() {
+            // given
+            val configSlot = slot<JobConfig>()
+            every { jobExecutor.execute(capture(configSlot), any()) } returns JobResult.Success
+
+            // when
+            scheduler.updateSummaryCache()
+
+            // then
+            assertThat(configSlot.captured.jobName).isEqualTo("aggregation:summary")
         }
     }
 }

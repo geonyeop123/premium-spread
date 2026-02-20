@@ -28,3 +28,20 @@ logging:
   level:
     root: INFO
     io.premiumspread: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  main:
+    allow-bean-definition-overriding: true
+
+scheduling:
+  enabled: false
+
+redis:
+  enabled: false
+
+exchange-rate:
+  api-key: test-dummy-key

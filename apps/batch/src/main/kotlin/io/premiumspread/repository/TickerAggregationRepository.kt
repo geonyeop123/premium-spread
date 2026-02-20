@@ -104,4 +104,45 @@ class TickerAggregationRepository(
             Timestamp.from(Instant.now()),
         )
     }
+
+    fun findLatestMinute(exchange: String, symbol: String): TickerAggregation? {
+        val results = jdbcTemplate.query(
+            "SELECT * FROM ticker_minute WHERE exchange = ? AND symbol = ? ORDER BY minute_at DESC LIMIT 1",
+            { rs, _ -> mapToAggregation(rs) },
+            exchange.uppercase(),
+            symbol.uppercase(),
+        )
+        return results.firstOrNull()
+    }
+
+    fun findLatestHour(exchange: String, symbol: String): TickerAggregation? {
+        val results = jdbcTemplate.query(
+            "SELECT * FROM ticker_hour WHERE exchange = ? AND symbol = ? ORDER BY hour_at DESC LIMIT 1",
+            { rs, _ -> mapToAggregation(rs) },
+            exchange.uppercase(),
+            symbol.uppercase(),
+        )
+        return results.firstOrNull()
+    }
+
+    fun findLatestDay(exchange: String, symbol: String): TickerAggregation? {
+        val results = jdbcTemplate.query(
+            "SELECT * FROM ticker_day WHERE exchange = ? AND symbol = ? ORDER BY day_at DESC LIMIT 1",
+            { rs, _ -> mapToAggregation(rs) },
+            exchange.uppercase(),
+            symbol.uppercase(),
+        )
+        return results.firstOrNull()
+    }
+
+    private fun mapToAggregation(rs: java.sql.ResultSet) = TickerAggregation(
+        exchange = rs.getString("exchange"),
+        symbol = rs.getString("symbol"),
+        high = rs.getBigDecimal("high"),
+        low = rs.getBigDecimal("low"),
+        open = rs.getBigDecimal("open"),
+        close = rs.getBigDecimal("close"),
+        avg = rs.getBigDecimal("avg"),
+        count = rs.getInt("count"),
+    )
 }

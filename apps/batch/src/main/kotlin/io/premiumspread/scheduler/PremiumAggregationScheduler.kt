@@ -2,6 +2,7 @@ package io.premiumspread.scheduler
 
 import io.premiumspread.application.common.JobConfig
 import io.premiumspread.application.common.JobExecutor
+import io.premiumspread.application.common.JobResult
 import io.premiumspread.application.job.aggregation.AggregationJob
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.redis.AggregationTimeUnit
@@ -31,6 +32,7 @@ class PremiumAggregationScheduler(
         private val MINUTE_CONFIG = JobConfig("aggregation:minute", "$LOCK_AGGREGATION:minute", 30, TimeUnit.SECONDS)
         private val HOUR_CONFIG = JobConfig("aggregation:hour", "$LOCK_AGGREGATION:hour", 60, TimeUnit.SECONDS)
         private val DAY_CONFIG = JobConfig("aggregation:day", "$LOCK_AGGREGATION:day", 120, TimeUnit.SECONDS)
+        private val SUMMARY_CONFIG = JobConfig("aggregation:summary", "$LOCK_AGGREGATION:summary", 30, TimeUnit.SECONDS)
     }
 
     private val minuteJob = AggregationJob<PremiumAggregation>(
@@ -67,24 +69,31 @@ class PremiumAggregationScheduler(
 
     @Scheduled(fixedRate = 10_000)
     fun updateSummaryCache() {
-        try {
+        jobExecutor.execute(SUMMARY_CONFIG) {
             val now = Instant.now()
 
-            premiumCacheService.calculateSummaryFromSeconds(BTC, now.minus(1, ChronoUnit.MINUTES), now)
-                ?.let { premiumCacheService.saveSummary("1m", BTC, it) }
+            runCatching {
+                premiumCacheService.calculateSummaryFromSeconds(BTC, now.minus(1, ChronoUnit.MINUTES), now)
+                    ?.let { premiumCacheService.saveSummary("1m", BTC, it) }
+            }.onFailure { log.error("Failed to update 1m summary", it) }
 
-            premiumCacheService.calculateSummaryFromSeconds(BTC, now.minus(10, ChronoUnit.MINUTES), now)
-                ?.let { premiumCacheService.saveSummary("10m", BTC, it) }
+            runCatching {
+                premiumCacheService.calculateSummaryFromSeconds(BTC, now.minus(10, ChronoUnit.MINUTES), now)
+                    ?.let { premiumCacheService.saveSummary("10m", BTC, it) }
+            }.onFailure { log.error("Failed to update 10m summary", it) }
 
-            premiumCacheService.calculateSummary(AggregationTimeUnit.MINUTES, BTC, now.minus(1, ChronoUnit.HOURS), now)
-                ?.let { premiumCacheService.saveSummary("1h", BTC, it) }
+            runCatching {
+                premiumCacheService.calculateSummary(AggregationTimeUnit.MINUTES, BTC, now.minus(1, ChronoUnit.HOURS), now)
+                    ?.let { premiumCacheService.saveSummary("1h", BTC, it) }
+            }.onFailure { log.error("Failed to update 1h summary", it) }
 
-            premiumCacheService.calculateSummary(AggregationTimeUnit.HOURS, BTC, now.minus(24, ChronoUnit.HOURS), now)
-                ?.let { premiumCacheService.saveSummary("1d", BTC, it) }
+            runCatching {
+                premiumCacheService.calculateSummary(AggregationTimeUnit.HOURS, BTC, now.minus(24, ChronoUnit.HOURS), now)
+                    ?.let { premiumCacheService.saveSummary("1d", BTC, it) }
+            }.onFailure { log.error("Failed to update 1d summary", it) }
 
             log.debug("Updated summary caches")
-        } catch (e: Exception) {
-            log.error("Failed to update summary cache", e)
+            JobResult.Success
         }
     }
 
