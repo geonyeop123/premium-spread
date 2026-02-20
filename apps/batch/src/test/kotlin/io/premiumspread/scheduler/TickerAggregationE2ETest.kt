@@ -92,6 +92,38 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             assertThat(result.close).isEqualByComparingTo("129800000")
             assertThat(result.count).isEqualTo(3)
         }
+
+        @Test
+        fun `소스 데이터 없으면 DB에 저장하지 않는다`() {
+            // given - 소스 데이터 없음 (cleanUp에서 Redis 비워짐)
+
+            // when
+            tickerAggregationScheduler.aggregateMinute()
+
+            // then - 모든 거래소/심볼 저장 없음
+            assertThat(aggregationRepository.findLatestMinute("bithumb", "btc")).isNull()
+            assertThat(aggregationRepository.findLatestMinute("binance", "btc")).isNull()
+        }
+
+        @Test
+        fun `bithumb 소스 없으면 bithumb은 저장하지 않고 binance만 저장한다`() {
+            // given - binance 소스만 존재
+            val now = Instant.now()
+            val prevMinuteStart = now.minus(1, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MINUTES)
+            seedSecondsData("binance", "btc", prevMinuteStart.plusSeconds(10), "89277")
+            seedSecondsData("binance", "btc", prevMinuteStart.plusSeconds(30), "89500")
+            seedSecondsData("binance", "btc", prevMinuteStart.plusSeconds(50), "89300")
+
+            // when
+            tickerAggregationScheduler.aggregateMinute()
+
+            // then
+            assertThat(aggregationRepository.findLatestMinute("bithumb", "btc")).isNull()
+            val binanceResult = aggregationRepository.findLatestMinute("binance", "btc")
+            assertThat(binanceResult).isNotNull
+            assertThat(binanceResult!!.high).isEqualByComparingTo("89500")
+            assertThat(binanceResult.low).isEqualByComparingTo("89277")
+        }
     }
 
     @Nested

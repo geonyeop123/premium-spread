@@ -7,7 +7,7 @@
 | Module | Status | Notes |
 |--------|--------|-------|
 | apps/api | Active | premium + ticker 아키텍처 리팩토링 완료, exchangerate 도메인 분리 |
-| apps/batch | Active | 4-layer 정렬 완료, E2E 테스트 20건 GREEN |
+| apps/batch | Active | 4-layer 정렬 완료, 단위 138건 + 통합 167건 GREEN |
 | modules/redis | Active | AggregationTimeUnit, TickerAggregationTimeUnit 및 TTL 정책 반영 |
 | modules/jpa | Stable | - |
 | supports/logging | Stable | - |

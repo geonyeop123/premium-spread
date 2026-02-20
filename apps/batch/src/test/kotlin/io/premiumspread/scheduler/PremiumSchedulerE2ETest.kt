@@ -120,5 +120,19 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
             val parts = members!!.first().value!!.split(":")
             assertThat(parts).hasSize(3)
         }
+
+        @Test
+        fun `ticker 캐시가 없으면 premium 캐시가 저장되지 않는다`() {
+            // given - seedCacheData로 세팅된 ticker 캐시 제거
+            redisTemplate.delete("ticker:bithumb:btc")
+            redisTemplate.delete("ticker:binance:btc")
+
+            // when
+            premiumScheduler.calculatePremium()
+
+            // then - premium 캐시 없음
+            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:btc")).isEmpty()
+            assertThat(redisTemplate.opsForZSet().size("premium:seconds:btc")).isEqualTo(0)
+        }
     }
 }

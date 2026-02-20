@@ -126,6 +126,36 @@ class BithumbClientTest {
         }
 
         @Test
+        fun `should throw exception when all retries are exhausted`() {
+            // given - 3번 모두 실패
+            repeat(3) { mockWebServer.enqueue(MockResponse().setResponseCode(500)) }
+
+            // when & then
+            assertThatThrownBy { runBlocking { bithumbClient.getBtcTicker() } }
+                .isInstanceOf(Exception::class.java)
+            assertThat(mockWebServer.requestCount).isEqualTo(3)
+        }
+
+        @Test
+        fun `should throw exception when status is 0000 but data is null`() {
+            // given
+            val response = BithumbTickerResponse(
+                status = "0000",
+                data = null,
+            )
+            mockWebServer.enqueue(
+                MockResponse()
+                    .setBody(objectMapper.writeValueAsString(response))
+                    .addHeader("Content-Type", "application/json"),
+            )
+
+            // when & then
+            assertThatThrownBy { runBlocking { bithumbClient.getBtcTicker() } }
+                .isInstanceOf(BithumbApiException::class.java)
+                .hasMessageContaining("null data")
+        }
+
+        @Test
         fun `should record metrics on success`() = runBlocking {
             // given
             mockWebServer.enqueue(

@@ -191,5 +191,29 @@ class JobExecutorTest {
             // then
             verify(exactly = 0) { valueOps.set(any(), any(), any<Duration>()) }
         }
+
+        @Test
+        fun `job이 Failure를 반환하면 last-run 시간을 갱신하지 않는다`() {
+            // given
+            val config = jobConfig()
+            every {
+                lockManager.withLock(
+                    lockKey = any(),
+                    waitTime = any(),
+                    leaseTime = any(),
+                    timeUnit = any(),
+                    action = any<() -> JobResult>(),
+                )
+            } answers {
+                val action = arg<() -> JobResult>(4)
+                LockResult.Success(action())
+            }
+
+            // when
+            jobExecutor.execute(config) { JobResult.Failure(RuntimeException("fail")) }
+
+            // then
+            verify(exactly = 0) { valueOps.set(any(), any(), any<Duration>()) }
+        }
     }
 }
