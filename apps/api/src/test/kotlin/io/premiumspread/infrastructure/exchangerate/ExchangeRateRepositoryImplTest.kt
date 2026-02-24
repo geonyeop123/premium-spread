@@ -3,8 +3,6 @@ package io.premiumspread.infrastructure.exchangerate
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import io.premiumspread.infrastructure.cache.CachedFxRate
-import io.premiumspread.infrastructure.cache.FxCacheReader
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested

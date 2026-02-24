@@ -2,7 +2,6 @@ package io.premiumspread.infrastructure.exchangerate
 
 import io.premiumspread.domain.exchangerate.ExchangeRateRepository
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot as DomainSnapshot
-import io.premiumspread.infrastructure.cache.FxCacheReader
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 

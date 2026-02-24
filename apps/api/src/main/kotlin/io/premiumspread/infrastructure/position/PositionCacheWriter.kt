@@ -1,4 +1,4 @@
-package io.premiumspread.infrastructure.cache
+package io.premiumspread.infrastructure.position
 
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
