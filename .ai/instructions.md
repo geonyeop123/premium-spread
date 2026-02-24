@@ -258,6 +258,20 @@ docker compose -f docker/infra-compose.yml up -d
 - 브랜치 규칙: `<type>/<short-description>` (`type`: `feat|fix|refactor|docs|test|chore`)
 - 커밋 규칙: `<type>: <subject>` + 한글 bullet 본문
 - PR 규칙: 제목은 커밋 첫 줄과 동일, 본문에 `Summary`/`Test plan` 포함
+
+## Planning Directory 규칙
+
+- 새로운 기능/리팩토링/테스트 작업은 `.ai/planning/{domain-or-topic}/` 폴더에 계획 문서를 추가한다.
+- 기본 구성은 `task_plan.md`, `findings.md`, `progress.md`를 기본으로 두고 필요 시 보조 문서를 함께 둔다.
+- `alert` 작업은 아래 형태로 시작한다.
+
+```text
+.ai/planning/alert/
+├── business-rules.md   # 비즈니스 룰 상세
+├── task_plan.md        # 단계별 작업 계획
+├── findings.md         # 요구사항/의사결정 기록
+└── progress.md         # 세션별 진행 로그
+```
 - 상세 Git 정책은 `.ai/skills/codex-claude-flow/references/git-policy.md`를 기준으로 따른다.
 
 ---
