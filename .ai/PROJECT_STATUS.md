@@ -6,7 +6,7 @@
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | 아키텍처 리팩토링 완료, 단위 171건 GREEN (infrastructure/cache 패키지 해소 + PositionFacade 위반 수정) |
+| apps/api | Active | 아키텍처 리팩토링 완료, 단위 171건 + E2E 통합 50건 GREEN (Ticker 2 + Premium 9 + Position 11 + 기존 28건) |
 | apps/batch | Active | 4-layer 정렬 완료, 단위 138건 + 통합 167건 GREEN |
 | modules/redis | Active | AggregationTimeUnit, TickerAggregationTimeUnit 및 TTL 정책 반영 |
 | modules/jpa | Stable | - |
@@ -16,9 +16,9 @@
 ## Recent Changes
 
 ```text
+test: API E2E 통합 테스트 22건 구축 (TickerController 2 + PremiumController 9 + PositionController 11)
 refactor: infrastructure/cache 패키지 해소 + PositionFacade 아키텍처 위반 수정
-5d36ed4 test: api 모듈 테스트 커버리지 보강 (CacheReader + DomainException)
-204f7a8 test: batch 모듈 테스트 커버리지 전면 보강
+test: api 모듈 테스트 커버리지 보강 (CacheReader + DomainException)
 ```
 
 ## TODO
@@ -44,7 +44,7 @@ refactor: infrastructure/cache 패키지 해소 + PositionFacade 아키텍처 �
 
 ### Pending
 
-- [ ] E2E Tests (API 서버)
+- [x] E2E Tests (API 서버) — TickerController 2 + PremiumController 9 + PositionController 11 = 22건 GREEN
 - [ ] Production 설정 (application-prod.yml)
 - [ ] Docker 설정 (Dockerfile, docker-compose)
 - [ ] CI/CD 파이프라인
