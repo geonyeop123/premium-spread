@@ -7,7 +7,6 @@ import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
 import io.premiumspread.domain.ticker.TickerRepository
 import io.premiumspread.domain.ticker.TickerSnapshot
-import io.premiumspread.infrastructure.cache.TickerCacheReader
 import org.slf4j.LoggerFactory
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Repository

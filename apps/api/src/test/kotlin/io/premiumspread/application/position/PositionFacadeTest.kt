@@ -1,7 +1,6 @@
 package io.premiumspread.application.position
 
 import io.mockk.every
-import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
@@ -14,7 +13,6 @@ import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
-import io.premiumspread.infrastructure.cache.PositionCacheWriter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -27,15 +25,13 @@ class PositionFacadeTest {
 
     private lateinit var positionService: PositionService
     private lateinit var premiumService: PremiumService
-    private lateinit var positionCacheWriter: PositionCacheWriter
     private lateinit var facade: PositionFacade
 
     @BeforeEach
     fun setUp() {
         positionService = mockk()
         premiumService = mockk()
-        positionCacheWriter = mockk()
-        facade = PositionFacade(positionService, premiumService, positionCacheWriter)
+        facade = PositionFacade(positionService, premiumService)
     }
 
     @Nested
@@ -56,8 +52,6 @@ class PositionFacadeTest {
             val commandSlot = slot<PositionCommand.Create>()
             every { positionService.create(capture(commandSlot)) } returns
                     PositionFixtures.openPosition(id = 1L)
-            every { positionService.findAllOpen() } returns listOf(PositionFixtures.openPosition(id = 1L))
-            justRun { positionCacheWriter.updateOpenPositionStatus(any(), any()) }
 
             val result = facade.openPosition(criteria)
 
@@ -211,8 +205,6 @@ class PositionFacadeTest {
             every { positionService.save(capture(positionSlot)) } answers {
                 positionSlot.captured
             }
-            every { positionService.findAllOpen() } returns emptyList()
-            justRun { positionCacheWriter.updateOpenPositionStatus(any(), any()) }
 
             val result = facade.closePosition(1L)
 

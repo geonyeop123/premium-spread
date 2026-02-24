@@ -5,8 +5,6 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.infrastructure.cache.CachedTicker
-import io.premiumspread.infrastructure.cache.TickerCacheReader
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested

@@ -6,8 +6,6 @@ import io.mockk.verify
 import io.premiumspread.TickerFixtures
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.TickerRepository
-import io.premiumspread.infrastructure.cache.CachedPremium
-import io.premiumspread.infrastructure.cache.PremiumCacheReader
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested

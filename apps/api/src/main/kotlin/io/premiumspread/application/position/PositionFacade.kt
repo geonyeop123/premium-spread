@@ -4,7 +4,6 @@ import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
-import io.premiumspread.infrastructure.cache.PositionCacheWriter
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -12,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional
 class PositionFacade(
     private val positionService: PositionService,
     private val premiumService: PremiumService,
-    private val positionCacheWriter: PositionCacheWriter,
 ) {
 
     @Transactional
@@ -27,9 +25,6 @@ class PositionFacade(
             entryObservedAt = criteria.entryObservedAt,
         )
         val position = positionService.create(command)
-
-        // 포지션 캐시 갱신
-        updatePositionCache()
 
         return PositionResult.Detail.from(position)
     }
@@ -66,21 +61,7 @@ class PositionFacade(
         position.close()
         val savedPosition = positionService.save(position)
 
-        // 포지션 캐시 갱신
-        updatePositionCache()
-
         return PositionResult.Detail.from(savedPosition)
-    }
-
-    /**
-     * 포지션 캐시 갱신 (배치 서버의 조건부 캐싱용)
-     */
-    private fun updatePositionCache() {
-        val openPositions = positionService.findAllOpen()
-        val hasOpen = openPositions.isNotEmpty()
-        val count = openPositions.size
-
-        positionCacheWriter.updateOpenPositionStatus(hasOpen, count)
     }
 }
 

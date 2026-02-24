@@ -1,4 +1,4 @@
-package io.premiumspread.infrastructure.cache
+package io.premiumspread.infrastructure.ticker
 
 import io.mockk.every
 import io.mockk.mockk

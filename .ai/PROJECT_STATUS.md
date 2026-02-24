@@ -1,12 +1,12 @@
 # Project Status
 
-> Last updated: 2026-02-20 (session 2)
+> Last updated: 2026-02-24
 
 ## Current State
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | 아키텍처 리팩토링 완료, 단위 143건 GREEN (CacheReader 4파일 신규 + 컨트롤러 DomainException 커버) |
+| apps/api | Active | 아키텍처 리팩토링 완료, 단위 171건 GREEN (infrastructure/cache 패키지 해소 + PositionFacade 위반 수정) |
 | apps/batch | Active | 4-layer 정렬 완료, 단위 138건 + 통합 167건 GREEN |
 | modules/redis | Active | AggregationTimeUnit, TickerAggregationTimeUnit 및 TTL 정책 반영 |
 | modules/jpa | Stable | - |
@@ -16,9 +16,9 @@
 ## Recent Changes
 
 ```text
+refactor: infrastructure/cache 패키지 해소 + PositionFacade 아키텍처 위반 수정
+5d36ed4 test: api 모듈 테스트 커버리지 보강 (CacheReader + DomainException)
 204f7a8 test: batch 모듈 테스트 커버리지 전면 보강
-551883c docs: E2E 테스트 플래닝 문서 작성
-7af7c6b chore: 프로젝트 설정 및 루트 문서 최신화
 ```
 
 ## TODO
@@ -39,7 +39,8 @@
 - [x] batch JobExecutor 공통화 (lock/metrics/last-run)
 - [x] batch AggregationJob 통합 (premium/ticker minute/hour/day)
 - [x] batch E2E 테스트 구축 (20건 GREEN: ExchangeRate 3 + Ticker 3 + Premium 3 + PremiumAgg 6 + TickerAgg 5)
-- [ ] position 도메인: `PositionFacade`의 `PositionCacheWriter` infrastructure 참조 정리
+- [x] position 도메인: `PositionFacade`의 `PositionCacheWriter` infrastructure 참조 정리
+- [x] infrastructure/cache/ 패키지 해소 → 각 도메인 패키지로 분산
 
 ### Pending
 
