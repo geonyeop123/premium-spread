@@ -1,6 +1,7 @@
 package io.premiumspread
 
 import io.premiumspread.domain.BaseEntity
+import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.ticker.Currency
@@ -92,6 +93,19 @@ object PositionFixtures {
             entryFxRate = entryFxRate,
             entryPremiumRate = entryPremiumRate,
             entryObservedAt = entryObservedAt,
+        ).withId(id)
+    }
+}
+
+object MemberFixtures {
+    fun activeMember(
+        email: String = "test@example.com",
+        encodedPassword: String = "encoded_password",
+        id: Long = 1L,
+    ): Member {
+        return Member.create(
+            email = email,
+            encodedPassword = encodedPassword,
         ).withId(id)
     }
 }

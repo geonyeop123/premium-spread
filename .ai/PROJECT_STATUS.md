@@ -1,12 +1,12 @@
 # Project Status
 
-> Last updated: 2026-02-24
+> Last updated: 2026-02-25
 
 ## Current State
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | 아키텍처 리팩토링 완료, 단위 171건 + E2E 통합 50건 GREEN (Ticker 2 + Premium 9 + Position 11 + 기존 28건) |
+| apps/api | Active | 회원 인증 기능 추가 (Spring Security 세션 기반), 단위 테스트 GREEN |
 | apps/batch | Active | 4-layer 정렬 완료, 단위 138건 + 통합 167건 GREEN |
 | modules/redis | Active | AggregationTimeUnit, TickerAggregationTimeUnit 및 TTL 정책 반영 |
 | modules/jpa | Stable | - |
@@ -16,9 +16,9 @@
 ## Recent Changes
 
 ```text
+feat: 회원 인증 기능 구현 (Spring Security 세션 기반 로그인/로그아웃/회원가입)
 chore: Docker 배포 설정 구성 (Dockerfile, app-compose, infra 정리)
 test: API E2E 통합 테스트 22건 구축 (TickerController 2 + PremiumController 9 + PositionController 11)
-refactor: infrastructure/cache 패키지 해소 + PositionFacade 아키텍처 위반 수정
 ```
 
 ## TODO
@@ -45,6 +45,7 @@ refactor: infrastructure/cache 패키지 해소 + PositionFacade 아키텍처 �
 ### Pending
 
 - [x] E2E Tests (API 서버) — TickerController 2 + PremiumController 9 + PositionController 11 = 22건 GREEN
+- [ ] 회원 인증 Phase 2: 기존 API 인증 보호 (`authenticated()`) + JWT 전환
 - [ ] Production 설정 (application-prod.yml)
 - [x] Docker 설정 — Dockerfile(api/batch), app-compose.yml, infra-compose.yml 정리 완료
 - [ ] CI/CD 파이프라인

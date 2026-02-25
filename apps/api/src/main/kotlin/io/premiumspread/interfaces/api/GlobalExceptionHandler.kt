@@ -7,6 +7,7 @@ import io.premiumspread.domain.DomainException
 import io.premiumspread.domain.InvalidPremiumInputException
 import io.premiumspread.domain.InvalidQuoteException
 import io.premiumspread.domain.InvalidTickerException
+import io.premiumspread.domain.member.DuplicateEmailException
 import io.premiumspread.domain.position.InvalidPositionException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -16,6 +17,13 @@ import java.time.Instant
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
+
+    @ExceptionHandler(DuplicateEmailException::class)
+    fun handleDuplicateEmail(ex: DuplicateEmailException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(code = "DUPLICATE_EMAIL", message = ex.message ?: "Duplicate email"))
+    }
 
     @ExceptionHandler(DomainException::class)
     fun handleDomainException(ex: DomainException): ResponseEntity<ErrorResponse> {
