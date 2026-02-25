@@ -16,9 +16,9 @@
 ## Recent Changes
 
 ```text
+chore: Docker 배포 설정 구성 (Dockerfile, app-compose, infra 정리)
 test: API E2E 통합 테스트 22건 구축 (TickerController 2 + PremiumController 9 + PositionController 11)
 refactor: infrastructure/cache 패키지 해소 + PositionFacade 아키텍처 위반 수정
-test: api 모듈 테스트 커버리지 보강 (CacheReader + DomainException)
 ```
 
 ## TODO
@@ -46,7 +46,7 @@ test: api 모듈 테스트 커버리지 보강 (CacheReader + DomainException)
 
 - [x] E2E Tests (API 서버) — TickerController 2 + PremiumController 9 + PositionController 11 = 22건 GREEN
 - [ ] Production 설정 (application-prod.yml)
-- [ ] Docker 설정 (Dockerfile, docker-compose)
+- [x] Docker 설정 — Dockerfile(api/batch), app-compose.yml, infra-compose.yml 정리 완료
 - [ ] CI/CD 파이프라인
 
 ## Known Issues

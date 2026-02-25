@@ -41,3 +41,10 @@ spring.config.activate.on-profile: qa
 
 ---
 spring.config.activate.on-profile: prd
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_MASTER_HOST}
+      port: ${REDIS_MASTER_PORT}
+      password: ""

@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: premium-spread-api
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prd
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: application
+      MYSQL_PWD: application
+      REDIS_MASTER_HOST: redis-master
+      REDIS_MASTER_PORT: 6379
+      REDIS_REPLICA_1_HOST: redis-readonly
+      REDIS_REPLICA_1_PORT: 6379
+    restart: unless-stopped
+    networks:
+      - premium-spread
+
+  batch:
+    build:
+      context: ..
+      dockerfile: apps/batch/Dockerfile
+    container_name: premium-spread-batch
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: prd
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: application
+      MYSQL_PWD: application
+      REDIS_MASTER_HOST: redis-master
+      REDIS_MASTER_PORT: 6379
+      REDIS_REPLICA_1_HOST: redis-readonly
+      REDIS_REPLICA_1_PORT: 6379
+    restart: unless-stopped
+    networks:
+      - premium-spread
+
+networks:
+  premium-spread:
+    external: true
+    name: premium-spread

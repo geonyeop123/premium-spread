@@ -88,23 +88,47 @@ premium = ((koreaPrice - foreignPrice * fxRate) / (foreignPrice * fxRate)) * 100
 - JDK 21
 - Docker & Docker Compose
 
-### 인프라 실행
+### 로컬 개발 환경
+
+인프라(MySQL, Redis)만 Docker로 띄우고 앱은 로컬에서 실행합니다.
 
 ```bash
+# 1. 인프라 실행
 docker compose -f docker/infra-compose.yml up -d
+
+# 2. 앱 실행
+./gradlew :apps:api:bootRun
+./gradlew :apps:batch:bootRun
 ```
 
-### 빌드 및 실행
+### Docker 배포 (전체 컨테이너)
+
+앱 서버까지 모두 Docker로 실행합니다.
 
 ```bash
-# 빌드
-./gradlew compileKotlin
+# 1. 인프라 먼저 실행
+docker compose -f docker/infra-compose.yml up -d
 
-# API 서버 실행
-./gradlew :apps:api:bootRun
+# 2. 앱 빌드 & 실행 (첫 실행 시 Gradle 빌드 포함, 5~10분 소요)
+docker compose -f docker/app-compose.yml up -d --build
+```
 
-# 배치 서버 실행
-./gradlew :apps:batch:bootRun
+**한 번에 전체 실행**
+
+```bash
+docker compose -f docker/infra-compose.yml -f docker/app-compose.yml up -d --build
+```
+
+**코드 변경 후 앱만 재배포**
+
+```bash
+docker compose -f docker/app-compose.yml up -d --build
+```
+
+**전체 종료**
+
+```bash
+docker compose -f docker/infra-compose.yml -f docker/app-compose.yml down
 ```
 
 ### 테스트
@@ -153,18 +177,20 @@ docker compose -f docker/infra-compose.yml up -d
 | `test` | 테스트 환경 |
 | `prod` | 운영 환경 |
 
-### 환경 변수
+### 환경 변수 (Docker 배포 시)
 
-```yaml
-# MySQL
-MYSQL_URL: jdbc:mysql://localhost:3306/premium_spread
-MYSQL_USERNAME: root
-MYSQL_PASSWORD: password
+`docker/app-compose.yml`에서 주입되며, 로컬 개발 시에는 불필요합니다.
 
-# Redis
-REDIS_HOST: localhost
-REDIS_PORT: 6379
-```
+| 변수 | 설명 | 기본값 (app-compose) |
+|-----|------|-------------------|
+| `MYSQL_HOST` | MySQL 호스트 | `mysql` |
+| `MYSQL_PORT` | MySQL 포트 | `3306` |
+| `MYSQL_USER` | MySQL 사용자 | `application` |
+| `MYSQL_PWD` | MySQL 비밀번호 | `application` |
+| `REDIS_MASTER_HOST` | Redis Master 호스트 | `redis-master` |
+| `REDIS_MASTER_PORT` | Redis Master 포트 | `6379` |
+| `REDIS_REPLICA_1_HOST` | Redis Replica 호스트 | `redis-readonly` |
+| `REDIS_REPLICA_1_PORT` | Redis Replica 포트 | `6379` |
 
 ## 손익 구조
 
@@ -175,9 +201,9 @@ REDIS_PORT: 6379
 
 ## 향후 계획
 
-- [ ] E2E 테스트
+- [x] E2E 테스트 (API 22건 + Batch 20건)
 - [ ] Production 설정
-- [ ] Docker 이미지 빌드
+- [x] Docker 이미지 빌드 (Dockerfile + app-compose.yml)
 - [ ] CI/CD 파이프라인
 - [ ] 다중 코인 지원 (ETH, SOL 등)
 - [ ] 거래소 다각화 (코인원, OKX 등)
