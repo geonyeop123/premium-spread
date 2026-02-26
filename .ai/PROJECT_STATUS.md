@@ -1,12 +1,12 @@
 # Project Status
 
-> Last updated: 2026-02-25
+> Last updated: 2026-02-26
 
 ## Current State
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | 회원 인증 기능 추가 (Spring Security 세션 기반), 단위 테스트 GREEN |
+| apps/api | Active | 회원 인증 기능 추가 (Spring Security 세션 기반), 단위+통합 테스트 GREEN |
 | apps/batch | Active | 4-layer 정렬 완료, 단위 138건 + 통합 167건 GREEN |
 | modules/redis | Active | AggregationTimeUnit, TickerAggregationTimeUnit 및 TTL 정책 반영 |
 | modules/jpa | Stable | - |
@@ -16,9 +16,9 @@
 ## Recent Changes
 
 ```text
+test: 회원 인증 테스트 추가 및 SecurityConfig 세션 컨텍스트 저장 수정
 feat: 회원 인증 기능 구현 (Spring Security 세션 기반 로그인/로그아웃/회원가입)
-chore: Docker 배포 설정 구성 (Dockerfile, app-compose, infra 정리)
-test: API E2E 통합 테스트 22건 구축 (TickerController 2 + PremiumController 9 + PositionController 11)
+fix: Dockerfile에 /app/logs 디렉토리 생성 추가
 ```
 
 ## TODO
@@ -45,6 +45,7 @@ test: API E2E 통합 테스트 22건 구축 (TickerController 2 + PremiumControl
 ### Pending
 
 - [x] E2E Tests (API 서버) — TickerController 2 + PremiumController 9 + PositionController 11 = 22건 GREEN
+- [x] 회원 인증 Phase 1 — 세션 기반 회원가입/로그인/로그아웃/내 정보 조회 구현 완료
 - [ ] 회원 인증 Phase 2: 기존 API 인증 보호 (`authenticated()`) + JWT 전환
 - [ ] Production 설정 (application-prod.yml)
 - [x] Docker 설정 — Dockerfile(api/batch), app-compose.yml, infra-compose.yml 정리 완료
