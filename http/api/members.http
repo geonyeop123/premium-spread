@@ -1,0 +1,23 @@
+### 회원가입
+POST {{premium-api}}/api/v1/members/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### 로그인
+POST {{premium-api}}/api/v1/members/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### 내 정보 조회 (로그인 세션 필요)
+GET {{premium-api}}/api/v1/members/me
+
+### 로그아웃
+POST {{premium-api}}/api/v1/members/logout
