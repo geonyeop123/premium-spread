@@ -1,7 +1,11 @@
+import { PremiumDisplay } from '@/components/PremiumDisplay';
+import { PremiumChart } from '@/components/PremiumChart';
+
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <h1 className="text-2xl font-bold">Premium Spread</h1>
+    <div className="container mx-auto space-y-6 px-4 py-6">
+      <PremiumDisplay />
+      <PremiumChart />
     </div>
   );
 }
