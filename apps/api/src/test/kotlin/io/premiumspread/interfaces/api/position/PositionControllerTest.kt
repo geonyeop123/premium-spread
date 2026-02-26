@@ -11,13 +11,16 @@ import io.premiumspread.application.position.PremiumNotFoundException
 import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.infrastructure.security.CustomUserDetails
+import io.premiumspread.infrastructure.security.SecurityConfig
+import io.premiumspread.interfaces.api.config.WebMvcConfig
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import io.premiumspread.infrastructure.security.SecurityConfig
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -25,7 +28,7 @@ import java.math.BigDecimal
 import java.time.Instant
 
 @WebMvcTest(PositionController::class)
-@Import(SecurityConfig::class)
+@Import(SecurityConfig::class, WebMvcConfig::class)
 class PositionControllerTest {
 
     @Autowired
@@ -36,6 +39,13 @@ class PositionControllerTest {
 
     @MockkBean
     private lateinit var positionFacade: PositionFacade
+
+    private val testUserDetails = CustomUserDetails(
+        memberId = 1L,
+        email = "test@test.com",
+        nickname = "test",
+        encodedPassword = "pw",
+    )
 
     @Nested
     inner class OpenPosition {
@@ -54,6 +64,7 @@ class PositionControllerTest {
 
             val result = PositionResult.Detail(
                 id = 1L,
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -67,6 +78,7 @@ class PositionControllerTest {
             every { positionFacade.openPosition(any<PositionCriteria.Open>()) } returns result
 
             mockMvc.post("/api/v1/positions") {
+                with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }.andExpect {
@@ -92,6 +104,7 @@ class PositionControllerTest {
             )
 
             mockMvc.post("/api/v1/positions") {
+                with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }.andExpect {
@@ -117,6 +130,7 @@ class PositionControllerTest {
             } throws InvalidPositionException("수량은 0보다 커야 합니다")
 
             mockMvc.post("/api/v1/positions") {
+                with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }.andExpect {
@@ -134,6 +148,7 @@ class PositionControllerTest {
         fun `ID로 포지션을 조회한다`() {
             val result = PositionResult.Detail(
                 id = 1L,
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -173,6 +188,7 @@ class PositionControllerTest {
             val results = listOf(
                 PositionResult.Detail(
                     id = 1L,
+                    memberId = 1L,
                     symbol = "BTC",
                     exchange = Exchange.UPBIT,
                     quantity = BigDecimal("0.5"),
@@ -184,6 +200,7 @@ class PositionControllerTest {
                 ),
                 PositionResult.Detail(
                     id = 2L,
+                    memberId = 1L,
                     symbol = "ETH",
                     exchange = Exchange.UPBIT,
                     quantity = BigDecimal("5"),
@@ -279,6 +296,7 @@ class PositionControllerTest {
         fun `포지션을 청산한다`() {
             val result = PositionResult.Detail(
                 id = 1L,
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),

@@ -6,6 +6,7 @@ import java.time.Instant
 
 class PositionCommand private constructor() {
     data class Create(
+        val memberId: Long,
         val symbol: String,
         val exchange: Exchange,
         val quantity: BigDecimal,

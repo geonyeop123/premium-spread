@@ -9,6 +9,7 @@ import java.time.Instant
 
 class PositionCriteria private constructor() {
     data class Open(
+        val memberId: Long,
         val symbol: String,
         val exchange: Exchange,
         val quantity: BigDecimal,
@@ -22,6 +23,7 @@ class PositionCriteria private constructor() {
 class PositionResult private constructor() {
     data class Detail(
         val id: Long,
+        val memberId: Long,
         val symbol: String,
         val exchange: Exchange,
         val quantity: BigDecimal,
@@ -34,6 +36,7 @@ class PositionResult private constructor() {
         companion object {
             fun from(position: Position): Detail = Detail(
                 id = position.id,
+                memberId = position.memberId,
                 symbol = position.symbol.code,
                 exchange = position.exchange,
                 quantity = position.quantity,

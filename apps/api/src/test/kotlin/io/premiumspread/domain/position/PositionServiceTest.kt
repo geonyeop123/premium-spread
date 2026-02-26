@@ -31,6 +31,7 @@ class PositionServiceTest {
         @Test
         fun `Command로 포지션을 생성한다`() {
             val command = PositionCommand.Create(
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),

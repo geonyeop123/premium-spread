@@ -2,6 +2,8 @@ package io.premiumspread.interfaces.api.position
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.config.TestConfig
+import io.premiumspread.domain.member.Member
+import io.premiumspread.domain.member.MemberRepository
 import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionRepository
 import io.premiumspread.domain.position.PositionStatus
@@ -17,6 +19,7 @@ import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
+import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
@@ -27,8 +30,10 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
@@ -45,14 +50,39 @@ class PositionControllerE2ETest @Autowired constructor(
     private val databaseCleanUp: DatabaseCleanUp,
     private val redisTemplate: StringRedisTemplate,
     private val positionRepository: PositionRepository,
+    private val memberRepository: MemberRepository,
+    private val passwordEncoder: PasswordEncoder,
     private val tickerRepository: TickerRepository,
     private val premiumRepository: PremiumRepository,
 ) {
+
+    private var memberId: Long = 0L
 
     @BeforeEach
     fun setUp() {
         databaseCleanUp.truncateAllTables()
         redisTemplate.execute { it.serverCommands().flushAll() }
+        val member = memberRepository.save(
+            Member.create(
+                email = "test@example.com",
+                encodedPassword = passwordEncoder.encode("password123"),
+            ),
+        )
+        memberId = member.id
+    }
+
+    // -- 인증 헬퍼 --
+
+    private fun login(email: String = "test@example.com", password: String = "password123"): MvcResult {
+        val request = mapOf("email" to email, "password" to password)
+        return mockMvc.post("/api/v1/members/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(request)
+        }.andReturn()
+    }
+
+    private fun sessionCookie(result: MvcResult): Cookie? {
+        return result.response.cookies.firstOrNull { it.name == "SESSION" }
     }
 
     // -- 데이터 준비 헬퍼 --
@@ -63,6 +93,7 @@ class PositionControllerE2ETest @Autowired constructor(
         entryPremiumRate: BigDecimal = BigDecimal("1.28"),
     ): Position = positionRepository.save(
         Position.create(
+            memberId = memberId,
             symbol = Symbol(symbol),
             exchange = exchange,
             quantity = BigDecimal("0.5"),
@@ -112,6 +143,9 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `포지션 오픈 성공 - DB 저장 + Redis 캐시 갱신`() {
         // given
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
+
         val request = mapOf(
             "symbol" to "BTC",
             "exchange" to "UPBIT",
@@ -124,6 +158,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
         // when & then
         mockMvc.post("/api/v1/positions") {
+            cookie(cookie)
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
@@ -143,6 +178,9 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `잘못된 거래소로 오픈 시 400 반환`() {
         // given
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
+
         val request = mapOf(
             "symbol" to "BTC",
             "exchange" to "INVALID_EXCHANGE",
@@ -155,6 +193,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
         // when & then
         mockMvc.post("/api/v1/positions") {
+            cookie(cookie)
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {

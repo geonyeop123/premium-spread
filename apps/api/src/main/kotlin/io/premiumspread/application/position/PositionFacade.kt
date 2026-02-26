@@ -16,6 +16,7 @@ class PositionFacade(
     @Transactional
     fun openPosition(criteria: PositionCriteria.Open): PositionResult.Detail {
         val command = PositionCommand.Create(
+            memberId = criteria.memberId,
             symbol = criteria.symbol,
             exchange = criteria.exchange,
             quantity = criteria.quantity,

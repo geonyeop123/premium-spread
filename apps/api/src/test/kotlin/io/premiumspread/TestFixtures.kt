@@ -76,6 +76,7 @@ object TickerFixtures {
 
 object PositionFixtures {
     fun openPosition(
+        memberId: Long = 1L,
         symbol: String = "BTC",
         exchange: Exchange = Exchange.UPBIT,
         quantity: BigDecimal = BigDecimal("0.5"),
@@ -86,6 +87,7 @@ object PositionFixtures {
         id: Long = 1L,
     ): Position {
         return Position.create(
+            memberId = memberId,
             symbol = Symbol(symbol),
             exchange = exchange,
             quantity = quantity,

@@ -43,6 +43,9 @@ class Position private constructor(
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     var status: PositionStatus = PositionStatus.OPEN,
+
+    @Column(name = "member_id", nullable = false)
+    val memberId: Long,
 ) : BaseEntity() {
 
     fun calculatePremiumDiff(currentPremiumRate: BigDecimal): PositionPnl {
@@ -64,6 +67,7 @@ class Position private constructor(
 
     companion object {
         fun create(
+            memberId: Long,
             symbol: Symbol,
             exchange: Exchange,
             quantity: BigDecimal,
@@ -85,6 +89,7 @@ class Position private constructor(
                 entryFxRate = entryFxRate,
                 entryPremiumRate = entryPremiumRate,
                 entryObservedAt = entryObservedAt,
+                memberId = memberId,
             )
         }
 

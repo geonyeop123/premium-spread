@@ -1,5 +1,7 @@
 package io.premiumspread.infrastructure.position
 
+import io.premiumspread.domain.member.Member
+import io.premiumspread.domain.member.MemberRepository
 import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionRepository
 import io.premiumspread.domain.position.PositionStatus
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
 import java.time.Instant
@@ -27,12 +30,23 @@ import java.time.Instant
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, io.premiumspread.config.TestConfig::class)
 class PositionRepositoryTest @Autowired constructor(
     private val positionRepository: PositionRepository,
+    private val memberRepository: MemberRepository,
+    private val passwordEncoder: PasswordEncoder,
     private val databaseCleanUp: DatabaseCleanUp,
 ) {
+
+    private var memberId: Long = 0L
 
     @BeforeEach
     fun setUp() {
         databaseCleanUp.truncateAllTables()
+        val member = memberRepository.save(
+            Member.create(
+                email = "test@example.com",
+                encodedPassword = passwordEncoder.encode("password123"),
+            ),
+        )
+        memberId = member.id
     }
 
     private fun createPosition(
@@ -45,6 +59,7 @@ class PositionRepositoryTest @Autowired constructor(
         entryObservedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
     ): Position {
         return Position.create(
+            memberId = memberId,
             symbol = Symbol(symbol),
             exchange = exchange,
             quantity = quantity,

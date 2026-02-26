@@ -3,6 +3,7 @@ package io.premiumspread.interfaces.api.position
 import io.premiumspread.application.position.PositionCriteria
 import io.premiumspread.application.position.PositionFacade
 import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.interfaces.api.auth.LoginMemberId
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -19,8 +20,12 @@ class PositionController(
 ) {
 
     @PostMapping
-    fun open(@RequestBody request: PositionRequest.Open): ResponseEntity<PositionResponse.Detail> {
+    fun open(
+        @LoginMemberId memberId: Long,
+        @RequestBody request: PositionRequest.Open,
+    ): ResponseEntity<PositionResponse.Detail> {
         val criteria = PositionCriteria.Open(
+            memberId = memberId,
             symbol = request.symbol,
             exchange = Exchange.valueOf(request.exchange),
             quantity = request.quantity,

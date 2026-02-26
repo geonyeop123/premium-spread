@@ -40,6 +40,7 @@ class PositionFacadeTest {
         @Test
         fun `포지션을 생성한다`() {
             val criteria = PositionCriteria.Open(
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
