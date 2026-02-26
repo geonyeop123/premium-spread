@@ -62,4 +62,18 @@ class PositionResponse private constructor() {
             )
         }
     }
+
+    data class Summary(
+        val totalPositions: Int,
+        val openPositions: Int,
+        val closedPositions: Int,
+    ) {
+        companion object {
+            fun from(result: PositionResult.Summary): Summary = Summary(
+                totalPositions = result.totalPositions,
+                openPositions = result.openPositions,
+                closedPositions = result.closedPositions,
+            )
+        }
+    }
 }

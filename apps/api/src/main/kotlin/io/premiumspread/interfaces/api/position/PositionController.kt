@@ -38,6 +38,12 @@ class PositionController(
         return ResponseEntity.status(HttpStatus.CREATED).body(PositionResponse.Detail.from(result))
     }
 
+    @GetMapping("/summary")
+    fun getSummary(@LoginMemberId memberId: Long): ResponseEntity<PositionResponse.Summary> {
+        val result = positionFacade.getSummary(memberId)
+        return ResponseEntity.ok(PositionResponse.Summary.from(result))
+    }
+
     @GetMapping("/history")
     fun getHistory(@LoginMemberId memberId: Long): ResponseEntity<List<PositionResponse.Detail>> {
         val results = positionFacade.findAllClosedByMemberId(memberId)

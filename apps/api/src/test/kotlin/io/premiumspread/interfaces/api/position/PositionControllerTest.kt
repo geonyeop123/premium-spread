@@ -292,6 +292,50 @@ class PositionControllerTest {
     }
 
     @Nested
+    inner class GetSummary {
+
+        @Test
+        fun `포지션 요약을 조회한다`() {
+            val result = PositionResult.Summary(
+                totalPositions = 3,
+                openPositions = 2,
+                closedPositions = 1,
+            )
+
+            every { positionFacade.getSummary(1L) } returns result
+
+            mockMvc.get("/api/v1/positions/summary") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.totalPositions") { value(3) }
+                jsonPath("$.openPositions") { value(2) }
+                jsonPath("$.closedPositions") { value(1) }
+            }
+        }
+
+        @Test
+        fun `포지션이 없으면 0으로 반환한다`() {
+            val result = PositionResult.Summary(
+                totalPositions = 0,
+                openPositions = 0,
+                closedPositions = 0,
+            )
+
+            every { positionFacade.getSummary(1L) } returns result
+
+            mockMvc.get("/api/v1/positions/summary") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.totalPositions") { value(0) }
+                jsonPath("$.openPositions") { value(0) }
+                jsonPath("$.closedPositions") { value(0) }
+            }
+        }
+    }
+
+    @Nested
     inner class GetPnl {
 
         @Test

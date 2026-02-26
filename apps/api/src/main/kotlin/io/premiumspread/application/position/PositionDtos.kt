@@ -68,4 +68,10 @@ class PositionResult private constructor() {
             )
         }
     }
+
+    data class Summary(
+        val totalPositions: Int,
+        val openPositions: Int,
+        val closedPositions: Int,
+    )
 }

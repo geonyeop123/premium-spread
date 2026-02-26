@@ -63,6 +63,17 @@ class PositionFacade(
         return PositionResult.Pnl.from(positionId, pnl)
     }
 
+    @Transactional(readOnly = true)
+    fun getSummary(memberId: Long): PositionResult.Summary {
+        val openCount = positionService.findAllOpenByMemberId(memberId).size
+        val closedCount = positionService.findAllClosedByMemberId(memberId).size
+        return PositionResult.Summary(
+            totalPositions = openCount + closedCount,
+            openPositions = openCount,
+            closedPositions = closedCount,
+        )
+    }
+
     @Transactional
     fun closePosition(positionId: Long, memberId: Long): PositionResult.Detail {
         val position = positionService.findById(positionId)
