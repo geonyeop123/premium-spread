@@ -41,3 +41,11 @@ Cookie: {{session-cookie}}
 ### 포지션 종료 (인증 필요)
 POST {{premium-api}}/api/v1/positions/1/close
 Cookie: {{session-cookie}}
+
+### 닫힌 포지션 이력 조회 (인증 필요)
+GET {{premium-api}}/api/v1/positions/history
+Cookie: {{session-cookie}}
+
+### 포지션 요약 조회 (인증 필요)
+GET {{premium-api}}/api/v1/positions/summary
+Cookie: {{session-cookie}}
