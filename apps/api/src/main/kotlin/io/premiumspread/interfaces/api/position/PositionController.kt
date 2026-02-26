@@ -39,27 +39,36 @@ class PositionController(
     }
 
     @GetMapping("/{id}")
-    fun getById(@PathVariable id: Long): ResponseEntity<PositionResponse.Detail> {
-        val result = positionFacade.findById(id)
+    fun getById(
+        @PathVariable id: Long,
+        @LoginMemberId memberId: Long,
+    ): ResponseEntity<PositionResponse.Detail> {
+        val result = positionFacade.findById(id, memberId)
             ?: return ResponseEntity.notFound().build()
         return ResponseEntity.ok(PositionResponse.Detail.from(result))
     }
 
     @GetMapping
-    fun getAllOpen(): ResponseEntity<List<PositionResponse.Detail>> {
-        val results = positionFacade.findAllOpen()
+    fun getAllOpen(@LoginMemberId memberId: Long): ResponseEntity<List<PositionResponse.Detail>> {
+        val results = positionFacade.findAllOpenByMemberId(memberId)
         return ResponseEntity.ok(results.map { PositionResponse.Detail.from(it) })
     }
 
     @GetMapping("/{id}/pnl")
-    fun getPnl(@PathVariable id: Long): ResponseEntity<PositionResponse.Pnl> {
-        val result = positionFacade.calculatePnl(id)
+    fun getPnl(
+        @PathVariable id: Long,
+        @LoginMemberId memberId: Long,
+    ): ResponseEntity<PositionResponse.Pnl> {
+        val result = positionFacade.calculatePnl(id, memberId)
         return ResponseEntity.ok(PositionResponse.Pnl.from(result))
     }
 
     @PostMapping("/{id}/close")
-    fun close(@PathVariable id: Long): ResponseEntity<PositionResponse.Detail> {
-        val result = positionFacade.closePosition(id)
+    fun close(
+        @PathVariable id: Long,
+        @LoginMemberId memberId: Long,
+    ): ResponseEntity<PositionResponse.Detail> {
+        val result = positionFacade.closePosition(id, memberId)
         return ResponseEntity.ok(PositionResponse.Detail.from(result))
     }
 }

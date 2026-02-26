@@ -208,9 +208,13 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `존재하는 포지션 단건 조회 성공`() {
         // given
         val saved = createPosition()
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
 
         // when & then
-        mockMvc.get("/api/v1/positions/${saved.id}").andExpect {
+        mockMvc.get("/api/v1/positions/${saved.id}") {
+            cookie(cookie)
+        }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(saved.id) }
             jsonPath("$.symbol") { value("BTC") }
@@ -220,8 +224,14 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `없는 포지션 조회 시 404 반환`() {
+        // given
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
+
         // when & then
-        mockMvc.get("/api/v1/positions/999").andExpect {
+        mockMvc.get("/api/v1/positions/999") {
+            cookie(cookie)
+        }.andExpect {
             status { isNotFound() }
         }
     }
@@ -236,9 +246,13 @@ class PositionControllerE2ETest @Autowired constructor(
         val closedPosition = createPosition(symbol = "SOL")
         closedPosition.close()
         positionRepository.save(closedPosition)
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
 
         // when & then
-        mockMvc.get("/api/v1/positions").andExpect {
+        mockMvc.get("/api/v1/positions") {
+            cookie(cookie)
+        }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(2) }
             jsonPath("$[*].status") {
@@ -249,8 +263,14 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `열린 포지션 없으면 빈 배열 반환`() {
+        // given
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
+
         // when & then
-        mockMvc.get("/api/v1/positions").andExpect {
+        mockMvc.get("/api/v1/positions") {
+            cookie(cookie)
+        }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(0) }
         }
@@ -262,6 +282,8 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `PnL 계산 성공 - DB premium 기준으로 계산 (entryRate=3, currentRate=1 → diff=-2, isProfit=true)`() {
         // given: OPEN 포지션 (entryPremiumRate=3.00)
         val position = createPosition(entryPremiumRate = BigDecimal("3.00"))
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
 
         // DB premium 저장: koreaPrice=101000, foreignPrice=1000, fxRate=100 → premiumRate=1.00
         savePremiumWithTickers(
@@ -271,7 +293,9 @@ class PositionControllerE2ETest @Autowired constructor(
         )
 
         // when & then
-        mockMvc.get("/api/v1/positions/${position.id}/pnl").andExpect {
+        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+            cookie(cookie)
+        }.andExpect {
             status { isOk() }
             jsonPath("$.positionId") { value(position.id) }
             jsonPath("$.entryPremiumRate") { value(3.00) }
@@ -286,9 +310,13 @@ class PositionControllerE2ETest @Autowired constructor(
         // given: OPEN 포지션 + DB premium
         val position = createPosition(entryPremiumRate = BigDecimal("1.00"))
         val premium = savePremiumWithTickers()
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
 
         // when & then
-        mockMvc.get("/api/v1/positions/${position.id}/pnl").andExpect {
+        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+            cookie(cookie)
+        }.andExpect {
             status { isOk() }
             jsonPath("$.positionId") { value(position.id) }
             jsonPath("$.currentPremiumRate") { value(premium.premiumRate.toDouble()) }
@@ -299,9 +327,13 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `프리미엄 없으면 404 반환`() {
         // given: OPEN 포지션, Redis 비어 있음, DB premium 없음
         val position = createPosition()
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
 
         // when & then
-        mockMvc.get("/api/v1/positions/${position.id}/pnl").andExpect {
+        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+            cookie(cookie)
+        }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
         }
@@ -313,12 +345,16 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `포지션 청산 성공 - DB CLOSED 상태 + Redis 캐시 갱신`() {
         // given: OPEN 포지션 1건
         val position = createPosition()
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
         // Redis 초기 상태 설정
         redisTemplate.opsForValue().set(RedisKeyGenerator.positionOpenExistsKey(), "true")
         redisTemplate.opsForValue().set(RedisKeyGenerator.positionOpenCountKey(), "1")
 
         // when & then
-        mockMvc.post("/api/v1/positions/${position.id}/close").andExpect {
+        mockMvc.post("/api/v1/positions/${position.id}/close") {
+            cookie(cookie)
+        }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(position.id) }
             jsonPath("$.status") { value("CLOSED") }
@@ -337,8 +373,14 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `없는 포지션 청산 시 404 반환`() {
+        // given
+        val loginResult = login()
+        val cookie = sessionCookie(loginResult)!!
+
         // when & then
-        mockMvc.post("/api/v1/positions/999/close").andExpect {
+        mockMvc.post("/api/v1/positions/999/close") {
+            cookie(cookie)
+        }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("POSITION_NOT_FOUND") }
         }

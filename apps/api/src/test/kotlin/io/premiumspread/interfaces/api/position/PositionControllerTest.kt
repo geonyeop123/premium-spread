@@ -159,24 +159,26 @@ class PositionControllerTest {
                 status = PositionStatus.OPEN,
             )
 
-            every { positionFacade.findById(1L) } returns result
+            every { positionFacade.findById(1L, 1L) } returns result
 
-            mockMvc.get("/api/v1/positions/1")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.id") { value(1) }
-                    jsonPath("$.symbol") { value("BTC") }
-                }
+            mockMvc.get("/api/v1/positions/1") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(1) }
+                jsonPath("$.symbol") { value("BTC") }
+            }
         }
 
         @Test
         fun `포지션이 없으면 404를 반환한다`() {
-            every { positionFacade.findById(999L) } returns null
+            every { positionFacade.findById(999L, 1L) } returns null
 
-            mockMvc.get("/api/v1/positions/999")
-                .andExpect {
-                    status { isNotFound() }
-                }
+            mockMvc.get("/api/v1/positions/999") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+            }
         }
     }
 
@@ -212,26 +214,28 @@ class PositionControllerTest {
                 ),
             )
 
-            every { positionFacade.findAllOpen() } returns results
+            every { positionFacade.findAllOpenByMemberId(1L) } returns results
 
-            mockMvc.get("/api/v1/positions")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.length()") { value(2) }
-                    jsonPath("$[0].symbol") { value("BTC") }
-                    jsonPath("$[1].symbol") { value("ETH") }
-                }
+            mockMvc.get("/api/v1/positions") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+                jsonPath("$[0].symbol") { value("BTC") }
+                jsonPath("$[1].symbol") { value("ETH") }
+            }
         }
 
         @Test
         fun `열린 포지션이 없으면 빈 배열을 반환한다`() {
-            every { positionFacade.findAllOpen() } returns emptyList()
+            every { positionFacade.findAllOpenByMemberId(1L) } returns emptyList()
 
-            mockMvc.get("/api/v1/positions")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.length()") { value(0) }
-                }
+            mockMvc.get("/api/v1/positions") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(0) }
+            }
         }
     }
 
@@ -249,43 +253,46 @@ class PositionControllerTest {
                 calculatedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
-            every { positionFacade.calculatePnl(1L) } returns result
+            every { positionFacade.calculatePnl(1L, 1L) } returns result
 
-            mockMvc.get("/api/v1/positions/1/pnl")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.positionId") { value(1) }
-                    jsonPath("$.premiumDiff") { value(-2.00) }
-                    jsonPath("$.entryPremiumRate") { value(3.00) }
-                    jsonPath("$.currentPremiumRate") { value(1.00) }
-                    jsonPath("$.isProfit") { value(true) }
-                }
+            mockMvc.get("/api/v1/positions/1/pnl") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.positionId") { value(1) }
+                jsonPath("$.premiumDiff") { value(-2.00) }
+                jsonPath("$.entryPremiumRate") { value(3.00) }
+                jsonPath("$.currentPremiumRate") { value(1.00) }
+                jsonPath("$.isProfit") { value(true) }
+            }
         }
 
         @Test
         fun `포지션이 없으면 404를 반환한다`() {
             every {
-                positionFacade.calculatePnl(999L)
+                positionFacade.calculatePnl(999L, 1L)
             } throws PositionNotFoundException("Position not found: 999")
 
-            mockMvc.get("/api/v1/positions/999/pnl")
-                .andExpect {
-                    status { isNotFound() }
-                    jsonPath("$.code") { value("POSITION_NOT_FOUND") }
-                }
+            mockMvc.get("/api/v1/positions/999/pnl") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("POSITION_NOT_FOUND") }
+            }
         }
 
         @Test
         fun `프리미엄이 없으면 404를 반환한다`() {
             every {
-                positionFacade.calculatePnl(1L)
+                positionFacade.calculatePnl(1L, 1L)
             } throws PremiumNotFoundException("Premium not found for symbol: BTC")
 
-            mockMvc.get("/api/v1/positions/1/pnl")
-                .andExpect {
-                    status { isNotFound() }
-                    jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
-                }
+            mockMvc.get("/api/v1/positions/1/pnl") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
+            }
         }
     }
 
@@ -307,27 +314,29 @@ class PositionControllerTest {
                 status = PositionStatus.CLOSED,
             )
 
-            every { positionFacade.closePosition(1L) } returns result
+            every { positionFacade.closePosition(1L, 1L) } returns result
 
-            mockMvc.post("/api/v1/positions/1/close")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.id") { value(1) }
-                    jsonPath("$.status") { value("CLOSED") }
-                }
+            mockMvc.post("/api/v1/positions/1/close") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(1) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
         }
 
         @Test
         fun `포지션이 없으면 404를 반환한다`() {
             every {
-                positionFacade.closePosition(999L)
+                positionFacade.closePosition(999L, 1L)
             } throws PositionNotFoundException("Position not found: 999")
 
-            mockMvc.post("/api/v1/positions/999/close")
-                .andExpect {
-                    status { isNotFound() }
-                    jsonPath("$.code") { value("POSITION_NOT_FOUND") }
-                }
+            mockMvc.post("/api/v1/positions/999/close") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("POSITION_NOT_FOUND") }
+            }
         }
     }
 }
