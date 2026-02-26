@@ -138,6 +138,14 @@ class PositionControllerE2ETest @Autowired constructor(
         return premiumRepository.save(Premium.create(koreaTicker, foreignTicker, fxTicker))
     }
 
+    // -- 인증 필수 확인 --
+
+    @Test
+    fun `인증 없이 포지션 목록 조회 시 401 반환`() {
+        mockMvc.get("/api/v1/positions")
+            .andExpect { status { isUnauthorized() } }
+    }
+
     // -- POST /api/v1/positions --
 
     @Test

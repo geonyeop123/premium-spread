@@ -47,6 +47,12 @@ class PositionControllerTest {
         encodedPassword = "pw",
     )
 
+    @Test
+    fun `인증 없이 포지션 조회 시 401 반환`() {
+        mockMvc.get("/api/v1/positions")
+            .andExpect { status { isUnauthorized() } }
+    }
+
     @Nested
     inner class OpenPosition {
 
