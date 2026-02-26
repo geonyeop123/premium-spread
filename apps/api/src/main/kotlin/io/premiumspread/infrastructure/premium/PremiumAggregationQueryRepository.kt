@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.Timestamp
 import java.time.Instant
+import java.time.ZoneOffset
 
 @Repository
 class PremiumAggregationQueryRepository(
@@ -40,7 +41,11 @@ class PremiumAggregationQueryRepository(
                     close = rs.getBigDecimal("close"),
                     avg = rs.getBigDecimal("avg"),
                     count = rs.getInt("count"),
-                    observedAt = rs.getTimestamp(timeColumn).toInstant(),
+                    observedAt = if (interval == "1d") {
+                        rs.getDate(timeColumn).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant()
+                    } else {
+                        rs.getTimestamp(timeColumn).toInstant()
+                    },
                 )
             },
             symbol.uppercase(),
