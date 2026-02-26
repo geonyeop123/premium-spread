@@ -9,4 +9,5 @@ interface PremiumRepository {
     fun findLatestBySymbol(symbol: Symbol): Premium?
     fun findLatestSnapshotBySymbol(symbol: Symbol): PremiumSnapshot?
     fun findAllBySymbolAndPeriod(symbol: Symbol, from: Instant, to: Instant): List<Premium>
+    fun findAggregation(symbol: Symbol, interval: String, from: Instant, to: Instant): List<PremiumAggregationSnapshot>
 }

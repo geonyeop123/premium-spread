@@ -39,4 +39,15 @@ class PremiumController(
         val results = premiumFacade.findByPeriod(symbol, from, to)
         return ResponseEntity.ok(results.map { PremiumResponse.Detail.from(it) })
     }
+
+    @GetMapping("/aggregation/{symbol}")
+    fun getAggregation(
+        @PathVariable symbol: String,
+        @RequestParam interval: String,
+        @RequestParam from: Instant,
+        @RequestParam to: Instant,
+    ): ResponseEntity<List<PremiumResponse.Aggregation>> {
+        val results = premiumFacade.findAggregation(symbol, interval, from, to)
+        return ResponseEntity.ok(results.map { PremiumResponse.Aggregation.from(it) })
+    }
 }

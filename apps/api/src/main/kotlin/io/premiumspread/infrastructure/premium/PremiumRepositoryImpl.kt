@@ -1,6 +1,7 @@
 package io.premiumspread.infrastructure.premium
 
 import io.premiumspread.domain.premium.Premium
+import io.premiumspread.domain.premium.PremiumAggregationSnapshot
 import io.premiumspread.domain.premium.PremiumRepository
 import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Symbol
@@ -15,6 +16,7 @@ class PremiumRepositoryImpl(
     private val premiumJpaRepository: PremiumJpaRepository,
     private val premiumCacheReader: PremiumCacheReader,
     private val tickerRepository: TickerRepository,
+    private val premiumAggregationQueryRepository: PremiumAggregationQueryRepository,
 ) : PremiumRepository {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -83,5 +85,9 @@ class PremiumRepositoryImpl(
 
     override fun findAllBySymbolAndPeriod(symbol: Symbol, from: Instant, to: Instant): List<Premium> {
         return premiumJpaRepository.findAllBySymbolAndPeriod(symbol.code, from, to)
+    }
+
+    override fun findAggregation(symbol: Symbol, interval: String, from: Instant, to: Instant): List<PremiumAggregationSnapshot> {
+        return premiumAggregationQueryRepository.findByInterval(symbol.code, interval, from, to)
     }
 }

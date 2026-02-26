@@ -113,6 +113,76 @@ class PremiumControllerTest {
     }
 
     @Nested
+    inner class GetAggregation {
+
+        @Test
+        fun `집계 데이터를 조회한다`() {
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-01T01:00:00Z")
+
+            val results = listOf(
+                PremiumResult.Aggregation(
+                    symbol = "BTC",
+                    high = BigDecimal("2.50"),
+                    low = BigDecimal("1.20"),
+                    open = BigDecimal("1.50"),
+                    close = BigDecimal("2.00"),
+                    avg = BigDecimal("1.80"),
+                    count = 60,
+                    observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+                PremiumResult.Aggregation(
+                    symbol = "BTC",
+                    high = BigDecimal("3.00"),
+                    low = BigDecimal("1.80"),
+                    open = BigDecimal("2.00"),
+                    close = BigDecimal("2.50"),
+                    avg = BigDecimal("2.30"),
+                    count = 58,
+                    observedAt = Instant.parse("2024-01-01T00:01:00Z"),
+                ),
+            )
+
+            every { premiumFacade.findAggregation("BTC", "1m", from, to) } returns results
+
+            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
+                param("interval", "1m")
+                param("from", "2024-01-01T00:00:00Z")
+                param("to", "2024-01-01T01:00:00Z")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+                jsonPath("$[0].symbol") { value("BTC") }
+                jsonPath("$[0].high") { value(2.50) }
+                jsonPath("$[0].low") { value(1.20) }
+                jsonPath("$[0].open") { value(1.50) }
+                jsonPath("$[0].close") { value(2.00) }
+                jsonPath("$[0].avg") { value(1.80) }
+                jsonPath("$[0].count") { value(60) }
+                jsonPath("$[1].symbol") { value("BTC") }
+                jsonPath("$[1].avg") { value(2.30) }
+            }
+        }
+
+        @Test
+        fun `집계 데이터가 없으면 빈 배열을 반환한다`() {
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-01T01:00:00Z")
+
+            every { premiumFacade.findAggregation("BTC", "1m", from, to) } returns emptyList()
+
+            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
+                param("interval", "1m")
+                param("from", "2024-01-01T00:00:00Z")
+                param("to", "2024-01-01T01:00:00Z")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(0) }
+            }
+        }
+    }
+
+    @Nested
     inner class GetHistory {
 
         @Test

@@ -18,6 +18,7 @@ class PremiumRepositoryImplTest {
     private lateinit var premiumJpaRepository: PremiumJpaRepository
     private lateinit var premiumCacheReader: PremiumCacheReader
     private lateinit var tickerRepository: TickerRepository
+    private lateinit var premiumAggregationQueryRepository: PremiumAggregationQueryRepository
     private lateinit var repository: PremiumRepositoryImpl
 
     @BeforeEach
@@ -25,10 +26,12 @@ class PremiumRepositoryImplTest {
         premiumJpaRepository = mockk()
         premiumCacheReader = mockk()
         tickerRepository = mockk()
+        premiumAggregationQueryRepository = mockk()
         repository = PremiumRepositoryImpl(
             premiumJpaRepository = premiumJpaRepository,
             premiumCacheReader = premiumCacheReader,
             tickerRepository = tickerRepository,
+            premiumAggregationQueryRepository = premiumAggregationQueryRepository,
         )
     }
 

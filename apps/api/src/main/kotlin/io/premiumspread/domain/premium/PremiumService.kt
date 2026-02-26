@@ -39,4 +39,9 @@ class PremiumService(
     fun findAllBySymbolAndPeriod(symbol: Symbol, from: Instant, to: Instant): List<Premium> {
         return premiumRepository.findAllBySymbolAndPeriod(symbol, from, to)
     }
+
+    @Transactional(readOnly = true)
+    fun findAggregation(symbol: Symbol, interval: String, from: Instant, to: Instant): List<PremiumAggregationSnapshot> {
+        return premiumRepository.findAggregation(symbol, interval, from, to)
+    }
 }
