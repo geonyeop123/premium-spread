@@ -44,4 +44,9 @@ class PositionService(
     fun findAllOpenByMemberId(memberId: Long): List<Position> {
         return positionRepository.findAllOpenByMemberId(memberId)
     }
+
+    @Transactional(readOnly = true)
+    fun findAllClosedByMemberId(memberId: Long): List<Position> {
+        return positionRepository.findAllClosedByMemberId(memberId)
+    }
 }

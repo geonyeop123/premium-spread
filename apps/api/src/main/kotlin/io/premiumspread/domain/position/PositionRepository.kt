@@ -8,4 +8,6 @@ interface PositionRepository {
     fun findAllByMemberIdAndStatus(memberId: Long, status: PositionStatus): List<Position>
     fun findAllOpenByMemberId(memberId: Long): List<Position> =
         findAllByMemberIdAndStatus(memberId, PositionStatus.OPEN)
+    fun findAllClosedByMemberId(memberId: Long): List<Position> =
+        findAllByMemberIdAndStatus(memberId, PositionStatus.CLOSED)
 }

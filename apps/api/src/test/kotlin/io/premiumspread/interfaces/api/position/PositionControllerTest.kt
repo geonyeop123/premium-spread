@@ -246,6 +246,52 @@ class PositionControllerTest {
     }
 
     @Nested
+    inner class GetHistory {
+
+        @Test
+        fun `닫힌 포지션 이력을 조회한다`() {
+            val results = listOf(
+                PositionResult.Detail(
+                    id = 1L,
+                    memberId = 1L,
+                    symbol = "BTC",
+                    exchange = Exchange.UPBIT,
+                    quantity = BigDecimal("0.5"),
+                    entryPrice = BigDecimal("129555000"),
+                    entryFxRate = BigDecimal("1432.6"),
+                    entryPremiumRate = BigDecimal("1.28"),
+                    entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                    status = PositionStatus.CLOSED,
+                ),
+            )
+
+            every { positionFacade.findAllClosedByMemberId(1L) } returns results
+
+            mockMvc.get("/api/v1/positions/history") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].id") { value(1) }
+                jsonPath("$[0].symbol") { value("BTC") }
+                jsonPath("$[0].status") { value("CLOSED") }
+            }
+        }
+
+        @Test
+        fun `닫힌 포지션이 없으면 빈 배열을 반환한다`() {
+            every { positionFacade.findAllClosedByMemberId(1L) } returns emptyList()
+
+            mockMvc.get("/api/v1/positions/history") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(0) }
+            }
+        }
+    }
+
+    @Nested
     inner class GetPnl {
 
         @Test

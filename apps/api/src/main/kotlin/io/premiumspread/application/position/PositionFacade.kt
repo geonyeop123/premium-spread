@@ -45,6 +45,12 @@ class PositionFacade(
     }
 
     @Transactional(readOnly = true)
+    fun findAllClosedByMemberId(memberId: Long): List<PositionResult.Detail> {
+        return positionService.findAllClosedByMemberId(memberId)
+            .map { PositionResult.Detail.from(it) }
+    }
+
+    @Transactional(readOnly = true)
     fun calculatePnl(positionId: Long, memberId: Long): PositionResult.Pnl {
         val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")

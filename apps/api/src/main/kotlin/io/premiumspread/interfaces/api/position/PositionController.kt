@@ -38,6 +38,12 @@ class PositionController(
         return ResponseEntity.status(HttpStatus.CREATED).body(PositionResponse.Detail.from(result))
     }
 
+    @GetMapping("/history")
+    fun getHistory(@LoginMemberId memberId: Long): ResponseEntity<List<PositionResponse.Detail>> {
+        val results = positionFacade.findAllClosedByMemberId(memberId)
+        return ResponseEntity.ok(results.map { PositionResponse.Detail.from(it) })
+    }
+
     @GetMapping("/{id}")
     fun getById(
         @PathVariable id: Long,
