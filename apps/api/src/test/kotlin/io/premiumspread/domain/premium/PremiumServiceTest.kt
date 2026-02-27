@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 class PremiumServiceTest {
 
@@ -168,6 +169,54 @@ class PremiumServiceTest {
             every { premiumRepository.findAllBySymbolAndPeriod(symbol, from, to) } returns emptyList()
 
             val result = service.findAllBySymbolAndPeriod(symbol, from, to)
+
+            assertThat(result).isEmpty()
+        }
+    }
+
+    @Nested
+    inner class FindAggregation {
+
+        @Test
+        fun `심볼, 인터벌, 기간으로 집계 데이터를 조회한다`() {
+            val symbol = Symbol("BTC")
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-02T00:00:00Z")
+            val snapshots = listOf(
+                PremiumAggregationSnapshot(
+                    symbol = "BTC",
+                    high = BigDecimal("2.50"), low = BigDecimal("1.00"),
+                    open = BigDecimal("1.50"), close = BigDecimal("2.00"),
+                    avg = BigDecimal("1.75"), count = 60,
+                    observedAt = from,
+                ),
+                PremiumAggregationSnapshot(
+                    symbol = "BTC",
+                    high = BigDecimal("3.00"), low = BigDecimal("1.50"),
+                    open = BigDecimal("2.00"), close = BigDecimal("2.50"),
+                    avg = BigDecimal("2.25"), count = 55,
+                    observedAt = from.plus(1, ChronoUnit.HOURS),
+                ),
+            )
+
+            every { premiumRepository.findAggregation(symbol, "1h", from, to) } returns snapshots
+
+            val result = service.findAggregation(symbol, "1h", from, to)
+
+            assertThat(result).hasSize(2)
+            assertThat(result[0].high).isEqualByComparingTo(BigDecimal("2.50"))
+            assertThat(result[1].avg).isEqualByComparingTo(BigDecimal("2.25"))
+        }
+
+        @Test
+        fun `집계 데이터가 없으면 빈 목록을 반환한다`() {
+            val symbol = Symbol("BTC")
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-02T00:00:00Z")
+
+            every { premiumRepository.findAggregation(symbol, "1m", from, to) } returns emptyList()
+
+            val result = service.findAggregation(symbol, "1m", from, to)
 
             assertThat(result).isEmpty()
         }

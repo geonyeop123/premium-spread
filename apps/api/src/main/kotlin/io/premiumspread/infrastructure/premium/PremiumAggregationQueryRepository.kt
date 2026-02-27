@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.Timestamp
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneOffset
 
 @Repository
@@ -25,6 +26,10 @@ class PremiumAggregationQueryRepository(
             else -> throw IllegalArgumentException("Invalid interval: $interval. Allowed: 1m, 1h, 1d")
         }
 
+        // JVM 타임존에 무관하게 UTC 기준으로 변환 (Batch Docker 컨테이너가 UTC로 저장)
+        val fromParam = Timestamp.valueOf(LocalDateTime.ofInstant(from, ZoneOffset.UTC))
+        val toParam = Timestamp.valueOf(LocalDateTime.ofInstant(to, ZoneOffset.UTC))
+
         return jdbcTemplate.query(
             """
             SELECT symbol, $timeColumn, high, low, open, close, avg, count
@@ -44,13 +49,13 @@ class PremiumAggregationQueryRepository(
                     observedAt = if (interval == "1d") {
                         rs.getDate(timeColumn).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant()
                     } else {
-                        rs.getTimestamp(timeColumn).toInstant()
+                        rs.getTimestamp(timeColumn).toLocalDateTime().toInstant(ZoneOffset.UTC)
                     },
                 )
             },
             symbol.uppercase(),
-            Timestamp.from(from),
-            Timestamp.from(to),
+            fromParam,
+            toParam,
         )
     }
 }

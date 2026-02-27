@@ -50,8 +50,9 @@ export function PremiumChart() {
         `/premiums/aggregation/BTC?interval=${interval}&from=${from.toISOString()}&to=${to.toISOString()}`,
       );
 
+      const KST_OFFSET_SEC = 9 * 60 * 60;
       const points: ChartDataPoint[] = data.map((d) => ({
-        time: Math.floor(new Date(d.observedAt).getTime() / 1000) as UTCTimestamp,
+        time: (Math.floor(new Date(d.observedAt).getTime() / 1000) + KST_OFFSET_SEC) as UTCTimestamp,
         value: d.close,
       }));
 

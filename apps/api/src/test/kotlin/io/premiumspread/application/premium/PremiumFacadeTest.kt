@@ -6,6 +6,7 @@ import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.PremiumFixtures
 import io.premiumspread.TickerFixtures
+import io.premiumspread.domain.premium.PremiumAggregationSnapshot
 import io.premiumspread.domain.premium.PremiumCommand
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.premium.PremiumSnapshot
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 class PremiumFacadeTest {
 
@@ -219,6 +221,58 @@ class PremiumFacadeTest {
             } returns emptyList()
 
             val result = facade.findByPeriod("BTC", from, to)
+
+            assertThat(result).isEmpty()
+        }
+    }
+
+    @Nested
+    inner class FindAggregation {
+
+        @Test
+        fun `집계 데이터를 조회하여 Result로 변환한다`() {
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-02T00:00:00Z")
+            val snapshots = listOf(
+                PremiumAggregationSnapshot(
+                    symbol = "BTC",
+                    high = BigDecimal("2.50"), low = BigDecimal("1.00"),
+                    open = BigDecimal("1.50"), close = BigDecimal("2.00"),
+                    avg = BigDecimal("1.75"), count = 60,
+                    observedAt = from,
+                ),
+                PremiumAggregationSnapshot(
+                    symbol = "BTC",
+                    high = BigDecimal("3.00"), low = BigDecimal("1.50"),
+                    open = BigDecimal("2.00"), close = BigDecimal("2.50"),
+                    avg = BigDecimal("2.25"), count = 55,
+                    observedAt = from.plus(1, ChronoUnit.HOURS),
+                ),
+            )
+
+            every {
+                premiumService.findAggregation(Symbol("BTC"), "1h", from, to)
+            } returns snapshots
+
+            val result = facade.findAggregation("BTC", "1h", from, to)
+
+            assertThat(result).hasSize(2)
+            assertThat(result[0].symbol).isEqualTo("BTC")
+            assertThat(result[0].high).isEqualByComparingTo(BigDecimal("2.50"))
+            assertThat(result[0].count).isEqualTo(60)
+            assertThat(result[1].avg).isEqualByComparingTo(BigDecimal("2.25"))
+        }
+
+        @Test
+        fun `집계 데이터가 없으면 빈 목록을 반환한다`() {
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-02T00:00:00Z")
+
+            every {
+                premiumService.findAggregation(Symbol("BTC"), "1m", from, to)
+            } returns emptyList()
+
+            val result = facade.findAggregation("BTC", "1m", from, to)
 
             assertThat(result).isEmpty()
         }
