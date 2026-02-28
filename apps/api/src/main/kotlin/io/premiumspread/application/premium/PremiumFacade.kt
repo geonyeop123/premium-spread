@@ -62,6 +62,12 @@ class PremiumFacade(
         return premiumService.findAllBySymbolAndPeriod(Symbol(symbol), from, to)
             .map { PremiumResult.Detail.from(it) }
     }
+
+    @Transactional(readOnly = true)
+    fun findAggregation(symbol: String, interval: String, from: Instant, to: Instant): List<PremiumResult.Aggregation> {
+        return premiumService.findAggregation(Symbol(symbol), interval, from, to)
+            .map { PremiumResult.Aggregation.from(it) }
+    }
 }
 
 class TickerNotFoundException(message: String) : RuntimeException(message)

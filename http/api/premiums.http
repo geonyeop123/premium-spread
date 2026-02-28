@@ -6,3 +6,12 @@ GET {{premium-api}}/api/v1/premiums/current/BTC
 
 ### 프리미엄 히스토리 조회
 GET {{premium-api}}/api/v1/premiums/history/BTC?from=2024-01-01T00:00:00Z&to=2024-12-31T23:59:59Z
+
+### 프리미엄 집계 데이터 조회 (1분)
+GET {{premium-api}}/api/v1/premiums/aggregation/BTC?interval=1m&from=2024-01-01T00:00:00Z&to=2024-01-01T01:00:00Z
+
+### 프리미엄 집계 데이터 조회 (1시간)
+GET {{premium-api}}/api/v1/premiums/aggregation/BTC?interval=1h&from=2024-01-01T00:00:00Z&to=2024-01-02T00:00:00Z
+
+### 프리미엄 집계 데이터 조회 (1일)
+GET {{premium-api}}/api/v1/premiums/aggregation/BTC?interval=1d&from=2024-01-01T00:00:00Z&to=2024-02-01T00:00:00Z

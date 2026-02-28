@@ -40,6 +40,7 @@ class PositionFacadeTest {
         @Test
         fun `포지션을 생성한다`() {
             val criteria = PositionCriteria.Open(
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -72,11 +73,11 @@ class PositionFacadeTest {
 
         @Test
         fun `ID로 포지션을 조회한다`() {
-            val position = PositionFixtures.openPosition(id = 1L)
+            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
 
             every { positionService.findById(1L) } returns position
 
-            val result = facade.findById(1L)
+            val result = facade.findById(1L, 1L)
 
             assertThat(result).isNotNull
             assertThat(result!!.id).isEqualTo(1L)
@@ -87,25 +88,37 @@ class PositionFacadeTest {
         fun `포지션이 없으면 null을 반환한다`() {
             every { positionService.findById(999L) } returns null
 
-            val result = facade.findById(999L)
+            val result = facade.findById(999L, 1L)
 
             assertThat(result).isNull()
+        }
+
+        @Test
+        fun `다른 회원의 포지션을 조회하면 예외를 던진다`() {
+            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
+
+            every { positionService.findById(1L) } returns position
+
+            assertThatThrownBy {
+                facade.findById(1L, 999L)
+            }.isInstanceOf(PositionNotFoundException::class.java)
+                .hasMessageContaining("Position not found")
         }
     }
 
     @Nested
-    inner class FindAllOpen {
+    inner class FindAllOpenByMemberId {
 
         @Test
-        fun `열린 포지션 목록을 조회한다`() {
+        fun `회원별 열린 포지션 목록을 조회한다`() {
             val positions = listOf(
-                PositionFixtures.openPosition(symbol = "BTC", id = 1L),
-                PositionFixtures.openPosition(symbol = "ETH", id = 2L),
+                PositionFixtures.openPosition(memberId = 1L, symbol = "BTC", id = 1L),
+                PositionFixtures.openPosition(memberId = 1L, symbol = "ETH", id = 2L),
             )
 
-            every { positionService.findAllOpen() } returns positions
+            every { positionService.findAllOpenByMemberId(1L) } returns positions
 
-            val result = facade.findAllOpen()
+            val result = facade.findAllOpenByMemberId(1L)
 
             assertThat(result).hasSize(2)
             assertThat(result[0].symbol).isEqualTo("BTC")
@@ -114,9 +127,9 @@ class PositionFacadeTest {
 
         @Test
         fun `열린 포지션이 없으면 빈 목록을 반환한다`() {
-            every { positionService.findAllOpen() } returns emptyList()
+            every { positionService.findAllOpenByMemberId(1L) } returns emptyList()
 
-            val result = facade.findAllOpen()
+            val result = facade.findAllOpenByMemberId(1L)
 
             assertThat(result).isEmpty()
         }
@@ -129,6 +142,7 @@ class PositionFacadeTest {
         fun `포지션의 PnL을 계산한다 - 프리미엄 하락 시 이익`() {
             val position = PositionFixtures.openPosition(
                 id = 1L,
+                memberId = 1L,
                 entryPremiumRate = BigDecimal("3.00"),
             )
             val currentPremium = PremiumFixtures.premiumWithRate(
@@ -139,7 +153,7 @@ class PositionFacadeTest {
             every { positionService.findById(1L) } returns position
             every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns currentPremium
 
-            val result = facade.calculatePnl(1L)
+            val result = facade.calculatePnl(1L, 1L)
 
             assertThat(result.positionId).isEqualTo(1L)
             assertThat(result.premiumDiff).isEqualByComparingTo(BigDecimal("-2.00"))
@@ -152,6 +166,7 @@ class PositionFacadeTest {
         fun `포지션의 PnL을 계산한다 - 프리미엄 상승 시 손실`() {
             val position = PositionFixtures.openPosition(
                 id = 1L,
+                memberId = 1L,
                 entryPremiumRate = BigDecimal("1.00"),
             )
             val currentPremium = PremiumFixtures.premiumWithRate(
@@ -162,7 +177,7 @@ class PositionFacadeTest {
             every { positionService.findById(1L) } returns position
             every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns currentPremium
 
-            val result = facade.calculatePnl(1L)
+            val result = facade.calculatePnl(1L, 1L)
 
             assertThat(result.premiumDiff).isEqualByComparingTo(BigDecimal("2.00"))
             assertThat(result.isProfit).isFalse()
@@ -173,22 +188,34 @@ class PositionFacadeTest {
             every { positionService.findById(999L) } returns null
 
             assertThatThrownBy {
-                facade.calculatePnl(999L)
+                facade.calculatePnl(999L, 1L)
             }.isInstanceOf(PositionNotFoundException::class.java)
                 .hasMessageContaining("Position not found")
         }
 
         @Test
         fun `프리미엄이 없으면 예외를 던진다`() {
-            val position = PositionFixtures.openPosition(id = 1L)
+            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
 
             every { positionService.findById(1L) } returns position
             every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns null
 
             assertThatThrownBy {
-                facade.calculatePnl(1L)
+                facade.calculatePnl(1L, 1L)
             }.isInstanceOf(PremiumNotFoundException::class.java)
                 .hasMessageContaining("Premium not found")
+        }
+
+        @Test
+        fun `다른 회원의 포지션 PnL을 계산하면 예외를 던진다`() {
+            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
+
+            every { positionService.findById(1L) } returns position
+
+            assertThatThrownBy {
+                facade.calculatePnl(1L, 999L)
+            }.isInstanceOf(PositionNotFoundException::class.java)
+                .hasMessageContaining("Position not found")
         }
     }
 
@@ -197,7 +224,7 @@ class PositionFacadeTest {
 
         @Test
         fun `포지션을 청산한다`() {
-            val position = PositionFixtures.openPosition(id = 1L)
+            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
 
             every { positionService.findById(1L) } returns position
 
@@ -206,7 +233,7 @@ class PositionFacadeTest {
                 positionSlot.captured
             }
 
-            val result = facade.closePosition(1L)
+            val result = facade.closePosition(1L, 1L)
 
             assertThat(result.id).isEqualTo(1L)
             assertThat(result.status).isEqualTo(PositionStatus.CLOSED)
@@ -219,7 +246,19 @@ class PositionFacadeTest {
             every { positionService.findById(999L) } returns null
 
             assertThatThrownBy {
-                facade.closePosition(999L)
+                facade.closePosition(999L, 1L)
+            }.isInstanceOf(PositionNotFoundException::class.java)
+                .hasMessageContaining("Position not found")
+        }
+
+        @Test
+        fun `다른 회원의 포지션을 청산하면 예외를 던진다`() {
+            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
+
+            every { positionService.findById(1L) } returns position
+
+            assertThatThrownBy {
+                facade.closePosition(1L, 999L)
             }.isInstanceOf(PositionNotFoundException::class.java)
                 .hasMessageContaining("Position not found")
         }

@@ -31,6 +31,7 @@ class PositionServiceTest {
         @Test
         fun `Command로 포지션을 생성한다`() {
             val command = PositionCommand.Create(
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -122,6 +123,36 @@ class PositionServiceTest {
             every { positionRepository.findAllOpen() } returns emptyList()
 
             val result = service.findAllOpen()
+
+            assertThat(result).isEmpty()
+        }
+    }
+
+    @Nested
+    inner class FindAllOpenByMemberId {
+
+        @Test
+        fun `회원별 열린 포지션 목록을 조회한다`() {
+            val memberId = 1L
+            val positions = listOf(
+                PositionFixtures.openPosition(memberId = memberId, symbol = "BTC", id = 1L),
+                PositionFixtures.openPosition(memberId = memberId, symbol = "ETH", id = 2L),
+            )
+
+            every { positionRepository.findAllOpenByMemberId(memberId) } returns positions
+
+            val result = service.findAllOpenByMemberId(memberId)
+
+            assertThat(result).hasSize(2)
+            assertThat(result[0].symbol.code).isEqualTo("BTC")
+            assertThat(result[1].symbol.code).isEqualTo("ETH")
+        }
+
+        @Test
+        fun `회원의 열린 포지션이 없으면 빈 목록을 반환한다`() {
+            every { positionRepository.findAllOpenByMemberId(999L) } returns emptyList()
+
+            val result = service.findAllOpenByMemberId(999L)
 
             assertThat(result).isEmpty()
         }

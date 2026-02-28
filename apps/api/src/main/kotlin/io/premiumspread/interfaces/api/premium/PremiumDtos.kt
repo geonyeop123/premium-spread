@@ -6,6 +6,30 @@ import java.math.BigDecimal
 import java.time.Instant
 
 class PremiumResponse private constructor() {
+    data class Aggregation(
+        val symbol: String,
+        val high: BigDecimal,
+        val low: BigDecimal,
+        val open: BigDecimal,
+        val close: BigDecimal,
+        val avg: BigDecimal,
+        val count: Int,
+        val observedAt: Instant,
+    ) {
+        companion object {
+            fun from(result: PremiumResult.Aggregation): Aggregation = Aggregation(
+                symbol = result.symbol,
+                high = result.high,
+                low = result.low,
+                open = result.open,
+                close = result.close,
+                avg = result.avg,
+                count = result.count,
+                observedAt = result.observedAt,
+            )
+        }
+    }
+
     data class Detail(
         val id: Long,
         val symbol: String,

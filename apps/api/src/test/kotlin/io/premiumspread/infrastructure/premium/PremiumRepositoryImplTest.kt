@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.premiumspread.TickerFixtures
+import io.premiumspread.domain.premium.PremiumAggregationSnapshot
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.TickerRepository
 import org.assertj.core.api.Assertions.assertThat
@@ -18,6 +19,7 @@ class PremiumRepositoryImplTest {
     private lateinit var premiumJpaRepository: PremiumJpaRepository
     private lateinit var premiumCacheReader: PremiumCacheReader
     private lateinit var tickerRepository: TickerRepository
+    private lateinit var premiumAggregationQueryRepository: PremiumAggregationQueryRepository
     private lateinit var repository: PremiumRepositoryImpl
 
     @BeforeEach
@@ -25,10 +27,12 @@ class PremiumRepositoryImplTest {
         premiumJpaRepository = mockk()
         premiumCacheReader = mockk()
         tickerRepository = mockk()
+        premiumAggregationQueryRepository = mockk()
         repository = PremiumRepositoryImpl(
             premiumJpaRepository = premiumJpaRepository,
             premiumCacheReader = premiumCacheReader,
             tickerRepository = tickerRepository,
+            premiumAggregationQueryRepository = premiumAggregationQueryRepository,
         )
     }
 
@@ -122,6 +126,52 @@ class PremiumRepositoryImplTest {
             val result = repository.findLatestSnapshotBySymbol(Symbol("BTC"))
 
             assertThat(result).isNull()
+        }
+    }
+
+    @Nested
+    inner class FindAggregation {
+
+        @Test
+        fun `PremiumAggregationQueryRepository에 위임한다`() {
+            val symbol = Symbol("BTC")
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-02T00:00:00Z")
+            val snapshots = listOf(
+                PremiumAggregationSnapshot(
+                    symbol = "BTC",
+                    high = BigDecimal("2.50"), low = BigDecimal("1.00"),
+                    open = BigDecimal("1.50"), close = BigDecimal("2.00"),
+                    avg = BigDecimal("1.75"), count = 60,
+                    observedAt = from,
+                ),
+            )
+
+            every {
+                premiumAggregationQueryRepository.findByInterval("BTC", "1h", from, to)
+            } returns snapshots
+
+            val result = repository.findAggregation(symbol, "1h", from, to)
+
+            assertThat(result).hasSize(1)
+            assertThat(result[0].symbol).isEqualTo("BTC")
+            assertThat(result[0].high).isEqualByComparingTo(BigDecimal("2.50"))
+            verify(exactly = 1) { premiumAggregationQueryRepository.findByInterval("BTC", "1h", from, to) }
+        }
+
+        @Test
+        fun `결과가 없으면 빈 목록을 반환한다`() {
+            val symbol = Symbol("BTC")
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-02T00:00:00Z")
+
+            every {
+                premiumAggregationQueryRepository.findByInterval("BTC", "1m", from, to)
+            } returns emptyList()
+
+            val result = repository.findAggregation(symbol, "1m", from, to)
+
+            assertThat(result).isEmpty()
         }
     }
 }

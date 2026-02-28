@@ -12,6 +12,7 @@ class PositionService(
     @Transactional
     fun create(command: PositionCommand.Create): Position {
         val position = Position.create(
+            memberId = command.memberId,
             symbol = Symbol(command.symbol),
             exchange = command.exchange,
             quantity = command.quantity,
@@ -22,6 +23,7 @@ class PositionService(
         )
         return positionRepository.save(position)
     }
+
 
     @Transactional
     fun save(position: Position): Position {
@@ -36,5 +38,15 @@ class PositionService(
     @Transactional(readOnly = true)
     fun findAllOpen(): List<Position> {
         return positionRepository.findAllOpen()
+    }
+
+    @Transactional(readOnly = true)
+    fun findAllOpenByMemberId(memberId: Long): List<Position> {
+        return positionRepository.findAllOpenByMemberId(memberId)
+    }
+
+    @Transactional(readOnly = true)
+    fun findAllClosedByMemberId(memberId: Long): List<Position> {
+        return positionRepository.findAllClosedByMemberId(memberId)
     }
 }
