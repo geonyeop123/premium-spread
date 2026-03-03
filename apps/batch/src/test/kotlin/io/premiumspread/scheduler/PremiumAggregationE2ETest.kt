@@ -163,7 +163,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
     inner class AggregateDay {
 
         @Test
-        fun `시간 데이터를 집계하여 DB premium_day에 저장한다`() {
+        fun `시간 데이터를 집계하여 DB와 Redis에 저장한다`() {
             // given - 이전 일 윈도우에 데이터 seed
             val now = Instant.now()
             val prevDayStart = now.minus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS)
@@ -174,12 +174,16 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             // when
             premiumAggregationScheduler.aggregateDay()
 
-            // then - day는 캐시 저장 없이 DB만
+            // then - DB 검증
             val result = aggregationRepository.findLatestDay("btc")
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("3.50")
             assertThat(result.low).isEqualByComparingTo("1.00")
             assertThat(result.count).isEqualTo(180) // 3 entries * 60 count each
+
+            // then - Redis 검증
+            val entries = redisTemplate.opsForZSet().rangeWithScores("premium:days:btc", 0, -1)
+            assertThat(entries).isNotEmpty
         }
     }
 

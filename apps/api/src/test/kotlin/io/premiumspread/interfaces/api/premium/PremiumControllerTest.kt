@@ -7,10 +7,10 @@ import io.premiumspread.application.premium.PremiumFacade
 import io.premiumspread.application.premium.PremiumResult
 import io.premiumspread.application.premium.TickerNotFoundException
 import io.premiumspread.domain.premium.PremiumSnapshot
+import io.premiumspread.infrastructure.security.SecurityConfig
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import io.premiumspread.infrastructure.security.SecurityConfig
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
@@ -116,7 +116,7 @@ class PremiumControllerTest {
     inner class GetAggregation {
 
         @Test
-        fun `집계 데이터를 조회한다`() {
+        fun `집계 데이터를 AggregationPage로 반환한다`() {
             val from = Instant.parse("2024-01-01T00:00:00Z")
             val to = Instant.parse("2024-01-01T01:00:00Z")
 
@@ -131,16 +131,6 @@ class PremiumControllerTest {
                     count = 60,
                     observedAt = Instant.parse("2024-01-01T00:00:00Z"),
                 ),
-                PremiumResult.Aggregation(
-                    symbol = "BTC",
-                    high = BigDecimal("3.00"),
-                    low = BigDecimal("1.80"),
-                    open = BigDecimal("2.00"),
-                    close = BigDecimal("2.50"),
-                    avg = BigDecimal("2.30"),
-                    count = 58,
-                    observedAt = Instant.parse("2024-01-01T00:01:00Z"),
-                ),
             )
 
             every { premiumFacade.findAggregation("BTC", "1m", from, to) } returns results
@@ -151,21 +141,52 @@ class PremiumControllerTest {
                 param("to", "2024-01-01T01:00:00Z")
             }.andExpect {
                 status { isOk() }
-                jsonPath("$.length()") { value(2) }
-                jsonPath("$[0].symbol") { value("BTC") }
-                jsonPath("$[0].high") { value(2.50) }
-                jsonPath("$[0].low") { value(1.20) }
-                jsonPath("$[0].open") { value(1.50) }
-                jsonPath("$[0].close") { value(2.00) }
-                jsonPath("$[0].avg") { value(1.80) }
-                jsonPath("$[0].count") { value(60) }
-                jsonPath("$[1].symbol") { value("BTC") }
-                jsonPath("$[1].avg") { value(2.30) }
+                jsonPath("$.data") { isArray() }
+                jsonPath("$.data.length()") { value(1) }
+                jsonPath("$.data[0].symbol") { value("BTC") }
+                jsonPath("$.data[0].high") { value(2.50) }
+                jsonPath("$.data[0].low") { value(1.20) }
+                jsonPath("$.data[0].count") { value(60) }
+                jsonPath("$.hasMore") { isBoolean() }
             }
         }
 
         @Test
-        fun `집계 데이터가 없으면 빈 배열을 반환한다`() {
+        fun `from이 최대 범위 내이면 hasMore는 true`() {
+            val now = Instant.now()
+            val from = now.minusSeconds(3600)  // 1시간 전 (1m 최대 24h 이내)
+
+            every { premiumFacade.findAggregation(any(), any(), any(), any()) } returns emptyList()
+
+            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
+                param("interval", "1m")
+                param("from", from.toString())
+                param("to", now.toString())
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.hasMore") { value(true) }
+            }
+        }
+
+        @Test
+        fun `from이 최대 범위에 도달하면 hasMore는 false`() {
+            val now = Instant.now()
+            val from = now.minusSeconds(48 * 3600)  // 48시간 전 (1m 최대 24h 초과)
+
+            every { premiumFacade.findAggregation(any(), any(), any(), any()) } returns emptyList()
+
+            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
+                param("interval", "1m")
+                param("from", from.toString())
+                param("to", now.toString())
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.hasMore") { value(false) }
+            }
+        }
+
+        @Test
+        fun `집계 데이터가 없으면 빈 data 배열을 반환한다`() {
             val from = Instant.parse("2024-01-01T00:00:00Z")
             val to = Instant.parse("2024-01-01T01:00:00Z")
 
@@ -177,7 +198,8 @@ class PremiumControllerTest {
                 param("to", "2024-01-01T01:00:00Z")
             }.andExpect {
                 status { isOk() }
-                jsonPath("$.length()") { value(0) }
+                jsonPath("$.data") { isArray() }
+                jsonPath("$.data.length()") { value(0) }
             }
         }
     }

@@ -24,11 +24,14 @@ object RedisTtl {
     // 초당 데이터 (ZSet): 5분
     val SECONDS_DATA: Duration = Duration.ofMinutes(5)
 
-    // 분 집계 데이터: 2시간
-    val MINUTES_DATA: Duration = Duration.ofHours(2)
+    // 분 집계 데이터: 25시간 (차트 최대 24시간 + 1시간 버퍼)
+    val MINUTES_DATA: Duration = Duration.ofHours(25)
 
-    // 시간 집계 데이터: 25시간
-    val HOURS_DATA: Duration = Duration.ofHours(25)
+    // 시간 집계 데이터: 31일 (차트 최대 30일 + 1일 버퍼)
+    val HOURS_DATA: Duration = Duration.ofDays(31)
+
+    // 일 집계 데이터: 366일 (차트 최대 365일 + 1일 버퍼)
+    val DAYS_DATA: Duration = Duration.ofDays(366)
 
     // 서머리 캐시
     object Summary {

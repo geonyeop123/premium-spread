@@ -60,6 +60,7 @@ class PremiumAggregationScheduler(
     private val dayJob = AggregationJob<PremiumAggregation>(
         reader = { from, to -> premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, BTC, from, to) },
         writer = { agg, from, _ ->
+            premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, BTC, from, agg)
             val dayAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault()).toLocalDate()
             aggregationRepository.saveDay(BTC, dayAt, agg)
             log.info("Aggregated day data: {} at {} (high={}, low={}, count={})", BTC, dayAt, agg.high, agg.low, agg.count)

@@ -1,6 +1,6 @@
 # Project Status
 
-> Last updated: 2026-02-27
+> Last updated: 2026-03-03
 
 ## Current State
 
@@ -9,7 +9,7 @@
 | apps/api | Active | MVP 1 백엔드 완료 (인증, 포지션 CRUD, 이력/요약, 프리미엄 집계 API) |
 | apps/batch | Active | 1초/30분 수집 + 1분/1시간/1일 집계, Docker UTC 기준 저장 |
 | apps/web | Active | Next.js 16 + shadcn/ui + TradingView Charts, 대시보드/포지션/인증 UI |
-| modules/redis | Active | AggregationTimeUnit, TickerAggregationTimeUnit 및 TTL 정책 반영 |
+| modules/redis | Active | AggregationTimeUnit(DAYS 추가), TTL 확장 (1m→25h, 1h→31d, 1d→366d) |
 | modules/jpa | Stable | - |
 | supports/logging | Stable | - |
 | supports/monitoring | Stable | - |
@@ -17,12 +17,16 @@
 ## Recent Changes
 
 ```text
+feat: 차트 무한스크롤 + Redis 캐싱 + 과도한 API 호출 수정
+docs: README.md 최신화
 feat: 타임존 수정 + 차트 KST 변환 + Docker Compose 분리
-feat: GitHub Actions CI/CD 파이프라인 구성
-feat: Production 환경 설정 파일 추가
 ```
 
 ## TODO
+
+### Completed
+- [x] 차트 무한스크롤 (드래그로 과거 데이터 조회, 최대 범위: 1m=24h, 1h=30d, 1d=365d)
+- [x] Redis 집계 캐싱 (cache→DB fallback, AggregationTimeUnit.DAYS 추가)
 
 ### Pending
 - [ ] 회원 인증 Phase 2: JWT 전환 검토
