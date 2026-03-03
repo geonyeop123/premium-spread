@@ -36,6 +36,9 @@ object RedisKeyGenerator {
     fun premiumHoursKey(symbol: String): String =
         "premium:hours:$symbol"
 
+    fun premiumDaysKey(symbol: String): String =
+        "premium:days:$symbol"
+
     // 서머리 캐시 키 (Hash)
     fun summaryKey(interval: String, symbol: String): String =
         "summary:$interval:$symbol"

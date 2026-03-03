@@ -23,16 +23,48 @@ interface AggregationData {
   observedAt: string;
 }
 
+interface AggregationResponse {
+  data: AggregationData[];
+  hasMore: boolean;
+}
+
 interface ChartDataPoint {
   time: UTCTimestamp;
   value: number;
 }
 
 const INTERVALS = [
-  { label: '1분', value: '1m', refreshMs: 10_000, rangeHours: 2 },
-  { label: '1시간', value: '1h', refreshMs: 60_000, rangeHours: 48 },
-  { label: '1일', value: '1d', refreshMs: 300_000, rangeHours: 720 },
+  { label: '1분', value: '1m', refreshMs: 10_000, rangeHours: 2, chunkHours: 2, maxHours: 24 },
+  { label: '1시간', value: '1h', refreshMs: 60_000, rangeHours: 48, chunkHours: 48, maxHours: 720 },
+  { label: '1일', value: '1d', refreshMs: 300_000, rangeHours: 720, chunkHours: 720, maxHours: 8760 },
 ] as const;
+
+const KST_OFFSET_SEC = 9 * 60 * 60;
+
+function truncateDate(date: Date, interval: string): Date {
+  const d = new Date(date.getTime());
+  d.setSeconds(0, 0);
+  if (interval === '1h' || interval === '1d') d.setMinutes(0);
+  if (interval === '1d') d.setHours(0);
+  return d;
+}
+
+function toChartPoints(data: AggregationData[]): ChartDataPoint[] {
+  return data
+    .filter((d) => d.observedAt != null && d.close != null)
+    .map((d) => ({
+      time: (Math.floor(new Date(d.observedAt).getTime() / 1000) + KST_OFFSET_SEC) as UTCTimestamp,
+      value: d.close,
+    }));
+}
+
+function deduplicateAndSort(points: ChartDataPoint[]): ChartDataPoint[] {
+  const map = new Map<number, ChartDataPoint>();
+  for (const p of points) {
+    map.set(p.time as number, p);
+  }
+  return Array.from(map.values()).sort((a, b) => (a.time as number) - (b.time as number));
+}
 
 export function PremiumChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -40,27 +72,76 @@ export function PremiumChart() {
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const [activeInterval, setActiveInterval] = useState('1m');
 
-  const fetchData = useCallback(async (interval: string) => {
+  const allDataRef = useRef<ChartDataPoint[]>([]);
+  const loadedFromRef = useRef<Date>(new Date());
+  const hasMoreRef = useRef(true);
+  const isLoadingPastRef = useRef(false);
+  const activeIntervalRef = useRef(activeInterval);
+
+  // activeInterval을 ref에 동기화
+  useEffect(() => {
+    activeIntervalRef.current = activeInterval;
+  }, [activeInterval]);
+
+  const fetchLatest = useCallback(async (interval: string) => {
     const config = INTERVALS.find((i) => i.value === interval)!;
     const to = new Date();
-    const from = new Date(to.getTime() - config.rangeHours * 60 * 60 * 1000);
+    const from = truncateDate(
+      new Date(to.getTime() - config.rangeHours * 60 * 60 * 1000),
+      interval,
+    );
 
     try {
-      const data = await apiClient<AggregationData[]>(
+      const res = await apiClient<AggregationResponse>(
         `/premiums/aggregation/BTC?interval=${interval}&from=${from.toISOString()}&to=${to.toISOString()}`,
       );
 
-      const KST_OFFSET_SEC = 9 * 60 * 60;
-      const points: ChartDataPoint[] = data.map((d) => ({
-        time: (Math.floor(new Date(d.observedAt).getTime() / 1000) + KST_OFFSET_SEC) as UTCTimestamp,
-        value: d.close,
-      }));
+      const newPoints = toChartPoints(res.data ?? []);
+
+      const cutoff = (Math.floor(from.getTime() / 1000) + KST_OFFSET_SEC) as UTCTimestamp;
+      const pastData = allDataRef.current.filter((p) => p.time < cutoff);
+      allDataRef.current = deduplicateAndSort([...pastData, ...newPoints]);
 
       if (seriesRef.current) {
-        seriesRef.current.setData(points);
+        seriesRef.current.setData(allDataRef.current);
       }
     } catch {
       // 다음 폴링에서 재시도
+    }
+  }, []);
+
+  const fetchPast = useCallback(async (interval: string) => {
+    if (isLoadingPastRef.current || !hasMoreRef.current) return;
+
+    const config = INTERVALS.find((i) => i.value === interval)!;
+    const to = loadedFromRef.current;
+    const from = new Date(to.getTime() - config.chunkHours * 60 * 60 * 1000);
+
+    const maxFrom = new Date(Date.now() - config.maxHours * 60 * 60 * 1000);
+    if (from <= maxFrom) {
+      from.setTime(maxFrom.getTime());
+    }
+
+    isLoadingPastRef.current = true;
+    try {
+      const res = await apiClient<AggregationResponse>(
+        `/premiums/aggregation/BTC?interval=${interval}&from=${from.toISOString()}&to=${to.toISOString()}`,
+      );
+
+      const pastPoints = toChartPoints(res.data ?? []);
+
+      allDataRef.current = deduplicateAndSort([...pastPoints, ...allDataRef.current]);
+      loadedFromRef.current = from;
+
+      if (!res.hasMore) hasMoreRef.current = false;
+
+      if (seriesRef.current) {
+        seriesRef.current.setData(allDataRef.current);
+      }
+    } catch {
+      // 무시
+    } finally {
+      isLoadingPastRef.current = false;
     }
   }, []);
 
@@ -92,6 +173,17 @@ export function PremiumChart() {
     chartRef.current = chart;
     seriesRef.current = series;
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+      if (logicalRange === null) return;
+      if (logicalRange.from < 10) {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          fetchPast(activeIntervalRef.current);
+        }, 300);
+      }
+    });
+
     const handleResize = () => {
       if (chartContainerRef.current) {
         chart.applyOptions({ width: chartContainerRef.current.clientWidth });
@@ -100,19 +192,25 @@ export function PremiumChart() {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('resize', handleResize);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
     };
-  }, []);
+  }, [fetchPast]);
 
   useEffect(() => {
-    fetchData(activeInterval);
+    // 인터벌 전환 시 초기화
+    allDataRef.current = [];
     const config = INTERVALS.find((i) => i.value === activeInterval)!;
-    const timer = setInterval(() => fetchData(activeInterval), config.refreshMs);
+    loadedFromRef.current = new Date(Date.now() - config.rangeHours * 60 * 60 * 1000);
+    hasMoreRef.current = true;
+
+    fetchLatest(activeInterval);
+    const timer = setInterval(() => fetchLatest(activeInterval), config.refreshMs);
     return () => clearInterval(timer);
-  }, [activeInterval, fetchData]);
+  }, [activeInterval, fetchLatest]);
 
   return (
     <Card>

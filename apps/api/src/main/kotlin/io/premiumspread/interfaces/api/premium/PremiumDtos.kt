@@ -6,6 +6,11 @@ import java.math.BigDecimal
 import java.time.Instant
 
 class PremiumResponse private constructor() {
+    data class AggregationPage(
+        val data: List<Aggregation>,
+        val hasMore: Boolean,
+    )
+
     data class Aggregation(
         val symbol: String,
         val high: BigDecimal,

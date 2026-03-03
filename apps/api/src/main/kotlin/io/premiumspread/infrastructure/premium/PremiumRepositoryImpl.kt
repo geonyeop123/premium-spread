@@ -15,6 +15,7 @@ import java.time.Instant
 class PremiumRepositoryImpl(
     private val premiumJpaRepository: PremiumJpaRepository,
     private val premiumCacheReader: PremiumCacheReader,
+    private val premiumAggregationCacheReader: PremiumAggregationCacheReader,
     private val tickerRepository: TickerRepository,
     private val premiumAggregationQueryRepository: PremiumAggregationQueryRepository,
 ) : PremiumRepository {
@@ -88,6 +89,13 @@ class PremiumRepositoryImpl(
     }
 
     override fun findAggregation(symbol: Symbol, interval: String, from: Instant, to: Instant): List<PremiumAggregationSnapshot> {
+        val cached = premiumAggregationCacheReader.findByInterval(symbol.code, interval, from, to)
+        if (cached != null) {
+            log.debug("Aggregation cache hit: {} {} ({} entries)", symbol.code, interval, cached.size)
+            return cached
+        }
+
+        log.debug("Aggregation cache miss, falling back to DB: {} {}", symbol.code, interval)
         return premiumAggregationQueryRepository.findByInterval(symbol.code, interval, from, to)
     }
 }

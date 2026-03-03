@@ -9,10 +9,12 @@ import io.premiumspread.TickerFixtures
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
+import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -179,9 +181,10 @@ class PremiumServiceTest {
 
         @Test
         fun `심볼, 인터벌, 기간으로 집계 데이터를 조회한다`() {
+            // given — from/to가 이미 정렬된 시간 (정규화 후에도 동일)
             val symbol = Symbol("BTC")
             val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
+            val to = Instant.parse("2024-01-01T01:00:00Z")
             val snapshots = listOf(
                 PremiumAggregationSnapshot(
                     symbol = "BTC",
@@ -190,35 +193,80 @@ class PremiumServiceTest {
                     avg = BigDecimal("1.75"), count = 60,
                     observedAt = from,
                 ),
-                PremiumAggregationSnapshot(
-                    symbol = "BTC",
-                    high = BigDecimal("3.00"), low = BigDecimal("1.50"),
-                    open = BigDecimal("2.00"), close = BigDecimal("2.50"),
-                    avg = BigDecimal("2.25"), count = 55,
-                    observedAt = from.plus(1, ChronoUnit.HOURS),
-                ),
             )
 
-            every { premiumRepository.findAggregation(symbol, "1h", from, to) } returns snapshots
+            // 정규화 후: from=00:00, to=02:00 (1h truncate + 1)
+            every { premiumRepository.findAggregation(symbol, "1h", from, Instant.parse("2024-01-01T02:00:00Z")) } returns snapshots
 
+            // when
             val result = service.findAggregation(symbol, "1h", from, to)
 
-            assertThat(result).hasSize(2)
+            // then
+            assertThat(result).hasSize(1)
             assertThat(result[0].high).isEqualByComparingTo(BigDecimal("2.50"))
-            assertThat(result[1].avg).isEqualByComparingTo(BigDecimal("2.25"))
         }
 
         @Test
         fun `집계 데이터가 없으면 빈 목록을 반환한다`() {
             val symbol = Symbol("BTC")
             val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
+            val to = Instant.parse("2024-01-01T00:05:00Z")
 
-            every { premiumRepository.findAggregation(symbol, "1m", from, to) } returns emptyList()
+            // 정규화 후: from=00:00, to=00:06 (1m truncate + 1)
+            every { premiumRepository.findAggregation(symbol, "1m", from, Instant.parse("2024-01-01T00:06:00Z")) } returns emptyList()
 
             val result = service.findAggregation(symbol, "1m", from, to)
 
             assertThat(result).isEmpty()
+        }
+
+        @Test
+        fun `from이 최대 범위를 초과하면 clamp된다`() {
+            // given
+            val to = Instant.parse("2026-03-03T10:00:00Z")
+            val from = to.minus(Duration.ofHours(48))  // 1m 최대 24시간 초과
+
+            every { premiumRepository.findAggregation(any(), any(), any(), any()) } returns emptyList()
+
+            // when
+            service.findAggregation(Symbol("BTC"), "1m", from, to)
+
+            // then — from이 24시간 이내로 clamp됨
+            verify {
+                premiumRepository.findAggregation(
+                    Symbol("BTC"), "1m",
+                    match { it >= to.minus(Duration.ofHours(24)) },
+                    any(),
+                )
+            }
+        }
+
+        @Test
+        fun `from과 to가 interval 단위로 정규화된다`() {
+            // given
+            val to = Instant.parse("2026-03-03T10:30:45Z")
+            val from = to.minus(Duration.ofHours(1))
+
+            every { premiumRepository.findAggregation(any(), any(), any(), any()) } returns emptyList()
+
+            // when
+            service.findAggregation(Symbol("BTC"), "1h", from, to)
+
+            // then — from은 시간 단위 truncate, to는 다음 시간
+            verify {
+                premiumRepository.findAggregation(
+                    Symbol("BTC"), "1h",
+                    Instant.parse("2026-03-03T09:00:00Z"),
+                    Instant.parse("2026-03-03T11:00:00Z"),
+                )
+            }
+        }
+
+        @Test
+        fun `지원하지 않는 interval이면 IllegalArgumentException`() {
+            assertThatThrownBy {
+                service.findAggregation(Symbol("BTC"), "5m", Instant.now(), Instant.now())
+            }.isInstanceOf(IllegalArgumentException::class.java)
         }
     }
 }
