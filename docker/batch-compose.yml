@@ -8,8 +8,8 @@ services:
       SPRING_PROFILES_ACTIVE: prd
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_USER: application
-      MYSQL_PWD: application
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PWD: ${MYSQL_PWD}
       REDIS_MASTER_HOST: redis-master
       REDIS_MASTER_PORT: 6379
       REDIS_REPLICA_1_HOST: redis-readonly
