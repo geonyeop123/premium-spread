@@ -15,8 +15,6 @@ spring:
     web-application-type: servlet
   application:
     name: api
-  profiles:
-    active: local
   config:
     import:
       - jpa.yml
