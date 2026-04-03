@@ -4,7 +4,6 @@ import io.mockk.*
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.cache.PremiumCacheData
 import io.premiumspread.cache.PremiumCacheService
-import io.premiumspread.cache.PositionCacheService
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.cache.FxCacheService
 import io.premiumspread.calculator.PremiumCalculator
@@ -22,7 +21,6 @@ class PremiumRealtimeJobTest {
     private lateinit var tickerCacheService: TickerCacheService
     private lateinit var fxCacheService: FxCacheService
     private lateinit var premiumCacheService: PremiumCacheService
-    private lateinit var positionCacheService: PositionCacheService
     private lateinit var premiumCalculator: PremiumCalculator
     private lateinit var job: PremiumRealtimeJob
 
@@ -31,13 +29,11 @@ class PremiumRealtimeJobTest {
         tickerCacheService = mockk()
         fxCacheService = mockk()
         premiumCacheService = mockk(relaxed = true)
-        positionCacheService = mockk()
         premiumCalculator = mockk()
         job = PremiumRealtimeJob(
             tickerCacheService = tickerCacheService,
             fxCacheService = fxCacheService,
             premiumCacheService = premiumCacheService,
-            positionCacheService = positionCacheService,
             premiumCalculator = premiumCalculator,
         )
     }
@@ -178,7 +174,6 @@ class PremiumRealtimeJobTest {
             every { tickerCacheService.get("binance", "btc") } returns binance
             every { fxCacheService.getUsdKrw() } returns fxRate
             every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
-            every { positionCacheService.hasOpenPosition() } returns false
             every { premiumCacheService.save(premium) } throws RuntimeException("redis error")
 
             // when
@@ -190,7 +185,7 @@ class PremiumRealtimeJobTest {
         }
 
         @Test
-        fun `성공 시 프리미엄을 계산하고 저장한다`() {
+        fun `성공 시 프리미엄을 계산하고 히스토리를 항상 저장한다`() {
             // given
             val bithumb = bithumbTicker()
             val binance = binanceTicker()
@@ -201,7 +196,6 @@ class PremiumRealtimeJobTest {
             every { tickerCacheService.get("binance", "btc") } returns binance
             every { fxCacheService.getUsdKrw() } returns fxRate
             every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
-            every { positionCacheService.hasOpenPosition() } returns false
 
             // when
             val result = job.run()
@@ -210,11 +204,11 @@ class PremiumRealtimeJobTest {
             assertThat(result).isEqualTo(JobResult.Success)
             verify { premiumCacheService.save(premium) }
             verify { premiumCacheService.saveToSeconds(premium) }
-            verify(exactly = 0) { premiumCacheService.saveHistory(any()) }
+            verify { premiumCacheService.saveHistory(premium) }
         }
 
         @Test
-        fun `오픈 포지션이 있으면 히스토리를 저장한다`() {
+        fun `히스토리 저장 실패해도 Success를 반환한다`() {
             // given
             val bithumb = bithumbTicker()
             val binance = binanceTicker()
@@ -225,14 +219,15 @@ class PremiumRealtimeJobTest {
             every { tickerCacheService.get("binance", "btc") } returns binance
             every { fxCacheService.getUsdKrw() } returns fxRate
             every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
-            every { positionCacheService.hasOpenPosition() } returns true
+            every { premiumCacheService.saveHistory(any()) } throws RuntimeException("history error")
 
             // when
             val result = job.run()
 
             // then
             assertThat(result).isEqualTo(JobResult.Success)
-            verify { premiumCacheService.saveHistory(premium) }
+            verify { premiumCacheService.save(premium) }
+            verify { premiumCacheService.saveToSeconds(premium) }
         }
 
         @Test
