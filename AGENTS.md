@@ -29,8 +29,8 @@ supports/
 ```bash
 ./gradlew compileKotlin                  # 빌드
 docker compose -f docker/infra-compose.yml up -d  # 인프라 실행
-./gradlew :apps:api:bootRun &            # API 서버 (8080)
-./gradlew :apps:batch:bootRun &          # Batch 서버 (8081)
+SPRING_PROFILES_ACTIVE=local ./gradlew :apps:api:bootRun &   # API 서버 (8080)
+SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun & # Batch 서버 (8081)
 ./gradlew test                           # Unit tests
 ./gradlew :apps:api:integrationTest      # Integration tests (Docker 필요)
 ```

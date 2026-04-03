@@ -11,7 +11,7 @@ spring:
 
 # External API 설정
 exchange-rate:
-  api-key: 6b3707324e1b85989002df17
+  api-key: ${EXCHANGE_RATE_API_KEY}
 
 # Actuator 설정
 management:

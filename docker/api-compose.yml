@@ -1,0 +1,25 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: premium-spread-api
+    environment:
+      SPRING_PROFILES_ACTIVE: prd
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PWD: ${MYSQL_PWD}
+      REDIS_MASTER_HOST: redis-master
+      REDIS_MASTER_PORT: 6379
+      REDIS_REPLICA_1_HOST: redis-readonly
+      REDIS_REPLICA_1_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - premium-spread
+
+networks:
+  premium-spread:
+    external: true
+    name: premium-spread

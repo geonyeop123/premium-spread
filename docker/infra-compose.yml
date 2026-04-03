@@ -39,8 +39,10 @@ services:
       - "yes"
       - --latency-monitor-threshold
       - "100"
+      - --requirepass
+      - local-redis-password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "local-redis-password", "ping"]
       interval: 5s
       timeout: 2s
       retries: 10
@@ -68,8 +70,12 @@ services:
       - "yes"
       - --latency-monitor-threshold
       - "100"
+      - --requirepass
+      - local-redis-password
+      - --masterauth
+      - local-redis-password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "local-redis-password", "ping"]
       interval: 5s
       timeout: 2s
       retries: 10
