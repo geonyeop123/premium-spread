@@ -3,6 +3,7 @@ package io.premiumspread.application.common
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.*
+import io.premiumspread.monitoring.AlertService
 import io.premiumspread.redis.DistributedLockManager
 import io.premiumspread.redis.DistributedLockManager.LockResult
 import org.assertj.core.api.Assertions.assertThat
@@ -21,6 +22,7 @@ class JobExecutorTest {
     private lateinit var redisTemplate: StringRedisTemplate
     private lateinit var meterRegistry: MeterRegistry
     private lateinit var valueOps: ValueOperations<String, String>
+    private lateinit var alertService: AlertService
     private lateinit var jobExecutor: JobExecutor
 
     @BeforeEach
@@ -30,7 +32,8 @@ class JobExecutorTest {
         valueOps = mockk(relaxed = true)
         every { redisTemplate.opsForValue() } returns valueOps
         meterRegistry = SimpleMeterRegistry()
-        jobExecutor = JobExecutor(lockManager, redisTemplate, meterRegistry)
+        alertService = mockk(relaxed = true)
+        jobExecutor = JobExecutor(lockManager, redisTemplate, meterRegistry, alertService)
     }
 
     private fun jobConfig(
@@ -72,6 +75,7 @@ class JobExecutorTest {
             assertThat(result).isEqualTo(JobResult.Success)
             assertThat(meterRegistry.counter("scheduler.test-job.success").count()).isEqualTo(1.0)
             verify { valueOps.set(match { it.contains("test-job") }, any(), any<Duration>()) }
+            verify(exactly = 0) { alertService.sendCriticalAlert(any()) }
         }
 
         @Test
@@ -100,7 +104,7 @@ class JobExecutorTest {
         }
 
         @Test
-        fun `job이 Failure를 반환하면 error 메트릭을 기록한다`() {
+        fun `job이 Failure를 반환하면 error 메트릭과 CRITICAL 알림을 기록한다`() {
             // given
             val config = jobConfig()
             val exception = RuntimeException("db error")
@@ -123,6 +127,7 @@ class JobExecutorTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat(meterRegistry.counter("scheduler.test-job.error", "error", "RuntimeException").count()).isEqualTo(1.0)
+            verify { alertService.sendCriticalAlert(match { it.contains("test-job") && it.contains("db error") }) }
         }
 
         @Test
@@ -149,7 +154,7 @@ class JobExecutorTest {
         }
 
         @Test
-        fun `락이 Error를 반환하면 error 메트릭을 기록한다`() {
+        fun `락이 Error를 반환하면 error 메트릭과 CRITICAL 알림을 기록한다`() {
             // given
             val config = jobConfig()
             val exception = RuntimeException("redis down")
@@ -169,6 +174,7 @@ class JobExecutorTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat(meterRegistry.counter("scheduler.test-job.error", "error", "RuntimeException").count()).isEqualTo(1.0)
+            verify { alertService.sendCriticalAlert(match { it.contains("test-job") && it.contains("redis down") }) }
         }
 
         @Test
