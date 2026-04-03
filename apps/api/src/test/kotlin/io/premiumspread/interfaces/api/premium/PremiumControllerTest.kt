@@ -68,7 +68,7 @@ class PremiumControllerTest {
                 .andExpect {
                     status { isNotFound() }
                     jsonPath("$.code") { value("TICKER_NOT_FOUND") }
-                    jsonPath("$.message") { value("Korea ticker not found for symbol: BTC") }
+                    jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }
                 }
         }
     }

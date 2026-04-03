@@ -9,6 +9,7 @@ import io.premiumspread.domain.InvalidQuoteException
 import io.premiumspread.domain.InvalidTickerException
 import io.premiumspread.domain.member.DuplicateEmailException
 import io.premiumspread.domain.position.InvalidPositionException
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -18,11 +19,13 @@ import java.time.Instant
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
     @ExceptionHandler(DuplicateEmailException::class)
     fun handleDuplicateEmail(ex: DuplicateEmailException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
-            .body(ErrorResponse(code = "DUPLICATE_EMAIL", message = ex.message ?: "Duplicate email"))
+            .body(ErrorResponse(code = "DUPLICATE_EMAIL", message = ERROR_MESSAGES["DUPLICATE_EMAIL"]!!))
     }
 
     @ExceptionHandler(DomainException::class)
@@ -36,35 +39,59 @@ class GlobalExceptionHandler {
         }
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
-            .body(ErrorResponse(code = errorCode, message = ex.message ?: "Domain error"))
+            .body(ErrorResponse(code = errorCode, message = ERROR_MESSAGES[errorCode] ?: "요청을 처리할 수 없습니다."))
     }
 
     @ExceptionHandler(TickerNotFoundException::class)
     fun handleTickerNotFound(ex: TickerNotFoundException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(code = "TICKER_NOT_FOUND", message = ex.message ?: "Ticker not found"))
+            .body(ErrorResponse(code = "TICKER_NOT_FOUND", message = ERROR_MESSAGES["TICKER_NOT_FOUND"]!!))
     }
 
     @ExceptionHandler(PositionNotFoundException::class)
     fun handlePositionNotFound(ex: PositionNotFoundException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(code = "POSITION_NOT_FOUND", message = ex.message ?: "Position not found"))
+            .body(ErrorResponse(code = "POSITION_NOT_FOUND", message = ERROR_MESSAGES["POSITION_NOT_FOUND"]!!))
     }
 
     @ExceptionHandler(PremiumNotFoundException::class)
     fun handlePremiumNotFound(ex: PremiumNotFoundException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(code = "PREMIUM_NOT_FOUND", message = ex.message ?: "Premium not found"))
+            .body(ErrorResponse(code = "PREMIUM_NOT_FOUND", message = ERROR_MESSAGES["PREMIUM_NOT_FOUND"]!!))
     }
 
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
-            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ex.message ?: "Invalid argument"))
+            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+    }
+
+    @ExceptionHandler(Exception::class)
+    fun handleUnexpected(ex: Exception): ResponseEntity<ErrorResponse> {
+        log.error("예상치 못한 오류 발생", ex)
+        return ResponseEntity
+            .status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ErrorResponse(code = "INTERNAL_ERROR", message = ERROR_MESSAGES["INTERNAL_ERROR"]!!))
+    }
+
+    companion object {
+        val ERROR_MESSAGES = mapOf(
+            "DUPLICATE_EMAIL" to "이미 사용 중인 이메일입니다.",
+            "INVALID_TICKER" to "유효하지 않은 티커입니다.",
+            "INVALID_QUOTE" to "유효하지 않은 시세입니다.",
+            "INVALID_PREMIUM_INPUT" to "유효하지 않은 프리미엄 입력값입니다.",
+            "INVALID_POSITION" to "유효하지 않은 포지션입니다.",
+            "DOMAIN_ERROR" to "요청을 처리할 수 없습니다.",
+            "TICKER_NOT_FOUND" to "티커를 찾을 수 없습니다.",
+            "POSITION_NOT_FOUND" to "포지션을 찾을 수 없습니다.",
+            "PREMIUM_NOT_FOUND" to "프리미엄 정보를 찾을 수 없습니다.",
+            "INVALID_ARGUMENT" to "잘못된 요청 값입니다.",
+            "INTERNAL_ERROR" to "서버 내부 오류가 발생했습니다.",
+        )
     }
 }
 

@@ -121,7 +121,7 @@ class TickerControllerTest {
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_TICKER") }
-            jsonPath("$.message") { value("가격은 0보다 커야 합니다") }
+            jsonPath("$.message") { value("유효하지 않은 티커입니다.") }
         }
     }
 }

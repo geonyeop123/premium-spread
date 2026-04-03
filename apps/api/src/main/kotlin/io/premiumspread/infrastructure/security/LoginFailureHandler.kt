@@ -16,13 +16,23 @@ class LoginFailureHandler(
         response: HttpServletResponse,
         exception: AuthenticationException,
     ) {
-        response.status = HttpServletResponse.SC_UNAUTHORIZED
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = "UTF-8"
-        val body = mapOf(
-            "code" to "AUTHENTICATION_FAILED",
-            "message" to "이메일 또는 비밀번호가 올바르지 않습니다.",
-        )
+
+        val body = if (exception is LoginValidationException) {
+            response.status = HttpServletResponse.SC_BAD_REQUEST
+            mapOf(
+                "code" to "LOGIN_VALIDATION_FAILED",
+                "message" to "로그인 입력값이 올바르지 않습니다.",
+                "errors" to exception.errors,
+            )
+        } else {
+            response.status = HttpServletResponse.SC_UNAUTHORIZED
+            mapOf(
+                "code" to "AUTHENTICATION_FAILED",
+                "message" to "이메일 또는 비밀번호가 올바르지 않습니다.",
+            )
+        }
         objectMapper.writeValue(response.writer, body)
     }
 }
