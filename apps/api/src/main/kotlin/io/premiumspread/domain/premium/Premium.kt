@@ -39,8 +39,8 @@ class Premium private constructor(
 ) : BaseEntity() {
 
     companion object {
-        private const val PREMIUM_RATE_SCALE = 2
-        private const val DIVISION_SCALE = 10
+        private const val PREMIUM_RATE_SCALE = 2   // 최종 결과 소수점 (DB precision=10, scale=2)
+        private const val DIVISION_SCALE = 10      // 중간 계산 정밀도 (batch PremiumCalculator.INTERMEDIATE_SCALE과 동일)
         private val HUNDRED = BigDecimal("100")
 
         fun create(
@@ -100,6 +100,13 @@ class Premium private constructor(
             }
         }
 
+        /**
+         * 프리미엄율 계산 (batch PremiumCalculator와 동일 공식)
+         * 프리미엄율 = ((한국가격 - 해외가격*환율) / (해외가격*환율)) * 100
+         *
+         * 중간 계산은 소수점 유지 (정수 반올림 없음), DIVISION_SCALE=10으로 나눗셈 정밀도 확보
+         * 최종 scale만 PREMIUM_RATE_SCALE=2 (DB 저장용)
+         */
         private fun calculatePremiumRate(
             koreaPrice: BigDecimal,
             foreignPriceUsd: BigDecimal,

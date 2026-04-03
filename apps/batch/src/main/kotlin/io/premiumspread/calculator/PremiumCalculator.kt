@@ -11,7 +11,8 @@ class PremiumCalculator {
 
     companion object {
         private val HUNDRED = BigDecimal("100")
-        private const val SCALE = 4
+        private const val INTERMEDIATE_SCALE = 10  // 중간 나눗셈 정밀도 (domain Premium.kt DIVISION_SCALE과 동일)
+        private const val STORAGE_SCALE = 4        // Redis/DB 저장 정밀도
     }
 
     /**
@@ -33,23 +34,22 @@ class PremiumCalculator {
         require(foreignTicker.price > BigDecimal.ZERO) { "Foreign ticker price must be positive: ${foreignTicker.price}" }
         require(fxRate > BigDecimal.ZERO) { "FX rate must be positive: $fxRate" }
 
-        // 해외 가격을 원화로 환산
+        // 해외 가격을 원화로 환산 (소수점 유지 — 중간 정수 반올림 제거)
         val foreignPriceInKrw = foreignTicker.price.multiply(fxRate)
-            .setScale(0, RoundingMode.HALF_UP)
 
         // 프리미엄율 계산: ((한국가 - 해외가원화) / 해외가원화) * 100
         val priceDiff = koreaTicker.price.subtract(foreignPriceInKrw)
         val premiumRate = priceDiff
-            .divide(foreignPriceInKrw, SCALE + 2, RoundingMode.HALF_UP)
+            .divide(foreignPriceInKrw, INTERMEDIATE_SCALE, RoundingMode.HALF_UP)
             .multiply(HUNDRED)
-            .setScale(SCALE, RoundingMode.HALF_UP)
+            .setScale(STORAGE_SCALE, RoundingMode.HALF_UP)
 
         return PremiumCacheData(
             symbol = koreaTicker.symbol,
             premiumRate = premiumRate,
             koreaPrice = koreaTicker.price,
             foreignPrice = foreignTicker.price,
-            foreignPriceInKrw = foreignPriceInKrw,
+            foreignPriceInKrw = foreignPriceInKrw.setScale(0, RoundingMode.HALF_UP), // 표시용 정수 반올림
             fxRate = fxRate,
             observedAt = maxOf(koreaTicker.timestamp, foreignTicker.timestamp),
         )
@@ -71,8 +71,8 @@ class PremiumCalculator {
         val priceDiff = koreaPrice.subtract(foreignPriceInKrw)
 
         return priceDiff
-            .divide(foreignPriceInKrw, SCALE + 2, RoundingMode.HALF_UP)
+            .divide(foreignPriceInKrw, INTERMEDIATE_SCALE, RoundingMode.HALF_UP)
             .multiply(HUNDRED)
-            .setScale(SCALE, RoundingMode.HALF_UP)
+            .setScale(STORAGE_SCALE, RoundingMode.HALF_UP)
     }
 }
