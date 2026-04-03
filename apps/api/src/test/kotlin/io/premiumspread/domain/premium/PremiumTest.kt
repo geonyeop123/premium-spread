@@ -6,10 +6,12 @@ import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
 
 class PremiumTest {
@@ -171,6 +173,45 @@ class PremiumTest {
         val premium = Premium.create(koreaTicker, foreignTicker, fxTicker)
 
         assertEquals(BigDecimal("0.01"), premium.premiumRate)
+    }
+
+    @Test
+    fun `Premium create가 batch PremiumCalculator와 동일한 공식을 사용한다`() {
+        // batch PremiumCalculator 공식: (koreaPrice - foreignPrice*fxRate) / (foreignPrice*fxRate) * 100
+        // INTERMEDIATE_SCALE=10, 최종 PREMIUM_RATE_SCALE=2
+        val koreaPrice = BigDecimal("50000000")
+        val foreignPrice = BigDecimal("38000")
+        val fxRate = BigDecimal("1320.50")
+
+        val premium = Premium.create(
+            ticker(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW), koreaPrice.toPlainString(), Instant.now()),
+            ticker(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD), foreignPrice.toPlainString(), Instant.now()),
+            ticker(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW), fxRate.toPlainString(), Instant.now()),
+        )
+
+        // batch와 동일한 공식으로 기대값 계산 (중간 정수 반올림 없음, DIVISION_SCALE=10)
+        val foreignPriceInKrw = foreignPrice.multiply(fxRate)
+        val expected = koreaPrice.subtract(foreignPriceInKrw)
+            .divide(foreignPriceInKrw, 10, RoundingMode.HALF_UP)
+            .multiply(BigDecimal("100"))
+            .setScale(2, RoundingMode.HALF_UP)
+
+        assertThat(premium.premiumRate).isEqualByComparingTo(expected)
+    }
+
+    @Test
+    fun `음수 프리미엄(역프리미엄)이 올바르게 계산된다`() {
+        val koreaPrice = BigDecimal("40000000")
+        val foreignPrice = BigDecimal("38000")
+        val fxRate = BigDecimal("1320.50")
+
+        val premium = Premium.create(
+            ticker(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW), koreaPrice.toPlainString(), Instant.now()),
+            ticker(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD), foreignPrice.toPlainString(), Instant.now()),
+            ticker(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW), fxRate.toPlainString(), Instant.now()),
+        )
+
+        assertThat(premium.premiumRate).isNegative
     }
 
     private fun ticker(

@@ -109,6 +109,26 @@ class PremiumCalculatorEquivalenceTest {
     }
 
     @Test
+    fun `음수 프리미엄(역프리미엄)이 올바르게 계산된다`() {
+        // given: koreaPrice < foreignPriceInKrw → 음수 프리미엄
+        val koreaPrice = BigDecimal("40000000")
+        val foreignPrice = BigDecimal("38000")
+        val fxRate = BigDecimal("1320.50")
+
+        // when
+        val result = calculator.calculate(
+            koreaTicker = ticker("40000000"),
+            foreignTicker = ticker("38000"),
+            fxRate = fxRate,
+        )
+
+        // then
+        val expected = expectedPremiumRate(koreaPrice, foreignPrice, fxRate)
+        assertThat(result.premiumRate).isNegative
+        assertThat(result.premiumRate).isEqualByComparingTo(expected)
+    }
+
+    @Test
     fun `다양한 fxRate 소수점 케이스에서 domain 공식과 동일하다`() {
         val testCases = listOf(
             Triple("130000000", "89000", "1432.6"),

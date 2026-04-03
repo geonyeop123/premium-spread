@@ -30,6 +30,7 @@ import java.time.Instant
 
 @WebMvcTest(PositionController::class)
 @Import(SecurityConfig::class, WebMvcConfig::class)
+@org.springframework.test.annotation.DirtiesContext
 class PositionControllerTest {
 
     @Autowired
