@@ -122,7 +122,7 @@ class PositionControllerTest {
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_POSITION") }
-                jsonPath("$.message") { value("수량은 0보다 커야 합니다") }
+                jsonPath("$.message") { value("유효하지 않은 포지션입니다.") }
             }
         }
     }
