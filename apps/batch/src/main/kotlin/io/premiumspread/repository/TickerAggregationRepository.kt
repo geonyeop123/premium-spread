@@ -14,6 +14,7 @@ import java.time.LocalDateTime
 data class TickerAggregation(
     val exchange: String,
     val symbol: String,
+    val currency: String,
     val high: BigDecimal,
     val low: BigDecimal,
     val open: BigDecimal,
@@ -34,14 +35,16 @@ class TickerAggregationRepository(
         jdbcTemplate.update(
             """
             INSERT INTO ticker_minute
-            (exchange, symbol, minute_at, high, low, open, close, avg, count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (exchange, symbol, currency, minute_at, high, low, open, close, avg, count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             high = VALUES(high), low = VALUES(low), open = VALUES(open),
-            close = VALUES(close), avg = VALUES(avg), count = VALUES(count)
+            close = VALUES(close), avg = VALUES(avg), count = VALUES(count),
+            currency = VALUES(currency)
             """.trimIndent(),
             exchange.uppercase(),
             symbol.uppercase(),
+            agg.currency,
             Timestamp.valueOf(minuteAt),
             agg.high,
             agg.low,
@@ -60,14 +63,16 @@ class TickerAggregationRepository(
         jdbcTemplate.update(
             """
             INSERT INTO ticker_hour
-            (exchange, symbol, hour_at, high, low, open, close, avg, count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (exchange, symbol, currency, hour_at, high, low, open, close, avg, count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             high = VALUES(high), low = VALUES(low), open = VALUES(open),
-            close = VALUES(close), avg = VALUES(avg), count = VALUES(count)
+            close = VALUES(close), avg = VALUES(avg), count = VALUES(count),
+            currency = VALUES(currency)
             """.trimIndent(),
             exchange.uppercase(),
             symbol.uppercase(),
+            agg.currency,
             Timestamp.valueOf(hourAt),
             agg.high,
             agg.low,
@@ -86,14 +91,16 @@ class TickerAggregationRepository(
         jdbcTemplate.update(
             """
             INSERT INTO ticker_day
-            (exchange, symbol, day_at, high, low, open, close, avg, count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (exchange, symbol, currency, day_at, high, low, open, close, avg, count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             high = VALUES(high), low = VALUES(low), open = VALUES(open),
-            close = VALUES(close), avg = VALUES(avg), count = VALUES(count)
+            close = VALUES(close), avg = VALUES(avg), count = VALUES(count),
+            currency = VALUES(currency)
             """.trimIndent(),
             exchange.uppercase(),
             symbol.uppercase(),
+            agg.currency,
             java.sql.Date.valueOf(dayAt),
             agg.high,
             agg.low,
@@ -138,6 +145,7 @@ class TickerAggregationRepository(
     private fun mapToAggregation(rs: java.sql.ResultSet) = TickerAggregation(
         exchange = rs.getString("exchange"),
         symbol = rs.getString("symbol"),
+        currency = rs.getString("currency"),
         high = rs.getBigDecimal("high"),
         low = rs.getBigDecimal("low"),
         open = rs.getBigDecimal("open"),

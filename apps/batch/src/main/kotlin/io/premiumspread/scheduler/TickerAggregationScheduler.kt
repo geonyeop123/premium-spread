@@ -27,9 +27,11 @@ class TickerAggregationScheduler(
     companion object {
         private const val LOCK_TICKER_AGGREGATION = "lock:ticker:aggregation"
 
+        private data class AggregationTarget(val exchange: String, val symbol: String, val currency: String)
+
         private val TARGETS = listOf(
-            "bithumb" to "btc",
-            "binance" to "btc",
+            AggregationTarget("bithumb", "btc", "KRW"),
+            AggregationTarget("binance", "btc", "USD"),
         )
 
         private val MINUTE_CONFIG = JobConfig(
@@ -52,8 +54,8 @@ class TickerAggregationScheduler(
         )
     }
 
-    private fun minuteJobFor(exchange: String, symbol: String) = AggregationJob<TickerAggregation>(
-        reader = { from, to -> tickerCacheService.aggregateSecondsData(exchange, symbol, from, to) },
+    private fun minuteJobFor(exchange: String, symbol: String, currency: String) = AggregationJob<TickerAggregation>(
+        reader = { from, to -> tickerCacheService.aggregateSecondsData(exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
             tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, exchange, symbol, from, agg)
             val minuteAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault())
@@ -71,8 +73,8 @@ class TickerAggregationScheduler(
         unit = ChronoUnit.MINUTES,
     )
 
-    private fun hourJobFor(exchange: String, symbol: String) = AggregationJob<TickerAggregation>(
-        reader = { from, to -> tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, exchange, symbol, from, to) },
+    private fun hourJobFor(exchange: String, symbol: String, currency: String) = AggregationJob<TickerAggregation>(
+        reader = { from, to -> tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
             tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, exchange, symbol, from, agg)
             val hourAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault())
@@ -90,8 +92,8 @@ class TickerAggregationScheduler(
         unit = ChronoUnit.HOURS,
     )
 
-    private fun dayJobFor(exchange: String, symbol: String) = AggregationJob<TickerAggregation>(
-        reader = { from, to -> tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, exchange, symbol, from, to) },
+    private fun dayJobFor(exchange: String, symbol: String, currency: String) = AggregationJob<TickerAggregation>(
+        reader = { from, to -> tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
             val dayAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault()).toLocalDate()
             aggregationRepository.saveDay(exchange, symbol, dayAt, agg)
@@ -110,23 +112,23 @@ class TickerAggregationScheduler(
 
     @Scheduled(cron = "2 * * * * *")
     fun aggregateMinute() {
-        jobExecutor.execute(MINUTE_CONFIG) { runForAllTargets { e, s -> minuteJobFor(e, s) } }
+        jobExecutor.execute(MINUTE_CONFIG) { runForAllTargets { e, s, c -> minuteJobFor(e, s, c) } }
     }
 
     @Scheduled(cron = "7 0 * * * *")
     fun aggregateHour() {
-        jobExecutor.execute(HOUR_CONFIG) { runForAllTargets { e, s -> hourJobFor(e, s) } }
+        jobExecutor.execute(HOUR_CONFIG) { runForAllTargets { e, s, c -> hourJobFor(e, s, c) } }
     }
 
     @Scheduled(cron = "12 0 0 * * *")
     fun aggregateDay() {
-        jobExecutor.execute(DAY_CONFIG) { runForAllTargets { e, s -> dayJobFor(e, s) } }
+        jobExecutor.execute(DAY_CONFIG) { runForAllTargets { e, s, c -> dayJobFor(e, s, c) } }
     }
 
-    private fun runForAllTargets(jobFactory: (String, String) -> AggregationJob<TickerAggregation>): JobResult {
+    private fun runForAllTargets(jobFactory: (String, String, String) -> AggregationJob<TickerAggregation>): JobResult {
         var anySuccess = false
-        for ((exchange, symbol) in TARGETS) {
-            val result = jobFactory(exchange, symbol).run()
+        for (target in TARGETS) {
+            val result = jobFactory(target.exchange, target.symbol, target.currency).run()
             if (result is JobResult.Success) anySuccess = true
             if (result is JobResult.Failure) return result
         }

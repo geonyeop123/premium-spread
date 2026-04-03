@@ -4,7 +4,6 @@ import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.premium.PremiumRepository
 import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Symbol
-import io.premiumspread.domain.ticker.TickerRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Repository
@@ -14,7 +13,6 @@ import java.time.Instant
 class PremiumRepositoryImpl(
     private val premiumJpaRepository: PremiumJpaRepository,
     private val premiumCacheReader: PremiumCacheReader,
-    private val tickerRepository: TickerRepository,
 ) : PremiumRepository {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -46,39 +44,8 @@ class PremiumRepositoryImpl(
             )
         }
 
-        log.debug("Premium snapshot cache miss, falling back to DB: {}", symbol.code)
-        return findSnapshotFromDb(symbol)
-    }
-
-    private fun findSnapshotFromDb(symbol: Symbol): PremiumSnapshot? {
-        val premium = premiumJpaRepository.findLatestBySymbol(symbol.code) ?: return null
-        return enrichWithTickers(premium)
-    }
-
-    private fun enrichWithTickers(premium: Premium): PremiumSnapshot? {
-        val koreaTicker = tickerRepository.findById(premium.koreaTickerId)
-        val foreignTicker = tickerRepository.findById(premium.foreignTickerId)
-        val fxTicker = tickerRepository.findById(premium.fxTickerId)
-
-        if (koreaTicker == null || foreignTicker == null || fxTicker == null) {
-            log.warn(
-                "Ticker not found for premium enrichment: korea={}, foreign={}, fx={}",
-                premium.koreaTickerId, premium.foreignTickerId, premium.fxTickerId,
-            )
-            return null
-        }
-
-        val foreignPriceInKrw = foreignTicker.price.multiply(fxTicker.price)
-
-        return PremiumSnapshot(
-            symbol = premium.symbol.code,
-            premiumRate = premium.premiumRate,
-            koreaPrice = koreaTicker.price,
-            foreignPrice = foreignTicker.price,
-            foreignPriceInKrw = foreignPriceInKrw,
-            fxRate = fxTicker.price,
-            observedAt = premium.observedAt,
-        )
+        log.debug("Premium snapshot cache miss, falling back to DB JOIN query: {}", symbol.code)
+        return premiumJpaRepository.findLatestSnapshotBySymbol(symbol.code)
     }
 
     override fun findAllBySymbolAndPeriod(symbol: Symbol, from: Instant, to: Instant): List<Premium> {
