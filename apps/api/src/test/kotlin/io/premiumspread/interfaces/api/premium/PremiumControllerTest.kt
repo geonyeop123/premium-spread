@@ -30,7 +30,7 @@ class PremiumControllerTest {
     @MockkBean
     private lateinit var premiumFacade: PremiumFacade
 
-    @MockkBean
+    @MockkBean(relaxed = true)
     private lateinit var jwtTokenProvider: JwtTokenProvider
 
     @Nested

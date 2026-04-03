@@ -41,7 +41,7 @@ class PositionControllerTest {
     @MockkBean
     private lateinit var positionFacade: PositionFacade
 
-    @MockkBean
+    @MockkBean(relaxed = true)
     private lateinit var jwtTokenProvider: JwtTokenProvider
 
     private val testUserDetails = CustomUserDetails(

@@ -32,7 +32,7 @@ class TickerControllerTest {
     @MockkBean
     private lateinit var tickerService: TickerService
 
-    @MockkBean
+    @MockkBean(relaxed = true)
     private lateinit var jwtTokenProvider: JwtTokenProvider
 
     @Test
