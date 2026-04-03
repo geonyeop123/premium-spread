@@ -103,11 +103,8 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
         }
 
         @Test
-        fun `포지션이 열려있으면 히스토리 ZSet에 데이터가 저장된다`() {
-            // given - position open seed
-            redisTemplate.opsForValue().set("position:open:exists", "true")
-
-            // when
+        fun `실행 후 히스토리 ZSet에 데이터가 항상 저장된다`() {
+            // when - 포지션 유무와 관계없이 히스토리 저장
             premiumScheduler.calculatePremium()
 
             // then

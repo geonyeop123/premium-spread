@@ -2,7 +2,6 @@ package io.premiumspread.application.job.premium
 
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.cache.FxCacheService
-import io.premiumspread.cache.PositionCacheService
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.calculator.PremiumCalculator
@@ -15,7 +14,6 @@ class PremiumRealtimeJob(
     private val tickerCacheService: TickerCacheService,
     private val fxCacheService: FxCacheService,
     private val premiumCacheService: PremiumCacheService,
-    private val positionCacheService: PositionCacheService,
     private val premiumCalculator: PremiumCalculator,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -61,10 +59,10 @@ class PremiumRealtimeJob(
             premiumCacheService.save(premium)
             premiumCacheService.saveToSeconds(premium)
 
-            // TODO(refactor): 포지션 기능 분리 시 이 조건부 히스토리 저장 로직 제거 검토
-            if (positionCacheService.hasOpenPosition()) {
+            runCatching {
                 premiumCacheService.saveHistory(premium)
-                log.debug("Saved premium history for open positions")
+            }.onFailure { e ->
+                log.warn("saveHistory failed (non-critical): {}", e.message)
             }
 
             log.debug(
