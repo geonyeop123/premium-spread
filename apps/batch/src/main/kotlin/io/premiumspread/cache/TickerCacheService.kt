@@ -5,6 +5,7 @@ import io.premiumspread.client.TickerData
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
 import io.premiumspread.redis.TickerAggregationTimeUnit
+import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import io.premiumspread.repository.TickerAggregation
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -18,6 +19,7 @@ import java.time.Instant
 class TickerCacheService(
     private val redisTemplate: StringRedisTemplate,
     private val objectMapper: ObjectMapper,
+    private val timeSeriesCache: TimeSeriesCacheSupport,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -90,15 +92,9 @@ class TickerCacheService(
      */
     fun saveToSeconds(ticker: TickerData) {
         val key = TickerAggregationTimeUnit.SECONDS.keyFor(ticker.exchange, ticker.symbol)
-        val score = ticker.timestamp.toEpochMilli().toDouble()
         val value = ticker.price.toPlainString()
 
-        redisTemplate.opsForZSet().add(key, value, score)
-        redisTemplate.expire(key, RedisTtl.SECONDS_DATA)
-
-        // 5분 이전 데이터 삭제
-        val cutoff = Instant.now().minus(RedisTtl.SECONDS_DATA).toEpochMilli().toDouble()
-        redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
+        timeSeriesCache.add(key, value, ticker.timestamp, RedisTtl.SECONDS_DATA)
 
         log.debug("Saved ticker to seconds ZSet: {} = {}", key, ticker.price)
     }
@@ -108,15 +104,11 @@ class TickerCacheService(
      */
     fun getSecondsData(exchange: String, symbol: String, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> {
         val key = TickerAggregationTimeUnit.SECONDS.keyFor(exchange, symbol)
-        val entries = redisTemplate.opsForZSet().rangeByScoreWithScores(
-            key,
-            from.toEpochMilli().toDouble(),
-            to.toEpochMilli().toDouble(),
-        ) ?: return emptyList()
+        val entries = timeSeriesCache.rangeByTime(key, from, to)
 
         return entries.mapNotNull { entry ->
             val price = entry.value?.toBigDecimalOrNull() ?: return@mapNotNull null
-            val timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) } ?: return@mapNotNull null
+            val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return@mapNotNull null
             timestamp to price
         }
     }
@@ -134,15 +126,9 @@ class TickerCacheService(
         agg: TickerAggregation,
     ) {
         val key = timeUnit.keyFor(exchange, symbol)
-        val score = timestamp.toEpochMilli().toDouble()
         val value = "${agg.high}:${agg.low}:${agg.open}:${agg.close}:${agg.avg}:${agg.count}"
 
-        redisTemplate.opsForZSet().add(key, value, score)
-        redisTemplate.expire(key, timeUnit.ttl)
-
-        // TTL 이전 데이터 삭제
-        val cutoff = Instant.now().minus(timeUnit.ttl).toEpochMilli().toDouble()
-        redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
+        timeSeriesCache.add(key, value, timestamp, timeUnit.ttl)
 
         log.debug("Saved ticker aggregation to {}: {}:{} at {}", timeUnit, exchange, symbol, timestamp)
     }
@@ -158,11 +144,7 @@ class TickerCacheService(
         to: Instant,
     ): List<Pair<Instant, TickerAggregation>> {
         val key = timeUnit.keyFor(exchange, symbol)
-        val entries = redisTemplate.opsForZSet().rangeByScoreWithScores(
-            key,
-            from.toEpochMilli().toDouble(),
-            to.toEpochMilli().toDouble(),
-        ) ?: return emptyList()
+        val entries = timeSeriesCache.rangeByTime(key, from, to)
 
         return entries.mapNotNull { entry -> parseAggregation(exchange, symbol, entry) }
     }
@@ -174,7 +156,7 @@ class TickerCacheService(
     ): Pair<Instant, TickerAggregation>? {
         val parts = entry.value?.split(":") ?: return null
         if (parts.size < 6) return null
-        val timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) } ?: return null
+        val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return null
         return timestamp to TickerAggregation(
             exchange = exchange,
             symbol = symbol,
