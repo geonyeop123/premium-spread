@@ -19,7 +19,6 @@ import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
-import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
@@ -33,7 +32,6 @@ import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
@@ -73,16 +71,14 @@ class PositionControllerE2ETest @Autowired constructor(
 
     // -- 인증 헬퍼 --
 
-    private fun login(email: String = "test@example.com", password: String = "password123"): MvcResult {
+    private fun login(email: String = "test@example.com", password: String = "password123"): String {
         val request = mapOf("email" to email, "password" to password)
-        return mockMvc.post("/api/v1/members/login") {
+        val result = mockMvc.post("/api/v1/members/login") {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andReturn()
-    }
-
-    private fun sessionCookie(result: MvcResult): Cookie? {
-        return result.response.cookies.firstOrNull { it.name == "SESSION" }
+        val body = objectMapper.readTree(result.response.contentAsString)
+        return body["accessToken"].asText()
     }
 
     // -- 데이터 준비 헬퍼 --
@@ -151,8 +147,7 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `포지션 오픈 성공 - DB 저장 + Redis 캐시 갱신`() {
         // given
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         val request = mapOf(
             "symbol" to "BTC",
@@ -166,7 +161,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
         // when & then
         mockMvc.post("/api/v1/positions") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
@@ -186,8 +181,7 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `잘못된 거래소로 오픈 시 400 반환`() {
         // given
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         val request = mapOf(
             "symbol" to "BTC",
@@ -201,7 +195,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
         // when & then
         mockMvc.post("/api/v1/positions") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
@@ -216,12 +210,11 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `존재하는 포지션 단건 조회 성공`() {
         // given
         val saved = createPosition()
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // when & then
         mockMvc.get("/api/v1/positions/${saved.id}") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(saved.id) }
@@ -233,12 +226,11 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `없는 포지션 조회 시 404 반환`() {
         // given
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // when & then
         mockMvc.get("/api/v1/positions/999") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
         }
@@ -254,12 +246,11 @@ class PositionControllerE2ETest @Autowired constructor(
         val closedPosition = createPosition(symbol = "SOL")
         closedPosition.close()
         positionRepository.save(closedPosition)
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // when & then
         mockMvc.get("/api/v1/positions") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(2) }
@@ -272,12 +263,11 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `열린 포지션 없으면 빈 배열 반환`() {
         // given
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // when & then
         mockMvc.get("/api/v1/positions") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(0) }
@@ -290,8 +280,7 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `PnL 계산 성공 - DB premium 기준으로 계산 (entryRate=3, currentRate=1 → diff=-2, isProfit=true)`() {
         // given: OPEN 포지션 (entryPremiumRate=3.00)
         val position = createPosition(entryPremiumRate = BigDecimal("3.00"))
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // DB premium 저장: koreaPrice=101000, foreignPrice=1000, fxRate=100 → premiumRate=1.00
         savePremiumWithTickers(
@@ -302,7 +291,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
         // when & then
         mockMvc.get("/api/v1/positions/${position.id}/pnl") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
             jsonPath("$.positionId") { value(position.id) }
@@ -318,12 +307,11 @@ class PositionControllerE2ETest @Autowired constructor(
         // given: OPEN 포지션 + DB premium
         val position = createPosition(entryPremiumRate = BigDecimal("1.00"))
         val premium = savePremiumWithTickers()
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // when & then
         mockMvc.get("/api/v1/positions/${position.id}/pnl") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
             jsonPath("$.positionId") { value(position.id) }
@@ -335,12 +323,11 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `프리미엄 없으면 404 반환`() {
         // given: OPEN 포지션, Redis 비어 있음, DB premium 없음
         val position = createPosition()
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // when & then
         mockMvc.get("/api/v1/positions/${position.id}/pnl") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
@@ -353,15 +340,14 @@ class PositionControllerE2ETest @Autowired constructor(
     fun `포지션 청산 성공 - DB CLOSED 상태 + Redis 캐시 갱신`() {
         // given: OPEN 포지션 1건
         val position = createPosition()
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
         // Redis 초기 상태 설정
         redisTemplate.opsForValue().set(RedisKeyGenerator.positionOpenExistsKey(), "true")
         redisTemplate.opsForValue().set(RedisKeyGenerator.positionOpenCountKey(), "1")
 
         // when & then
         mockMvc.post("/api/v1/positions/${position.id}/close") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(position.id) }
@@ -382,12 +368,11 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `없는 포지션 청산 시 404 반환`() {
         // given
-        val loginResult = login()
-        val cookie = sessionCookie(loginResult)!!
+        val accessToken = login()
 
         // when & then
         mockMvc.post("/api/v1/positions/999/close") {
-            cookie(cookie)
+            header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("POSITION_NOT_FOUND") }
