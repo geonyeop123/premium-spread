@@ -3,6 +3,7 @@ package io.premiumspread.cache
 import io.premiumspread.redis.AggregationTimeUnit
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
+import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import io.premiumspread.repository.PremiumAggregation
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -28,6 +29,7 @@ data class PremiumCacheData(
 @Service
 class PremiumCacheService(
     private val redisTemplate: StringRedisTemplate,
+    private val timeSeriesCache: TimeSeriesCacheSupport,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -58,15 +60,9 @@ class PremiumCacheService(
      */
     fun saveHistory(premium: PremiumCacheData) {
         val key = RedisKeyGenerator.premiumHistoryKey(premium.symbol.lowercase())
-        val score = premium.observedAt.toEpochMilli().toDouble()
         val value = "${premium.premiumRate}:${premium.koreaPrice}:${premium.foreignPrice}"
 
-        redisTemplate.opsForZSet().add(key, value, score)
-        redisTemplate.expire(key, RedisTtl.PREMIUM_HISTORY)
-
-        // 1시간 이전 데이터 삭제
-        val cutoff = Instant.now().minusSeconds(RedisTtl.PREMIUM_HISTORY.seconds).toEpochMilli().toDouble()
-        redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
+        timeSeriesCache.add(key, value, premium.observedAt, RedisTtl.PREMIUM_HISTORY)
     }
 
     /**
@@ -105,15 +101,9 @@ class PremiumCacheService(
      */
     fun saveToSeconds(premium: PremiumCacheData) {
         val key = RedisKeyGenerator.premiumSecondsKey(premium.symbol.lowercase())
-        val score = premium.observedAt.toEpochMilli().toDouble()
         val value = "${premium.premiumRate}:${premium.koreaPrice}:${premium.foreignPrice}:${premium.fxRate}"
 
-        redisTemplate.opsForZSet().add(key, value, score)
-        redisTemplate.expire(key, RedisTtl.SECONDS_DATA)
-
-        // 5분 이전 데이터 삭제
-        val cutoff = Instant.now().minus(RedisTtl.SECONDS_DATA).toEpochMilli().toDouble()
-        redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
+        timeSeriesCache.add(key, value, premium.observedAt, RedisTtl.SECONDS_DATA)
 
         log.debug("Saved premium to seconds ZSet: {} = {}%", key, premium.premiumRate)
     }
@@ -123,16 +113,12 @@ class PremiumCacheService(
      */
     fun getSecondsData(symbol: String, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> {
         val key = RedisKeyGenerator.premiumSecondsKey(symbol.lowercase())
-        val entries = redisTemplate.opsForZSet().rangeByScoreWithScores(
-            key,
-            from.toEpochMilli().toDouble(),
-            to.toEpochMilli().toDouble(),
-        ) ?: return emptyList()
+        val entries = timeSeriesCache.rangeByTime(key, from, to)
 
         return entries.mapNotNull { entry ->
             val parts = entry.value?.split(":") ?: return@mapNotNull null
             val rate = parts.getOrNull(0)?.toBigDecimalOrNull() ?: return@mapNotNull null
-            val timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) } ?: return@mapNotNull null
+            val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return@mapNotNull null
             timestamp to rate
         }
     }
@@ -149,15 +135,9 @@ class PremiumCacheService(
         agg: PremiumAggregation,
     ) {
         val key = timeUnit.keyFor(symbol)
-        val score = timestamp.toEpochMilli().toDouble()
         val value = "${agg.high}:${agg.low}:${agg.open}:${agg.close}:${agg.avg}:${agg.count}"
 
-        redisTemplate.opsForZSet().add(key, value, score)
-        redisTemplate.expire(key, timeUnit.ttl)
-
-        // TTL 이전 데이터 삭제
-        val cutoff = Instant.now().minus(timeUnit.ttl).toEpochMilli().toDouble()
-        redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
+        timeSeriesCache.add(key, value, timestamp, timeUnit.ttl)
 
         log.debug("Saved aggregation to {}: {} at {}", timeUnit, symbol, timestamp)
     }
@@ -172,11 +152,7 @@ class PremiumCacheService(
         to: Instant,
     ): List<Pair<Instant, PremiumAggregation>> {
         val key = timeUnit.keyFor(symbol)
-        val entries = redisTemplate.opsForZSet().rangeByScoreWithScores(
-            key,
-            from.toEpochMilli().toDouble(),
-            to.toEpochMilli().toDouble(),
-        ) ?: return emptyList()
+        val entries = timeSeriesCache.rangeByTime(key, from, to)
 
         return entries.mapNotNull { entry -> parseAggregation(symbol, entry) }
     }
@@ -190,7 +166,7 @@ class PremiumCacheService(
     ): Pair<Instant, PremiumAggregation>? {
         val parts = entry.value?.split(":") ?: return null
         if (parts.size < 6) return null
-        val timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) } ?: return null
+        val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return null
         return timestamp to PremiumAggregation(
             symbol = symbol,
             high = parts[0].toBigDecimalOrNull() ?: return null,

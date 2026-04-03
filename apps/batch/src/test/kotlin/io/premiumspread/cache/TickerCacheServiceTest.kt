@@ -6,6 +6,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.premiumspread.client.TickerData
 import io.premiumspread.redis.TickerAggregationTimeUnit
+import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -33,7 +34,8 @@ class TickerCacheServiceTest {
         every { redisTemplate.opsForHash<String, String>() } returns hashOps
         every { redisTemplate.opsForZSet() } returns zSetOps
         every { redisTemplate.expire(any(), any<Duration>()) } returns true
-        tickerCacheService = TickerCacheService(redisTemplate, ObjectMapper())
+        val timeSeriesCache = TimeSeriesCacheSupport(redisTemplate)
+        tickerCacheService = TickerCacheService(redisTemplate, ObjectMapper(), timeSeriesCache)
     }
 
     private fun tuple(value: String, score: Double): ZSetOperations.TypedTuple<String> =

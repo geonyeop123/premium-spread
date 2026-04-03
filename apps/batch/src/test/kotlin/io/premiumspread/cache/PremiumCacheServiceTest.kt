@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.premiumspread.redis.AggregationTimeUnit
+import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -31,7 +32,8 @@ class PremiumCacheServiceTest {
         every { redisTemplate.opsForHash<String, String>() } returns hashOps
         every { redisTemplate.opsForZSet() } returns zSetOps
         every { redisTemplate.expire(any(), any<Duration>()) } returns true
-        premiumCacheService = PremiumCacheService(redisTemplate)
+        val timeSeriesCache = TimeSeriesCacheSupport(redisTemplate)
+        premiumCacheService = PremiumCacheService(redisTemplate, timeSeriesCache)
     }
 
     private fun tuple(value: String, score: Double): ZSetOperations.TypedTuple<String> =

@@ -22,6 +22,16 @@ spring:
       - jpa.yml
       - redis.yml
 
+warmup:
+  enabled: true
+  symbols:
+    - btc
+  exchanges:
+    - exchange: bithumb
+      symbol: btc
+    - exchange: binance
+      symbol: btc
+
 springdoc:
   use-fqn: true
   swagger-ui:
@@ -38,6 +48,9 @@ spring:
   config:
     activate:
       on-profile: test
+
+warmup:
+  enabled: false
 
 ---
 spring:
