@@ -59,7 +59,7 @@ class TickerRepositoryImpl(
             return TickerSnapshot(
                 exchange = aggregation.exchange,
                 symbol = aggregation.symbol,
-                currency = "KRW",
+                currency = aggregation.currency,
                 price = aggregation.close,
                 volume = null,
                 observedAt = aggregation.observedAt,

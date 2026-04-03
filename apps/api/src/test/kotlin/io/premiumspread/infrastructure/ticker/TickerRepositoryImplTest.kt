@@ -65,6 +65,7 @@ class TickerRepositoryImplTest {
             val aggregation = TickerAggregationSnapshot(
                 exchange = "BITHUMB",
                 symbol = "BTC",
+                currency = "KRW",
                 high = BigDecimal("130000000"),
                 low = BigDecimal("128000000"),
                 open = BigDecimal("129000000"),
@@ -80,6 +81,7 @@ class TickerRepositoryImplTest {
             assertThat(result).isNotNull
             assertThat(result!!.exchange).isEqualTo("BITHUMB")
             assertThat(result.symbol).isEqualTo("BTC")
+            assertThat(result.currency).isEqualTo("KRW")
             assertThat(result.price).isEqualByComparingTo(BigDecimal("129500000"))
             assertThat(result.volume).isNull()
             verify(exactly = 0) { tickerJpaRepository.findLatest(any(), any(), any()) }

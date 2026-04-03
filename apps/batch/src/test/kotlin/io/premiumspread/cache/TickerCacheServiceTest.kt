@@ -168,7 +168,7 @@ class TickerCacheServiceTest {
             )
 
             // when
-            val result = tickerCacheService.aggregateSecondsData("bithumb", "btc", from, to)
+            val result = tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", from, to)
 
             // then
             assertThat(result).isNotNull
@@ -190,7 +190,7 @@ class TickerCacheServiceTest {
 
             // when & then
             assertThat(
-                tickerCacheService.aggregateSecondsData("bithumb", "btc", Instant.now(), Instant.now()),
+                tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", Instant.now(), Instant.now()),
             ).isNull()
         }
     }
@@ -214,7 +214,7 @@ class TickerCacheServiceTest {
             )
 
             // when
-            val result = tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", from, to)
+            val result = tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", from, to)
 
             // then
             assertThat(result).isNotNull
@@ -232,7 +232,7 @@ class TickerCacheServiceTest {
 
             // when & then
             assertThat(
-                tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", Instant.now(), Instant.now()),
+                tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", Instant.now(), Instant.now()),
             ).isNull()
         }
 
@@ -247,7 +247,7 @@ class TickerCacheServiceTest {
             )
 
             // when
-            val result = tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", Instant.now(), Instant.now())
+            val result = tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", Instant.now(), Instant.now())
 
             // then - 유효한 엔트리 1개만 집계됨
             assertThat(result).isNotNull

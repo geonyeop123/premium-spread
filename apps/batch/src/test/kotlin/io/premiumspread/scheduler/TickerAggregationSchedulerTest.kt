@@ -35,9 +35,10 @@ class TickerAggregationSchedulerTest {
         )
     }
 
-    private fun tickerAgg(exchange: String, symbol: String) = TickerAggregation(
+    private fun tickerAgg(exchange: String, symbol: String, currency: String = "KRW") = TickerAggregation(
         exchange = exchange,
         symbol = symbol,
+        currency = currency,
         high = BigDecimal("110"),
         low = BigDecimal("90"),
         open = BigDecimal("100"),
@@ -65,10 +66,10 @@ class TickerAggregationSchedulerTest {
         @Test
         fun `minute action 실행 시 TARGETS에 대해 분 집계 파이프라인을 수행한다`() {
             // given
-            val bithumbAgg = tickerAgg("bithumb", "btc")
-            val binanceAgg = tickerAgg("binance", "btc")
-            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", any(), any()) } returns bithumbAgg
-            every { tickerCacheService.aggregateSecondsData("binance", "btc", any(), any()) } returns binanceAgg
+            val bithumbAgg = tickerAgg("bithumb", "btc", "KRW")
+            val binanceAgg = tickerAgg("binance", "btc", "USD")
+            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", any(), any()) } returns bithumbAgg
+            every { tickerCacheService.aggregateSecondsData("binance", "btc", "USD", any(), any()) } returns binanceAgg
             every { jobExecutor.execute(any(), any()) } answers {
                 val action = secondArg<() -> JobResult>()
                 action()
@@ -78,8 +79,8 @@ class TickerAggregationSchedulerTest {
             scheduler.aggregateMinute()
 
             // then
-            verify(exactly = 1) { tickerCacheService.aggregateSecondsData("bithumb", "btc", any(), any()) }
-            verify(exactly = 1) { tickerCacheService.aggregateSecondsData("binance", "btc", any(), any()) }
+            verify(exactly = 1) { tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", any(), any()) }
+            verify(exactly = 1) { tickerCacheService.aggregateSecondsData("binance", "btc", "USD", any(), any()) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", any(), bithumbAgg) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, "binance", "btc", any(), binanceAgg) }
             verify(exactly = 1) { aggregationRepository.saveMinute("bithumb", "btc", any(), bithumbAgg) }
@@ -106,10 +107,10 @@ class TickerAggregationSchedulerTest {
         @Test
         fun `hour action 실행 시 TARGETS에 대해 시 집계 파이프라인을 수행한다`() {
             // given
-            val bithumbAgg = tickerAgg("bithumb", "btc")
-            val binanceAgg = tickerAgg("binance", "btc")
-            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", any(), any()) } returns bithumbAgg
-            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "binance", "btc", any(), any()) } returns binanceAgg
+            val bithumbAgg = tickerAgg("bithumb", "btc", "KRW")
+            val binanceAgg = tickerAgg("binance", "btc", "USD")
+            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", any(), any()) } returns bithumbAgg
+            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "binance", "btc", "USD", any(), any()) } returns binanceAgg
             every { jobExecutor.execute(any(), any()) } answers {
                 val action = secondArg<() -> JobResult>()
                 action()
@@ -119,8 +120,8 @@ class TickerAggregationSchedulerTest {
             scheduler.aggregateHour()
 
             // then
-            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", any(), any()) }
-            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "binance", "btc", any(), any()) }
+            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", any(), any()) }
+            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "binance", "btc", "USD", any(), any()) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", any(), bithumbAgg) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, "binance", "btc", any(), binanceAgg) }
             verify(exactly = 1) { aggregationRepository.saveHour("bithumb", "btc", any(), bithumbAgg) }
@@ -147,10 +148,10 @@ class TickerAggregationSchedulerTest {
         @Test
         fun `day action 실행 시 TARGETS에 대해 일 집계 DB 적재를 수행한다`() {
             // given
-            val bithumbAgg = tickerAgg("bithumb", "btc")
-            val binanceAgg = tickerAgg("binance", "btc")
-            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", any(), any()) } returns bithumbAgg
-            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "binance", "btc", any(), any()) } returns binanceAgg
+            val bithumbAgg = tickerAgg("bithumb", "btc", "KRW")
+            val binanceAgg = tickerAgg("binance", "btc", "USD")
+            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", "KRW", any(), any()) } returns bithumbAgg
+            every { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "binance", "btc", "USD", any(), any()) } returns binanceAgg
             every { jobExecutor.execute(any(), any()) } answers {
                 val action = secondArg<() -> JobResult>()
                 action()
@@ -160,8 +161,8 @@ class TickerAggregationSchedulerTest {
             scheduler.aggregateDay()
 
             // then
-            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", any(), any()) }
-            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "binance", "btc", any(), any()) }
+            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", "KRW", any(), any()) }
+            verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "binance", "btc", "USD", any(), any()) }
             verify(exactly = 1) { aggregationRepository.saveDay("bithumb", "btc", any(), bithumbAgg) }
             verify(exactly = 1) { aggregationRepository.saveDay("binance", "btc", any(), binanceAgg) }
         }
@@ -188,8 +189,8 @@ class TickerAggregationSchedulerTest {
         fun `하나라도 성공이면 최종 결과는 Success다`() {
             // given
             val actionSlot = slot<() -> JobResult>()
-            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", any(), any()) } returns tickerAgg("bithumb", "btc")
-            every { tickerCacheService.aggregateSecondsData("binance", "btc", any(), any()) } returns null
+            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", any(), any()) } returns tickerAgg("bithumb", "btc", "KRW")
+            every { tickerCacheService.aggregateSecondsData("binance", "btc", "USD", any(), any()) } returns null
             every { jobExecutor.execute(any(), capture(actionSlot)) } returns JobResult.Success
 
             // when
@@ -204,8 +205,8 @@ class TickerAggregationSchedulerTest {
         fun `전부 no data면 최종 결과는 Skipped no_data다`() {
             // given
             val actionSlot = slot<() -> JobResult>()
-            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", any(), any()) } returns null
-            every { tickerCacheService.aggregateSecondsData("binance", "btc", any(), any()) } returns null
+            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", any(), any()) } returns null
+            every { tickerCacheService.aggregateSecondsData("binance", "btc", "USD", any(), any()) } returns null
             every { jobExecutor.execute(any(), capture(actionSlot)) } returns JobResult.Success
 
             // when
@@ -221,8 +222,8 @@ class TickerAggregationSchedulerTest {
         fun `중간 Failure 발생 시 즉시 Failure를 반환한다`() {
             // given
             val actionSlot = slot<() -> JobResult>()
-            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", any(), any()) } throws RuntimeException("boom")
-            every { tickerCacheService.aggregateSecondsData("binance", "btc", any(), any()) } returns tickerAgg("binance", "btc")
+            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", any(), any()) } throws RuntimeException("boom")
+            every { tickerCacheService.aggregateSecondsData("binance", "btc", "USD", any(), any()) } returns tickerAgg("binance", "btc", "USD")
             every { jobExecutor.execute(any(), capture(actionSlot)) } returns JobResult.Success
 
             // when
@@ -232,7 +233,7 @@ class TickerAggregationSchedulerTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat((result as JobResult.Failure).exception.message).isEqualTo("boom")
-            verify(exactly = 0) { tickerCacheService.aggregateSecondsData("binance", "btc", any(), any()) }
+            verify(exactly = 0) { tickerCacheService.aggregateSecondsData("binance", "btc", "USD", any(), any()) }
         }
     }
 }

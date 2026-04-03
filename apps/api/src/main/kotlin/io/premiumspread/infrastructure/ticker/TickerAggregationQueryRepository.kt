@@ -19,7 +19,7 @@ class TickerAggregationQueryRepository(
     fun findLatestMinute(exchange: String, symbol: String): TickerAggregationSnapshot? {
         val results = jdbcTemplate.query(
             """
-            SELECT exchange, symbol, minute_at, high, low, open, close, avg, count
+            SELECT exchange, symbol, currency, minute_at, high, low, open, close, avg, count
             FROM ticker_minute
             WHERE exchange = ? AND symbol = ?
             ORDER BY minute_at DESC
@@ -29,6 +29,7 @@ class TickerAggregationQueryRepository(
                 TickerAggregationSnapshot(
                     exchange = rs.getString("exchange"),
                     symbol = rs.getString("symbol"),
+                    currency = rs.getString("currency"),
                     high = rs.getBigDecimal("high"),
                     low = rs.getBigDecimal("low"),
                     open = rs.getBigDecimal("open"),
@@ -48,6 +49,7 @@ class TickerAggregationQueryRepository(
 data class TickerAggregationSnapshot(
     val exchange: String,
     val symbol: String,
+    val currency: String,
     val high: BigDecimal,
     val low: BigDecimal,
     val open: BigDecimal,

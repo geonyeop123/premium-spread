@@ -23,6 +23,7 @@ class TickerAggregationRepositoryTest : BatchIntegrationTestBase() {
     private fun agg(
         exchange: String = "bithumb",
         symbol: String = "btc",
+        currency: String = "KRW",
         high: String = "130000000",
         low: String = "129000000",
         open: String = "129000000",
@@ -32,6 +33,7 @@ class TickerAggregationRepositoryTest : BatchIntegrationTestBase() {
     ) = TickerAggregation(
         exchange = exchange,
         symbol = symbol,
+        currency = currency,
         high = BigDecimal(high),
         low = BigDecimal(low),
         open = BigDecimal(open),

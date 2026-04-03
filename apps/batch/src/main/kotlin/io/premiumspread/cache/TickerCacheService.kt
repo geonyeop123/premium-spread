@@ -140,18 +140,20 @@ class TickerCacheService(
         timeUnit: TickerAggregationTimeUnit,
         exchange: String,
         symbol: String,
+        currency: String,
         from: Instant,
         to: Instant,
     ): List<Pair<Instant, TickerAggregation>> {
         val key = timeUnit.keyFor(exchange, symbol)
         val entries = timeSeriesCache.rangeByTime(key, from, to)
 
-        return entries.mapNotNull { entry -> parseAggregation(exchange, symbol, entry) }
+        return entries.mapNotNull { entry -> parseAggregation(exchange, symbol, currency, entry) }
     }
 
     private fun parseAggregation(
         exchange: String,
         symbol: String,
+        currency: String,
         entry: TypedTuple<String>,
     ): Pair<Instant, TickerAggregation>? {
         val parts = entry.value?.split(":") ?: return null
@@ -160,6 +162,7 @@ class TickerCacheService(
         return timestamp to TickerAggregation(
             exchange = exchange,
             symbol = symbol,
+            currency = currency,
             high = parts[0].toBigDecimalOrNull() ?: return null,
             low = parts[1].toBigDecimalOrNull() ?: return null,
             open = parts[2].toBigDecimalOrNull() ?: return null,
@@ -174,7 +177,7 @@ class TickerCacheService(
     /**
      * 초당 데이터를 집계
      */
-    fun aggregateSecondsData(exchange: String, symbol: String, from: Instant, to: Instant): TickerAggregation? {
+    fun aggregateSecondsData(exchange: String, symbol: String, currency: String, from: Instant, to: Instant): TickerAggregation? {
         val data = getSecondsData(exchange, symbol, from, to)
         if (data.isEmpty()) return null
 
@@ -183,6 +186,7 @@ class TickerCacheService(
         return TickerAggregation(
             exchange = exchange,
             symbol = symbol,
+            currency = currency,
             high = prices.maxOf { it },
             low = prices.minOf { it },
             open = prices.first(),
@@ -200,10 +204,11 @@ class TickerCacheService(
         timeUnit: TickerAggregationTimeUnit,
         exchange: String,
         symbol: String,
+        currency: String,
         from: Instant,
         to: Instant,
     ): TickerAggregation? {
-        val data = getAggregationData(timeUnit, exchange, symbol, from, to)
+        val data = getAggregationData(timeUnit, exchange, symbol, currency, from, to)
         if (data.isEmpty()) return null
 
         val aggs = data.map { it.second }
@@ -212,6 +217,7 @@ class TickerCacheService(
         return TickerAggregation(
             exchange = exchange,
             symbol = symbol,
+            currency = currency,
             high = aggs.maxOf { it.high },
             low = aggs.minOf { it.low },
             open = aggs.first().open,
