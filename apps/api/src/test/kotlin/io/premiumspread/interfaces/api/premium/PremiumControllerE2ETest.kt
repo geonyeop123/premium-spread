@@ -142,7 +142,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("TICKER_NOT_FOUND") }
-            jsonPath("$.message") { value(org.hamcrest.Matchers.containsString("Korea ticker")) }
+            jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }
         }
     }
 
@@ -156,7 +156,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("TICKER_NOT_FOUND") }
-            jsonPath("$.message") { value(org.hamcrest.Matchers.containsString("Foreign ticker")) }
+            jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }
         }
     }
 
@@ -170,7 +170,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("TICKER_NOT_FOUND") }
-            jsonPath("$.message") { value(org.hamcrest.Matchers.containsString("FX ticker")) }
+            jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }
         }
     }
 
