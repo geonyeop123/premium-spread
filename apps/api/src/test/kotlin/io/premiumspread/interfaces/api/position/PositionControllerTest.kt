@@ -11,14 +11,17 @@ import io.premiumspread.application.position.PremiumNotFoundException
 import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.infrastructure.security.CustomUserDetails
+import io.premiumspread.infrastructure.security.JwtTokenProvider
+import io.premiumspread.infrastructure.security.SecurityConfig
+import io.premiumspread.interfaces.api.config.WebMvcConfig
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import io.premiumspread.infrastructure.security.JwtTokenProvider
-import io.premiumspread.infrastructure.security.SecurityConfig
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -26,7 +29,7 @@ import java.math.BigDecimal
 import java.time.Instant
 
 @WebMvcTest(PositionController::class)
-@Import(SecurityConfig::class)
+@Import(SecurityConfig::class, WebMvcConfig::class)
 class PositionControllerTest {
 
     @Autowired
@@ -40,6 +43,19 @@ class PositionControllerTest {
 
     @MockkBean
     private lateinit var jwtTokenProvider: JwtTokenProvider
+
+    private val testUserDetails = CustomUserDetails(
+        memberId = 1L,
+        email = "test@test.com",
+        nickname = "test",
+        encodedPassword = "pw",
+    )
+
+    @Test
+    fun `인증 없이 포지션 조회 시 401 반환`() {
+        mockMvc.get("/api/v1/positions")
+            .andExpect { status { isUnauthorized() } }
+    }
 
     @Nested
     inner class OpenPosition {
@@ -58,6 +74,7 @@ class PositionControllerTest {
 
             val result = PositionResult.Detail(
                 id = 1L,
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -71,6 +88,7 @@ class PositionControllerTest {
             every { positionFacade.openPosition(any<PositionCriteria.Open>()) } returns result
 
             mockMvc.post("/api/v1/positions") {
+                with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }.andExpect {
@@ -96,6 +114,7 @@ class PositionControllerTest {
             )
 
             mockMvc.post("/api/v1/positions") {
+                with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }.andExpect {
@@ -121,6 +140,7 @@ class PositionControllerTest {
             } throws InvalidPositionException("수량은 0보다 커야 합니다")
 
             mockMvc.post("/api/v1/positions") {
+                with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }.andExpect {
@@ -138,6 +158,7 @@ class PositionControllerTest {
         fun `ID로 포지션을 조회한다`() {
             val result = PositionResult.Detail(
                 id = 1L,
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -148,24 +169,26 @@ class PositionControllerTest {
                 status = PositionStatus.OPEN,
             )
 
-            every { positionFacade.findById(1L) } returns result
+            every { positionFacade.findById(1L, 1L) } returns result
 
-            mockMvc.get("/api/v1/positions/1")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.id") { value(1) }
-                    jsonPath("$.symbol") { value("BTC") }
-                }
+            mockMvc.get("/api/v1/positions/1") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(1) }
+                jsonPath("$.symbol") { value("BTC") }
+            }
         }
 
         @Test
         fun `포지션이 없으면 404를 반환한다`() {
-            every { positionFacade.findById(999L) } returns null
+            every { positionFacade.findById(999L, 1L) } returns null
 
-            mockMvc.get("/api/v1/positions/999")
-                .andExpect {
-                    status { isNotFound() }
-                }
+            mockMvc.get("/api/v1/positions/999") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+            }
         }
     }
 
@@ -177,6 +200,7 @@ class PositionControllerTest {
             val results = listOf(
                 PositionResult.Detail(
                     id = 1L,
+                    memberId = 1L,
                     symbol = "BTC",
                     exchange = Exchange.UPBIT,
                     quantity = BigDecimal("0.5"),
@@ -188,6 +212,7 @@ class PositionControllerTest {
                 ),
                 PositionResult.Detail(
                     id = 2L,
+                    memberId = 1L,
                     symbol = "ETH",
                     exchange = Exchange.UPBIT,
                     quantity = BigDecimal("5"),
@@ -199,26 +224,118 @@ class PositionControllerTest {
                 ),
             )
 
-            every { positionFacade.findAllOpen() } returns results
+            every { positionFacade.findAllOpenByMemberId(1L) } returns results
 
-            mockMvc.get("/api/v1/positions")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.length()") { value(2) }
-                    jsonPath("$[0].symbol") { value("BTC") }
-                    jsonPath("$[1].symbol") { value("ETH") }
-                }
+            mockMvc.get("/api/v1/positions") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+                jsonPath("$[0].symbol") { value("BTC") }
+                jsonPath("$[1].symbol") { value("ETH") }
+            }
         }
 
         @Test
         fun `열린 포지션이 없으면 빈 배열을 반환한다`() {
-            every { positionFacade.findAllOpen() } returns emptyList()
+            every { positionFacade.findAllOpenByMemberId(1L) } returns emptyList()
 
-            mockMvc.get("/api/v1/positions")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.length()") { value(0) }
-                }
+            mockMvc.get("/api/v1/positions") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(0) }
+            }
+        }
+    }
+
+    @Nested
+    inner class GetHistory {
+
+        @Test
+        fun `닫힌 포지션 이력을 조회한다`() {
+            val results = listOf(
+                PositionResult.Detail(
+                    id = 1L,
+                    memberId = 1L,
+                    symbol = "BTC",
+                    exchange = Exchange.UPBIT,
+                    quantity = BigDecimal("0.5"),
+                    entryPrice = BigDecimal("129555000"),
+                    entryFxRate = BigDecimal("1432.6"),
+                    entryPremiumRate = BigDecimal("1.28"),
+                    entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                    status = PositionStatus.CLOSED,
+                ),
+            )
+
+            every { positionFacade.findAllClosedByMemberId(1L) } returns results
+
+            mockMvc.get("/api/v1/positions/history") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].id") { value(1) }
+                jsonPath("$[0].symbol") { value("BTC") }
+                jsonPath("$[0].status") { value("CLOSED") }
+            }
+        }
+
+        @Test
+        fun `닫힌 포지션이 없으면 빈 배열을 반환한다`() {
+            every { positionFacade.findAllClosedByMemberId(1L) } returns emptyList()
+
+            mockMvc.get("/api/v1/positions/history") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(0) }
+            }
+        }
+    }
+
+    @Nested
+    inner class GetSummary {
+
+        @Test
+        fun `포지션 요약을 조회한다`() {
+            val result = PositionResult.Summary(
+                totalPositions = 3,
+                openPositions = 2,
+                closedPositions = 1,
+            )
+
+            every { positionFacade.getSummary(1L) } returns result
+
+            mockMvc.get("/api/v1/positions/summary") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.totalPositions") { value(3) }
+                jsonPath("$.openPositions") { value(2) }
+                jsonPath("$.closedPositions") { value(1) }
+            }
+        }
+
+        @Test
+        fun `포지션이 없으면 0으로 반환한다`() {
+            val result = PositionResult.Summary(
+                totalPositions = 0,
+                openPositions = 0,
+                closedPositions = 0,
+            )
+
+            every { positionFacade.getSummary(1L) } returns result
+
+            mockMvc.get("/api/v1/positions/summary") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.totalPositions") { value(0) }
+                jsonPath("$.openPositions") { value(0) }
+                jsonPath("$.closedPositions") { value(0) }
+            }
         }
     }
 
@@ -236,43 +353,46 @@ class PositionControllerTest {
                 calculatedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
-            every { positionFacade.calculatePnl(1L) } returns result
+            every { positionFacade.calculatePnl(1L, 1L) } returns result
 
-            mockMvc.get("/api/v1/positions/1/pnl")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.positionId") { value(1) }
-                    jsonPath("$.premiumDiff") { value(-2.00) }
-                    jsonPath("$.entryPremiumRate") { value(3.00) }
-                    jsonPath("$.currentPremiumRate") { value(1.00) }
-                    jsonPath("$.isProfit") { value(true) }
-                }
+            mockMvc.get("/api/v1/positions/1/pnl") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.positionId") { value(1) }
+                jsonPath("$.premiumDiff") { value(-2.00) }
+                jsonPath("$.entryPremiumRate") { value(3.00) }
+                jsonPath("$.currentPremiumRate") { value(1.00) }
+                jsonPath("$.isProfit") { value(true) }
+            }
         }
 
         @Test
         fun `포지션이 없으면 404를 반환한다`() {
             every {
-                positionFacade.calculatePnl(999L)
+                positionFacade.calculatePnl(999L, 1L)
             } throws PositionNotFoundException("Position not found: 999")
 
-            mockMvc.get("/api/v1/positions/999/pnl")
-                .andExpect {
-                    status { isNotFound() }
-                    jsonPath("$.code") { value("POSITION_NOT_FOUND") }
-                }
+            mockMvc.get("/api/v1/positions/999/pnl") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("POSITION_NOT_FOUND") }
+            }
         }
 
         @Test
         fun `프리미엄이 없으면 404를 반환한다`() {
             every {
-                positionFacade.calculatePnl(1L)
+                positionFacade.calculatePnl(1L, 1L)
             } throws PremiumNotFoundException("Premium not found for symbol: BTC")
 
-            mockMvc.get("/api/v1/positions/1/pnl")
-                .andExpect {
-                    status { isNotFound() }
-                    jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
-                }
+            mockMvc.get("/api/v1/positions/1/pnl") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
+            }
         }
     }
 
@@ -283,6 +403,7 @@ class PositionControllerTest {
         fun `포지션을 청산한다`() {
             val result = PositionResult.Detail(
                 id = 1L,
+                memberId = 1L,
                 symbol = "BTC",
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -293,27 +414,29 @@ class PositionControllerTest {
                 status = PositionStatus.CLOSED,
             )
 
-            every { positionFacade.closePosition(1L) } returns result
+            every { positionFacade.closePosition(1L, 1L) } returns result
 
-            mockMvc.post("/api/v1/positions/1/close")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.id") { value(1) }
-                    jsonPath("$.status") { value("CLOSED") }
-                }
+            mockMvc.post("/api/v1/positions/1/close") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(1) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
         }
 
         @Test
         fun `포지션이 없으면 404를 반환한다`() {
             every {
-                positionFacade.closePosition(999L)
+                positionFacade.closePosition(999L, 1L)
             } throws PositionNotFoundException("Position not found: 999")
 
-            mockMvc.post("/api/v1/positions/999/close")
-                .andExpect {
-                    status { isNotFound() }
-                    jsonPath("$.code") { value("POSITION_NOT_FOUND") }
-                }
+            mockMvc.post("/api/v1/positions/999/close") {
+                with(user(testUserDetails))
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("POSITION_NOT_FOUND") }
+            }
         }
     }
 }

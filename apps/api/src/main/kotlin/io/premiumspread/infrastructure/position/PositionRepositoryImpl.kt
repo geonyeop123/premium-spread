@@ -26,6 +26,10 @@ class PositionRepositoryImpl(
         return positionJpaRepository.findAllByStatus(status)
     }
 
+    override fun findAllByMemberIdAndStatus(memberId: Long, status: PositionStatus): List<Position> {
+        return positionJpaRepository.findAllByMemberIdAndStatus(memberId, status)
+    }
+
     private fun syncOpenPositionCache() {
         val openPositions = positionJpaRepository.findAllByStatus(PositionStatus.OPEN)
         positionCacheWriter.updateOpenPositionStatus(

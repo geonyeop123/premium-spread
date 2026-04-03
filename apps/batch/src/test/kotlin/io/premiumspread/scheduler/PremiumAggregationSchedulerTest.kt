@@ -144,7 +144,7 @@ class PremiumAggregationSchedulerTest {
         }
 
         @Test
-        fun `day action 실행 시 일 집계 DB 적재를 수행한다`() {
+        fun `day action 실행 시 Redis와 DB 모두 저장한다`() {
             // given
             val agg = aggregation()
             every { premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, "btc", any(), any()) } returns agg
@@ -158,6 +158,7 @@ class PremiumAggregationSchedulerTest {
 
             // then
             verify(exactly = 1) { premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, "btc", any(), any()) }
+            verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, "btc", any(), agg) }
             verify(exactly = 1) { aggregationRepository.saveDay("btc", any(), agg) }
         }
 

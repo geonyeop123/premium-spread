@@ -17,4 +17,18 @@ interface PositionJpaRepository : JpaRepository<Position, Long> {
         """,
     )
     fun findAllByStatus(@Param("status") status: PositionStatus): List<Position>
+
+    @Query(
+        """
+        SELECT p FROM Position p
+        WHERE p.memberId = :memberId
+          AND p.status = :status
+          AND p.deletedAt IS NULL
+        ORDER BY p.createdAt DESC
+        """,
+    )
+    fun findAllByMemberIdAndStatus(
+        @Param("memberId") memberId: Long,
+        @Param("status") status: PositionStatus,
+    ): List<Position>
 }

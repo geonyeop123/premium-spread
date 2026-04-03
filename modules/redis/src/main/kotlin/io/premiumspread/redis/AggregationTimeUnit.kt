@@ -14,6 +14,7 @@ enum class AggregationTimeUnit(
     SECONDS("premium:seconds", RedisTtl.SECONDS_DATA),
     MINUTES("premium:minutes", RedisTtl.MINUTES_DATA),
     HOURS("premium:hours", RedisTtl.HOURS_DATA),
+    DAYS("premium:days", RedisTtl.DAYS_DATA),
     ;
 
     /**

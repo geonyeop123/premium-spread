@@ -46,6 +46,34 @@ services:
     networks:
       - premium-spread
 
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    container_name: premium-spread-web
+    environment:
+      NEXT_PUBLIC_API_URL: /api/v1
+    restart: unless-stopped
+    networks:
+      - premium-spread
+
+  nginx:
+    image: nginx:alpine
+    container_name: premium-spread-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+    networks:
+      - premium-spread
+
 networks:
   premium-spread:
     external: true

@@ -1,5 +1,6 @@
 package io.premiumspread.application.position
 
+import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.premium.PremiumService
@@ -16,6 +17,7 @@ class PositionFacade(
     @Transactional
     fun openPosition(criteria: PositionCriteria.Open): PositionResult.Detail {
         val command = PositionCommand.Create(
+            memberId = criteria.memberId,
             symbol = criteria.symbol,
             exchange = criteria.exchange,
             quantity = criteria.quantity,
@@ -30,21 +32,29 @@ class PositionFacade(
     }
 
     @Transactional(readOnly = true)
-    fun findById(id: Long): PositionResult.Detail? {
-        return positionService.findById(id)
-            ?.let { PositionResult.Detail.from(it) }
+    fun findById(id: Long, memberId: Long): PositionResult.Detail? {
+        val position = positionService.findById(id) ?: return null
+        verifyOwnership(position, memberId)
+        return PositionResult.Detail.from(position)
     }
 
     @Transactional(readOnly = true)
-    fun findAllOpen(): List<PositionResult.Detail> {
-        return positionService.findAllOpen()
+    fun findAllOpenByMemberId(memberId: Long): List<PositionResult.Detail> {
+        return positionService.findAllOpenByMemberId(memberId)
             .map { PositionResult.Detail.from(it) }
     }
 
     @Transactional(readOnly = true)
-    fun calculatePnl(positionId: Long): PositionResult.Pnl {
+    fun findAllClosedByMemberId(memberId: Long): List<PositionResult.Detail> {
+        return positionService.findAllClosedByMemberId(memberId)
+            .map { PositionResult.Detail.from(it) }
+    }
+
+    @Transactional(readOnly = true)
+    fun calculatePnl(positionId: Long, memberId: Long): PositionResult.Pnl {
         val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
+        verifyOwnership(position, memberId)
 
         val currentPremium = premiumService.findLatestBySymbol(Symbol(position.symbol.code))
             ?: throw PremiumNotFoundException("Premium not found for symbol: ${position.symbol.code}")
@@ -53,15 +63,33 @@ class PositionFacade(
         return PositionResult.Pnl.from(positionId, pnl)
     }
 
+    @Transactional(readOnly = true)
+    fun getSummary(memberId: Long): PositionResult.Summary {
+        val openCount = positionService.findAllOpenByMemberId(memberId).size
+        val closedCount = positionService.findAllClosedByMemberId(memberId).size
+        return PositionResult.Summary(
+            totalPositions = openCount + closedCount,
+            openPositions = openCount,
+            closedPositions = closedCount,
+        )
+    }
+
     @Transactional
-    fun closePosition(positionId: Long): PositionResult.Detail {
+    fun closePosition(positionId: Long, memberId: Long): PositionResult.Detail {
         val position = positionService.findById(positionId)
             ?: throw PositionNotFoundException("Position not found: $positionId")
+        verifyOwnership(position, memberId)
 
         position.close()
         val savedPosition = positionService.save(position)
 
         return PositionResult.Detail.from(savedPosition)
+    }
+
+    private fun verifyOwnership(position: Position, memberId: Long) {
+        if (position.memberId != memberId) {
+            throw PositionNotFoundException("Position not found: ${position.id}")
+        }
     }
 }
 

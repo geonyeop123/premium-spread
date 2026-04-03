@@ -13,6 +13,7 @@ class PositionTest {
     @Test
     fun `포지션을 정상적으로 생성한다`() {
         val position = Position.create(
+            memberId = 1L,
             symbol = Symbol("BTC"),
             exchange = Exchange.UPBIT,
             quantity = BigDecimal("0.5"),
@@ -22,6 +23,7 @@ class PositionTest {
             entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
 
+        assertThat(position.memberId).isEqualTo(1L)
         assertThat(position.symbol).isEqualTo(Symbol("BTC"))
         assertThat(position.exchange).isEqualTo(Exchange.UPBIT)
         assertThat(position.quantity).isEqualByComparingTo(BigDecimal("0.5"))
@@ -36,6 +38,7 @@ class PositionTest {
     fun `수량이 0 이하이면 예외를 던진다`() {
         assertThatThrownBy {
             Position.create(
+                memberId = 1L,
                 symbol = Symbol("BTC"),
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal.ZERO,
@@ -49,6 +52,7 @@ class PositionTest {
 
         assertThatThrownBy {
             Position.create(
+                memberId = 1L,
                 symbol = Symbol("BTC"),
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("-1"),
@@ -65,6 +69,7 @@ class PositionTest {
     fun `진입 가격이 0 이하이면 예외를 던진다`() {
         assertThatThrownBy {
             Position.create(
+                memberId = 1L,
                 symbol = Symbol("BTC"),
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -78,6 +83,7 @@ class PositionTest {
 
         assertThatThrownBy {
             Position.create(
+                memberId = 1L,
                 symbol = Symbol("BTC"),
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -94,6 +100,7 @@ class PositionTest {
     fun `진입 환율이 0 이하이면 예외를 던진다`() {
         assertThatThrownBy {
             Position.create(
+                memberId = 1L,
                 symbol = Symbol("BTC"),
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -107,6 +114,7 @@ class PositionTest {
 
         assertThatThrownBy {
             Position.create(
+                memberId = 1L,
                 symbol = Symbol("BTC"),
                 exchange = Exchange.UPBIT,
                 quantity = BigDecimal("0.5"),
@@ -123,6 +131,7 @@ class PositionTest {
     fun `한국 거래소가 아니면 예외를 던진다`() {
         assertThatThrownBy {
             Position.create(
+                memberId = 1L,
                 symbol = Symbol("BTC"),
                 exchange = Exchange.BINANCE,
                 quantity = BigDecimal("0.5"),
@@ -138,6 +147,7 @@ class PositionTest {
     @Test
     fun `프리미엄 차이를 계산한다 - 프리미엄 하락시 이익`() {
         val position = Position.create(
+            memberId = 1L,
             symbol = Symbol("BTC"),
             exchange = Exchange.UPBIT,
             quantity = BigDecimal("0.5"),
@@ -156,6 +166,7 @@ class PositionTest {
     @Test
     fun `프리미엄 차이를 계산한다 - 프리미엄 상승시 손실`() {
         val position = Position.create(
+            memberId = 1L,
             symbol = Symbol("BTC"),
             exchange = Exchange.UPBIT,
             quantity = BigDecimal("0.5"),
@@ -174,6 +185,7 @@ class PositionTest {
     @Test
     fun `포지션을 청산한다`() {
         val position = Position.create(
+            memberId = 1L,
             symbol = Symbol("BTC"),
             exchange = Exchange.UPBIT,
             quantity = BigDecimal("0.5"),
@@ -191,6 +203,7 @@ class PositionTest {
     @Test
     fun `이미 청산된 포지션은 다시 청산할 수 없다`() {
         val position = Position.create(
+            memberId = 1L,
             symbol = Symbol("BTC"),
             exchange = Exchange.UPBIT,
             quantity = BigDecimal("0.5"),

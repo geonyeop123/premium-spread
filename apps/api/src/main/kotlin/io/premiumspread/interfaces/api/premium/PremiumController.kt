@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.time.Duration
 import java.time.Instant
 
 @RestController
@@ -38,5 +39,24 @@ class PremiumController(
     ): ResponseEntity<List<PremiumResponse.Detail>> {
         val results = premiumFacade.findByPeriod(symbol, from, to)
         return ResponseEntity.ok(results.map { PremiumResponse.Detail.from(it) })
+    }
+
+    @GetMapping("/aggregation/{symbol}")
+    fun getAggregation(
+        @PathVariable symbol: String,
+        @RequestParam interval: String,
+        @RequestParam from: Instant,
+        @RequestParam to: Instant,
+    ): ResponseEntity<PremiumResponse.AggregationPage> {
+        val maxRange = mapOf("1m" to Duration.ofHours(24), "1h" to Duration.ofDays(30), "1d" to Duration.ofDays(365))
+        val hasMore = maxRange[interval]?.let { from > to.minus(it) } ?: true
+
+        val results = premiumFacade.findAggregation(symbol, interval, from, to)
+        return ResponseEntity.ok(
+            PremiumResponse.AggregationPage(
+                data = results.map { PremiumResponse.Aggregation.from(it) },
+                hasMore = hasMore,
+            ),
+        )
     }
 }
