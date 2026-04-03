@@ -9,6 +9,7 @@ import io.premiumspread.domain.ticker.TickerCommand
 import io.premiumspread.domain.ticker.TickerService
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import io.premiumspread.infrastructure.security.JwtTokenProvider
 import io.premiumspread.infrastructure.security.SecurityConfig
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -30,6 +31,9 @@ class TickerControllerTest {
 
     @MockkBean
     private lateinit var tickerService: TickerService
+
+    @MockkBean
+    private lateinit var jwtTokenProvider: JwtTokenProvider
 
     @Test
     fun `코인 티커를 등록한다`() {

@@ -20,6 +20,11 @@ spring:
       - jpa.yml
       - redis.yml
 
+jwt:
+  secret-key: ${JWT_SECRET_KEY:default-local-secret-key-must-be-at-least-32-bytes-long!!}
+  access-token-expiry-ms: 1800000
+  refresh-token-expiry-ms: 604800000
+
 warmup:
   enabled: true
   symbols:

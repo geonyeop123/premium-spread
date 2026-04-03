@@ -1,0 +1,5 @@
+### Access Token 갱신 (Refresh Token 쿠키 필요)
+POST {{premium-api}}/api/v1/auth/refresh
+
+### 로그아웃 (Refresh Token 쿠키 삭제)
+POST {{premium-api}}/api/v1/auth/logout

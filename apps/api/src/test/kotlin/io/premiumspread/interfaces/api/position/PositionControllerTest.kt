@@ -14,6 +14,7 @@ import io.premiumspread.domain.ticker.Exchange
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import io.premiumspread.infrastructure.security.JwtTokenProvider
 import io.premiumspread.infrastructure.security.SecurityConfig
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -36,6 +37,9 @@ class PositionControllerTest {
 
     @MockkBean
     private lateinit var positionFacade: PositionFacade
+
+    @MockkBean
+    private lateinit var jwtTokenProvider: JwtTokenProvider
 
     @Nested
     inner class OpenPosition {

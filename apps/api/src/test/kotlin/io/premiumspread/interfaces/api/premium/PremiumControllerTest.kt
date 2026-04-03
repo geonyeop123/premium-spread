@@ -10,6 +10,7 @@ import io.premiumspread.domain.premium.PremiumSnapshot
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import io.premiumspread.infrastructure.security.JwtTokenProvider
 import io.premiumspread.infrastructure.security.SecurityConfig
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
@@ -28,6 +29,9 @@ class PremiumControllerTest {
 
     @MockkBean
     private lateinit var premiumFacade: PremiumFacade
+
+    @MockkBean
+    private lateinit var jwtTokenProvider: JwtTokenProvider
 
     @Nested
     inner class Calculate {

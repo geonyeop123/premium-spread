@@ -7,7 +7,7 @@ Content-Type: application/json
   "password": "password123"
 }
 
-### 로그인
+### 로그인 (응답에 accessToken 포함, refresh_token은 Set-Cookie)
 POST {{premium-api}}/api/v1/members/login
 Content-Type: application/json
 
@@ -16,8 +16,6 @@ Content-Type: application/json
   "password": "password123"
 }
 
-### 내 정보 조회 (로그인 세션 필요)
+### 내 정보 조회 (Authorization: Bearer {accessToken} 필요)
 GET {{premium-api}}/api/v1/members/me
-
-### 로그아웃
-POST {{premium-api}}/api/v1/members/logout
+Authorization: Bearer {{accessToken}}
