@@ -11,12 +11,12 @@ import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository
 
 @Configuration
 @EnableWebSecurity
 class SecurityConfig(
     private val objectMapper: ObjectMapper,
+    private val jwtTokenProvider: JwtTokenProvider,
 ) {
 
     @Bean
@@ -33,20 +33,21 @@ class SecurityConfig(
             .formLogin { it.disable() }
             .httpBasic { it.disable() }
             .authorizeHttpRequests { it.anyRequest().permitAll() }
-            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter::class.java)
             .addFilterAt(jsonLoginFilter(authenticationManager), UsernamePasswordAuthenticationFilter::class.java)
-            .logout {
-                it.logoutUrl("/api/v1/members/logout")
-                it.logoutSuccessHandler(CustomLogoutSuccessHandler(objectMapper))
-            }
         return http.build()
+    }
+
+    @Bean
+    fun jwtAuthenticationFilter(): JwtAuthenticationFilter {
+        return JwtAuthenticationFilter(jwtTokenProvider)
     }
 
     private fun jsonLoginFilter(authenticationManager: AuthenticationManager): JsonLoginFilter {
         return JsonLoginFilter(objectMapper, authenticationManager).apply {
-            setAuthenticationSuccessHandler(LoginSuccessHandler(objectMapper))
+            setAuthenticationSuccessHandler(LoginSuccessHandler(objectMapper, jwtTokenProvider))
             setAuthenticationFailureHandler(LoginFailureHandler(objectMapper))
-            setSecurityContextRepository(HttpSessionSecurityContextRepository())
         }
     }
 }
