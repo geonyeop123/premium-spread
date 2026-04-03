@@ -1,6 +1,7 @@
 package io.premiumspread.application.common
 
 import io.micrometer.core.instrument.MeterRegistry
+import io.premiumspread.monitoring.AlertService
 import io.premiumspread.redis.DistributedLockManager
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
@@ -13,6 +14,7 @@ class JobExecutor(
     private val lockManager: DistributedLockManager,
     private val redisTemplate: StringRedisTemplate,
     private val meterRegistry: MeterRegistry,
+    private val alertService: AlertService,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -32,6 +34,9 @@ class JobExecutor(
                 if (jobResult is JobResult.Success) {
                     updateLastRunTime(config.jobName)
                 }
+                if (jobResult is JobResult.Failure) {
+                    alertService.sendCriticalAlert("[${config.jobName}] 작업 실패: ${jobResult.exception.message}")
+                }
                 jobResult
             }
 
@@ -46,6 +51,7 @@ class JobExecutor(
                 log.error("{} failed with lock error", config.jobName, lockResult.exception)
                 val failure = JobResult.Failure(lockResult.exception)
                 recordMetrics(config.jobName, failure)
+                alertService.sendCriticalAlert("[${config.jobName}] 락 획득 중 오류: ${lockResult.exception.message}")
                 failure
             }
         }
