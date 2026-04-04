@@ -21,6 +21,7 @@ interface AggregationData {
   avg: number;
   count: number;
   observedAt: string;
+  fxRate: number | null;
 }
 
 interface AggregationResponse {
@@ -49,12 +50,12 @@ function truncateDate(date: Date, interval: string): Date {
   return d;
 }
 
-function toChartPoints(data: AggregationData[]): ChartDataPoint[] {
+function toChartPoints(data: AggregationData[], field: 'close' | 'fxRate'): ChartDataPoint[] {
   return data
-    .filter((d) => d.observedAt != null && d.close != null)
+    .filter((d) => d.observedAt != null && d[field] != null)
     .map((d) => ({
       time: (Math.floor(new Date(d.observedAt).getTime() / 1000) + KST_OFFSET_SEC) as UTCTimestamp,
-      value: d.close,
+      value: d[field] as number,
     }));
 }
 
@@ -69,19 +70,53 @@ function deduplicateAndSort(points: ChartDataPoint[]): ChartDataPoint[] {
 export function PremiumChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const premiumSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const fxSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const [activeInterval, setActiveInterval] = useState('1m');
+  const [showPremium, setShowPremium] = useState(true);
+  const [showFxRate, setShowFxRate] = useState(true);
 
-  const allDataRef = useRef<ChartDataPoint[]>([]);
+  const premiumDataRef = useRef<ChartDataPoint[]>([]);
+  const fxDataRef = useRef<ChartDataPoint[]>([]);
+  const rawDataRef = useRef<AggregationData[]>([]);
   const loadedFromRef = useRef<Date>(new Date());
   const hasMoreRef = useRef(true);
   const isLoadingPastRef = useRef(false);
   const activeIntervalRef = useRef(activeInterval);
 
-  // activeInterval을 ref에 동기화
   useEffect(() => {
     activeIntervalRef.current = activeInterval;
   }, [activeInterval]);
+
+  const updateSeriesData = useCallback(() => {
+    if (premiumSeriesRef.current) {
+      premiumSeriesRef.current.setData(showPremium ? premiumDataRef.current : []);
+    }
+    if (fxSeriesRef.current) {
+      fxSeriesRef.current.setData(showFxRate ? fxDataRef.current : []);
+    }
+  }, [showPremium, showFxRate]);
+
+  useEffect(() => {
+    updateSeriesData();
+  }, [showPremium, showFxRate, updateSeriesData]);
+
+  const mergeData = useCallback((newRaw: AggregationData[], prepend: boolean) => {
+    if (prepend) {
+      rawDataRef.current = [...newRaw, ...rawDataRef.current];
+    } else {
+      const cutoffTime = newRaw.length > 0 ? newRaw[0].observedAt : null;
+      const pastRaw = cutoffTime
+        ? rawDataRef.current.filter((d) => d.observedAt < cutoffTime)
+        : rawDataRef.current;
+      rawDataRef.current = [...pastRaw, ...newRaw];
+    }
+
+    premiumDataRef.current = deduplicateAndSort(toChartPoints(rawDataRef.current, 'close'));
+    fxDataRef.current = deduplicateAndSort(toChartPoints(rawDataRef.current, 'fxRate'));
+
+    updateSeriesData();
+  }, [updateSeriesData]);
 
   const fetchLatest = useCallback(async (interval: string) => {
     const config = INTERVALS.find((i) => i.value === interval)!;
@@ -95,20 +130,11 @@ export function PremiumChart() {
       const res = await apiClient<AggregationResponse>(
         `/premiums/aggregation/BTC?interval=${interval}&from=${from.toISOString()}&to=${to.toISOString()}`,
       );
-
-      const newPoints = toChartPoints(res.data ?? []);
-
-      const cutoff = (Math.floor(from.getTime() / 1000) + KST_OFFSET_SEC) as UTCTimestamp;
-      const pastData = allDataRef.current.filter((p) => p.time < cutoff);
-      allDataRef.current = deduplicateAndSort([...pastData, ...newPoints]);
-
-      if (seriesRef.current) {
-        seriesRef.current.setData(allDataRef.current);
-      }
+      mergeData(res.data ?? [], false);
     } catch {
       // 다음 폴링에서 재시도
     }
-  }, []);
+  }, [mergeData]);
 
   const fetchPast = useCallback(async (interval: string) => {
     if (isLoadingPastRef.current || !hasMoreRef.current) return;
@@ -128,22 +154,16 @@ export function PremiumChart() {
         `/premiums/aggregation/BTC?interval=${interval}&from=${from.toISOString()}&to=${to.toISOString()}`,
       );
 
-      const pastPoints = toChartPoints(res.data ?? []);
-
-      allDataRef.current = deduplicateAndSort([...pastPoints, ...allDataRef.current]);
+      mergeData(res.data ?? [], true);
       loadedFromRef.current = from;
 
       if (!res.hasMore) hasMoreRef.current = false;
-
-      if (seriesRef.current) {
-        seriesRef.current.setData(allDataRef.current);
-      }
     } catch {
       // 무시
     } finally {
       isLoadingPastRef.current = false;
     }
-  }, []);
+  }, [mergeData]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -163,15 +183,31 @@ export function PremiumChart() {
         timeVisible: true,
         secondsVisible: false,
       },
+      rightPriceScale: {
+        visible: true,
+      },
+      leftPriceScale: {
+        visible: true,
+      },
     });
 
-    const series = chart.addSeries(LineSeries, {
+    const premiumSeries = chart.addSeries(LineSeries, {
       color: '#2563eb',
       lineWidth: 2,
+      priceScaleId: 'right',
+      title: '김프(%)',
+    });
+
+    const fxSeries = chart.addSeries(LineSeries, {
+      color: '#f59e0b',
+      lineWidth: 2,
+      priceScaleId: 'left',
+      title: '환율',
     });
 
     chartRef.current = chart;
-    seriesRef.current = series;
+    premiumSeriesRef.current = premiumSeries;
+    fxSeriesRef.current = fxSeries;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
@@ -196,13 +232,16 @@ export function PremiumChart() {
       window.removeEventListener('resize', handleResize);
       chart.remove();
       chartRef.current = null;
-      seriesRef.current = null;
+      premiumSeriesRef.current = null;
+      fxSeriesRef.current = null;
     };
   }, [fetchPast]);
 
   useEffect(() => {
     // 인터벌 전환 시 초기화
-    allDataRef.current = [];
+    rawDataRef.current = [];
+    premiumDataRef.current = [];
+    fxDataRef.current = [];
     const config = INTERVALS.find((i) => i.value === activeInterval)!;
     loadedFromRef.current = new Date(Date.now() - config.rangeHours * 60 * 60 * 1000);
     hasMoreRef.current = true;
@@ -217,17 +256,39 @@ export function PremiumChart() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>프리미엄 차트</CardTitle>
-          <div className="flex gap-1">
-            {INTERVALS.map(({ label, value }) => (
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1">
               <Button
-                key={value}
-                variant={activeInterval === value ? 'default' : 'outline'}
+                variant={showPremium ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setActiveInterval(value)}
+                onClick={() => setShowPremium(!showPremium)}
+                className={showPremium ? 'bg-blue-600 hover:bg-blue-700' : ''}
               >
-                {label}
+                <span className="mr-1 inline-block h-2 w-2 rounded-full bg-blue-500" />
+                김프
               </Button>
-            ))}
+              <Button
+                variant={showFxRate ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowFxRate(!showFxRate)}
+                className={showFxRate ? 'bg-amber-500 hover:bg-amber-600' : ''}
+              >
+                <span className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-500" />
+                환율
+              </Button>
+            </div>
+            <div className="flex gap-1">
+              {INTERVALS.map(({ label, value }) => (
+                <Button
+                  key={value}
+                  variant={activeInterval === value ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setActiveInterval(value)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       </CardHeader>

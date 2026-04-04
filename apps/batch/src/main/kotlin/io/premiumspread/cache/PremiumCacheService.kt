@@ -111,15 +111,26 @@ class PremiumCacheService(
     /**
      * 초당 데이터 조회 (시간 범위)
      */
+    data class SecondsEntry(
+        val timestamp: Instant,
+        val rate: BigDecimal,
+        val fxRate: BigDecimal?,
+    )
+
     fun getSecondsData(symbol: String, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> {
+        return getSecondsDataFull(symbol, from, to).map { it.timestamp to it.rate }
+    }
+
+    fun getSecondsDataFull(symbol: String, from: Instant, to: Instant): List<SecondsEntry> {
         val key = RedisKeyGenerator.premiumSecondsKey(symbol.lowercase())
         val entries = timeSeriesCache.rangeByTime(key, from, to)
 
         return entries.mapNotNull { entry ->
             val parts = entry.value?.split(":") ?: return@mapNotNull null
             val rate = parts.getOrNull(0)?.toBigDecimalOrNull() ?: return@mapNotNull null
+            val fxRate = parts.getOrNull(3)?.toBigDecimalOrNull()
             val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return@mapNotNull null
-            timestamp to rate
+            SecondsEntry(timestamp, rate, fxRate)
         }
     }
 
@@ -135,7 +146,8 @@ class PremiumCacheService(
         agg: PremiumAggregation,
     ) {
         val key = timeUnit.keyFor(symbol)
-        val value = "${agg.high}:${agg.low}:${agg.open}:${agg.close}:${agg.avg}:${agg.count}"
+        val fxPart = agg.fxRate?.toPlainString() ?: ""
+        val value = "${agg.high}:${agg.low}:${agg.open}:${agg.close}:${agg.avg}:${agg.count}:${fxPart}"
 
         timeSeriesCache.add(key, value, timestamp, timeUnit.ttl)
 
@@ -175,6 +187,7 @@ class PremiumCacheService(
             close = parts[3].toBigDecimalOrNull() ?: return null,
             avg = parts[4].toBigDecimalOrNull() ?: return null,
             count = parts[5].toIntOrNull() ?: return null,
+            fxRate = parts.getOrNull(6)?.toBigDecimalOrNull(),
         )
     }
 
@@ -292,10 +305,10 @@ class PremiumCacheService(
      * 초당 데이터를 집계
      */
     fun aggregateSecondsData(symbol: String, from: Instant, to: Instant): PremiumAggregation? {
-        val data = getSecondsData(symbol, from, to)
+        val data = getSecondsDataFull(symbol, from, to)
         if (data.isEmpty()) return null
 
-        val rates = data.map { it.second }
+        val rates = data.map { it.rate }
 
         return PremiumAggregation(
             symbol = symbol,
@@ -306,6 +319,7 @@ class PremiumCacheService(
             avg = rates.fold(BigDecimal.ZERO) { acc, v -> acc + v }
                 .divide(rates.size.toBigDecimal(), 4, RoundingMode.HALF_UP),
             count = rates.size,
+            fxRate = data.last().fxRate,
         )
     }
 
@@ -333,6 +347,7 @@ class PremiumCacheService(
             avg = aggs.fold(BigDecimal.ZERO) { acc, a -> acc + a.avg * a.count.toBigDecimal() }
                 .divide(totalCount.toBigDecimal(), 4, RoundingMode.HALF_UP),
             count = totalCount,
+            fxRate = aggs.last().fxRate,
         )
     }
 }

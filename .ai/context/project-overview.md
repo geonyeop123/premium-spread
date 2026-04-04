@@ -133,20 +133,23 @@ premium.roundTo(2)// 소수점 2자리
 
 ## 3. 버전별 트레이딩 모델 (Trading Versions)
 
-### 3.1 Trading V1 – 수동 입력 기반
+### 3.1 Trading V1 – 수동 입력 기반 (MVP 1 완료)
 
 ### 특징
 
 - 실시간 프리미엄 계산
-    - 한국 거래소 API
-    - 해외 거래소 API
+    - 한국 거래소 API (빗썸)
+    - 해외 거래소 API (바이낸스)
     - 환율 API
 - 회원이 직접 매수/매도 포지션 입력
 - 손익 계산 및 저장
+- JWT Stateless 인증 (Access + Refresh Token)
+- Slack 알림 서비스 (배치 에러 알림)
+- DB 쿼리 최적화 (N+1 제거, 복합 인덱스)
 
 ### 장점
 
-- 구현 난이도 낮음dd
+- 구현 난이도 낮음
 - 초기 MVP 적합
 
 ### 한계

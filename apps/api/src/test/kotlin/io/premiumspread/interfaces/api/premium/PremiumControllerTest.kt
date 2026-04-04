@@ -134,6 +134,7 @@ class PremiumControllerTest {
                     avg = BigDecimal("1.80"),
                     count = 60,
                     observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                    fxRate = BigDecimal("1365.50"),
                 ),
             )
 

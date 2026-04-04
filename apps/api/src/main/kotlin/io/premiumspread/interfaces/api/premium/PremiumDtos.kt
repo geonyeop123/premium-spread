@@ -20,6 +20,7 @@ class PremiumResponse private constructor() {
         val avg: BigDecimal,
         val count: Int,
         val observedAt: Instant,
+        val fxRate: BigDecimal?,
     ) {
         companion object {
             fun from(result: PremiumResult.Aggregation): Aggregation = Aggregation(
@@ -31,6 +32,7 @@ class PremiumResponse private constructor() {
                 avg = result.avg,
                 count = result.count,
                 observedAt = result.observedAt,
+                fxRate = result.fxRate,
             )
         }
     }

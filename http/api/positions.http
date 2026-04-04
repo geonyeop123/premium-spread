@@ -1,4 +1,4 @@
-### 로그인 (세션 쿠키 획득)
+### 로그인 (JWT 토큰 획득)
 POST {{premium-api}}/api/v1/members/login
 Content-Type: application/json
 
@@ -8,13 +8,13 @@ Content-Type: application/json
 }
 
 > {%
-    client.global.set("session-cookie", response.headers.valueOf("Set-Cookie"));
+    client.global.set("accessToken", response.body.accessToken);
 %}
 
 ### 포지션 오픈 (인증 필요)
 POST {{premium-api}}/api/v1/positions
 Content-Type: application/json
-Cookie: {{session-cookie}}
+Authorization: Bearer {{accessToken}}
 
 {
   "symbol": "BTC",
@@ -28,24 +28,24 @@ Cookie: {{session-cookie}}
 
 ### 열린 포지션 전체 조회 (인증 필요)
 GET {{premium-api}}/api/v1/positions
-Cookie: {{session-cookie}}
+Authorization: Bearer {{accessToken}}
 
 ### 포지션 단건 조회 (인증 필요)
 GET {{premium-api}}/api/v1/positions/1
-Cookie: {{session-cookie}}
+Authorization: Bearer {{accessToken}}
 
 ### 포지션 PnL 조회 (인증 필요)
 GET {{premium-api}}/api/v1/positions/1/pnl
-Cookie: {{session-cookie}}
+Authorization: Bearer {{accessToken}}
 
 ### 포지션 종료 (인증 필요)
 POST {{premium-api}}/api/v1/positions/1/close
-Cookie: {{session-cookie}}
+Authorization: Bearer {{accessToken}}
 
 ### 닫힌 포지션 이력 조회 (인증 필요)
 GET {{premium-api}}/api/v1/positions/history
-Cookie: {{session-cookie}}
+Authorization: Bearer {{accessToken}}
 
 ### 포지션 요약 조회 (인증 필요)
 GET {{premium-api}}/api/v1/positions/summary
-Cookie: {{session-cookie}}
+Authorization: Bearer {{accessToken}}
