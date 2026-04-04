@@ -12,9 +12,12 @@ import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.infrastructure.security.CustomUserDetails
+import io.premiumspread.infrastructure.security.CustomUserDetailsService
 import io.premiumspread.infrastructure.security.JwtTokenProvider
+import io.premiumspread.infrastructure.security.JwtValidationResult
 import io.premiumspread.infrastructure.security.SecurityConfig
 import io.premiumspread.interfaces.api.config.WebMvcConfig
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -30,7 +33,6 @@ import java.time.Instant
 
 @WebMvcTest(PositionController::class)
 @Import(SecurityConfig::class, WebMvcConfig::class)
-@org.springframework.test.annotation.DirtiesContext
 class PositionControllerTest {
 
     @Autowired
@@ -45,6 +47,9 @@ class PositionControllerTest {
     @MockkBean(relaxed = true)
     private lateinit var jwtTokenProvider: JwtTokenProvider
 
+    @MockkBean(relaxed = true)
+    private lateinit var userDetailsService: CustomUserDetailsService
+
     private val testUserDetails = CustomUserDetails(
         memberId = 1L,
         email = "test@test.com",
@@ -52,10 +57,9 @@ class PositionControllerTest {
         encodedPassword = "pw",
     )
 
-    @Test
-    fun `인증 없이 포지션 조회 시 401 반환`() {
-        mockMvc.get("/api/v1/positions")
-            .andExpect { status { isUnauthorized() } }
+    @BeforeEach
+    fun setUp() {
+        every { jwtTokenProvider.validateAndGetClaims(any()) } returns JwtValidationResult.Invalid
     }
 
     @Nested

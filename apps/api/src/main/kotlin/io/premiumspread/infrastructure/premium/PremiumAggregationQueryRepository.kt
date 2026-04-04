@@ -32,7 +32,7 @@ class PremiumAggregationQueryRepository(
 
         return jdbcTemplate.query(
             """
-            SELECT symbol, $timeColumn, high, low, open, close, avg, count
+            SELECT symbol, $timeColumn, high, low, open, close, avg, count, fx_rate
             FROM $table
             WHERE symbol = ? AND $timeColumn >= ? AND $timeColumn < ?
             ORDER BY $timeColumn ASC
@@ -51,6 +51,7 @@ class PremiumAggregationQueryRepository(
                     } else {
                         rs.getTimestamp(timeColumn).toLocalDateTime().toInstant(ZoneOffset.UTC)
                     },
+                    fxRate = rs.getBigDecimal("fx_rate"),
                 )
             },
             symbol.uppercase(),

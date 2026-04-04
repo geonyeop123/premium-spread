@@ -49,6 +49,7 @@ class PremiumAggregationCacheReader(
                 avg = parts[4].toBigDecimalOrNull() ?: return@mapNotNull null,
                 count = parts[5].toIntOrNull() ?: return@mapNotNull null,
                 observedAt = timestamp,
+                fxRate = parts.getOrNull(6)?.toBigDecimalOrNull(),
             )
         }
     }

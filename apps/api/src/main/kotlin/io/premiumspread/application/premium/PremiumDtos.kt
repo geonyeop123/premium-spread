@@ -43,6 +43,7 @@ class PremiumResult private constructor() {
         val avg: BigDecimal,
         val count: Int,
         val observedAt: Instant,
+        val fxRate: BigDecimal?,
     ) {
         companion object {
             fun from(snapshot: PremiumAggregationSnapshot): Aggregation = Aggregation(
@@ -54,6 +55,7 @@ class PremiumResult private constructor() {
                 avg = snapshot.avg,
                 count = snapshot.count,
                 observedAt = snapshot.observedAt,
+                fxRate = snapshot.fxRate,
             )
         }
     }

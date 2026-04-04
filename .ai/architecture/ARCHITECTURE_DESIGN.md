@@ -1,6 +1,6 @@
 # Premium Spread System Architecture
 
-> 구현 기준(As-Is) 아키텍처 문서
+> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-04-04)
 
 ## System Overview
 
@@ -103,6 +103,57 @@ premium-spread/
 | `lock:aggregation:*` | 0초 | 30/60/120초 | premium 집계 |
 | `lock:ticker:aggregation:*` | 0초 | 30/60/120초 | ticker 집계 |
 
+## Authentication (JWT Stateless)
+
+세션 기반 인증에서 JWT Stateless 인증으로 전환 (WU-08).
+
+### 흐름
+
+1. **로그인**: `POST /api/v1/members/login` (JSON Body: email, password)
+   - 응답 Body: `{ accessToken, id, email, nickname }`
+   - 응답 Cookie: `refresh_token` (HttpOnly, Secure, SameSite=Strict)
+2. **인증된 API 호출**: `Authorization: Bearer {accessToken}` 헤더
+3. **토큰 갱신**: `POST /api/v1/auth/refresh` (refresh_token 쿠키 자동 전송)
+   - 응답 Body: `{ accessToken }` + 새 refresh_token 쿠키
+4. **로그아웃**: `POST /api/v1/auth/logout` (refresh_token 쿠키 삭제)
+
+### 구성 요소
+
+| 클래스 | 위치 | 역할 |
+|--------|------|------|
+| `SecurityConfig` | infrastructure/security | Stateless 세션, 필터 체인, 공개/인증 경로 분리 |
+| `JwtTokenProvider` | infrastructure/security | Access/Refresh Token 생성·검증 (HMAC-SHA) |
+| `JwtAuthenticationFilter` | infrastructure/security | Bearer 토큰 파싱 → SecurityContext 설정 |
+| `JsonLoginFilter` | infrastructure/security | JSON 로그인 요청 처리 |
+| `LoginSuccessHandler` | infrastructure/security | 로그인 성공 시 JWT 발급 + 쿠키 설정 |
+| `AuthController` | interfaces/api/auth | /refresh, /logout 엔드포인트 |
+
+### 토큰 설정
+
+- Access Token 만료: `jwt.access-token-expiry-ms` (기본 30분)
+- Refresh Token 만료: `jwt.refresh-token-expiry-ms` (기본 7일)
+- Secret Key: `jwt.secret-key` (환경변수)
+
+### 공개 엔드포인트 (인증 불필요)
+
+- `POST /api/v1/members/register`
+- `POST /api/v1/members/login`
+- `GET /api/v1/premiums/**`
+- `GET /api/v1/tickers/**`
+- `GET /actuator/**`
+
+## Alert Service
+
+`supports/monitoring` 모듈에 알림 서비스 인터페이스 + 구현체 (WU-07).
+
+| 클래스 | 조건 | 역할 |
+|--------|------|------|
+| `AlertService` | — | 인터페이스 (sendAlert, sendCriticalAlert) |
+| `SlackAlertService` | `alert.slack.webhook-url` 설정 시 | Slack Webhook 기반 알림 (severity별 아이콘) |
+| `LogAlertService` | Slack 미설정 시 기본 | 로그 기반 알림 (local, test 환경) |
+
+`MonitoringAutoConfiguration`에서 `@ConditionalOnProperty`로 자동 전환.
+
 ## Persistence (MySQL)
 
 - 원시/조회용
@@ -110,6 +161,20 @@ premium-spread/
 - 집계용
   - `premium_minute`, `premium_hour`, `premium_day`
   - `ticker_minute`, `ticker_hour`, `ticker_day`
+
+### Flyway 마이그레이션
+
+| 버전 | 파일명 | 내용 |
+|------|--------|------|
+| V1 | `create_ticker_table` | ticker 테이블 |
+| V2 | `create_premium_table` | premium 테이블 |
+| V3 | `create_position_table` | position 테이블 |
+| V4 | `create_premium_snapshot_table` | premium_snapshot |
+| V5 | `create_premium_aggregation_tables` | premium 집계 테이블 |
+| V6 | `create_ticker_and_exchange_rate_tables` | ticker 집계 + exchange_rate |
+| V7 | `create_member_table` | member 테이블 |
+| V8 | `add_member_id_to_position` | position.member_id FK 추가 |
+| V9 | `add_indexes_and_currency_column` | 성능 인덱스 + ticker 집계 currency 컬럼 |
 
 ## Observability (As-Is)
 

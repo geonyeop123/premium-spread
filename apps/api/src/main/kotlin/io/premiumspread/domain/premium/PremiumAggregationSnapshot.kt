@@ -12,4 +12,5 @@ data class PremiumAggregationSnapshot(
     val avg: BigDecimal,
     val count: Int,
     val observedAt: Instant,
+    val fxRate: BigDecimal? = null,
 )

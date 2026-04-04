@@ -19,6 +19,7 @@ data class PremiumAggregation(
     val close: BigDecimal,
     val avg: BigDecimal,
     val count: Int,
+    val fxRate: BigDecimal? = null,
 )
 
 @Repository
@@ -33,11 +34,12 @@ class PremiumAggregationRepository(
         jdbcTemplate.update(
             """
             INSERT INTO premium_minute
-            (symbol, minute_at, high, low, open, close, avg, count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (symbol, minute_at, high, low, open, close, avg, count, fx_rate, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             high = VALUES(high), low = VALUES(low), open = VALUES(open),
-            close = VALUES(close), avg = VALUES(avg), count = VALUES(count)
+            close = VALUES(close), avg = VALUES(avg), count = VALUES(count),
+            fx_rate = VALUES(fx_rate)
             """.trimIndent(),
             symbol.uppercase(),
             Timestamp.valueOf(minuteAt),
@@ -47,6 +49,7 @@ class PremiumAggregationRepository(
             agg.close,
             agg.avg,
             agg.count,
+            agg.fxRate,
             Timestamp.from(Instant.now()),
         )
     }
@@ -58,11 +61,12 @@ class PremiumAggregationRepository(
         jdbcTemplate.update(
             """
             INSERT INTO premium_hour
-            (symbol, hour_at, high, low, open, close, avg, count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (symbol, hour_at, high, low, open, close, avg, count, fx_rate, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             high = VALUES(high), low = VALUES(low), open = VALUES(open),
-            close = VALUES(close), avg = VALUES(avg), count = VALUES(count)
+            close = VALUES(close), avg = VALUES(avg), count = VALUES(count),
+            fx_rate = VALUES(fx_rate)
             """.trimIndent(),
             symbol.uppercase(),
             Timestamp.valueOf(hourAt),
@@ -72,6 +76,7 @@ class PremiumAggregationRepository(
             agg.close,
             agg.avg,
             agg.count,
+            agg.fxRate,
             Timestamp.from(Instant.now()),
         )
     }
@@ -83,11 +88,12 @@ class PremiumAggregationRepository(
         jdbcTemplate.update(
             """
             INSERT INTO premium_day
-            (symbol, day_at, high, low, open, close, avg, count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (symbol, day_at, high, low, open, close, avg, count, fx_rate, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
             high = VALUES(high), low = VALUES(low), open = VALUES(open),
-            close = VALUES(close), avg = VALUES(avg), count = VALUES(count)
+            close = VALUES(close), avg = VALUES(avg), count = VALUES(count),
+            fx_rate = VALUES(fx_rate)
             """.trimIndent(),
             symbol.uppercase(),
             java.sql.Date.valueOf(dayAt),
@@ -97,6 +103,7 @@ class PremiumAggregationRepository(
             agg.close,
             agg.avg,
             agg.count,
+            agg.fxRate,
             Timestamp.from(Instant.now()),
         )
     }
@@ -136,5 +143,6 @@ class PremiumAggregationRepository(
         close = rs.getBigDecimal("close"),
         avg = rs.getBigDecimal("avg"),
         count = rs.getInt("count"),
+        fxRate = rs.getBigDecimal("fx_rate"),
     )
 }
