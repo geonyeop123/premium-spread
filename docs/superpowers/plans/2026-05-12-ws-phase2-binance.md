@@ -793,7 +793,7 @@ premium:
 
 `okhttp3.mockwebserver.MockWebServer`로 가짜 WebSocket endpoint, Redis는 testcontainers, AlertService는 capture fake.
 
-- [ ] **Step 1: 통합 테스트 작성**
+- [x] **Step 1: 통합 테스트 작성**
 
 ```kotlin
 package io.premiumspread.client.binance
@@ -903,8 +903,8 @@ class BinanceWebSocketIntegrationTest {
         )
         manager.start()
 
-        await.atMost(Duration.ofSeconds(6)).untilCallTo { captured.toList() } matches {
-            it.any { msg -> msg.contains("[CRITICAL]") && msg.contains("binance") }
+        await.atMost(Duration.ofSeconds(6)).untilCallTo { captured.toList() } matches { list ->
+            list != null && list.any { msg -> msg.contains("[CRITICAL]") && msg.contains("binance") }
         }
 
         manager.stop()
