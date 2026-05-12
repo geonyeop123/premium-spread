@@ -14,7 +14,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 
 @RestControllerAdvice
@@ -85,6 +87,22 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+    }
+
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatusException(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
+        val status = HttpStatus.valueOf(ex.statusCode.value())
+        val code = if (status == HttpStatus.UNAUTHORIZED) "UNAUTHORIZED" else "INVALID_ARGUMENT"
+        return ResponseEntity
+            .status(status)
+            .body(ErrorResponse(code = code, message = ERROR_MESSAGES[code] ?: ex.reason.orEmpty()))
+    }
+
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(ex: Exception): ResponseEntity<ErrorResponse> {
         log.error("예상치 못한 오류 발생", ex)
@@ -105,6 +123,7 @@ class GlobalExceptionHandler {
             "POSITION_NOT_FOUND" to "포지션을 찾을 수 없습니다.",
             "PREMIUM_NOT_FOUND" to "프리미엄 정보를 찾을 수 없습니다.",
             "NOTIFICATION_SUBSCRIPTION_NOT_FOUND" to "알림 구독을 찾을 수 없습니다.",
+            "UNAUTHORIZED" to "로그인이 필요합니다.",
             "INVALID_ARGUMENT" to "잘못된 요청 값입니다.",
             "INTERNAL_ERROR" to "서버 내부 오류가 발생했습니다.",
         )

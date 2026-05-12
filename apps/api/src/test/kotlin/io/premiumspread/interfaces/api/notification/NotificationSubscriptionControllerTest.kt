@@ -14,12 +14,14 @@ import io.premiumspread.infrastructure.security.JwtTokenProvider
 import io.premiumspread.infrastructure.security.JwtValidationResult
 import io.premiumspread.infrastructure.security.SecurityConfig
 import io.premiumspread.interfaces.api.config.WebMvcConfig
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
@@ -54,6 +56,11 @@ class NotificationSubscriptionControllerTest {
     @BeforeEach
     fun setUp() {
         every { jwtTokenProvider.validateAndGetClaims(any()) } returns JwtValidationResult.Invalid
+    }
+
+    @AfterEach
+    fun tearDown() {
+        SecurityContextHolder.clearContext()
     }
 
     @Test
