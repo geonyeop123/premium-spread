@@ -908,7 +908,7 @@ premium:
 **Files:**
 - Create: `apps/batch/src/test/kotlin/io/premiumspread/client/bithumb/BithumbWebSocketIntegrationTest.kt`
 
-- [ ] **Step 1: 통합 시나리오 작성**
+- [x] **Step 1: 통합 시나리오 작성**
 
 ```kotlin
 package io.premiumspread.client.bithumb
