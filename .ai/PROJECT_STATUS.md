@@ -1,22 +1,24 @@
 # Project Status
 
-> Last updated: 2026-04-04
+> Last updated: 2026-05-12
 
 ## Current State
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | MVP 1 백엔드 완료, JWT Stateless 인증 전환, DB 쿼리 최적화 (N+1 제거·인덱스·currency 컬럼) |
-| apps/batch | Active | 1초/30분 수집 + 1분/1시간/1일 집계, 프리미엄 계산 일원화, 포지션 의존 제거·락 로그 조정 |
-| apps/web | Active | Next.js 16 + shadcn/ui + TradingView Charts, 대시보드/포지션/인증 UI |
-| modules/redis | Active | ZSet 중복 제거 + 캐시 워밍, AggregationTimeUnit(DAYS 추가), TTL 확장 |
+| apps/api | Active | 회원 알림 구독 CRUD 추가 (이슈 #27), JWT Stateless, DB 쿼리 최적화 |
+| apps/batch | Active | 1초/30분 수집 + 집계, PremiumUpdatedEvent + 이메일 알림 리스너 추가 |
+| apps/web | Active | Next.js 16 + shadcn/ui + TradingView Charts |
+| modules/redis | Active | ZSet 중복 제거 + 캐시 워밍 |
 | modules/jpa | Stable | - |
 | supports/logging | Stable | - |
-| supports/monitoring | Active | Slack AlertService 추가 (Webhook 기반), LogAlertService 기본 fallback |
+| supports/monitoring | Active | Slack AlertService (운영자 알람) |
+| supports/email | Active | JavaMail 기반 이메일 발송 (Gmail SMTP) — 이슈 #27 |
 
 ## Recent Changes
 
 ```text
+feat: 회원 프리미엄 임계값 도달 이메일 알림 (이슈 #27)
 chore: 하네스 구성 — 에이전트 8개 + 스킬 9개 + 오케스트레이터
 fix: PremiumControllerE2ETest 에러 메시지 한국어 매핑 반영
 fix: E2E 테스트 JWT 인증 방식으로 마이그레이션
@@ -47,6 +49,7 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 - [x] WU-08: JWT 인증 전환 (세션 → Stateless, Access/Refresh Token)
 - [x] E2E 테스트 JWT 인증 방식 마이그레이션
 - [x] Flyway 마이그레이션 V8 (position.member_id), V9 (인덱스·currency 컬럼)
+- [x] 이슈 #27: 회원 프리미엄 임계값 도달 이메일 알림 (NotificationSubscription CRUD + 비동기 이벤트 리스너 + supports/email)
 
 ### Pending
 (없음)

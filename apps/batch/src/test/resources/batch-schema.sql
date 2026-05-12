@@ -1,5 +1,32 @@
 -- Batch 모듈 전용 테이블 (JPA Entity 없이 JdbcTemplate으로 사용)
 
+CREATE TABLE IF NOT EXISTS member (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    nickname VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    deleted_at DATETIME(6) NULL,
+    UNIQUE INDEX uk_member_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS notification_subscription (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    member_id BIGINT NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    direction VARCHAR(10) NOT NULL,
+    threshold DECIMAL(10, 4) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    deleted_at DATETIME(6) NULL,
+    INDEX idx_notification_subscription_status_symbol (status, symbol),
+    INDEX idx_notification_subscription_member_id (member_id),
+    CONSTRAINT fk_notification_subscription_member FOREIGN KEY (member_id) REFERENCES member(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS exchange_rate (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     base_currency VARCHAR(10) NOT NULL,

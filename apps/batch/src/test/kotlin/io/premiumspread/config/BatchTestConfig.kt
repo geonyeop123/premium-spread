@@ -23,6 +23,7 @@ class BatchTestConfig {
 
     companion object {
         val BATCH_TABLES = listOf(
+            "notification_subscription", "member",
             "exchange_rate",
             "ticker_minute", "ticker_hour", "ticker_day",
             "premium_minute", "premium_hour", "premium_day",

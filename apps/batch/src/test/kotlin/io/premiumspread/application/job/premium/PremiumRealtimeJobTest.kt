@@ -2,6 +2,7 @@ package io.premiumspread.application.job.premium
 
 import io.mockk.*
 import io.premiumspread.application.common.JobResult
+import io.premiumspread.application.notification.PremiumUpdatedEvent
 import io.premiumspread.cache.PremiumCacheData
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.cache.TickerCacheService
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -22,6 +24,7 @@ class PremiumRealtimeJobTest {
     private lateinit var fxCacheService: FxCacheService
     private lateinit var premiumCacheService: PremiumCacheService
     private lateinit var premiumCalculator: PremiumCalculator
+    private lateinit var eventPublisher: ApplicationEventPublisher
     private lateinit var job: PremiumRealtimeJob
 
     @BeforeEach
@@ -30,11 +33,13 @@ class PremiumRealtimeJobTest {
         fxCacheService = mockk()
         premiumCacheService = mockk(relaxed = true)
         premiumCalculator = mockk()
+        eventPublisher = mockk(relaxed = true)
         job = PremiumRealtimeJob(
             tickerCacheService = tickerCacheService,
             fxCacheService = fxCacheService,
             premiumCacheService = premiumCacheService,
             premiumCalculator = premiumCalculator,
+            eventPublisher = eventPublisher,
         )
     }
 
@@ -241,6 +246,46 @@ class PremiumRealtimeJobTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
+        }
+
+        @Test
+        fun `성공 시 PremiumUpdatedEvent를 publish 한다`() {
+            // given
+            val bithumb = bithumbTicker()
+            val binance = binanceTicker()
+            val fxRate = BigDecimal("1432.6")
+            val premium = premiumData()
+
+            every { tickerCacheService.get("bithumb", "btc") } returns bithumb
+            every { tickerCacheService.get("binance", "btc") } returns binance
+            every { fxCacheService.getUsdKrw() } returns fxRate
+            every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
+
+            // when
+            val result = job.run()
+
+            // then
+            assertThat(result).isEqualTo(JobResult.Success)
+            verify(exactly = 1) {
+                eventPublisher.publishEvent(
+                    match<PremiumUpdatedEvent> {
+                        it.symbol == "btc" && it.premiumRate == BigDecimal("1.2800")
+                    },
+                )
+            }
+        }
+
+        @Test
+        fun `실패 시 PremiumUpdatedEvent를 publish 하지 않는다`() {
+            // given
+            every { tickerCacheService.get("bithumb", "btc") } throws RuntimeException("cache error")
+
+            // when
+            val result = job.run()
+
+            // then
+            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+            verify(exactly = 0) { eventPublisher.publishEvent(any()) }
         }
     }
 }

@@ -8,12 +8,16 @@ import io.premiumspread.domain.InvalidPremiumInputException
 import io.premiumspread.domain.InvalidQuoteException
 import io.premiumspread.domain.InvalidTickerException
 import io.premiumspread.domain.member.DuplicateEmailException
+import io.premiumspread.domain.notification.NotificationSubscriptionNotFoundException
 import io.premiumspread.domain.position.InvalidPositionException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 
 @RestControllerAdvice
@@ -63,11 +67,48 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(code = "PREMIUM_NOT_FOUND", message = ERROR_MESSAGES["PREMIUM_NOT_FOUND"]!!))
     }
 
+    @ExceptionHandler(NotificationSubscriptionNotFoundException::class)
+    fun handleNotificationSubscriptionNotFound(
+        ex: NotificationSubscriptionNotFoundException,
+    ): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    code = "NOTIFICATION_SUBSCRIPTION_NOT_FOUND",
+                    message = ERROR_MESSAGES["NOTIFICATION_SUBSCRIPTION_NOT_FOUND"]!!,
+                ),
+            )
+    }
+
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+    }
+
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatusException(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
+        val status = HttpStatus.valueOf(ex.statusCode.value())
+        val code = if (status == HttpStatus.UNAUTHORIZED) "UNAUTHORIZED" else "INVALID_ARGUMENT"
+        return ResponseEntity
+            .status(status)
+            .body(ErrorResponse(code = code, message = ERROR_MESSAGES[code] ?: ex.reason.orEmpty()))
     }
 
     @ExceptionHandler(Exception::class)
@@ -89,6 +130,8 @@ class GlobalExceptionHandler {
             "TICKER_NOT_FOUND" to "티커를 찾을 수 없습니다.",
             "POSITION_NOT_FOUND" to "포지션을 찾을 수 없습니다.",
             "PREMIUM_NOT_FOUND" to "프리미엄 정보를 찾을 수 없습니다.",
+            "NOTIFICATION_SUBSCRIPTION_NOT_FOUND" to "알림 구독을 찾을 수 없습니다.",
+            "UNAUTHORIZED" to "로그인이 필요합니다.",
             "INVALID_ARGUMENT" to "잘못된 요청 값입니다.",
             "INTERNAL_ERROR" to "서버 내부 오류가 발생했습니다.",
         )

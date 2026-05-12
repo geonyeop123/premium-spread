@@ -27,7 +27,8 @@ premium-spread/
 │   └── redis/            # Redis/Redisson 설정, 분산 락
 └── supports/
     ├── logging/          # 구조화 로깅
-    └── monitoring/       # 메트릭, 헬스체크
+    ├── monitoring/       # 메트릭, 헬스체크
+    └── email/            # JavaMail 기반 이메일 발송 (Gmail SMTP)
 ```
 
 ## Batch Data Flow (As-Is)
@@ -144,7 +145,7 @@ premium-spread/
 
 ## Alert Service
 
-`supports/monitoring` 모듈에 알림 서비스 인터페이스 + 구현체 (WU-07).
+`supports/monitoring` 모듈에 알림 서비스 인터페이스 + 구현체 (WU-07). **운영자/개발자용 모니터링 알람**.
 
 | 클래스 | 조건 | 역할 |
 |--------|------|------|
@@ -153,6 +154,50 @@ premium-spread/
 | `LogAlertService` | Slack 미설정 시 기본 | 로그 기반 알림 (local, test 환경) |
 
 `MonitoringAutoConfiguration`에서 `@ConditionalOnProperty`로 자동 전환.
+
+## User Notification (이슈 #27)
+
+회원이 등록한 프리미엄 임계값 도달 시 이메일 발송. 운영용 `AlertService`와 분리된 도메인.
+
+### 흐름
+
+```
+[회원] POST /api/v1/notifications/subscriptions
+  → API: domain/notification (NotificationSubscription CRUD)
+  → MySQL: notification_subscription
+                       ▲ (활성 구독 + member.email JOIN, JdbcTemplate)
+                       │
+[Batch] PremiumRealtimeJob ──1초──► PremiumUpdatedEvent (Spring ApplicationEvent)
+                                          ▼ @Async (별도 쓰레드, 잡과 격리)
+                              PremiumThresholdNotificationListener
+                                          ▼
+                              PremiumThresholdNotificationService
+                                          ├─ matches(rate)? → no면 skip
+                                          ├─ tryAcquireCooldown(NX, 60min)? → false면 skip
+                                          ▼
+                                    EmailSender.send()  (supports/email)
+                                          ├─ 성공 → cooldown 유지
+                                          └─ 실패 → release(취소) 후 로그
+```
+
+### 구성 요소
+
+| 모듈 | 클래스 | 역할 |
+|------|--------|------|
+| apps/api | `domain/notification/NotificationSubscription` | Entity, 변경 컬럼은 `protected set` + `change*()` |
+| apps/api | `application/notification/NotificationSubscriptionFacade` | CRUD 유스케이스 |
+| apps/api | `interfaces/api/notification/NotificationSubscriptionController` | `/api/v1/notifications/subscriptions` |
+| apps/batch | `repository/ActiveSubscriptionReadRepository` | JdbcTemplate, member JOIN 활성 구독 조회 |
+| apps/batch | `application/notification/PremiumThresholdNotificationListener` | `@Async @EventListener`, ConditionalOnProperty 가드 |
+| apps/batch | `application/notification/PremiumThresholdNotificationService` | 매칭, cooldown, 발송 위임 |
+| apps/batch | `cache/NotificationCooldownStore` | Redis `SET NX EX 3600` 원자 reservation + release |
+| supports/email | `EmailSender` / `JavaMailEmailSender` | SMTP 발송, 실패는 `EmailDeliveryException`으로 전파 |
+
+### 활성화 조건
+
+- `alert.email.from` 환경변수가 설정되면 Service/Listener 등록 (`@ConditionalOnProperty`)
+- `JavaMailSender` 빈은 `spring.mail.host` 자동 설정에 따라 등록 (Spring Boot)
+- 미설정 시 Service/Listener 빈 미등록 → 부팅 영향 없음 (local/test 안전)
 
 ## Persistence (MySQL)
 
@@ -175,6 +220,8 @@ premium-spread/
 | V7 | `create_member_table` | member 테이블 |
 | V8 | `add_member_id_to_position` | position.member_id FK 추가 |
 | V9 | `add_indexes_and_currency_column` | 성능 인덱스 + ticker 집계 currency 컬럼 |
+| V10 | `add_fx_rate_to_premium_aggregation_tables` | premium 집계 테이블에 fx_rate 컬럼 |
+| V11 | `create_notification_subscription` | notification_subscription 테이블 (이슈 #27) |
 
 ## Observability (As-Is)
 

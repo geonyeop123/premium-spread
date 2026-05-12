@@ -9,6 +9,7 @@ include(
     ":modules:redis",
     // supports
     ":supports:logging",
+    ":supports:email",
     ":supports:monitoring",
 )
 
