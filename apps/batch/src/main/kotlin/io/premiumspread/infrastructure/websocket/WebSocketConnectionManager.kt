@@ -6,6 +6,7 @@ import org.springframework.web.reactive.socket.WebSocketSession
 import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClient
 import org.springframework.web.reactive.socket.client.WebSocketClient
 import reactor.core.Disposable
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.publisher.SignalType
 import reactor.core.scheduler.Schedulers
@@ -25,6 +26,7 @@ class WebSocketConnectionManager(
     private val log = LoggerFactory.getLogger("${javaClass.simpleName}[${config.exchange}]")
     private val subscription = AtomicReference<Disposable?>()
     private val pendingReconnect = AtomicReference<Disposable?>()
+    private val pingDisposable = AtomicReference<Disposable?>()
     private val running = AtomicBoolean(false)
     private val currentBackoff = AtomicReference(initialBackoff)
 
@@ -37,6 +39,7 @@ class WebSocketConnectionManager(
         running.set(false)
         subscription.getAndSet(null)?.dispose()
         pendingReconnect.getAndSet(null)?.dispose()
+        pingDisposable.getAndSet(null)?.dispose()
         metrics.setConnectionState(config.exchange, connected = false)
     }
 
@@ -66,6 +69,17 @@ class WebSocketConnectionManager(
                 .subscribe()
             timeoutDisposable.set(timer)
 
+            // Start client-side ping if configured — runs as a separate cancellable stream
+            when (val hb = config.heartbeat) {
+                is HeartbeatPolicy.ClientPing -> {
+                    val ping = Flux.interval(hb.interval, Schedulers.parallel())
+                        .flatMap { session.send(Mono.just(session.textMessage(hb.pingMessage))) }
+                        .subscribe()
+                    pingDisposable.set(ping)
+                }
+                HeartbeatPolicy.None, HeartbeatPolicy.ServerPingResponse -> { /* no-op */ }
+            }
+
             val receive: Mono<Void> = session.receive()
                 .doOnNext { frame ->
                     // Cancel timeout on first message arrival
@@ -90,6 +104,7 @@ class WebSocketConnectionManager(
             .doOnError { e -> log.error("WebSocket connection error: {}", e.message) }
             .doFinally { signalType ->
                 timeoutDisposable.getAndSet(null)?.dispose()  // resource cleanup, CANCEL 신호에서도 실행
+                pingDisposable.getAndSet(null)?.dispose()      // ping stream cleanup, CANCEL 신호에서도 실행
                 metrics.setConnectionState(config.exchange, connected = false)
                 if (signalType == SignalType.CANCEL) return@doFinally  // stop()에 의한 취소 — backoff/메트릭 오염 방지
                 if (running.get()) {

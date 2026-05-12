@@ -242,6 +242,27 @@ class WebSocketConnectionManagerTest {
         }
     }
 
+    @Test
+    fun `ClientPing 정책 시 일정 주기로 ping 메시지를 송신한다`() {
+        val pingsReceived = ConcurrentLinkedQueue<String>()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) { pingsReceived.add(text) }
+        }))
+
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            heartbeat = HeartbeatPolicy.ClientPing(interval = Duration.ofMillis(200), pingMessage = "ping"),
+            firstMessageTimeout = Duration.ofSeconds(5),
+            onMessage = { },
+        )
+        manager = WebSocketConnectionManager(config, metrics, client, fakeAlertService).also { it.start() }
+
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted {
+            assertThat(pingsReceived.filter { it == "ping" }).hasSizeGreaterThanOrEqualTo(2)
+        }
+    }
+
     private fun wsUrl(): String {
         val httpUrl = server.url("/ws")
         return "ws://${httpUrl.host}:${httpUrl.port}/ws"
