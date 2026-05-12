@@ -6,41 +6,43 @@ import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClien
 import org.springframework.web.reactive.socket.client.WebSocketClient
 import reactor.core.Disposable
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
 import java.net.URI
+import java.time.Duration
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * 단일 WebSocket 연결의 lifecycle을 관리한다.
- *
- * 책임:
- * - 시작/종료 lifecycle
- * - 메시지 수신 → onMessage 콜백 + 메트릭
- *
- * 미구현 (Task 4/5/6에서 추가):
- * - 자동 재연결 + exponential backoff
- * - 하트비트 정책 적용
- * - 첫 메시지 타임아웃
- */
 class WebSocketConnectionManager(
     private val config: WebSocketConnectionConfig,
     private val metrics: WebSocketMetrics,
     private val client: WebSocketClient = ReactorNettyWebSocketClient(),
+    private val initialBackoff: Duration = Duration.ofSeconds(1),
+    private val maxBackoff: Duration = Duration.ofSeconds(30),
 ) {
     private val log = LoggerFactory.getLogger("${javaClass.simpleName}[${config.exchange}]")
     private val subscription = AtomicReference<Disposable?>()
+    private val pendingReconnect = AtomicReference<Disposable?>()
+    private val running = AtomicBoolean(false)
+    private val currentBackoff = AtomicReference(initialBackoff)
 
     fun start() {
-        connect()
+        if (!running.compareAndSet(false, true)) return
+        connectWithRetry()
     }
 
     fun stop() {
+        running.set(false)
         subscription.getAndSet(null)?.dispose()
+        pendingReconnect.getAndSet(null)?.dispose()
         metrics.setConnectionState(config.exchange, connected = false)
     }
 
-    private fun connect() {
+    private fun connectWithRetry() {
+        if (!running.get()) return
+
         val mono = client.execute(URI.create(config.url)) { session: WebSocketSession ->
             metrics.setConnectionState(config.exchange, connected = true)
+            currentBackoff.set(initialBackoff)
 
             val sendInit: Mono<Void> = config.subscribeMessage
                 ?.let { msg -> session.send(Mono.just(session.textMessage(msg))) }
@@ -63,10 +65,30 @@ class WebSocketConnectionManager(
         }
 
         val disposable = mono
-            .doOnError { e -> log.error("WebSocket connection error", e) }
-            .doFinally { metrics.setConnectionState(config.exchange, connected = false) }
+            .doOnError { e -> log.error("WebSocket connection error: {}", e.message) }
+            .doFinally {
+                metrics.setConnectionState(config.exchange, connected = false)
+                if (running.get()) {
+                    val backoff = currentBackoff.get()
+                    val next = (backoff.toMillis() * 2).coerceAtMost(maxBackoff.toMillis())
+                    currentBackoff.set(Duration.ofMillis(next))
+                    metrics.recordReconnect(config.exchange)
+                    log.info("Reconnecting in {} ms", backoff.toMillis())
+                    val timer = Mono.delay(backoff, Schedulers.parallel())
+                        .doOnNext {
+                            if (running.get()) connectWithRetry()
+                        }
+                        .subscribe()
+                    pendingReconnect.getAndSet(timer)?.dispose()
+                }
+            }
             .subscribe()
 
         subscription.set(disposable)
+
+        // Double-check: if stop() was called while we were subscribing, dispose the stale connection immediately
+        if (!running.get()) {
+            subscription.getAndSet(null)?.dispose()
+        }
     }
 }
