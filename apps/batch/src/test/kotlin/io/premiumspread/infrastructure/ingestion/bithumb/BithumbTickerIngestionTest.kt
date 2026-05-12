@@ -52,7 +52,7 @@ class BithumbTickerIngestionTest {
     }
 
     @Test
-    fun `직전보다 오래된 exchange timestamp는 폐기되고 out_of_order가 증가한다`() {
+    fun `직전보다 strict하게 오래된 exchange timestamp는 폐기되고 out_of_order가 증가한다`() {
         val first = tickerAt(Instant.parse("2026-05-12T00:00:05Z"))
         val stale = tickerAt(Instant.parse("2026-05-12T00:00:01Z"))
         ingestion.onMessage(first)
@@ -62,6 +62,23 @@ class BithumbTickerIngestionTest {
         verify(exactly = 0) { cache.save(stale) }
         verify(exactly = 1) { metrics.recordOutOfOrder("bithumb") }
         assertThat(ingestion.latest()?.ticker).isEqualTo(first)
+    }
+
+    @Test
+    fun `같은 second(HHmmss) timestamp 메시지는 수용된다 (Bithumb 응답 정밀도 한계 대응)`() {
+        // Bithumb HHmmss precision으로 같은 초의 새 메시지가 같은 timestamp를 가질 수 있음.
+        // strict하게 reject하면 가격 변화가 무시되므로 같은 timestamp는 받아들여야 함.
+        val ts = Instant.parse("2026-05-12T00:00:05Z")
+        val first = tickerAt(ts)
+        val sameSecond = tickerAt(ts).copy(price = BigDecimal("200000000"))
+
+        ingestion.onMessage(first)
+        ingestion.onMessage(sameSecond)
+
+        verify(exactly = 1) { cache.save(first) }
+        verify(exactly = 1) { cache.save(sameSecond) }
+        verify(exactly = 0) { metrics.recordOutOfOrder("bithumb") }
+        assertThat(ingestion.latest()?.ticker).isEqualTo(sameSecond)
     }
 
     @Test

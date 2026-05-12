@@ -39,9 +39,10 @@ class BithumbTickerIngestion(
         val now = Instant.now(clock)
         val candidate = LatestTicker(ticker, now)
 
-        // Atomic monotonic CAS — 오래된 메시지가 통과하면 prev 그대로 유지
+        // Atomic monotonic CAS — strict하게 오래된 메시지만 폐기. 같은 second 타임스탬프는 수용
+        // (Bithumb 응답은 HHmmss 정밀도이므로 동일 second 내 새 메시지가 정상).
         val updated = lastTicker.updateAndGet { prev ->
-            if (prev != null && !ticker.timestamp.isAfter(prev.ticker.timestamp)) prev else candidate
+            if (prev != null && ticker.timestamp.isBefore(prev.ticker.timestamp)) prev else candidate
         }
         if (updated !== candidate) {
             metrics.recordOutOfOrder(EXCHANGE)
