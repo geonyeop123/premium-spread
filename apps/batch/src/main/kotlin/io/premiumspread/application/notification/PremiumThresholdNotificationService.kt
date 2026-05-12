@@ -8,12 +8,12 @@ import io.premiumspread.repository.ActiveSubscriptionReadRepository
 import io.premiumspread.repository.ActiveSubscriptionView
 import io.premiumspread.repository.ThresholdDirectionView
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
 @Service
-@ConditionalOnBean(EmailSender::class)
+@ConditionalOnProperty(prefix = "alert.email", name = ["from"])
 class PremiumThresholdNotificationService(
     private val readRepository: ActiveSubscriptionReadRepository,
     private val cooldownStore: NotificationCooldownStore,

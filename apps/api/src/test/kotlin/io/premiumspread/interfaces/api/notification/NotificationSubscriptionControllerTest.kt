@@ -100,6 +100,15 @@ class NotificationSubscriptionControllerTest {
     }
 
     @Test
+    fun `POST 잘못된 enum 값은 400을 반환한다`() {
+        mockMvc.post("/api/v1/notifications/subscriptions") {
+            with(user(testUserDetails))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"symbol":"BTC","direction":"INVALID","threshold":5.00}"""
+        }.andExpect { status { isBadRequest() } }
+    }
+
+    @Test
     fun `POST 미인증 401`() {
         mockMvc.post("/api/v1/notifications/subscriptions") {
             with(anonymous())

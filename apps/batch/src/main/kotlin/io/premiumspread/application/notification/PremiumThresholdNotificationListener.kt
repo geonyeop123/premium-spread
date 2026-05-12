@@ -1,14 +1,13 @@
 package io.premiumspread.application.notification
 
-import io.premiumspread.email.EmailSender
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
 
 @Component
-@ConditionalOnBean(EmailSender::class)
+@ConditionalOnProperty(prefix = "alert.email", name = ["from"])
 class PremiumThresholdNotificationListener(
     private val service: PremiumThresholdNotificationService,
 ) {
