@@ -307,7 +307,7 @@ class BinanceTickerIngestionTest {
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/client/binance/BinanceWebSocketClient.kt`
 - Create: `apps/batch/src/test/kotlin/io/premiumspread/client/binance/BinanceWebSocketClientTest.kt`
 
-- [ ] **Step 1: 본체 작성**
+- [x] **Step 1: 본체 작성**
 
 ```kotlin
 package io.premiumspread.client.binance
@@ -428,7 +428,7 @@ class BinanceWebSocketClient(
 }
 ```
 
-- [ ] **Step 2: 단위 테스트 작성**
+- [x] **Step 2: 단위 테스트 작성**
 
 ```kotlin
 package io.premiumspread.client.binance
