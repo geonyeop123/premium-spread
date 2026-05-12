@@ -465,7 +465,7 @@ class BithumbTickerIngestionTest {
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/infrastructure/ingestion/bithumb/BithumbFlushJob.kt`
 - Create: `apps/batch/src/test/kotlin/io/premiumspread/infrastructure/ingestion/bithumb/BithumbFlushJobTest.kt`
 
-- [ ] **Step 1: 본체 작성**
+- [x] **Step 1: 본체 작성**
 
 ```kotlin
 package io.premiumspread.infrastructure.ingestion.bithumb
@@ -537,7 +537,7 @@ class BithumbFlushJob(
 }
 ```
 
-- [ ] **Step 2: 단위 테스트 작성**
+- [x] **Step 2: 단위 테스트 작성**
 
 ```kotlin
 package io.premiumspread.infrastructure.ingestion.bithumb
@@ -603,7 +603,7 @@ class BithumbFlushJobTest {
         job.run()
 
         verify(exactly = 1) { cache.saveToSecondsWithScore(ticker, now) }
-        verify(exactly = 1) { valueOps.set(BithumbFlushJob.LAST_RUN_KEY, now.toEpochMilli().toString(), any()) }
+        verify(exactly = 1) { valueOps.set(BithumbFlushJob.LAST_RUN_KEY, now.toEpochMilli().toString(), any<Duration>()) }
         verify(exactly = 1) { metrics.recordFlush("bithumb") }
         verify(exactly = 0) { metrics.recordStale(any()) }
     }
@@ -668,7 +668,7 @@ class BithumbFlushJobTest {
 **Files:**
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/scheduler/BithumbFlushScheduler.kt`
 
-- [ ] **Step 1: 본체 작성**
+- [x] **Step 1: 본체 작성**
 
 ```kotlin
 package io.premiumspread.scheduler
