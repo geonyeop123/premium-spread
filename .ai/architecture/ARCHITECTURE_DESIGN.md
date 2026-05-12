@@ -1,6 +1,6 @@
 # Premium Spread System Architecture
 
-> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-04-04)
+> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-12)
 
 ## System Overview
 
@@ -21,7 +21,13 @@ premium-spread/
 │       ├── scheduler/    # @Scheduled 작업
 │       ├── client/       # External API Client (WebClient)
 │       ├── cache/        # Redis Cache Writer
-│       └── repository/   # DB Writer (JdbcTemplate)
+│       ├── repository/   # DB Writer (JdbcTemplate)
+│       └── infrastructure/
+│           └── websocket/  # WebSocket 공통 인프라 (Phase 1, #29)
+│               ├── WebSocketConnectionManager   # Reactor Netty 연결·재연결·하트비트
+│               ├── WebSocketMetrics             # 9종 Micrometer 메트릭
+│               ├── HeartbeatPolicy              # sealed interface (Ping/Text/None)
+│               └── WebSocketConnectionConfig    # 연결 파라미터 data class
 ├── modules/
 │   ├── jpa/              # JPA 공통 설정
 │   └── redis/            # Redis/Redisson 설정, 분산 락
@@ -187,6 +193,16 @@ premium-spread/
 - 외부 호출 타이머:
   - `ticker.fetch.latency`
   - `fx.fetch.latency`
+- WebSocket 메트릭 (Phase 1, `WebSocketMetrics`):
+  - `ws.connection.state` — 연결 상태 게이지 (exchange 태그)
+  - `ws.message.received` — 수신 메시지 카운터 (exchange 태그)
+  - `ws.reconnect.attempt` — 재연결 시도 카운터 (exchange 태그)
+  - `ws.message.lag.ms` — 메시지 처리 지연 타이머 (exchange 태그)
+  - `ws.last.message.age` — 마지막 메시지 수신 후 경과 시간 게이지 (exchange 태그)
+  - `ws.first.message.timeout` — 첫 메시지 타임아웃 카운터 (exchange 태그)
+  - `ws.out_of_order` — 순서 역전 메시지 카운터 (exchange 태그)
+  - `ws.stale.{exchange}` — stale 감지 카운터
+  - `ticker.flush.{exchange}` / `ticker.flush.error.{exchange}` — flush 성공/오류 카운터 (Phase 2/3 사용 예정)
 
 ## Notes
 
