@@ -53,7 +53,7 @@
 - Modify: `apps/batch/src/main/kotlin/io/premiumspread/cache/TickerCacheService.kt`
 - Modify or Create: `apps/batch/src/test/kotlin/io/premiumspread/cache/TickerCacheServiceTest.kt`
 
-- [ ] **Step 1: 메서드 추가 — ZSet member 포맷 `{epochMs}:{price}`**
+- [x] **Step 1: 메서드 추가 — ZSet member 포맷 `{epochMs}:{price}`**
 
 `TimeSeriesCacheSupport.add`는 같은 score 중복만 제거하고, 같은 value(price)/다른 score 케이스는 멤버 유일성으로 인해 entry 1개로 collapse된다. Phase 3는 동일 가격 1Hz flush 시 5 distinct entries가 필요하므로 멤버에 timestamp를 포함시킨다.
 
@@ -96,7 +96,7 @@ fun saveToSeconds(ticker: TickerData) {
 }
 ```
 
-- [ ] **Step 2: `getSecondsData` 리더가 신/구 멤버 포맷 둘 다 파싱하도록 갱신**
+- [x] **Step 2: `getSecondsData` 리더가 신/구 멤버 포맷 둘 다 파싱하도록 갱신**
 
 `":"` 포함 여부로 분기:
 
@@ -115,7 +115,7 @@ fun getSecondsData(exchange: String, symbol: String, from: Instant, to: Instant)
 }
 ```
 
-- [ ] **Step 3: 단위 테스트 추가 — 동일 가격 5회 flush → ZSet 5 distinct entries 검증**
+- [x] **Step 3: 단위 테스트 추가 — 동일 가격 5회 flush → ZSet 5 distinct entries 검증**
 
 기존 `TickerCacheServiceTest`(있다면)에 케이스 추가 또는 `TickerCacheServiceScoreTest.kt` 신규 생성. Redis 통신은 mock 또는 TestContainer 기반(`@Tag("integration")`)으로 결정.
 
