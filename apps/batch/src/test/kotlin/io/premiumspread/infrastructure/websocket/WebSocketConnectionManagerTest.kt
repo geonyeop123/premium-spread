@@ -23,6 +23,12 @@ class WebSocketConnectionManagerTest {
     private val metrics = WebSocketMetrics(registry)
     private val client = ReactorNettyWebSocketClient()
     private var manager: WebSocketConnectionManager? = null
+    private val capturedAlerts = ConcurrentLinkedQueue<String>()
+    private val fakeAlertService = object : io.premiumspread.monitoring.AlertService {
+        override fun sendAlert(message: String, severity: io.premiumspread.monitoring.AlertService.Severity) {
+            capturedAlerts.add(message)
+        }
+    }
 
     @BeforeEach
     fun setUp() {
@@ -57,7 +63,7 @@ class WebSocketConnectionManagerTest {
             onMessage = { received.add(it) },
             firstMessageTimeout = Duration.ofSeconds(2),
         )
-        manager = WebSocketConnectionManager(config, metrics, client).also { it.start() }
+        manager = WebSocketConnectionManager(config, metrics, client, fakeAlertService).also { it.start() }
 
         await().atMost(3, TimeUnit.SECONDS).untilAsserted {
             assertThat(received).contains("""{"price":"100"}""")
@@ -88,7 +94,7 @@ class WebSocketConnectionManagerTest {
             firstMessageTimeout = Duration.ofSeconds(10),
         )
         manager = WebSocketConnectionManager(
-            config, metrics, client,
+            config, metrics, client, fakeAlertService,
             initialBackoff = Duration.ofMillis(50),
             maxBackoff = Duration.ofSeconds(1),
         ).also { it.start() }
@@ -118,7 +124,7 @@ class WebSocketConnectionManagerTest {
             firstMessageTimeout = Duration.ofSeconds(10),
         )
         manager = WebSocketConnectionManager(
-            config, metrics, client,
+            config, metrics, client, fakeAlertService,
             initialBackoff = Duration.ofMillis(500),
             maxBackoff = Duration.ofSeconds(2),
         ).also { it.start() }
@@ -147,7 +153,7 @@ class WebSocketConnectionManagerTest {
             firstMessageTimeout = Duration.ofSeconds(10),
         )
         manager = WebSocketConnectionManager(
-            config, metrics, client,
+            config, metrics, client, fakeAlertService,
             initialBackoff = Duration.ofMillis(500),
             maxBackoff = Duration.ofSeconds(2),
         ).also { it.start() }
@@ -162,6 +168,78 @@ class WebSocketConnectionManagerTest {
 
         val after = registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0
         assertThat(after).isEqualTo(before) // stop으로 인한 CANCEL은 reconnect 메트릭 증가시키지 않아야 함
+    }
+
+    @Test
+    fun `연결 후 첫 메시지가 timeout 내 도착하지 않으면 first_message_timeout 메트릭과 알람을 호출한다`() {
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {}))
+
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofMillis(300),
+        )
+        manager = WebSocketConnectionManager(config, metrics, client, fakeAlertService).also { it.start() }
+
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted {
+            assertThat(registry.find("ws.first.message.timeout").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(1.0)
+            assertThat(capturedAlerts).isNotEmpty()
+        }
+    }
+
+    @Test
+    fun `메시지가 timeout 전에 도착하면 first_message_timeout 메트릭과 알람이 트리거되지 않는다`() {
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("hello")
+            }
+        }))
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofMillis(500),
+        )
+        manager = WebSocketConnectionManager(config, metrics, client, fakeAlertService).also { it.start() }
+
+        await().atMost(1, TimeUnit.SECONDS).until {
+            (registry.find("ws.message.received").tag("exchange", "test").counter()?.count() ?: 0.0) >= 1.0
+        }
+        Thread.sleep(700)
+        assertThat(registry.find("ws.first.message.timeout").tag("exchange", "test").counter()?.count() ?: 0.0).isZero
+        assertThat(capturedAlerts).isEmpty()
+    }
+
+    @Test
+    fun `서버가 즉시 끊으면 timeout 대기 없이 즉시 재연결을 시도한다`() {
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.close(1000, "bye")
+            }
+        }))
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("ok")
+            }
+        }))
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofSeconds(30),
+        )
+        manager = WebSocketConnectionManager(
+            config, metrics, client, fakeAlertService,
+            initialBackoff = Duration.ofMillis(100),
+            maxBackoff = Duration.ofMillis(500),
+        ).also { it.start() }
+
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted {
+            assertThat(registry.find("ws.message.received").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(1.0)
+        }
     }
 
     private fun wsUrl(): String {
