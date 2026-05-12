@@ -703,7 +703,7 @@ class BithumbFlushScheduler(
 **Files:**
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/client/bithumb/BithumbWebSocketClient.kt`
 
-- [ ] **Step 1: 본체 작성**
+- [x] **Step 1: 본체 작성**
 
 ```kotlin
 package io.premiumspread.client.bithumb
@@ -857,13 +857,13 @@ class BithumbWebSocketClient(
 - Search: 기존에 `Clock` 빈이 등록돼 있는지 확인
 - Create or Modify: `apps/batch/src/main/kotlin/io/premiumspread/config/ClockConfig.kt`
 
-- [ ] **Step 1: 검색**
+- [x] **Step 1: 검색**
 
 ```bash
 grep -rn "Clock.systemUTC\|@Bean.*Clock\|: Clock" .worktrees/feat-issue-31-bithumb-ws/apps/batch/src/main/kotlin/
 ```
 
-- [ ] **Step 2: 없으면 생성**
+- [x] **Step 2: 없으면 생성**
 
 ```kotlin
 package io.premiumspread.config
@@ -888,7 +888,7 @@ class ClockConfig {
 **Files:**
 - Modify: `apps/batch/src/main/resources/application.yml`
 
-- [ ] **Step 1: 기본값 추가 (Phase 2 PR 미머지 대비)**
+- [x] **Step 1: 기본값 추가 (Phase 2 PR 미머지 대비)**
 
 이미 `premium.ingestion.bithumb.mode`가 application.yml에 정의돼 있으면 Skip. 없으면 아래를 추가:
 
