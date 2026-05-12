@@ -3,6 +3,7 @@ package io.premiumspread.client.binance
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
+import io.mockk.verify
 import io.premiumspread.infrastructure.ingestion.binance.BinanceTickerIngestion
 import io.premiumspread.infrastructure.websocket.WebSocketMetrics
 import io.premiumspread.monitoring.AlertService
@@ -49,5 +50,29 @@ class BinanceWebSocketClientTest {
         val payload = """{"e":"24hrMiniTicker","E":1,"s":"BTCUSDT","c":"NaN"}"""
         val ticker = client.parse(payload)
         assertThat(ticker).isNull()
+    }
+
+    @Test
+    fun `parse 5회 연속 실패면 ws_parse_error 카운터 누적 + critical alert가 호출되고 counter는 리셋된다`() {
+        val alertService = mockk<AlertService>(relaxed = true)
+        val meterRegistry = SimpleMeterRegistry()
+        val client = BinanceWebSocketClient(
+            ingestion = mockk(relaxed = true),
+            metrics = mockk(relaxed = true),
+            alertService = alertService,
+            objectMapper = ObjectMapper(),
+            meterRegistry = meterRegistry,
+        )
+
+        repeat(5) { client.parse("not-json") }
+
+        // ws.parse.error{exchange=binance} 누적 검증
+        val counter = meterRegistry.find("ws.parse.error").tag("exchange", "binance").counter()
+        assertThat(counter).isNotNull
+        assertThat(counter!!.count()).isEqualTo(5.0)
+        // 5회 연속에서 critical alert 1회 호출
+        verify(exactly = 1) {
+            alertService.sendCriticalAlert(match { it.contains("5회 연속") && it.contains("binance") })
+        }
     }
 }
