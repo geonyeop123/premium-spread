@@ -26,7 +26,7 @@
 
 ```
 [회원]
-   │ ① POST /api/notifications/subscriptions
+   │ ① POST /api/v1/notifications/subscriptions
    ▼
 [API] domain/notification ──► MySQL: notification_subscription
                                           ▲
@@ -335,11 +335,11 @@ class NotificationCooldownStore(
 
 | Method | Path | Body / Query | 200/201 응답 | 권한 |
 |---|---|---|---|---|
-| GET | `/api/notifications/subscriptions` | — | `SubscriptionResponse.Detail[]` (내 구독) | 인증 필수 |
-| GET | `/api/notifications/subscriptions/{id}` | — | `SubscriptionResponse.Detail` | 인증 + 본인 |
-| POST | `/api/notifications/subscriptions` | `{symbol, direction, threshold}` | `SubscriptionResponse.Detail` (201) | 인증 |
-| PATCH | `/api/notifications/subscriptions/{id}` | `{status?, direction?, threshold?}` | `SubscriptionResponse.Detail` | 인증 + 본인 |
-| DELETE | `/api/notifications/subscriptions/{id}` | — | 204 | 인증 + 본인 |
+| GET | `/api/v1/notifications/subscriptions` | — | `SubscriptionResponse.Detail[]` (내 구독) | 인증 필수 |
+| GET | `/api/v1/notifications/subscriptions/{id}` | — | `SubscriptionResponse.Detail` | 인증 + 본인 |
+| POST | `/api/v1/notifications/subscriptions` | `{symbol, direction, threshold}` | `SubscriptionResponse.Detail` (201) | 인증 |
+| PATCH | `/api/v1/notifications/subscriptions/{id}` | `{status?, direction?, threshold?}` | `SubscriptionResponse.Detail` | 인증 + 본인 |
+| DELETE | `/api/v1/notifications/subscriptions/{id}` | — | 204 | 인증 + 본인 |
 
 - 미인증 요청 → 401
 - 유효성 실패 (빈 symbol, null threshold, 미허용 direction 등) → 400
