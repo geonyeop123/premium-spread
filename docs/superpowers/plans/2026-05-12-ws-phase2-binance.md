@@ -756,7 +756,7 @@ class IngestionModeConfigTest {
 - Modify: `apps/batch/src/main/resources/application.yml`
 - Modify: `apps/batch/src/main/resources/application-local.yml`
 
-- [ ] **Step 1: application.yml — 기본 모드 명시**
+- [x] **Step 1: application.yml — 기본 모드 명시**
 
 상단 `exchange-rate:` 블록 다음에 다음을 추가:
 
@@ -770,7 +770,7 @@ premium:
       mode: rest
 ```
 
-- [ ] **Step 2: application-local.yml — local에서 binance만 websocket 활성**
+- [x] **Step 2: application-local.yml — local에서 binance만 websocket 활성**
 
 ```yaml
 exchange-rate:
