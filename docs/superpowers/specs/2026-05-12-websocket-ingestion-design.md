@@ -95,8 +95,9 @@ Bithumb WS ticker
 BithumbFlushScheduler (@Scheduled fixedRate=1000, thin entrypoint)
   → BithumbFlushJob.run()
        ├─ stale 체크: now - lastReceivedAt > 10s 면 skip + ws.stale 메트릭
-       ├─ ticker.copy(timestamp = Instant.now())  ← ZSet score 1초 단위 누적용
-       └─ TickerCacheService.save + saveToSeconds
+       └─ TickerCacheService.saveToSecondsWithScore(latest.ticker, Instant.now())
+            ↑ ZSet만 갱신 (score = flush 시점). Hash는 절대 건드리지 않음 — freshness 5s TTL은 메시지 수신 시점에만 갱신.
+            ↑ ZSet member 포맷은 `{epochMs}:{price}`로 유일성 보장 → 같은 가격이 연속 flush돼도 5 distinct entries 누적.
 ```
 
 ### 피처 플래그
