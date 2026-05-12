@@ -7,23 +7,12 @@ spring:
     redis:
       host: ${REDIS_MASTER_HOST}
       port: ${REDIS_MASTER_PORT}
-  mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
 
 alert:
   slack:
     webhook-url: ${SLACK_WEBHOOK_URL:}
-  email:
-    from: ${ALERT_EMAIL_FROM:${MAIL_USERNAME}}
+
+# spring.mail.* / alert.email.from은 application.yml(default)에 통합되어 모든 프로파일에서 동일하게 동작한다.
 
 logging:
   level:
