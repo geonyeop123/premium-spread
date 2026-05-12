@@ -37,8 +37,8 @@
                                           ▼ @Async
                                   PremiumThresholdNotificationListener
                                           │
-                                          ├─ cooldownStore.isInCooldown? → skip
-                                          ├─ direction/threshold 매칭?
+                                          ├─ direction/threshold 매칭? → no면 skip
+                                          ├─ tryAcquireCooldown (NX SET 60min)? → false면 skip
                                           ▼
                                     EmailSender.send(...)
                                           ▼ SMTP
@@ -62,46 +62,85 @@
 @Entity
 @Table(
     name = "notification_subscription",
-    indexes = [Index(columnList = "status,symbol")],
+    indexes = [
+        Index(name = "idx_notification_subscription_status_symbol", columnList = "status,symbol"),
+        Index(name = "idx_notification_subscription_member_id", columnList = "member_id"),
+    ],
 )
-class NotificationSubscription private constructor(
-    @Column(nullable = false)
+class NotificationSubscription protected constructor(
+    @Column(name = "member_id", nullable = false, updatable = false)
     val memberId: Long,
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 20, updatable = false)
     val symbol: String,
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 10)
-    val direction: ThresholdDirection,
+    direction: ThresholdDirection,
+    threshold: BigDecimal,
+    status: SubscriptionStatus,
+) : BaseEntity() {
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    var direction: ThresholdDirection = direction
+        protected set
+
     @Column(nullable = false, precision = 10, scale = 4)
-    val threshold: BigDecimal,
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
-    val status: SubscriptionStatus,
-) : BaseEntity()
+    var threshold: BigDecimal = threshold
+        protected set
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    var status: SubscriptionStatus = status
+        protected set
+
+    fun changeStatus(newStatus: SubscriptionStatus) { this.status = newStatus }
+    fun changeThreshold(newThreshold: BigDecimal) { this.threshold = newThreshold }
+    fun changeDirection(newDirection: ThresholdDirection) { this.direction = newDirection }
+
+    companion object {
+        fun create(
+            memberId: Long,
+            symbol: String,
+            direction: ThresholdDirection,
+            threshold: BigDecimal,
+        ): NotificationSubscription = NotificationSubscription(
+            memberId = memberId,
+            symbol = symbol.uppercase(),
+            direction = direction,
+            threshold = threshold,
+            status = SubscriptionStatus.ACTIVE,
+        )
+    }
+}
 
 enum class ThresholdDirection { ABOVE, BELOW }
 enum class SubscriptionStatus { ACTIVE, INACTIVE }
 ```
 
-- 모든 필드 `val`. 상태 변경은 기존 Member 패턴과 동일하게 새 인스턴스 생성 (또는 named factory).
+**Entity 식별자 보존 원칙**: `BaseEntity.id`는 `@GeneratedValue`라 0으로 초기화된다. update 시 새 인스턴스를 만들면 id가 0인 채로 `save()`가 호출되어 **새 row가 insert**된다. 따라서 변경 가능한 비식별 컬럼(direction/threshold/status)은 `var` + `protected set` + 명시적 `change*()` 메서드로 노출하고, 동일 인스턴스의 필드를 변경한 뒤 `save()`(또는 dirty checking)으로 UPDATE를 발생시킨다. memberId/symbol처럼 변경 불가한 식별 컬럼은 `val` + `updatable = false`로 락.
+
 - `lastTriggeredAt` 등 가변 상태는 Entity에 두지 않고 Redis cooldown 키로 별도 관리.
 
 ### Flyway Migration
 
 기존 마지막 버전: `V10__add_fx_rate_to_premium_aggregation_tables.sql`. 신규: `V11`.
 
+기존 테이블(V7 member)과 동일한 컨벤션을 따른다: `DATETIME(6)`, soft delete용 `deleted_at`, `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`.
+
 ```sql
 -- V11__create_notification_subscription.sql
 CREATE TABLE notification_subscription (
-    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
-    member_id    BIGINT       NOT NULL,
-    symbol       VARCHAR(20)  NOT NULL,
-    direction    VARCHAR(10)  NOT NULL,    -- ABOVE | BELOW
-    threshold    DECIMAL(10, 4) NOT NULL,  -- 단위: %
-    status       VARCHAR(20)  NOT NULL,    -- ACTIVE | INACTIVE
-    created_at   DATETIME     NOT NULL,
-    updated_at   DATETIME     NOT NULL,
-    INDEX idx_status_symbol (status, symbol),
-    CONSTRAINT fk_subscription_member FOREIGN KEY (member_id) REFERENCES member(id)
-);
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    member_id  BIGINT       NOT NULL,
+    symbol     VARCHAR(20)  NOT NULL,
+    direction  VARCHAR(10)  NOT NULL,    -- ABOVE | BELOW
+    threshold  DECIMAL(10, 4) NOT NULL,  -- 단위: %
+    status     VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME(6)  NOT NULL,
+    updated_at DATETIME(6)  NOT NULL,
+    deleted_at DATETIME(6)  NULL,
+    INDEX idx_notification_subscription_status_symbol (status, symbol),
+    INDEX idx_notification_subscription_member_id (member_id),
+    CONSTRAINT fk_notification_subscription_member FOREIGN KEY (member_id) REFERENCES member(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
 ## 4. 모듈/패키지 구조
@@ -162,8 +201,12 @@ supports/email/ (신규 모듈)
 
 ### supports/email
 
+EmailSender는 발송 실패를 **호출자에게 전파**한다. 호출자(NotificationService)가 책임지고 cooldown 미마킹 등의 흐름을 처리한다.
+
 ```kotlin
 interface EmailSender {
+    /** 발송에 실패하면 EmailDeliveryException을 던진다. */
+    @Throws(EmailDeliveryException::class)
     fun send(message: EmailMessage)
 }
 
@@ -173,12 +216,12 @@ data class EmailMessage(
     val text: String,
 )
 
+class EmailDeliveryException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+
 class JavaMailEmailSender(
     private val mailSender: JavaMailSender,
     private val from: String,
 ) : EmailSender {
-    private val log = LoggerFactory.getLogger(javaClass)
-
     override fun send(message: EmailMessage) {
         try {
             mailSender.send(
@@ -190,7 +233,7 @@ class JavaMailEmailSender(
                 },
             )
         } catch (e: Exception) {
-            log.error("이메일 발송 실패 to={}: {}", message.to, e.message, e)
+            throw EmailDeliveryException("이메일 발송 실패 to=${message.to}", e)
         }
     }
 }
@@ -232,8 +275,11 @@ data class PremiumUpdatedEvent(
 
 ### Async Listener
 
+`@ConditionalOnBean(EmailSender::class)`로 보호하여, 이메일이 비활성화된 환경(local/test 등)에서는 빈 등록을 스킵 → batch 부팅 정상.
+
 ```kotlin
 @Component
+@ConditionalOnBean(EmailSender::class)
 class PremiumThresholdNotificationListener(
     private val service: PremiumThresholdNotificationService,
 ) {
@@ -271,25 +317,35 @@ class NotificationAsyncConfig {
 
 ```kotlin
 @Service
+@ConditionalOnBean(EmailSender::class)
 class PremiumThresholdNotificationService(
     private val readRepository: ActiveSubscriptionReadRepository,
     private val cooldownStore: NotificationCooldownStore,
     private val emailSender: EmailSender,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     fun process(event: PremiumUpdatedEvent) {
         val subscriptions = readRepository.findActiveBySymbol(event.symbol)
         for (sub in subscriptions) {
             if (!sub.matches(event.premiumRate)) continue
-            if (cooldownStore.isInCooldown(sub.id)) continue
 
-            emailSender.send(
-                EmailMessage(
-                    to = sub.memberEmail,
-                    subject = "[premium-spread] ${event.symbol.uppercase()} 프리미엄 ${event.premiumRate}% 도달",
-                    text = renderBody(sub, event),
-                ),
-            )
-            cooldownStore.markTriggered(sub.id)
+            // 원자 reservation: 다른 스레드가 이미 쿨다운 키를 set 했다면 false 반환 → skip
+            if (!cooldownStore.tryAcquireCooldown(sub.id)) continue
+
+            try {
+                emailSender.send(
+                    EmailMessage(
+                        to = sub.memberEmail,
+                        subject = "[premium-spread] ${event.symbol.uppercase()} 프리미엄 ${event.premiumRate}% 도달",
+                        text = renderBody(sub, event),
+                    ),
+                )
+            } catch (e: EmailDeliveryException) {
+                // 발송 실패 시 cooldown 해제 → 다음 이벤트에서 재시도 가능
+                cooldownStore.release(sub.id)
+                log.error("구독 {} 발송 실패: {}", sub.id, e.message, e)
+            }
         }
     }
 }
@@ -312,16 +368,23 @@ data class ActiveSubscriptionView(
 
 ### Cooldown
 
+체크와 설정이 별도 연산이면 async 동시 처리 시 동일 구독에 중복 발송될 수 있다. Redis의 `SET NX EX`로 원자적 reservation을 구현한다.
+
 ```kotlin
 @Component
 class NotificationCooldownStore(
     private val redisTemplate: StringRedisTemplate,
 ) {
-    fun isInCooldown(subscriptionId: Long): Boolean =
-        redisTemplate.hasKey(key(subscriptionId))
+    /** 키가 없을 때만 set (NX) + 60분 TTL. 새로 set 했으면 true, 이미 있어 set 못했으면 false. */
+    fun tryAcquireCooldown(subscriptionId: Long): Boolean {
+        val acquired = redisTemplate.opsForValue()
+            .setIfAbsent(key(subscriptionId), "1", COOLDOWN)
+        return acquired == true
+    }
 
-    fun markTriggered(subscriptionId: Long) {
-        redisTemplate.opsForValue().set(key(subscriptionId), "1", COOLDOWN)
+    /** 발송 실패 시 reservation 해제. */
+    fun release(subscriptionId: Long) {
+        redisTemplate.delete(key(subscriptionId))
     }
 
     companion object {
@@ -418,19 +481,21 @@ ALERT_EMAIL_FROM=your-gmail@gmail.com
 
 process 동작:
 - 활성 구독 없음 → `emailSender.send` 0회
-- 매칭 1건 → send 1회 + cooldown 마킹 1회
-- 매칭 N건 → send N회
-- 매칭 안 되는 구독 → 해당 구독은 send 미호출
-- cooldown 중 → send 미호출, 마킹 미호출
-- 발송 도중 1건 예외 → 다음 구독 계속 처리됨
+- 매칭 1건 → tryAcquireCooldown 1회 + send 1회
+- 매칭 N건 → 각각 acquire + send
+- 매칭 안 되는 구독 → acquire/send 미호출
+- 다른 스레드가 이미 reservation (tryAcquireCooldown=false) → send 미호출, release 미호출
+- send 도중 `EmailDeliveryException` → `release(sub.id)` 호출, 다음 구독 계속 처리
+- send 성공 → cooldown 유지 (release 미호출)
 
 **`PremiumThresholdNotificationListener`**
 - 이벤트 수신 시 `service.process` 1회 호출
 - service 예외 throw 시 외부 전파 안 됨
 
 **`NotificationCooldownStore`**
-- `markTriggered` 시 set + TTL 60min
-- `isInCooldown`이 `hasKey` 결과 반환
+- `tryAcquireCooldown` — 키가 없으면 `setIfAbsent`로 set + TTL 60min, true 반환
+- `tryAcquireCooldown` — 키가 이미 있으면 `setIfAbsent`가 false 반환 → false
+- `release` — `delete(key)` 호출
 
 **`NotificationSubscriptionService`**
 - 생성/단건/목록/수정/삭제 정상
@@ -439,7 +504,7 @@ process 동작:
 
 **`JavaMailEmailSender`**
 - `send` 호출 시 SimpleMailMessage with from/to/subject/text
-- `JavaMailSender.send` 예외 시 외부 전파 안 함
+- `JavaMailSender.send` 예외 시 `EmailDeliveryException`으로 wrap 후 전파
 
 **`PremiumRealtimeJob` (회귀 + 추가)**
 - (회귀) 성공 시 cache save 동일
@@ -449,11 +514,20 @@ process 동작:
 
 ### Controller Tests (`@WebMvcTest`)
 
-- POST 201 / 유효성 실패 400
-- GET 목록/단건 200, 타인 404
-- PATCH 200, 타인 404
-- DELETE 204, 타인 404
-- 미인증 401
+기존 `PositionControllerTest` 패턴을 따른다: `@Import(SecurityConfig::class, WebMvcConfig::class)` + `@MockkBean` JwtTokenProvider/CustomUserDetailsService + `with(user(CustomUserDetails(...)))` 인증 컨텍스트.
+
+| 케이스 | 기대 |
+|---|---|
+| POST 정상 | 201 |
+| POST symbol 빈 문자열 | 400 |
+| GET 목록 인증 | 200 |
+| GET 단건 본인 | 200 |
+| GET 단건 타인/없음 (NotFound) | 404 |
+| PATCH 본인 | 200 |
+| PATCH 타인 | 404 |
+| DELETE 본인 | 204 |
+| DELETE 타인 | 404 |
+| 모든 라우트 미인증 | 401 |
 
 ### Integration Tests (`@Tag("integration")`, Testcontainers)
 

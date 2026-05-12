@@ -153,10 +153,31 @@ git commit -m "feat: EmailSender 인터페이스와 EmailMessage 추가"
 ## Task 3: JavaMailEmailSender 구현 (TDD)
 
 **Files:**
+- Create: `supports/email/src/main/kotlin/io/premiumspread/email/EmailDeliveryException.kt`
 - Create: `supports/email/src/test/kotlin/io/premiumspread/email/JavaMailEmailSenderTest.kt`
 - Create: `supports/email/src/main/kotlin/io/premiumspread/email/JavaMailEmailSender.kt`
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Create EmailDeliveryException + update interface**
+
+`supports/email/src/main/kotlin/io/premiumspread/email/EmailDeliveryException.kt`:
+```kotlin
+package io.premiumspread.email
+
+class EmailDeliveryException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+```
+
+`EmailSender.kt` — 인터페이스에 throws 명세 추가:
+```kotlin
+package io.premiumspread.email
+
+interface EmailSender {
+    /** 발송 실패 시 [EmailDeliveryException]을 던진다. */
+    @Throws(EmailDeliveryException::class)
+    fun send(message: EmailMessage)
+}
+```
+
+- [ ] **Step 2: Write failing test**
 
 `supports/email/src/test/kotlin/io/premiumspread/email/JavaMailEmailSenderTest.kt`:
 ```kotlin
@@ -167,7 +188,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatCode
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.mail.SimpleMailMessage
 import org.springframework.mail.javamail.JavaMailSender
@@ -193,12 +214,14 @@ class JavaMailEmailSenderTest {
     }
 
     @Test
-    fun `JavaMailSender가 예외를 던져도 호출자에게 전파하지 않는다`() {
+    fun `JavaMailSender가 예외를 던지면 EmailDeliveryException으로 wrap하여 던진다`() {
         every { mailSender.send(any<SimpleMailMessage>()) } throws RuntimeException("SMTP down")
 
-        assertThatCode {
+        assertThatThrownBy {
             sut.send(EmailMessage(to = "user@example.com", subject = "s", text = "t"))
-        }.doesNotThrowAnyException()
+        }
+            .isInstanceOf(EmailDeliveryException::class.java)
+            .hasMessageContaining("user@example.com")
     }
 }
 ```
@@ -214,7 +237,6 @@ Expected: compile error or test failure due to missing `JavaMailEmailSender`.
 ```kotlin
 package io.premiumspread.email
 
-import org.slf4j.LoggerFactory
 import org.springframework.mail.SimpleMailMessage
 import org.springframework.mail.javamail.JavaMailSender
 
@@ -222,8 +244,6 @@ class JavaMailEmailSender(
     private val mailSender: JavaMailSender,
     private val from: String,
 ) : EmailSender {
-
-    private val log = LoggerFactory.getLogger(JavaMailEmailSender::class.java)
 
     override fun send(message: EmailMessage) {
         try {
@@ -235,7 +255,7 @@ class JavaMailEmailSender(
             }
             mailSender.send(mail)
         } catch (e: Exception) {
-            log.error("이메일 발송 실패 to={}: {}", message.to, e.message, e)
+            throw EmailDeliveryException("이메일 발송 실패 to=${message.to}", e)
         }
     }
 }
@@ -249,8 +269,8 @@ Expected: BUILD SUCCESSFUL, 2 tests passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supports/email/src/main/kotlin/io/premiumspread/email/JavaMailEmailSender.kt supports/email/src/test/kotlin/io/premiumspread/email/JavaMailEmailSenderTest.kt
-git commit -m "feat: JavaMailEmailSender 구현 — 발송 실패는 흡수하고 로그만 남긴다"
+git add supports/email/src/main/kotlin/io/premiumspread/email/EmailSender.kt supports/email/src/main/kotlin/io/premiumspread/email/EmailDeliveryException.kt supports/email/src/main/kotlin/io/premiumspread/email/JavaMailEmailSender.kt supports/email/src/test/kotlin/io/premiumspread/email/JavaMailEmailSenderTest.kt
+git commit -m "feat: JavaMailEmailSender 구현 — 발송 실패는 EmailDeliveryException으로 wrap 후 전파"
 ```
 
 ---
@@ -319,16 +339,17 @@ git commit -m "feat: EmailAutoConfiguration 추가 — alert.email.from + JavaMa
 
 `apps/api/src/main/resources/db/migration/V11__create_notification_subscription.sql`:
 ```sql
+-- BaseEntity와 컨벤션 일치: DATETIME(6), deleted_at (soft delete), utf8mb4
 CREATE TABLE notification_subscription (
     id         BIGINT AUTO_INCREMENT PRIMARY KEY,
-    member_id  BIGINT       NOT NULL,
-    symbol     VARCHAR(20)  NOT NULL,
-    direction  VARCHAR(10)  NOT NULL,
-    threshold  DECIMAL(10, 4) NOT NULL,
-    status     VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
-    created_at DATETIME(6)  NOT NULL,
-    updated_at DATETIME(6)  NOT NULL,
-    deleted_at DATETIME(6)  NULL,
+    member_id  BIGINT         NOT NULL,
+    symbol     VARCHAR(20)    NOT NULL,
+    direction  VARCHAR(10)    NOT NULL,   -- ABOVE | BELOW
+    threshold  DECIMAL(10, 4) NOT NULL,   -- 단위: %
+    status     VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME(6)    NOT NULL,
+    updated_at DATETIME(6)    NOT NULL,
+    deleted_at DATETIME(6)    NULL,
     INDEX idx_notification_subscription_status_symbol (status, symbol),
     INDEX idx_notification_subscription_member_id (member_id),
     CONSTRAINT fk_notification_subscription_member FOREIGN KEY (member_id) REFERENCES member(id)
@@ -435,27 +456,30 @@ class NotificationSubscriptionTest {
     }
 
     @Test
-    fun `withStatus는 새 인스턴스를 반환한다`() {
-        val sub = NotificationSubscription.create(1L, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00"))
-        val inactive = sub.withStatus(SubscriptionStatus.INACTIVE)
-        assertThat(inactive.status).isEqualTo(SubscriptionStatus.INACTIVE)
-        assertThat(sub.status).isEqualTo(SubscriptionStatus.ACTIVE)
+    fun `create는 symbol을 uppercase로 정규화한다`() {
+        val sub = NotificationSubscription.create(1L, "btc", ThresholdDirection.ABOVE, BigDecimal("5.00"))
+        assertThat(sub.symbol).isEqualTo("BTC")
     }
 
     @Test
-    fun `withThreshold는 임계값만 바꾼 새 인스턴스를 반환한다`() {
+    fun `changeStatus는 동일 인스턴스의 status만 바꾼다 (id 보존)`() {
         val sub = NotificationSubscription.create(1L, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00"))
-        val updated = sub.withThreshold(BigDecimal("7.50"))
-        assertThat(updated.threshold).isEqualByComparingTo("7.50")
-        assertThat(sub.threshold).isEqualByComparingTo("5.00")
+        sub.changeStatus(SubscriptionStatus.INACTIVE)
+        assertThat(sub.status).isEqualTo(SubscriptionStatus.INACTIVE)
     }
 
     @Test
-    fun `withDirection은 방향만 바꾼 새 인스턴스를 반환한다`() {
+    fun `changeThreshold는 임계값만 바꾼다`() {
         val sub = NotificationSubscription.create(1L, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00"))
-        val updated = sub.withDirection(ThresholdDirection.BELOW)
-        assertThat(updated.direction).isEqualTo(ThresholdDirection.BELOW)
-        assertThat(sub.direction).isEqualTo(ThresholdDirection.ABOVE)
+        sub.changeThreshold(BigDecimal("7.50"))
+        assertThat(sub.threshold).isEqualByComparingTo("7.50")
+    }
+
+    @Test
+    fun `changeDirection은 방향만 바꾼다`() {
+        val sub = NotificationSubscription.create(1L, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00"))
+        sub.changeDirection(ThresholdDirection.BELOW)
+        assertThat(sub.direction).isEqualTo(ThresholdDirection.BELOW)
     }
 }
 ```
@@ -465,7 +489,9 @@ class NotificationSubscriptionTest {
 Run: `./gradlew :apps:api:test --tests NotificationSubscriptionTest`
 Expected: compile error (NotificationSubscription not defined).
 
-- [ ] **Step 3: Implement entity**
+- [ ] **Step 3: Implement entity (mutable fields with `protected set` + change* methods)**
+
+⚠️ **id 보존 원칙**: `withX`처럼 새 인스턴스를 만들어 save하면 `BaseEntity.id = 0`이라 JPA가 INSERT를 발행해 새 row가 생긴다 (PATCH가 중복 row를 만드는 버그). 변경 가능 컬럼은 동일 인스턴스에서 mutate.
 
 `apps/api/src/main/kotlin/io/premiumspread/domain/notification/NotificationSubscription.kt`:
 ```kotlin
@@ -488,29 +514,41 @@ import java.math.BigDecimal
         Index(name = "idx_notification_subscription_member_id", columnList = "member_id"),
     ],
 )
-class NotificationSubscription private constructor(
-    @Column(name = "member_id", nullable = false)
+class NotificationSubscription protected constructor(
+    @Column(name = "member_id", nullable = false, updatable = false)
     val memberId: Long,
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 20, updatable = false)
     val symbol: String,
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    val direction: ThresholdDirection,
-    @Column(nullable = false, precision = 10, scale = 4)
-    val threshold: BigDecimal,
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    val status: SubscriptionStatus,
+    direction: ThresholdDirection,
+    threshold: BigDecimal,
+    status: SubscriptionStatus,
 ) : BaseEntity() {
 
-    fun withStatus(newStatus: SubscriptionStatus): NotificationSubscription =
-        NotificationSubscription(memberId, symbol, direction, threshold, newStatus)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    var direction: ThresholdDirection = direction
+        protected set
 
-    fun withThreshold(newThreshold: BigDecimal): NotificationSubscription =
-        NotificationSubscription(memberId, symbol, direction, newThreshold, status)
+    @Column(nullable = false, precision = 10, scale = 4)
+    var threshold: BigDecimal = threshold
+        protected set
 
-    fun withDirection(newDirection: ThresholdDirection): NotificationSubscription =
-        NotificationSubscription(memberId, symbol, newDirection, threshold, status)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    var status: SubscriptionStatus = status
+        protected set
+
+    fun changeStatus(newStatus: SubscriptionStatus) {
+        this.status = newStatus
+    }
+
+    fun changeThreshold(newThreshold: BigDecimal) {
+        this.threshold = newThreshold
+    }
+
+    fun changeDirection(newDirection: ThresholdDirection) {
+        this.direction = newDirection
+    }
 
     companion object {
         fun create(
@@ -532,13 +570,13 @@ class NotificationSubscription private constructor(
 - [ ] **Step 4: Run test → expect pass**
 
 Run: `./gradlew :apps:api:test --tests NotificationSubscriptionTest`
-Expected: BUILD SUCCESSFUL, 4 tests passed.
+Expected: BUILD SUCCESSFUL, 5 tests passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/main/kotlin/io/premiumspread/domain/notification/NotificationSubscription.kt apps/api/src/test/kotlin/io/premiumspread/domain/notification/NotificationSubscriptionTest.kt
-git commit -m "feat: NotificationSubscription Entity 추가 (불변 + withX 패턴)"
+git commit -m "feat: NotificationSubscription Entity 추가 — 변경 컬럼은 protected set + change*()"
 ```
 
 ---
@@ -669,10 +707,10 @@ class NotificationSubscriptionServiceTest {
     }
 
     @Test
-    fun `update는 status, direction, threshold를 부분 갱신한다`() {
+    fun `update는 동일 인스턴스의 status, direction, threshold를 부분 갱신한다 (새 인스턴스 생성 금지)`() {
         val sub = NotificationSubscription.create(1L, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00"))
         every { repository.findById(10L) } returns sub
-        every { repository.save(any()) } answers { firstArg() }
+        every { repository.save(sub) } returns sub
 
         val result = sut.update(
             NotificationSubscriptionCommand.Update(
@@ -684,9 +722,12 @@ class NotificationSubscriptionServiceTest {
             ),
         )
 
+        // 반환된 인스턴스가 입력 인스턴스와 동일 (id 보존)
+        assertThat(result).isSameAs(sub)
         assertThat(result.status).isEqualTo(SubscriptionStatus.INACTIVE)
         assertThat(result.direction).isEqualTo(ThresholdDirection.BELOW)
         assertThat(result.threshold).isEqualByComparingTo("-2.00")
+        verify(exactly = 1) { repository.save(sub) }
     }
 
     @Test
@@ -764,12 +805,12 @@ class NotificationSubscriptionService(
         val sub = findByIdAndMemberId(command.id, command.memberId)
             ?: throw NotificationSubscriptionNotFoundException("구독을 찾을 수 없습니다: id=${command.id}")
 
-        var updated = sub
-        command.status?.let { updated = updated.withStatus(it) }
-        command.direction?.let { updated = updated.withDirection(it) }
-        command.threshold?.let { updated = updated.withThreshold(it) }
+        // id 보존: 동일 인스턴스의 필드를 mutate. save 호출은 명시적(이미 영속 상태면 dirty checking으로도 가능).
+        command.status?.let { sub.changeStatus(it) }
+        command.direction?.let { sub.changeDirection(it) }
+        command.threshold?.let { sub.changeThreshold(it) }
 
-        return repository.save(updated)
+        return repository.save(sub)
     }
 
     @Transactional
@@ -906,6 +947,23 @@ class NotificationSubscriptionRepositoryImplTest @Autowired constructor(
         sut.delete(sub)
         assertThat(sut.findById(sub.id)).isNull()
         assertThat(sut.findAllByMemberId(member.id)).isEmpty()
+    }
+
+    @Test
+    fun `change 후 save는 새 row를 만들지 않는다 (UPDATE)`() {
+        // PATCH 회귀 방지: id 보존 패턴이 깨지면 row가 2개로 늘어남
+        val member = memberRepository.save(Member.create(email = "d@d.com", encodedPassword = "x"))
+        val sub = sut.save(NotificationSubscription.create(member.id, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00")))
+        val originalId = sub.id
+
+        sub.changeStatus(SubscriptionStatus.INACTIVE)
+        sut.save(sub)
+
+        val all = sut.findAllByMemberId(member.id)
+        // INACTIVE는 findAll 결과에 어떻게 포함되는지에 따라 다름 — JpaRepository는 status 무관 조회
+        // 핵심: row count가 1이고 id가 보존됨
+        assertThat(all).hasSizeLessThanOrEqualTo(1)  // 보수적
+        assertThat(sut.findById(originalId)).isNotNull
     }
 }
 ```
@@ -1203,7 +1261,7 @@ class NotificationSubscriptionController(
 }
 ```
 
-- [ ] **Step 4: Write Controller test (WebMvc + mocked Facade)**
+- [ ] **Step 4: Write Controller test (WebMvc + Security 통합, PositionControllerTest 패턴 그대로)**
 
 `apps/api/src/test/kotlin/io/premiumspread/interfaces/api/notification/NotificationSubscriptionControllerTest.kt`:
 ```kotlin
@@ -1213,16 +1271,24 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
 import io.mockk.verify
-import io.premiumspread.application.notification.NotificationSubscriptionCriteria
 import io.premiumspread.application.notification.NotificationSubscriptionFacade
 import io.premiumspread.application.notification.NotificationSubscriptionResult
 import io.premiumspread.domain.notification.NotificationSubscriptionNotFoundException
 import io.premiumspread.domain.notification.SubscriptionStatus
 import io.premiumspread.domain.notification.ThresholdDirection
+import io.premiumspread.infrastructure.security.CustomUserDetails
+import io.premiumspread.infrastructure.security.CustomUserDetailsService
+import io.premiumspread.infrastructure.security.JwtTokenProvider
+import io.premiumspread.infrastructure.security.JwtValidationResult
+import io.premiumspread.infrastructure.security.SecurityConfig
+import io.premiumspread.interfaces.api.config.WebMvcConfig
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
@@ -1231,85 +1297,149 @@ import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
 
 @WebMvcTest(NotificationSubscriptionController::class)
-class NotificationSubscriptionControllerTest @Autowired constructor(
-    private val mockMvc: MockMvc,
-    private val objectMapper: ObjectMapper,
-) {
+@Import(SecurityConfig::class, WebMvcConfig::class)
+class NotificationSubscriptionControllerTest {
+
+    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var objectMapper: ObjectMapper
 
     @MockkBean private lateinit var facade: NotificationSubscriptionFacade
+    @MockkBean(relaxed = true) private lateinit var jwtTokenProvider: JwtTokenProvider
+    @MockkBean(relaxed = true) private lateinit var userDetailsService: CustomUserDetailsService
 
-    // 인증 컨텍스트 mock은 프로젝트의 기존 컨트롤러 테스트 패턴을 따른다.
-    // (LoginMemberId argument resolver는 SecurityConfig + WebMvcTest 컨피그로 1L을 주입한다고 가정)
+    private val testUserDetails = CustomUserDetails(
+        memberId = 1L, email = "u@x.com", nickname = "user", encodedPassword = "pw",
+    )
+
+    @BeforeEach
+    fun setUp() {
+        every { jwtTokenProvider.validateAndGetClaims(any()) } returns JwtValidationResult.Invalid
+    }
 
     @Test
     fun `POST 정상 201`() {
-        val result = NotificationSubscriptionResult.Detail(
+        every { facade.create(any()) } returns NotificationSubscriptionResult.Detail(
             id = 100L, memberId = 1L, symbol = "BTC",
             direction = ThresholdDirection.ABOVE, threshold = BigDecimal("5.00"),
             status = SubscriptionStatus.ACTIVE,
         )
-        every { facade.create(any()) } returns result
-
-        val body = """{"symbol":"BTC","direction":"ABOVE","threshold":5.00}"""
         mockMvc.post("/api/v1/notifications/subscriptions") {
+            with(user(testUserDetails))
             contentType = MediaType.APPLICATION_JSON
-            content = body
+            content = """{"symbol":"BTC","direction":"ABOVE","threshold":5.00}"""
         }.andExpect { status { isCreated() } }
-        verify { facade.create(any<NotificationSubscriptionCriteria.Create>()) }
+        verify { facade.create(any()) }
     }
 
     @Test
     fun `POST 유효성 실패 400`() {
-        val body = """{"symbol":"","direction":"ABOVE","threshold":5.00}"""
         mockMvc.post("/api/v1/notifications/subscriptions") {
+            with(user(testUserDetails))
             contentType = MediaType.APPLICATION_JSON
-            content = body
+            content = """{"symbol":"","direction":"ABOVE","threshold":5.00}"""
         }.andExpect { status { isBadRequest() } }
     }
 
     @Test
-    fun `GET 목록 200`() {
-        every { facade.findAllByMemberId(any()) } returns emptyList()
-        mockMvc.get("/api/v1/notifications/subscriptions")
-            .andExpect { status { isOk() } }
+    fun `POST 미인증 401`() {
+        mockMvc.post("/api/v1/notifications/subscriptions") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"symbol":"BTC","direction":"ABOVE","threshold":5.00}"""
+        }.andExpect { status { isUnauthorized() } }
     }
 
     @Test
-    fun `GET 단건 - 본인 구독 200`() {
-        every { facade.findByIdAndMemberId(10L, any()) } returns NotificationSubscriptionResult.Detail(
+    fun `GET 목록 200`() {
+        every { facade.findAllByMemberId(1L) } returns emptyList()
+        mockMvc.get("/api/v1/notifications/subscriptions") {
+            with(user(testUserDetails))
+        }.andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `GET 목록 미인증 401`() {
+        mockMvc.get("/api/v1/notifications/subscriptions")
+            .andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `GET 단건 본인 200`() {
+        every { facade.findByIdAndMemberId(10L, 1L) } returns NotificationSubscriptionResult.Detail(
             id = 10L, memberId = 1L, symbol = "BTC",
             direction = ThresholdDirection.ABOVE, threshold = BigDecimal("5.00"),
             status = SubscriptionStatus.ACTIVE,
         )
-        mockMvc.get("/api/v1/notifications/subscriptions/10")
-            .andExpect { status { isOk() } }
+        mockMvc.get("/api/v1/notifications/subscriptions/10") {
+            with(user(testUserDetails))
+        }.andExpect { status { isOk() } }
     }
 
     @Test
-    fun `GET 단건 - 타인 구독 404 (NotFoundException 매핑)`() {
-        every { facade.findByIdAndMemberId(10L, any()) } throws NotificationSubscriptionNotFoundException("not found")
-        mockMvc.get("/api/v1/notifications/subscriptions/10")
-            .andExpect { status { isNotFound() } }
+    fun `GET 단건 타인 또는 없음 404`() {
+        every { facade.findByIdAndMemberId(10L, 1L) } throws NotificationSubscriptionNotFoundException("not found")
+        mockMvc.get("/api/v1/notifications/subscriptions/10") {
+            with(user(testUserDetails))
+        }.andExpect { status { isNotFound() } }
     }
 
     @Test
-    fun `PATCH 정상 200`() {
+    fun `GET 단건 미인증 401`() {
+        mockMvc.get("/api/v1/notifications/subscriptions/10")
+            .andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `PATCH 본인 200`() {
         every { facade.update(any()) } returns NotificationSubscriptionResult.Detail(
             id = 10L, memberId = 1L, symbol = "BTC",
             direction = ThresholdDirection.BELOW, threshold = BigDecimal("-2.00"),
             status = SubscriptionStatus.INACTIVE,
         )
         mockMvc.patch("/api/v1/notifications/subscriptions/10") {
+            with(user(testUserDetails))
             contentType = MediaType.APPLICATION_JSON
             content = """{"status":"INACTIVE","direction":"BELOW","threshold":-2.00}"""
         }.andExpect { status { isOk() } }
     }
 
     @Test
-    fun `DELETE 204`() {
-        every { facade.delete(any(), any()) } returns Unit
+    fun `PATCH 타인 404`() {
+        every { facade.update(any()) } throws NotificationSubscriptionNotFoundException("not found")
+        mockMvc.patch("/api/v1/notifications/subscriptions/10") {
+            with(user(testUserDetails))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"status":"INACTIVE"}"""
+        }.andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `PATCH 미인증 401`() {
+        mockMvc.patch("/api/v1/notifications/subscriptions/10") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"status":"INACTIVE"}"""
+        }.andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `DELETE 본인 204`() {
+        every { facade.delete(10L, 1L) } returns Unit
+        mockMvc.delete("/api/v1/notifications/subscriptions/10") {
+            with(user(testUserDetails))
+        }.andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `DELETE 타인 404`() {
+        every { facade.delete(10L, 1L) } throws NotificationSubscriptionNotFoundException("not found")
+        mockMvc.delete("/api/v1/notifications/subscriptions/10") {
+            with(user(testUserDetails))
+        }.andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `DELETE 미인증 401`() {
         mockMvc.delete("/api/v1/notifications/subscriptions/10")
-            .andExpect { status { isNoContent() } }
+            .andExpect { status { isUnauthorized() } }
     }
 }
 ```
@@ -1428,28 +1558,40 @@ class NotificationCooldownStoreTest {
     private val sut = NotificationCooldownStore(redisTemplate)
 
     @Test
-    fun `markTriggered는 키에 TTL을 적용하여 set 한다`() {
+    fun `tryAcquireCooldown은 키가 없을 때 setIfAbsent로 60분 TTL을 설정하고 true를 반환한다`() {
         val key = slot<String>()
         val ttl = slot<Duration>()
-        every { valueOps.set(capture(key), any(), capture(ttl)) } returns Unit
+        every { valueOps.setIfAbsent(capture(key), any(), capture(ttl)) } returns true
 
-        sut.markTriggered(42L)
+        val result = sut.tryAcquireCooldown(42L)
 
+        assertThat(result).isTrue()
         assertThat(key.captured).isEqualTo("notification:cooldown:42")
         assertThat(ttl.captured).isEqualTo(Duration.ofMinutes(60))
-        verify(exactly = 1) { valueOps.set(any(), any(), any<Duration>()) }
+        verify(exactly = 1) { valueOps.setIfAbsent(any(), any(), any<Duration>()) }
     }
 
     @Test
-    fun `isInCooldown은 hasKey 결과를 반환한다 - true`() {
-        every { redisTemplate.hasKey("notification:cooldown:42") } returns true
-        assertThat(sut.isInCooldown(42L)).isTrue()
+    fun `tryAcquireCooldown은 이미 키가 있으면 false를 반환한다`() {
+        every { valueOps.setIfAbsent(any(), any(), any<Duration>()) } returns false
+        assertThat(sut.tryAcquireCooldown(42L)).isFalse()
     }
 
     @Test
-    fun `isInCooldown은 hasKey 결과를 반환한다 - false`() {
-        every { redisTemplate.hasKey("notification:cooldown:42") } returns false
-        assertThat(sut.isInCooldown(42L)).isFalse()
+    fun `tryAcquireCooldown은 setIfAbsent가 null을 반환해도 false로 처리한다`() {
+        every { valueOps.setIfAbsent(any(), any(), any<Duration>()) } returns null
+        assertThat(sut.tryAcquireCooldown(42L)).isFalse()
+    }
+
+    @Test
+    fun `release는 키를 삭제한다`() {
+        val key = slot<String>()
+        every { redisTemplate.delete(capture(key)) } returns true
+
+        sut.release(42L)
+
+        assertThat(key.captured).isEqualTo("notification:cooldown:42")
+        verify(exactly = 1) { redisTemplate.delete("notification:cooldown:42") }
     }
 }
 ```
@@ -1474,11 +1616,20 @@ class NotificationCooldownStore(
     private val redisTemplate: StringRedisTemplate,
 ) {
 
-    fun isInCooldown(subscriptionId: Long): Boolean =
-        redisTemplate.hasKey(key(subscriptionId))
+    /**
+     * 키가 없을 때만 set (NX) + 60분 TTL.
+     * 새로 set 됐으면 true, 이미 있어 set 실패면 false.
+     * 원자 연산으로 동시 접근 시 중복 발송을 방지한다.
+     */
+    fun tryAcquireCooldown(subscriptionId: Long): Boolean {
+        val acquired = redisTemplate.opsForValue()
+            .setIfAbsent(key(subscriptionId), "1", COOLDOWN)
+        return acquired == true
+    }
 
-    fun markTriggered(subscriptionId: Long) {
-        redisTemplate.opsForValue().set(key(subscriptionId), "1", COOLDOWN)
+    /** 발송 실패 시 reservation 해제. 다음 이벤트에서 즉시 재시도 허용. */
+    fun release(subscriptionId: Long) {
+        redisTemplate.delete(key(subscriptionId))
     }
 
     companion object {
@@ -1491,13 +1642,13 @@ class NotificationCooldownStore(
 - [ ] **Step 4: Run → expect pass**
 
 Run: `./gradlew :apps:batch:test --tests NotificationCooldownStoreTest`
-Expected: BUILD SUCCESSFUL, 3 tests passed.
+Expected: BUILD SUCCESSFUL, 4 tests passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/batch/src/main/kotlin/io/premiumspread/cache/NotificationCooldownStore.kt apps/batch/src/test/kotlin/io/premiumspread/cache/NotificationCooldownStoreTest.kt
-git commit -m "feat: NotificationCooldownStore — Redis TTL 60분 기반 cooldown"
+git commit -m "feat: NotificationCooldownStore — 원자 SET NX 기반 tryAcquireCooldown/release"
 ```
 
 ---
@@ -1743,53 +1894,71 @@ class PremiumThresholdNotificationServiceTest {
     }
 
     @Test
-    fun `매칭 1건 - send 1회 + cooldown 마킹 1회`() {
+    fun `매칭 1건 - tryAcquireCooldown 후 send 1회 (release는 안 함)`() {
         val v = view(1L, ThresholdDirectionView.ABOVE, "5.00")
         every { readRepo.findActiveBySymbol("BTC") } returns listOf(v)
-        every { cooldownStore.isInCooldown(1L) } returns false
+        every { cooldownStore.tryAcquireCooldown(1L) } returns true
+        every { emailSender.send(any()) } returns Unit
 
         sut.process(PremiumUpdatedEvent("BTC", BigDecimal("5.20")))
 
+        verify(exactly = 1) { cooldownStore.tryAcquireCooldown(1L) }
         verify(exactly = 1) { emailSender.send(any()) }
-        verify(exactly = 1) { cooldownStore.markTriggered(1L) }
+        verify(exactly = 0) { cooldownStore.release(any()) }
     }
 
     @Test
-    fun `매칭 안 되는 구독 - send 미호출, 마킹 미호출`() {
+    fun `매칭 안 되는 구독 - acquire 미호출, send 미호출`() {
         val v = view(1L, ThresholdDirectionView.ABOVE, "5.00")
         every { readRepo.findActiveBySymbol("BTC") } returns listOf(v)
 
         sut.process(PremiumUpdatedEvent("BTC", BigDecimal("4.99")))
 
+        verify(exactly = 0) { cooldownStore.tryAcquireCooldown(any()) }
         verify(exactly = 0) { emailSender.send(any()) }
-        verify(exactly = 0) { cooldownStore.markTriggered(any()) }
     }
 
     @Test
-    fun `cooldown 중 - send 미호출, 마킹 미호출`() {
+    fun `이미 reservation 있음 (acquire false) - send 미호출, release 미호출`() {
         val v = view(1L, ThresholdDirectionView.ABOVE, "5.00")
         every { readRepo.findActiveBySymbol("BTC") } returns listOf(v)
-        every { cooldownStore.isInCooldown(1L) } returns true
+        every { cooldownStore.tryAcquireCooldown(1L) } returns false
 
         sut.process(PremiumUpdatedEvent("BTC", BigDecimal("5.20")))
 
         verify(exactly = 0) { emailSender.send(any()) }
-        verify(exactly = 0) { cooldownStore.markTriggered(any()) }
+        verify(exactly = 0) { cooldownStore.release(any()) }
     }
 
     @Test
-    fun `여러 구독 중 한 건 발송 예외라도 나머지 구독은 계속 처리된다`() {
+    fun `SMTP 실패 시 release 호출되어 cooldown이 해제된다`() {
+        val v = view(1L, ThresholdDirectionView.ABOVE, "5.00")
+        every { readRepo.findActiveBySymbol("BTC") } returns listOf(v)
+        every { cooldownStore.tryAcquireCooldown(1L) } returns true
+        every { emailSender.send(any()) } throws EmailDeliveryException("SMTP down")
+
+        sut.process(PremiumUpdatedEvent("BTC", BigDecimal("5.20")))
+
+        verify(exactly = 1) { cooldownStore.tryAcquireCooldown(1L) }
+        verify(exactly = 1) { emailSender.send(any()) }
+        verify(exactly = 1) { cooldownStore.release(1L) }
+    }
+
+    @Test
+    fun `여러 구독 중 한 건 발송 실패해도 나머지 구독은 계속 처리된다`() {
         val v1 = view(1L, ThresholdDirectionView.ABOVE, "5.00", email = "fail@x.com")
         val v2 = view(2L, ThresholdDirectionView.ABOVE, "4.00", email = "ok@x.com")
         every { readRepo.findActiveBySymbol("BTC") } returns listOf(v1, v2)
-        every { cooldownStore.isInCooldown(any()) } returns false
-        every { emailSender.send(match { it.to == "fail@x.com" }) } throws RuntimeException("SMTP")
+        every { cooldownStore.tryAcquireCooldown(any()) } returns true
+        every { emailSender.send(match { it.to == "fail@x.com" }) } throws EmailDeliveryException("SMTP")
         every { emailSender.send(match { it.to == "ok@x.com" }) } returns Unit
 
         sut.process(PremiumUpdatedEvent("BTC", BigDecimal("5.20")))
 
+        verify(exactly = 1) { emailSender.send(match { it.to == "fail@x.com" }) }
+        verify(exactly = 1) { cooldownStore.release(1L) }
         verify(exactly = 1) { emailSender.send(match { it.to == "ok@x.com" }) }
-        verify(exactly = 1) { cooldownStore.markTriggered(2L) }
+        verify(exactly = 0) { cooldownStore.release(2L) }
     }
 }
 ```
@@ -1806,16 +1975,19 @@ Expected: compile error.
 package io.premiumspread.application.notification
 
 import io.premiumspread.cache.NotificationCooldownStore
+import io.premiumspread.email.EmailDeliveryException
 import io.premiumspread.email.EmailMessage
 import io.premiumspread.email.EmailSender
 import io.premiumspread.repository.ActiveSubscriptionReadRepository
 import io.premiumspread.repository.ActiveSubscriptionView
 import io.premiumspread.repository.ThresholdDirectionView
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
 @Service
+@ConditionalOnBean(EmailSender::class)
 class PremiumThresholdNotificationService(
     private val readRepository: ActiveSubscriptionReadRepository,
     private val cooldownStore: NotificationCooldownStore,
@@ -1827,12 +1999,16 @@ class PremiumThresholdNotificationService(
         val subscriptions = readRepository.findActiveBySymbol(event.symbol)
         for (sub in subscriptions) {
             if (!sub.matches(event.premiumRate)) continue
-            if (cooldownStore.isInCooldown(sub.id)) continue
+
+            // 원자 reservation: 다른 스레드/이벤트가 먼저 set 했으면 skip
+            if (!cooldownStore.tryAcquireCooldown(sub.id)) continue
 
             try {
                 emailSender.send(buildMessage(sub, event))
-                cooldownStore.markTriggered(sub.id)
-            } catch (e: Exception) {
+                // 성공: cooldown 유지 (60분간 재발송 차단)
+            } catch (e: EmailDeliveryException) {
+                // 실패: cooldown 해제하여 다음 이벤트에서 재시도 가능
+                cooldownStore.release(sub.id)
                 log.error(
                     "구독 알림 발송 실패 — subscriptionId={}, email={}: {}",
                     sub.id, sub.memberEmail, e.message, e,
@@ -1868,13 +2044,13 @@ class PremiumThresholdNotificationService(
 - [ ] **Step 5: Run → expect pass**
 
 Run: `./gradlew :apps:batch:test --tests PremiumThresholdNotificationServiceTest`
-Expected: BUILD SUCCESSFUL, 9 tests passed.
+Expected: BUILD SUCCESSFUL, 10 tests passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add apps/batch/src/main/kotlin/io/premiumspread/application/notification/ apps/batch/src/test/kotlin/io/premiumspread/application/notification/PremiumThresholdNotificationServiceTest.kt
-git commit -m "feat: PremiumThresholdNotificationService — 매칭 + cooldown + 이메일 발송 (구독 단위 예외 격리)"
+git commit -m "feat: PremiumThresholdNotificationService — 원자 reservation + SMTP 실패 시 release"
 ```
 
 ---
@@ -1954,16 +2130,21 @@ Expected: compile error.
 
 - [ ] **Step 4: Implement Listener**
 
+⚠️ `@ConditionalOnBean(EmailSender::class)`로 보호한다 — EmailSender 빈이 없는 환경(local, test, 메일 미설정 prd)에서 listener 빈도 등록 안 됨 → 부팅 정상.
+
 `apps/batch/src/main/kotlin/io/premiumspread/application/notification/PremiumThresholdNotificationListener.kt`:
 ```kotlin
 package io.premiumspread.application.notification
 
+import io.premiumspread.email.EmailSender
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
 
 @Component
+@ConditionalOnBean(EmailSender::class)
 class PremiumThresholdNotificationListener(
     private val service: PremiumThresholdNotificationService,
 ) {
@@ -2286,13 +2467,17 @@ Expected: BUILD SUCCESSFUL.
 - [ ] **Step 3: Verification gate — final check**
 
 다음 항목을 확인한다:
-- [ ] `notification_subscription` 테이블이 생성되는 Flyway 마이그레이션이 V11에 존재
-- [ ] `EmailSender` 빈은 `alert.email.from` 설정 + `JavaMailSender` 빈이 있을 때만 등록 (LogSender 없음 — 미설정 시 batch listener는 EmailSender 미주입으로 컴파일/실행 실패할 수 있음 — 로컬에서는 listener가 호출 안 되므로 OK; 정 우려되면 noop EmailSender를 conditional로 등록 가능)
+- [ ] `notification_subscription` 테이블이 생성되는 Flyway 마이그레이션이 V11에 존재 + `deleted_at` 컬럼 포함
+- [ ] `NotificationSubscription` Entity는 변경 컬럼이 `protected set` + `change*()` 메서드 (새 인스턴스 생성 X)
+- [ ] `EmailSender` 빈은 `alert.email.from` 설정 + `JavaMailSender` 빈이 있을 때만 등록
+- [ ] `PremiumThresholdNotificationService`, `PremiumThresholdNotificationListener` 둘 다 `@ConditionalOnBean(EmailSender::class)` 가드
+- [ ] `JavaMailEmailSender` 예외 → `EmailDeliveryException`으로 wrap
+- [ ] `NotificationCooldownStore`는 `setIfAbsent`(NX) + `release` 사용 (체크-set 분리 패턴 없음)
 - [ ] `apps/api`는 supports:email을 의존하지 않음
 - [ ] `apps/batch`는 supports:email을 의존
 - [ ] 운영 알람(monitoring) 코드는 손대지 않음 — `git diff dev --name-only` 결과에 `supports/monitoring`이 없는지 확인
 
-- [ ] **Step 4: (선택) local 환경에서 boot 확인**
+- [ ] **Step 4: local 환경에서 boot 확인**
 
 Run:
 ```bash
@@ -2302,20 +2487,7 @@ SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun &
 ```
 Expected: 두 앱 모두 정상 부팅. /actuator/health 200.
 
-⚠️ local profile은 `alert.email.from`이 미설정이므로 EmailSender 빈 미등록 → `PremiumThresholdNotificationService` 주입 실패 가능성. 이 경우 batch `application-local.yml` 또는 listener를 `@ConditionalOnBean(EmailSender::class)`으로 보호해야 한다. 보호 옵션:
-
-```kotlin
-@Component
-@ConditionalOnBean(EmailSender::class)
-class PremiumThresholdNotificationListener(...)
-```
-
-이 가드를 추가하여 local에서 listener/service가 미등록 상태로 동작하도록 한다. 추가했으면 다음 커밋:
-
-```bash
-git add apps/batch/src/main/kotlin/io/premiumspread/application/notification/PremiumThresholdNotificationListener.kt
-git commit -m "fix: EmailSender 미등록 환경(local 등)에서 listener 자동 비활성화"
-```
+local profile은 `alert.email.from` 미설정 → EmailSender 빈 미등록 → `PremiumThresholdNotificationService`/`Listener` 둘 다 `@ConditionalOnBean(EmailSender::class)`로 가드되어 빈 등록 스킵 → 부팅 영향 없음 (Task 16/17에서 이미 가드 적용됨).
 
 ---
 
