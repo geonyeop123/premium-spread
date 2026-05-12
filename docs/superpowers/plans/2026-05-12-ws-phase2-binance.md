@@ -104,7 +104,7 @@ data class BinanceMiniTickerMessage(
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceTickerIngestion.kt`
 - Create: `apps/batch/src/test/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceTickerIngestionTest.kt`
 
-- [ ] **Step 1: 본체 작성 (CAS + lag + 캐시 실패 alert)**
+- [x] **Step 1: 본체 작성 (CAS + lag + 캐시 실패 alert)**
 
 ```kotlin
 package io.premiumspread.infrastructure.ingestion.binance
@@ -178,7 +178,7 @@ class BinanceTickerIngestion(
 }
 ```
 
-- [ ] **Step 2: 단위 테스트 작성**
+- [x] **Step 2: 단위 테스트 작성**
 
 ```kotlin
 package io.premiumspread.infrastructure.ingestion.binance
