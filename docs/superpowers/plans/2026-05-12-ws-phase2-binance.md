@@ -496,7 +496,7 @@ class BinanceWebSocketClientTest {
 
 `@Value` 주입으로 mode를 읽고, `rest`일 때만 해당 거래소 fetch 실행.
 
-- [ ] **Step 1: TickerIngestionJob.kt 수정**
+- [x] **Step 1: TickerIngestionJob.kt 수정**
 
 ```kotlin
 package io.premiumspread.application.job.ticker
@@ -551,7 +551,7 @@ class TickerIngestionJob(
 }
 ```
 
-- [ ] **Step 2: 단위 테스트 작성**
+- [x] **Step 2: 단위 테스트 작성**
 
 ```kotlin
 package io.premiumspread.application.job.ticker

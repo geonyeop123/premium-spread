@@ -29,10 +29,13 @@ class TickerIngestionJobTest {
         bithumbClient = mockk()
         binanceClient = mockk()
         tickerCacheService = mockk(relaxed = true)
+        // 기본 동작은 양쪽 모두 rest mode
         job = TickerIngestionJob(
             bithumbClient = bithumbClient,
             binanceClient = binanceClient,
             tickerCacheService = tickerCacheService,
+            binanceMode = "rest",
+            bithumbMode = "rest",
         )
     }
 
@@ -73,7 +76,8 @@ class TickerIngestionJobTest {
 
             // then
             assertThat(result).isEqualTo(JobResult.Success)
-            verify { tickerCacheService.saveAll(bithumb, binance) }
+            verify { tickerCacheService.save(bithumb) }
+            verify { tickerCacheService.save(binance) }
             verify { tickerCacheService.saveToSeconds(bithumb) }
             verify { tickerCacheService.saveToSeconds(binance) }
         }
@@ -111,7 +115,7 @@ class TickerIngestionJobTest {
             // given
             coEvery { bithumbClient.getBtcTicker() } returns bithumbTicker()
             coEvery { binanceClient.getBtcFuturesTicker() } returns binanceTicker()
-            every { tickerCacheService.saveAll(any(), any()) } throws RuntimeException("redis error")
+            every { tickerCacheService.save(any()) } throws RuntimeException("redis error")
 
             // when
             val result = job.run()
