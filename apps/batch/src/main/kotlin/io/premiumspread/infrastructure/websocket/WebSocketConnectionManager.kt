@@ -51,7 +51,7 @@ class WebSocketConnectionManager(
 
         val mono = client.execute(URI.create(config.url)) { session: WebSocketSession ->
             metrics.setConnectionState(config.exchange, connected = true)
-            currentBackoff.set(initialBackoff)
+            // 첫 메시지 수신 후 backoff 리셋 (Codex review P2 대응)
 
             val sendInit: Mono<Void> = config.subscribeMessage
                 ?.let { msg -> session.send(Mono.just(session.textMessage(msg))) }
@@ -82,9 +82,10 @@ class WebSocketConnectionManager(
 
             val receive: Mono<Void> = session.receive()
                 .doOnNext { frame ->
-                    // Cancel timeout on first message arrival
+                    // Cancel timeout on first message arrival and reset backoff
                     if (firstReceived.compareAndSet(false, true)) {
                         timeoutDisposable.getAndSet(null)?.dispose()
+                        currentBackoff.set(initialBackoff)  // 첫 메시지 수신 시 reset (Codex review P2)
                     }
                     val payload = frame.payloadAsText
                     metrics.recordMessage(config.exchange)

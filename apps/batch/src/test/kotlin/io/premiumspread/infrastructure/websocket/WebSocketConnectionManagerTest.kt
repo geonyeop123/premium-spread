@@ -263,6 +263,38 @@ class WebSocketConnectionManagerTest {
         }
     }
 
+    @Test
+    fun `handshake만 성공하고 즉시 close 반복 시 backoff가 누적되어 증가한다 (Codex review P2)`() {
+        // 5번 즉시 close
+        repeat(5) {
+            server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                    webSocket.close(1000, "bye")
+                }
+            }))
+        }
+
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofSeconds(30),
+        )
+        val initial = Duration.ofMillis(100)
+        val max = Duration.ofMillis(800)
+        manager = WebSocketConnectionManager(
+            config, metrics, client, fakeAlertService,
+            initialBackoff = initial,
+            maxBackoff = max,
+        ).also { it.start() }
+
+        // backoff 100ms → 200 → 400 → 800 → 800 (cap) 누적이 일어나려면 충분한 시간 대기
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted {
+            assertThat(registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(3.0)
+        }
+    }
+
     private fun wsUrl(): String {
         val httpUrl = server.url("/ws")
         return "ws://${httpUrl.host}:${httpUrl.port}/ws"
