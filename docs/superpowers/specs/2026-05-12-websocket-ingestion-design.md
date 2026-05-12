@@ -47,6 +47,7 @@
 8. **Connected-but-no-message 알람** — 연결 후 5초 내 첫 메시지 미수신 또는 `ws.last.message.age` Gauge가 10s 초과 시 알람 (silent ingestion outage 방어)
 9. **바이낸스는 `@miniTicker` 채널** (1초 고정 push) — 별도 down-sample 불필요
 10. **Phase 2/3 운영 검증 후 Phase 4에서 REST 코드 완전 제거**
+11. **RatePerSecondLimiter 미도입** — @Scheduled fixedRate=1000 + AtomicReference로 1Hz 자연 보장 (YAGNI)
 
 ## 아키텍처
 
@@ -63,8 +64,7 @@ apps/batch/src/main/kotlin/io/premiumspread/
 │       └── BithumbWebSocketClient.kt     (Phase 3 신규)
 ├── infrastructure/websocket/             (Phase 1 신규)
 │   ├── WebSocketConnectionManager.kt
-│   ├── WebSocketMetrics.kt
-│   └── RatePerSecondLimiter.kt
+│   └── WebSocketMetrics.kt
 ├── application/
 │   ├── ingestion/                        (Phase 2/3 신규)
 │   │   ├── BinanceTickerIngestion.kt
@@ -140,7 +140,6 @@ Phase 2/3은 Phase 1 머지 후 병렬 가능.
   - `ws.stale.{exchange}` (Counter, Phase 3에서 빗썸이 사용)
   - `ticker.flush.{exchange}` (Counter, Phase 3에서 빗썸이 사용)
   - `ticker.flush.error.{exchange}` (Counter, 태그=exception 클래스)
-- `RatePerSecondLimiter` — Phase 3에서 사용, 인프라 phase에 미리 둠
 
 **테스트**
 
