@@ -648,7 +648,7 @@ class TickerIngestionJobModeTest {
 
 `premium.ingestion.{binance,bithumb}.mode` 값을 startup에 validation. invalid 값(e.g. typo/blank/대소문자 다름)일 경우 둘 다 비활성되어 silent outage가 발생하므로 fail-fast.
 
-- [ ] **Step 1: Clock 빈 확인 후 없으면 신규**
+- [x] **Step 1: Clock 빈 확인 후 없으면 신규**
 
 ```bash
 grep -rn "Clock.systemUTC\|@Bean.*Clock\|: Clock" apps/batch/src/main/kotlin/
@@ -669,7 +669,7 @@ class ClockConfig {
 }
 ```
 
-- [ ] **Step 2: IngestionModeConfig 작성**
+- [x] **Step 2: IngestionModeConfig 작성**
 
 ```kotlin
 package io.premiumspread.config
@@ -703,7 +703,7 @@ class IngestionModeConfig(
 }
 ```
 
-- [ ] **Step 3: 단위 테스트 작성**
+- [x] **Step 3: 단위 테스트 작성**
 
 ```kotlin
 package io.premiumspread.config
