@@ -26,12 +26,16 @@ class TickerIngestionJob(
                 val bithumbDeferred = if (bithumbMode == REST_MODE) async { bithumbClient.getBtcTicker() } else null
                 val binanceDeferred = if (binanceMode == REST_MODE) async { binanceClient.getBtcFuturesTicker() } else null
 
-                bithumbDeferred?.await()?.let { ticker ->
+                // 양쪽 fetch가 모두 완료된 후 cache write — 한쪽 실패 시 stale 비대칭 캐시 방지
+                val bithumbTicker = bithumbDeferred?.await()
+                val binanceTicker = binanceDeferred?.await()
+
+                bithumbTicker?.let { ticker ->
                     tickerCacheService.save(ticker)
                     tickerCacheService.saveToSeconds(ticker)
                     log.debug("REST fetched Bithumb ticker: {} KRW", ticker.price)
                 }
-                binanceDeferred?.await()?.let { ticker ->
+                binanceTicker?.let { ticker ->
                     tickerCacheService.save(ticker)
                     tickerCacheService.saveToSeconds(ticker)
                     log.debug("REST fetched Binance ticker: {} USDT", ticker.price)

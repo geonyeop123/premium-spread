@@ -7,7 +7,9 @@ import io.premiumspread.infrastructure.ingestion.binance.BinanceTickerIngestion
 import io.premiumspread.infrastructure.websocket.WebSocketConnectionConfig
 import io.premiumspread.infrastructure.websocket.WebSocketConnectionManager
 import io.premiumspread.infrastructure.websocket.WebSocketMetrics
+import io.premiumspread.config.BatchTestConfig
 import io.premiumspread.monitoring.AlertService
+import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -29,7 +31,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 @Tag("integration")
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(RedisTestContainersConfig::class)
+@Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, BatchTestConfig::class)
 class BinanceWebSocketIntegrationTest {
 
     @Autowired private lateinit var tickerCacheService: TickerCacheService
