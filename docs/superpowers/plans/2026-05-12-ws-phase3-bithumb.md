@@ -209,7 +209,7 @@ class TickerCacheServiceScoreTest {
 }
 ```
 
-- [ ] **Step 1: 파일 작성**
+- [x] **Step 1: 파일 작성**
 
 ```kotlin
 package io.premiumspread.client.bithumb
@@ -251,7 +251,7 @@ data class BithumbWebSocketTickerContent(
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/infrastructure/ingestion/bithumb/BithumbTickerIngestion.kt`
 - Create: `apps/batch/src/test/kotlin/io/premiumspread/infrastructure/ingestion/bithumb/BithumbTickerIngestionTest.kt`
 
-- [ ] **Step 1: 본체 작성 (atomic CAS + lag + 캐시 실패 alert)**
+- [x] **Step 1: 본체 작성 (atomic CAS + lag + 캐시 실패 alert)**
 
 ```kotlin
 package io.premiumspread.infrastructure.ingestion.bithumb
@@ -336,7 +336,7 @@ class BithumbTickerIngestion(
 }
 ```
 
-- [ ] **Step 2: 단위 테스트 작성**
+- [x] **Step 2: 단위 테스트 작성**
 
 ```kotlin
 package io.premiumspread.infrastructure.ingestion.bithumb
