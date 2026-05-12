@@ -6,6 +6,7 @@ import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClien
 import org.springframework.web.reactive.socket.client.WebSocketClient
 import reactor.core.Disposable
 import reactor.core.publisher.Mono
+import reactor.core.publisher.SignalType
 import reactor.core.scheduler.Schedulers
 import java.net.URI
 import java.time.Duration
@@ -66,8 +67,9 @@ class WebSocketConnectionManager(
 
         val disposable = mono
             .doOnError { e -> log.error("WebSocket connection error: {}", e.message) }
-            .doFinally {
+            .doFinally { signalType ->
                 metrics.setConnectionState(config.exchange, connected = false)
+                if (signalType == SignalType.CANCEL) return@doFinally  // stop()에 의한 취소 — backoff/메트릭 오염 방지
                 if (running.get()) {
                     val backoff = currentBackoff.get()
                     val next = (backoff.toMillis() * 2).coerceAtMost(maxBackoff.toMillis())

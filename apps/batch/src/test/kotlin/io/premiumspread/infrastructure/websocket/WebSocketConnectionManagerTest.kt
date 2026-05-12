@@ -36,8 +36,9 @@ class WebSocketConnectionManagerTest {
         Thread.sleep(300) // allow reactor threads to drain before server shutdown
         try {
             server.shutdown()
-        } catch (_: Exception) {
-            // ignore shutdown timeout — connections will be GC'd after test
+        } catch (e: Exception) {
+            // sleep으로 reactor drain 후에도 shutdown timeout 발생 가능. 마스킹 방지 위해 로깅.
+            org.slf4j.LoggerFactory.getLogger(javaClass).warn("MockWebServer shutdown failed", e)
         }
     }
 
@@ -130,6 +131,37 @@ class WebSocketConnectionManagerTest {
 
         Thread.sleep(700)
         assertThat(connections.get()).isLessThanOrEqualTo(3)
+    }
+
+    @Test
+    fun `stop 호출 시 reconnect 메트릭이 증가하지 않는다 (Code review fix)`() {
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("hello")
+            }
+        }))
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofSeconds(10),
+        )
+        manager = WebSocketConnectionManager(
+            config, metrics, client,
+            initialBackoff = Duration.ofMillis(500),
+            maxBackoff = Duration.ofSeconds(2),
+        ).also { it.start() }
+
+        await().atMost(2, TimeUnit.SECONDS).until {
+            (registry.find("ws.message.received").tag("exchange", "test").counter()?.count() ?: 0.0) >= 1.0
+        }
+        val before = registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0
+
+        manager!!.stop()
+        Thread.sleep(200) // doFinally가 fire될 시간 확보
+
+        val after = registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0
+        assertThat(after).isEqualTo(before) // stop으로 인한 CANCEL은 reconnect 메트릭 증가시키지 않아야 함
     }
 
     private fun wsUrl(): String {
