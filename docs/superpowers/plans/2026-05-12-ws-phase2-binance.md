@@ -67,7 +67,7 @@ Binance `@miniTicker` payload 예시:
 }
 ```
 
-- [ ] **Step 1: 파일 작성**
+- [x] **Step 1: 파일 작성**
 
 ```kotlin
 package io.premiumspread.client.binance
