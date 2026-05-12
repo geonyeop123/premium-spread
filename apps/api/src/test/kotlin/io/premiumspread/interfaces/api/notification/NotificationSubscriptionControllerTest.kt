@@ -55,6 +55,7 @@ class NotificationSubscriptionControllerTest {
 
     @BeforeEach
     fun setUp() {
+        SecurityContextHolder.clearContext()
         every { jwtTokenProvider.validateAndGetClaims(any()) } returns JwtValidationResult.Invalid
     }
 
