@@ -33,14 +33,17 @@ class BinanceTickerIngestion(
     private val consecutiveSaveFailures = AtomicInteger(0)
 
     fun onMessage(ticker: TickerData) {
-        // Atomic monotonic CAS
-        val updated = lastTimestamp.updateAndGet { prev ->
-            if (prev != null && !ticker.timestamp.isAfter(prev)) prev else ticker.timestamp
-        }
-        if (updated != ticker.timestamp) {
-            metrics.recordOutOfOrder(EXCHANGE)
-            log.debug("Discard out-of-order binance ticker: prev={}, current={}", updated, ticker.timestamp)
-            return
+        // Atomic monotonic CAS: strict ordering — 같거나 이전이면 폐기.
+        // updateAndGet 람다는 retry될 수 있으므로 prev 캡처는 안전하지 않다. 대신 compareAndSet 루프로 명시.
+        while (true) {
+            val prev = lastTimestamp.get()
+            if (prev != null && !ticker.timestamp.isAfter(prev)) {
+                metrics.recordOutOfOrder(EXCHANGE)
+                log.debug("Discard out-of-order binance ticker: prev={}, current={}", prev, ticker.timestamp)
+                return
+            }
+            if (lastTimestamp.compareAndSet(prev, ticker.timestamp)) break
+            // CAS 실패: 다른 스레드가 먼저 업데이트 → 재평가
         }
 
         val now = Instant.now(clock)
