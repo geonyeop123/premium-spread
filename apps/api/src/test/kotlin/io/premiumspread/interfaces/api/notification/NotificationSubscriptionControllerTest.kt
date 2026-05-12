@@ -22,6 +22,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
@@ -101,6 +102,7 @@ class NotificationSubscriptionControllerTest {
     @Test
     fun `POST 미인증 401`() {
         mockMvc.post("/api/v1/notifications/subscriptions") {
+            with(anonymous())
             contentType = MediaType.APPLICATION_JSON
             content = """{"symbol":"BTC","direction":"ABOVE","threshold":5.00}"""
         }.andExpect { status { isUnauthorized() } }
@@ -117,8 +119,9 @@ class NotificationSubscriptionControllerTest {
 
     @Test
     fun `GET 목록 미인증 401`() {
-        mockMvc.get("/api/v1/notifications/subscriptions")
-            .andExpect { status { isUnauthorized() } }
+        mockMvc.get("/api/v1/notifications/subscriptions") {
+            with(anonymous())
+        }.andExpect { status { isUnauthorized() } }
     }
 
     @Test
@@ -154,8 +157,9 @@ class NotificationSubscriptionControllerTest {
 
     @Test
     fun `GET 단건 미인증 401`() {
-        mockMvc.get("/api/v1/notifications/subscriptions/10")
-            .andExpect { status { isUnauthorized() } }
+        mockMvc.get("/api/v1/notifications/subscriptions/10") {
+            with(anonymous())
+        }.andExpect { status { isUnauthorized() } }
     }
 
     @Test
@@ -194,6 +198,7 @@ class NotificationSubscriptionControllerTest {
     @Test
     fun `PATCH 미인증 401`() {
         mockMvc.patch("/api/v1/notifications/subscriptions/10") {
+            with(anonymous())
             contentType = MediaType.APPLICATION_JSON
             content = """{"status":"INACTIVE"}"""
         }.andExpect { status { isUnauthorized() } }
@@ -219,7 +224,8 @@ class NotificationSubscriptionControllerTest {
 
     @Test
     fun `DELETE 미인증 401`() {
-        mockMvc.delete("/api/v1/notifications/subscriptions/10")
-            .andExpect { status { isUnauthorized() } }
+        mockMvc.delete("/api/v1/notifications/subscriptions/10") {
+            with(anonymous())
+        }.andExpect { status { isUnauthorized() } }
     }
 }
