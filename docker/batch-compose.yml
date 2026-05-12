@@ -16,6 +16,11 @@ services:
       REDIS_REPLICA_1_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       EXCHANGE_RATE_API_KEY: ${EXCHANGE_RATE_API_KEY}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM}
     restart: unless-stopped
     networks:
       - premium-spread
