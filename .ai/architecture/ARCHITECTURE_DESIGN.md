@@ -1,6 +1,6 @@
 # Premium Spread System Architecture
 
-> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-12)
+> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-13)
 
 ## System Overview
 
@@ -18,16 +18,22 @@ premium-spread/
 ├── apps/
 │   ├── api/              # REST API 서버 (Port 8080)
 │   └── batch/            # 배치 스케줄러 (Port 8081)
-│       ├── scheduler/    # @Scheduled 작업
-│       ├── client/       # External API Client (WebClient)
-│       ├── cache/        # Redis Cache Writer
+│       ├── scheduler/    # @Scheduled 작업 (TickerScheduler, BithumbFlushScheduler, ...)
+│       ├── client/       # External API Client
+│       │   ├── binance/  # BinanceClient(REST) + BinanceWebSocketClient (Phase 2, #30)
+│       │   └── bithumb/  # BithumbClient(REST) + BithumbWebSocketClient (Phase 3, #31)
+│       ├── cache/        # Redis Cache Writer (TickerCacheService.saveToSecondsWithScore 추가)
 │       ├── repository/   # DB Writer (JdbcTemplate)
 │       └── infrastructure/
-│           └── websocket/  # WebSocket 공통 인프라 (Phase 1, #29)
-│               ├── WebSocketConnectionManager   # Reactor Netty 연결·재연결·하트비트
-│               ├── WebSocketMetrics             # 9종 Micrometer 메트릭
-│               ├── HeartbeatPolicy              # sealed interface (Ping/Text/None)
-│               └── WebSocketConnectionConfig    # 연결 파라미터 data class
+│           ├── websocket/  # WebSocket 공통 인프라 (Phase 1, #29)
+│           │   ├── WebSocketConnectionManager   # Reactor Netty 연결·재연결·하트비트
+│           │   ├── WebSocketMetrics             # 9종 Micrometer 메트릭
+│           │   ├── HeartbeatPolicy              # sealed interface (Ping/Text/None)
+│           │   └── WebSocketConnectionConfig    # 연결 파라미터 data class
+│           └── ingestion/  # WebSocket 수신 → 캐시 반영 (Phase 2/3)
+│               ├── binance/BinanceTickerIngestion   # CAS strict monotonic + lag 측정
+│               ├── bithumb/BithumbTickerIngestion   # AtomicReference 최신값 유지 (same-second 수용)
+│               └── bithumb/BithumbFlushJob          # 1Hz down-sample → saveToSecondsWithScore
 ├── modules/
 │   ├── jpa/              # JPA 공통 설정
 │   └── redis/            # Redis/Redisson 설정, 분산 락
@@ -41,11 +47,47 @@ premium-spread/
 
 ### 1) Ticker 수집
 
+거래소별로 REST 폴링과 WebSocket 수신 중 하나를 선택할 수 있다 (`premium.ingestion.{binance,bithumb}.mode = rest | websocket`, 기본값 `rest`). 양 모드 모두 동일한 캐시 키(Hash + 초ZSet)에 저장하므로 다운스트림(집계/조회)은 무영향.
+
+#### 1-a) REST 모드 (기본, Phase 4에서 제거 예정)
+
 1. `TickerScheduler`가 1초마다 실행 (`lock:ticker:all`)
-2. `BithumbClient`, `BinanceClient` 병렬 호출
-3. `TickerCacheService` 저장
+2. `TickerIngestionJob`가 mode 분기 후, 활성 거래소만 병렬 호출 (`async { client.getBtcTicker() }`)
+3. **양쪽 await 완료 후** `TickerCacheService` 저장 (한쪽 실패 시 다른쪽도 캐시에 쓰지 않음 — atomic await)
    - 현재값 Hash: `ticker:{exchange}:{symbol}`
    - 초당 ZSet: `ticker:seconds:{exchange}:{symbol}`
+
+#### 1-b) WebSocket 모드 (Phase 2/3, #30/#31)
+
+**바이낸스 — 1초 고정 push (`@miniTicker` 채널)**
+
+```
+Binance WS  → WebSocketConnectionManager (재연결/하트비트)
+            → BinanceWebSocketClient (JSON 파싱, parse-error 카운터)
+            → BinanceTickerIngestion (AtomicReference CAS, strict monotonic)
+            → TickerCacheService.save + saveToSeconds
+```
+
+**빗썸 — 변동 push + 1Hz down-sample (`ticker` 채널)**
+
+```
+Bithumb WS  → WebSocketConnectionManager
+            → BithumbWebSocketClient (HHmmss timestamp 파싱)
+            → BithumbTickerIngestion (AtomicReference 최신값 유지, isBefore로 same-second 수용)
+
+BithumbFlushScheduler (@Scheduled fixedRate=1000, thin entrypoint)
+            → BithumbFlushJob (last-run 갱신, 5회 연속 실패 시 AlertService)
+            → TickerCacheService.saveToSecondsWithScore (ticker, Instant.now())
+              · ZSet member 포맷: `{epochMs}:{price}` — 동일 가격 반복 flush 누적 보장 (flat-price collision 방지)
+              · ticker hash는 갱신하지 않음 (synthetic timestamp가 freshness 의미 오염 방지)
+```
+
+**공통 안전장치**
+
+- monotonic check (exchange timestamp 기준, reorder/replay 방어)
+- stale threshold 10초 (빗썸 마지막 메시지 후 10초 초과 시 flush skip + `ws.stale.bithumb` 카운터)
+- 5회 연속 parse/flush 실패 시 ERROR 로그 + 메트릭
+- 연결 후 5초 내 첫 메시지 미수신 또는 `ws.last.message.age > 10s` 시 알람 (silent ingestion outage 방어)
 
 ### 2) Premium 계산
 
@@ -83,7 +125,7 @@ premium-spread/
 | `fx:{base}:{quote}` | `fx:usd:krw` | Hash | 31분 |
 | `premium:{symbol}` | `premium:btc` | Hash | 5초 |
 | `premium:{symbol}:history` | `premium:btc:history` | ZSet | 1시간 |
-| `ticker:seconds:{exchange}:{symbol}` | `ticker:seconds:binance:btc` | ZSet | 5분 |
+| `ticker:seconds:{exchange}:{symbol}` | `ticker:seconds:binance:btc` | ZSet | 5분 (member: epochMs 또는 `{epochMs}:{price}`) |
 | `ticker:minutes:{exchange}:{symbol}` | `ticker:minutes:binance:btc` | ZSet | 2시간 |
 | `ticker:hours:{exchange}:{symbol}` | `ticker:hours:binance:btc` | ZSet | 25시간 |
 | `premium:seconds:{symbol}` | `premium:seconds:btc` | ZSet | 5분 |
@@ -249,7 +291,8 @@ premium-spread/
   - `ws.first.message.timeout` — 첫 메시지 타임아웃 카운터 (exchange 태그)
   - `ws.out_of_order` — 순서 역전 메시지 카운터 (exchange 태그)
   - `ws.stale.{exchange}` — stale 감지 카운터
-  - `ticker.flush.{exchange}` / `ticker.flush.error.{exchange}` — flush 성공/오류 카운터 (Phase 2/3 사용 예정)
+  - `ticker.flush.{exchange}` / `ticker.flush.error.{exchange}` — flush 성공/오류 카운터 (Phase 2/3 적용)
+  - `ws.parse.error` — 메시지 파싱 실패 카운터 (Phase 2/3)
 
 ## Notes
 
