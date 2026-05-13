@@ -29,10 +29,13 @@ class TickerIngestionJobTest {
         bithumbClient = mockk()
         binanceClient = mockk()
         tickerCacheService = mockk(relaxed = true)
+        // 기본 동작은 양쪽 모두 rest mode
         job = TickerIngestionJob(
             bithumbClient = bithumbClient,
             binanceClient = binanceClient,
             tickerCacheService = tickerCacheService,
+            binanceMode = "rest",
+            bithumbMode = "rest",
         )
     }
 
@@ -73,7 +76,8 @@ class TickerIngestionJobTest {
 
             // then
             assertThat(result).isEqualTo(JobResult.Success)
-            verify { tickerCacheService.saveAll(bithumb, binance) }
+            verify { tickerCacheService.save(bithumb) }
+            verify { tickerCacheService.save(binance) }
             verify { tickerCacheService.saveToSeconds(bithumb) }
             verify { tickerCacheService.saveToSeconds(binance) }
         }
@@ -111,7 +115,7 @@ class TickerIngestionJobTest {
             // given
             coEvery { bithumbClient.getBtcTicker() } returns bithumbTicker()
             coEvery { binanceClient.getBtcFuturesTicker() } returns binanceTicker()
-            every { tickerCacheService.saveAll(any(), any()) } throws RuntimeException("redis error")
+            every { tickerCacheService.save(any()) } throws RuntimeException("redis error")
 
             // when
             val result = job.run()
@@ -119,6 +123,21 @@ class TickerIngestionJobTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
+        }
+
+        @Test
+        fun `binance 실패가 bithumb await보다 늦게 발생해도 bithumb cache write는 일어나지 않는다 (atomic await)`() {
+            // given — binance가 throw하지만 bithumb은 성공
+            coEvery { bithumbClient.getBtcTicker() } returns bithumbTicker()
+            coEvery { binanceClient.getBtcFuturesTicker() } throws RuntimeException("binance failed")
+
+            // when
+            val result = job.run()
+
+            // then — Failure 반환 + 두 await 모두 끝난 뒤 write를 시도하므로 어떤 save/saveToSeconds도 호출 안 됨
+            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+            verify(exactly = 0) { tickerCacheService.save(any()) }
+            verify(exactly = 0) { tickerCacheService.saveToSeconds(any()) }
         }
     }
 }
