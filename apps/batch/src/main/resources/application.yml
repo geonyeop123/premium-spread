@@ -13,7 +13,7 @@ spring:
 exchange-rate:
   api-key: ${EXCHANGE_RATE_API_KEY}
 
-# 시세 수집 모드 (rest | websocket)
+# 시세 수집 모드 (rest | websocket) — Phase 2/3 토글
 premium:
   ingestion:
     binance:
