@@ -55,6 +55,8 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 - [x] 이슈 #27: 회원 프리미엄 임계값 도달 이메일 알림 (NotificationSubscription CRUD + 비동기 이벤트 리스너 + supports/email)
 
 - [x] Phase 1 (#29): WebSocket 공통 인프라 — Reactor Netty 기반 `WebSocketConnectionManager`, `WebSocketMetrics` (9종), `HeartbeatPolicy`, `WebSocketConnectionConfig`, 단위 테스트 18개
+- [x] Phase 2 (#30): 바이낸스 Futures WebSocket 실시간 수집 — `BinanceWebSocketClient` + `BinanceTickerIngestion` (CAS strict monotonic + lag 측정), `premium.ingestion.binance.mode` 토글, `TickerIngestionJob` mode 분기 + atomic await
+- [x] Phase 3 (#31): 빗썸 WebSocket 1Hz down-sample 수집 — `BithumbWebSocketClient` + `BithumbTickerIngestion` (AtomicReference 최신값 유지, same-second 수용), `BithumbFlushJob/Scheduler` (thin entrypoint), `TickerCacheService.saveToSecondsWithScore` (`{epochMs}:{price}` ZSet member 포맷)
 
 ### Epic #28 — WebSocket 실시간 수집 전환
 
