@@ -1,11 +1,13 @@
 package io.premiumspread.application.job.premium
 
 import io.premiumspread.application.common.JobResult
+import io.premiumspread.application.notification.PremiumUpdatedEvent
 import io.premiumspread.cache.FxCacheService
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.calculator.PremiumCalculator
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 
@@ -15,6 +17,7 @@ class PremiumRealtimeJob(
     private val fxCacheService: FxCacheService,
     private val premiumCacheService: PremiumCacheService,
     private val premiumCalculator: PremiumCalculator,
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -64,6 +67,10 @@ class PremiumRealtimeJob(
             }.onFailure { e ->
                 log.warn("saveHistory failed (non-critical): {}", e.message)
             }
+
+            eventPublisher.publishEvent(
+                PremiumUpdatedEvent(symbol = premium.symbol, premiumRate = premium.premiumRate),
+            )
 
             log.debug(
                 "Calculated premium: {}% (Korea: {} KRW, Foreign: {} USDT = {} KRW)",

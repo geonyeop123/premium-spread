@@ -36,7 +36,8 @@ premium-spread/
 │   └── redis/        # Redis, Redisson 분산 락
 ├── supports/
 │   ├── logging/      # 구조화 로깅, 민감정보 마스킹
-│   └── monitoring/   # Micrometer 메트릭, 헬스체크
+│   ├── monitoring/   # Micrometer 메트릭, 헬스체크
+│   └── email/        # JavaMail 기반 이메일 발송 (Gmail SMTP)
 └── docker/
     ├── infra-compose.yml   # MySQL, Redis (인프라)
     ├── app-compose.yml     # API + Batch + Web + Nginx (전체)
@@ -172,6 +173,18 @@ docker compose -f docker/web-compose.yml up -d --build
 | Method | Path | 설명 |
 |--------|------|------|
 | POST | `/api/v1/tickers` | 티커 등록 |
+
+### 알림 구독
+
+회원이 (심볼, 방향, 임계값) 조합으로 프리미엄 알림을 구독한다. 배치(`PremiumRealtimeJob`)가 프리미엄 갱신 후 이벤트를 발행하면 비동기 리스너가 활성 구독을 매칭해 회원 이메일로 발송한다. 동일 구독은 60분 Redis cooldown.
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/v1/notifications/subscriptions` | 구독 생성 (symbol, ABOVE/BELOW, threshold) |
+| GET | `/api/v1/notifications/subscriptions` | 내 구독 목록 |
+| GET | `/api/v1/notifications/subscriptions/{id}` | 구독 상세 |
+| PATCH | `/api/v1/notifications/subscriptions/{id}` | status/direction/threshold 수정 |
+| DELETE | `/api/v1/notifications/subscriptions/{id}` | 구독 삭제 (soft delete) |
 
 ## 손익 구조
 

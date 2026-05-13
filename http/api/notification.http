@@ -1,0 +1,31 @@
+### 알림 구독 생성
+POST {{premium-api}}/api/v1/notifications/subscriptions
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "symbol": "BTC",
+  "direction": "ABOVE",
+  "threshold": 5.00
+}
+
+### 내 알림 구독 목록 조회
+GET {{premium-api}}/api/v1/notifications/subscriptions
+Authorization: Bearer {{accessToken}}
+
+### 알림 구독 단건 조회
+GET {{premium-api}}/api/v1/notifications/subscriptions/1
+Authorization: Bearer {{accessToken}}
+
+### 알림 구독 수정
+PATCH {{premium-api}}/api/v1/notifications/subscriptions/1
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "status": "INACTIVE"
+}
+
+### 알림 구독 삭제
+DELETE {{premium-api}}/api/v1/notifications/subscriptions/1
+Authorization: Bearer {{accessToken}}

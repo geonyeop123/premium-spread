@@ -20,6 +20,7 @@ dependencies {
 
     // supports
     implementation(project(":supports:logging"))
+    implementation(project(":supports:email"))
     implementation(project(":supports:monitoring"))
 
     // WebFlux (External API 호출용)

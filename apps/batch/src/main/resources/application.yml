@@ -8,6 +8,17 @@ spring:
     import:
       - jpa.yml
       - redis.yml
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 # External API 설정
 exchange-rate:
@@ -20,6 +31,13 @@ premium:
       mode: rest
     bithumb:
       mode: rest
+
+# 사용자 알림 (이슈 #27)
+# ALERT_EMAIL_FROM 환경변수가 설정될 때만 PremiumThresholdNotificationService/Listener가 활성화된다.
+# 미설정 시 알림 빈은 등록되지 않음 (@ConditionalOnProperty 가드).
+alert:
+  email:
+    from: ${ALERT_EMAIL_FROM:}
 
 # Actuator 설정
 management:
