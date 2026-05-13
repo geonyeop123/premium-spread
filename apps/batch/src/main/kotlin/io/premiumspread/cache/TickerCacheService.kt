@@ -88,26 +88,48 @@ class TickerCacheService(
     // ========== 초당 데이터 ZSet 저장 ==========
 
     /**
-     * 초당 데이터 ZSet에 저장
+     * 초당 데이터 ZSet에 저장 (score 명시 + 멤버에 timestamp 포함하여 유일성 보장).
+     *
+     * - 멤버 포맷: `{epochMs}:{price}` — 같은 가격이 연속 flush돼도 distinct entries 누적.
+     * - Hash는 건드리지 않음 (Phase 3 freshness 5s TTL 의미 보존).
      */
-    fun saveToSeconds(ticker: TickerData) {
+    fun saveToSecondsWithScore(ticker: TickerData, scoreInstant: Instant) {
         val key = TickerAggregationTimeUnit.SECONDS.keyFor(ticker.exchange, ticker.symbol)
-        val value = ticker.price.toPlainString()
+        val score = scoreInstant.toEpochMilli().toDouble()
+        val member = "${scoreInstant.toEpochMilli()}:${ticker.price.toPlainString()}"
 
-        timeSeriesCache.add(key, value, ticker.timestamp, RedisTtl.SECONDS_DATA)
+        redisTemplate.opsForZSet().add(key, member, score)
+        redisTemplate.expire(key, RedisTtl.SECONDS_DATA)
 
-        log.debug("Saved ticker to seconds ZSet: {} = {}", key, ticker.price)
+        // retention: TTL 이전 데이터 정리
+        val cutoff = Instant.now().minus(RedisTtl.SECONDS_DATA).toEpochMilli().toDouble()
+        redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
+
+        log.debug("Saved ticker to seconds ZSet (member={}, score={}): {}", member, score, key)
     }
 
     /**
-     * 초당 데이터 조회 (시간 범위)
+     * 초당 데이터 ZSet에 저장 (ticker.timestamp를 score로 사용 — REST 경로 기본).
+     */
+    fun saveToSeconds(ticker: TickerData) {
+        saveToSecondsWithScore(ticker, ticker.timestamp)
+    }
+
+    /**
+     * 초당 데이터 조회 (시간 범위).
+     *
+     * 멤버 포맷 호환:
+     * - 신: `{epochMs}:{price}` → `":"` 뒤가 price
+     * - 구: `{price}` 단독 → entry.value 전체가 price
      */
     fun getSecondsData(exchange: String, symbol: String, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> {
         val key = TickerAggregationTimeUnit.SECONDS.keyFor(exchange, symbol)
         val entries = timeSeriesCache.rangeByTime(key, from, to)
 
         return entries.mapNotNull { entry ->
-            val price = entry.value?.toBigDecimalOrNull() ?: return@mapNotNull null
+            val member = entry.value ?: return@mapNotNull null
+            val priceStr = if (":" in member) member.substringAfter(":") else member
+            val price = priceStr.toBigDecimalOrNull() ?: return@mapNotNull null
             val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return@mapNotNull null
             timestamp to price
         }

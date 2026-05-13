@@ -34,6 +34,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${project.properties["kotlinCoroutinesVersion"]}")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.awaitility:awaitility:4.2.0")
+    testImplementation("org.awaitility:awaitility-kotlin:4.2.0")
 
     // test-fixtures (TestContainers, DatabaseCleanUp)
     testImplementation(testFixtures(project(":modules:jpa")))
