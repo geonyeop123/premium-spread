@@ -8,11 +8,14 @@ class PositionCommand private constructor() {
     data class Create(
         val memberId: Long,
         val symbol: String,
-        val exchange: Exchange,
-        val quantity: BigDecimal,
-        val entryPrice: BigDecimal,
+        val koreaExchange: Exchange,
+        val koreaQuantity: BigDecimal,
+        val koreaEntryPrice: BigDecimal,
+        val foreignExchange: Exchange,
+        val foreignQuantity: BigDecimal,
+        val foreignEntryPrice: BigDecimal,
+        val foreignLeverage: Int,
         val entryFxRate: BigDecimal,
-        val entryPremiumRate: BigDecimal,
         val entryObservedAt: Instant,
     )
 }

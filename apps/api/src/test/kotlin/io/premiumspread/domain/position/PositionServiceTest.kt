@@ -33,11 +33,14 @@ class PositionServiceTest {
             val command = PositionCommand.Create(
                 memberId = 1L,
                 symbol = "BTC",
-                exchange = Exchange.UPBIT,
-                quantity = BigDecimal("0.5"),
-                entryPrice = BigDecimal("129555000"),
+                koreaExchange = Exchange.UPBIT,
+                koreaQuantity = BigDecimal("0.5"),
+                koreaEntryPrice = BigDecimal("129555000"),
+                foreignExchange = Exchange.BINANCE,
+                foreignQuantity = BigDecimal("0.5"),
+                foreignEntryPrice = BigDecimal("89500"),
+                foreignLeverage = 1,
                 entryFxRate = BigDecimal("1432.6"),
-                entryPremiumRate = BigDecimal("1.28"),
                 entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
@@ -50,9 +53,13 @@ class PositionServiceTest {
 
             assertThat(result.id).isEqualTo(1L)
             assertThat(result.symbol.code).isEqualTo("BTC")
-            assertThat(result.exchange).isEqualTo(Exchange.UPBIT)
-            assertThat(result.quantity).isEqualByComparingTo(BigDecimal("0.5"))
-            assertThat(result.entryPrice).isEqualByComparingTo(BigDecimal("129555000"))
+            assertThat(result.koreaExchange).isEqualTo(Exchange.UPBIT)
+            assertThat(result.koreaQuantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(result.koreaEntryPrice).isEqualByComparingTo(BigDecimal("129555000"))
+            assertThat(result.foreignExchange).isEqualTo(Exchange.BINANCE)
+            assertThat(result.foreignQuantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(result.foreignEntryPrice).isEqualByComparingTo(BigDecimal("89500"))
+            assertThat(result.foreignLeverage).isEqualTo(1)
             assertThat(result.status).isEqualTo(PositionStatus.OPEN)
 
             verify(exactly = 1) { positionRepository.save(any()) }

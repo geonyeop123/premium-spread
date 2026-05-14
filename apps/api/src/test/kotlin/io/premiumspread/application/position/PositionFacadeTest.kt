@@ -42,11 +42,14 @@ class PositionFacadeTest {
             val criteria = PositionCriteria.Open(
                 memberId = 1L,
                 symbol = "BTC",
-                exchange = Exchange.UPBIT,
-                quantity = BigDecimal("0.5"),
-                entryPrice = BigDecimal("129555000"),
+                koreaExchange = Exchange.UPBIT,
+                koreaQuantity = BigDecimal("0.5"),
+                koreaEntryPrice = BigDecimal("129555000"),
+                foreignExchange = Exchange.BINANCE,
+                foreignQuantity = BigDecimal("0.5"),
+                foreignEntryPrice = BigDecimal("89500"),
+                foreignLeverage = 1,
                 entryFxRate = BigDecimal("1432.6"),
-                entryPremiumRate = BigDecimal("1.28"),
                 entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
@@ -58,13 +61,17 @@ class PositionFacadeTest {
 
             assertThat(result.id).isEqualTo(1L)
             assertThat(result.symbol).isEqualTo("BTC")
-            assertThat(result.exchange).isEqualTo(Exchange.UPBIT)
+            assertThat(result.koreaExchange).isEqualTo(Exchange.UPBIT)
+            assertThat(result.foreignExchange).isEqualTo(Exchange.BINANCE)
             assertThat(result.status).isEqualTo(PositionStatus.OPEN)
 
             verify(exactly = 1) { positionService.create(any()) }
             assertThat(commandSlot.captured.symbol).isEqualTo("BTC")
-            assertThat(commandSlot.captured.exchange).isEqualTo(Exchange.UPBIT)
-            assertThat(commandSlot.captured.quantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(commandSlot.captured.koreaExchange).isEqualTo(Exchange.UPBIT)
+            assertThat(commandSlot.captured.koreaQuantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(commandSlot.captured.foreignExchange).isEqualTo(Exchange.BINANCE)
+            assertThat(commandSlot.captured.foreignQuantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(commandSlot.captured.foreignLeverage).isEqualTo(1)
         }
     }
 
@@ -143,7 +150,9 @@ class PositionFacadeTest {
             val position = PositionFixtures.openPosition(
                 id = 1L,
                 memberId = 1L,
-                entryPremiumRate = BigDecimal("3.00"),
+                koreaEntryPrice = BigDecimal("103000"),
+                foreignEntryPrice = BigDecimal("100"),
+                entryFxRate = BigDecimal("1000"),
             )
             val currentPremium = PremiumFixtures.premiumWithRate(
                 symbol = "BTC",
@@ -167,7 +176,9 @@ class PositionFacadeTest {
             val position = PositionFixtures.openPosition(
                 id = 1L,
                 memberId = 1L,
-                entryPremiumRate = BigDecimal("1.00"),
+                koreaEntryPrice = BigDecimal("101000"),
+                foreignEntryPrice = BigDecimal("100"),
+                entryFxRate = BigDecimal("1000"),
             )
             val currentPremium = PremiumFixtures.premiumWithRate(
                 symbol = "BTC",

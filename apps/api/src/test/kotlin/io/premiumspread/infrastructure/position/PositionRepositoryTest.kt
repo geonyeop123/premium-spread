@@ -1,12 +1,11 @@
 package io.premiumspread.infrastructure.position
 
+import io.premiumspread.PositionFixtures
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
 import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionRepository
 import io.premiumspread.domain.position.PositionStatus
-import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
@@ -22,7 +21,6 @@ import org.springframework.context.annotation.Import
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
-import java.time.Instant
 
 @Tag("integration")
 @SpringBootTest
@@ -51,22 +49,11 @@ class PositionRepositoryTest @Autowired constructor(
 
     private fun createPosition(
         symbol: String = "BTC",
-        exchange: Exchange = Exchange.UPBIT,
-        quantity: BigDecimal = BigDecimal("0.5"),
-        entryPrice: BigDecimal = BigDecimal("129555000"),
-        entryFxRate: BigDecimal = BigDecimal("1432.6"),
-        entryPremiumRate: BigDecimal = BigDecimal("1.28"),
-        entryObservedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
     ): Position {
-        return Position.create(
+        return PositionFixtures.openPosition(
             memberId = memberId,
-            symbol = Symbol(symbol),
-            exchange = exchange,
-            quantity = quantity,
-            entryPrice = entryPrice,
-            entryFxRate = entryFxRate,
-            entryPremiumRate = entryPremiumRate,
-            entryObservedAt = entryObservedAt,
+            symbol = symbol,
+            id = null,
         )
     }
 
@@ -84,8 +71,9 @@ class PositionRepositoryTest @Autowired constructor(
             // then
             assertThat(saved.id).isGreaterThan(0)
             assertThat(saved.symbol.code).isEqualTo("BTC")
-            assertThat(saved.exchange).isEqualTo(Exchange.UPBIT)
-            assertThat(saved.quantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(saved.koreaExchange.name).isEqualTo("UPBIT")
+            assertThat(saved.koreaQuantity).isEqualByComparingTo(BigDecimal("0.5"))
+            assertThat(saved.foreignExchange.name).isEqualTo("BINANCE")
             assertThat(saved.status).isEqualTo(PositionStatus.OPEN)
         }
 
@@ -118,7 +106,8 @@ class PositionRepositoryTest @Autowired constructor(
             assertThat(found).isNotNull
             assertThat(found!!.id).isEqualTo(saved.id)
             assertThat(found.symbol.code).isEqualTo("BTC")
-            assertThat(found.exchange).isEqualTo(Exchange.UPBIT)
+            assertThat(found.koreaExchange.name).isEqualTo("UPBIT")
+            assertThat(found.foreignExchange.name).isEqualTo("BINANCE")
         }
 
         @Test

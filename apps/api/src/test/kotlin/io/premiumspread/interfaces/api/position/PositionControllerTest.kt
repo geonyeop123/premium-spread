@@ -69,28 +69,17 @@ class PositionControllerTest {
         fun `포지션을 생성한다`() {
             val request = PositionRequest.Open(
                 symbol = "BTC",
-                exchange = "UPBIT",
-                quantity = BigDecimal("0.5"),
-                entryPrice = BigDecimal("129555000"),
+                koreaExchange = "UPBIT",
+                koreaQuantity = BigDecimal("0.5"),
+                koreaEntryPrice = BigDecimal("129555000"),
+                foreignExchange = "BINANCE",
+                foreignQuantity = BigDecimal("0.5"),
+                foreignEntryPrice = BigDecimal("89500"),
+                foreignLeverage = 1,
                 entryFxRate = BigDecimal("1432.6"),
-                entryPremiumRate = BigDecimal("1.28"),
                 entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
-
-            val result = PositionResult.Detail(
-                id = 1L,
-                memberId = 1L,
-                symbol = "BTC",
-                exchange = Exchange.UPBIT,
-                quantity = BigDecimal("0.5"),
-                entryPrice = BigDecimal("129555000"),
-                entryFxRate = BigDecimal("1432.6"),
-                entryPremiumRate = BigDecimal("1.28"),
-                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                status = PositionStatus.OPEN,
-            )
-
-            every { positionFacade.openPosition(any<PositionCriteria.Open>()) } returns result
+            every { positionFacade.openPosition(any<PositionCriteria.Open>()) } returns positionDetail()
 
             mockMvc.post("/api/v1/positions") {
                 with(user(testUserDetails))
@@ -100,23 +89,17 @@ class PositionControllerTest {
                 status { isCreated() }
                 jsonPath("$.id") { value(1) }
                 jsonPath("$.symbol") { value("BTC") }
-                jsonPath("$.exchange") { value("UPBIT") }
-                jsonPath("$.quantity") { value(0.5) }
+                jsonPath("$.koreaExchange") { value("UPBIT") }
+                jsonPath("$.koreaQuantity") { value(0.5) }
+                jsonPath("$.foreignExchange") { value("BINANCE") }
+                jsonPath("$.foreignLeverage") { value(1) }
                 jsonPath("$.status") { value("OPEN") }
             }
         }
 
         @Test
         fun `잘못된 거래소로 요청하면 400을 반환한다`() {
-            val request = mapOf(
-                "symbol" to "BTC",
-                "exchange" to "INVALID_EXCHANGE",
-                "quantity" to 0.5,
-                "entryPrice" to 129555000,
-                "entryFxRate" to 1432.6,
-                "entryPremiumRate" to 1.28,
-                "entryObservedAt" to "2024-01-01T00:00:00Z",
-            )
+            val request = openRequest(koreaExchange = "INVALID_EXCHANGE")
 
             mockMvc.post("/api/v1/positions") {
                 with(user(testUserDetails))
@@ -130,16 +113,6 @@ class PositionControllerTest {
 
         @Test
         fun `도메인 유효성 오류면 400과 INVALID_POSITION 코드를 반환한다`() {
-            val request = PositionRequest.Open(
-                symbol = "BTC",
-                exchange = "UPBIT",
-                quantity = BigDecimal("0.5"),
-                entryPrice = BigDecimal("129555000"),
-                entryFxRate = BigDecimal("1432.6"),
-                entryPremiumRate = BigDecimal("1.28"),
-                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-
             every {
                 positionFacade.openPosition(any<PositionCriteria.Open>())
             } throws InvalidPositionException("수량은 0보다 커야 합니다")
@@ -147,7 +120,7 @@ class PositionControllerTest {
             mockMvc.post("/api/v1/positions") {
                 with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(request)
+                content = objectMapper.writeValueAsString(openRequest())
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_POSITION") }
@@ -161,20 +134,7 @@ class PositionControllerTest {
 
         @Test
         fun `ID로 포지션을 조회한다`() {
-            val result = PositionResult.Detail(
-                id = 1L,
-                memberId = 1L,
-                symbol = "BTC",
-                exchange = Exchange.UPBIT,
-                quantity = BigDecimal("0.5"),
-                entryPrice = BigDecimal("129555000"),
-                entryFxRate = BigDecimal("1432.6"),
-                entryPremiumRate = BigDecimal("1.28"),
-                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                status = PositionStatus.OPEN,
-            )
-
-            every { positionFacade.findById(1L, 1L) } returns result
+            every { positionFacade.findById(1L, 1L) } returns positionDetail()
 
             mockMvc.get("/api/v1/positions/1") {
                 with(user(testUserDetails))
@@ -182,6 +142,8 @@ class PositionControllerTest {
                 status { isOk() }
                 jsonPath("$.id") { value(1) }
                 jsonPath("$.symbol") { value("BTC") }
+                jsonPath("$.koreaExchange") { value("UPBIT") }
+                jsonPath("$.foreignExchange") { value("BINANCE") }
             }
         }
 
@@ -203,32 +165,9 @@ class PositionControllerTest {
         @Test
         fun `열린 포지션 목록을 조회한다`() {
             val results = listOf(
-                PositionResult.Detail(
-                    id = 1L,
-                    memberId = 1L,
-                    symbol = "BTC",
-                    exchange = Exchange.UPBIT,
-                    quantity = BigDecimal("0.5"),
-                    entryPrice = BigDecimal("129555000"),
-                    entryFxRate = BigDecimal("1432.6"),
-                    entryPremiumRate = BigDecimal("1.28"),
-                    entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                    status = PositionStatus.OPEN,
-                ),
-                PositionResult.Detail(
-                    id = 2L,
-                    memberId = 1L,
-                    symbol = "ETH",
-                    exchange = Exchange.UPBIT,
-                    quantity = BigDecimal("5"),
-                    entryPrice = BigDecimal("5000000"),
-                    entryFxRate = BigDecimal("1432.6"),
-                    entryPremiumRate = BigDecimal("2.00"),
-                    entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                    status = PositionStatus.OPEN,
-                ),
+                positionDetail(id = 1L, symbol = "BTC"),
+                positionDetail(id = 2L, symbol = "ETH"),
             )
-
             every { positionFacade.findAllOpenByMemberId(1L) } returns results
 
             mockMvc.get("/api/v1/positions") {
@@ -237,6 +176,7 @@ class PositionControllerTest {
                 status { isOk() }
                 jsonPath("$.length()") { value(2) }
                 jsonPath("$[0].symbol") { value("BTC") }
+                jsonPath("$[0].koreaExchange") { value("UPBIT") }
                 jsonPath("$[1].symbol") { value("ETH") }
             }
         }
@@ -259,22 +199,8 @@ class PositionControllerTest {
 
         @Test
         fun `닫힌 포지션 이력을 조회한다`() {
-            val results = listOf(
-                PositionResult.Detail(
-                    id = 1L,
-                    memberId = 1L,
-                    symbol = "BTC",
-                    exchange = Exchange.UPBIT,
-                    quantity = BigDecimal("0.5"),
-                    entryPrice = BigDecimal("129555000"),
-                    entryFxRate = BigDecimal("1432.6"),
-                    entryPremiumRate = BigDecimal("1.28"),
-                    entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                    status = PositionStatus.CLOSED,
-                ),
-            )
-
-            every { positionFacade.findAllClosedByMemberId(1L) } returns results
+            every { positionFacade.findAllClosedByMemberId(1L) } returns
+                listOf(positionDetail(status = PositionStatus.CLOSED))
 
             mockMvc.get("/api/v1/positions/history") {
                 with(user(testUserDetails))
@@ -305,13 +231,11 @@ class PositionControllerTest {
 
         @Test
         fun `포지션 요약을 조회한다`() {
-            val result = PositionResult.Summary(
+            every { positionFacade.getSummary(1L) } returns PositionResult.Summary(
                 totalPositions = 3,
                 openPositions = 2,
                 closedPositions = 1,
             )
-
-            every { positionFacade.getSummary(1L) } returns result
 
             mockMvc.get("/api/v1/positions/summary") {
                 with(user(testUserDetails))
@@ -325,13 +249,11 @@ class PositionControllerTest {
 
         @Test
         fun `포지션이 없으면 0으로 반환한다`() {
-            val result = PositionResult.Summary(
+            every { positionFacade.getSummary(1L) } returns PositionResult.Summary(
                 totalPositions = 0,
                 openPositions = 0,
                 closedPositions = 0,
             )
-
-            every { positionFacade.getSummary(1L) } returns result
 
             mockMvc.get("/api/v1/positions/summary") {
                 with(user(testUserDetails))
@@ -357,7 +279,6 @@ class PositionControllerTest {
                 isProfit = true,
                 calculatedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
-
             every { positionFacade.calculatePnl(1L, 1L) } returns result
 
             mockMvc.get("/api/v1/positions/1/pnl") {
@@ -406,20 +327,7 @@ class PositionControllerTest {
 
         @Test
         fun `포지션을 청산한다`() {
-            val result = PositionResult.Detail(
-                id = 1L,
-                memberId = 1L,
-                symbol = "BTC",
-                exchange = Exchange.UPBIT,
-                quantity = BigDecimal("0.5"),
-                entryPrice = BigDecimal("129555000"),
-                entryFxRate = BigDecimal("1432.6"),
-                entryPremiumRate = BigDecimal("1.28"),
-                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                status = PositionStatus.CLOSED,
-            )
-
-            every { positionFacade.closePosition(1L, 1L) } returns result
+            every { positionFacade.closePosition(1L, 1L) } returns positionDetail(status = PositionStatus.CLOSED)
 
             mockMvc.post("/api/v1/positions/1/close") {
                 with(user(testUserDetails))
@@ -444,4 +352,38 @@ class PositionControllerTest {
             }
         }
     }
+
+    private fun openRequest(koreaExchange: String = "UPBIT"): Map<String, Any> = mapOf(
+        "symbol" to "BTC",
+        "koreaExchange" to koreaExchange,
+        "koreaQuantity" to 0.5,
+        "koreaEntryPrice" to 129555000,
+        "foreignExchange" to "BINANCE",
+        "foreignQuantity" to 0.5,
+        "foreignEntryPrice" to 89500,
+        "foreignLeverage" to 1,
+        "entryFxRate" to 1432.6,
+        "entryObservedAt" to "2024-01-01T00:00:00Z",
+    )
+
+    private fun positionDetail(
+        id: Long = 1L,
+        symbol: String = "BTC",
+        status: PositionStatus = PositionStatus.OPEN,
+    ): PositionResult.Detail = PositionResult.Detail(
+        id = id,
+        memberId = 1L,
+        symbol = symbol,
+        koreaExchange = Exchange.UPBIT,
+        koreaQuantity = BigDecimal("0.5"),
+        koreaEntryPrice = BigDecimal("129555000"),
+        foreignExchange = Exchange.BINANCE,
+        foreignQuantity = BigDecimal("0.5"),
+        foreignEntryPrice = BigDecimal("89500"),
+        foreignLeverage = 1,
+        entryFxRate = BigDecimal("1432.6"),
+        entryPremiumRate = BigDecimal("1.04"),
+        entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
+        status = status,
+    )
 }

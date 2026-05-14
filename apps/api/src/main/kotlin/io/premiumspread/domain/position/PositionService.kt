@@ -14,16 +14,18 @@ class PositionService(
         val position = Position.create(
             memberId = command.memberId,
             symbol = Symbol(command.symbol),
-            exchange = command.exchange,
-            quantity = command.quantity,
-            entryPrice = command.entryPrice,
+            koreaExchange = command.koreaExchange,
+            koreaQuantity = command.koreaQuantity,
+            koreaEntryPrice = command.koreaEntryPrice,
+            foreignExchange = command.foreignExchange,
+            foreignQuantity = command.foreignQuantity,
+            foreignEntryPrice = command.foreignEntryPrice,
+            foreignLeverage = command.foreignLeverage,
             entryFxRate = command.entryFxRate,
-            entryPremiumRate = command.entryPremiumRate,
             entryObservedAt = command.entryObservedAt,
         )
         return positionRepository.save(position)
     }
-
 
     @Transactional
     fun save(position: Position): Position {
