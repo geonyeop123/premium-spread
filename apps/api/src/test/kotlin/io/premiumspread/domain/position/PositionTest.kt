@@ -71,6 +71,14 @@ class PositionTest {
     }
 
     @Test
+    fun `해외 거래소로 FX_PROVIDER는 허용하지 않는다`() {
+        assertThatThrownBy {
+            createPosition(foreignExchange = Exchange.FX_PROVIDER)
+        }.isInstanceOf(InvalidPositionException::class.java)
+            .hasMessageContaining("FX_PROVIDER")
+    }
+
+    @Test
     fun `페어 수량 가격 환율이 0 이하이면 예외를 던진다`() {
         val invalidCases = listOf(
             "koreaQuantity" to { createPosition(koreaQuantity = BigDecimal.ZERO) },

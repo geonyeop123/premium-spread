@@ -134,6 +134,11 @@ class Position private constructor(
             if (exchange.region != ExchangeRegion.FOREIGN) {
                 throw InvalidPositionException("Foreign exchange must be FOREIGN region.")
             }
+            if (exchange == Exchange.FX_PROVIDER) {
+                throw InvalidPositionException(
+                    "Foreign exchange must be a tradable exchange (FX_PROVIDER is the FX-rate source, not an exchange)."
+                )
+            }
         }
 
         private fun validatePositive(name: String, value: BigDecimal) {
