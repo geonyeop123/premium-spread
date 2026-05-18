@@ -1,12 +1,12 @@
 # Project Status
 
-> Last updated: 2026-05-13
+> Last updated: 2026-05-18
 
 ## Current State
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| apps/api | Active | MVP 1 백엔드 완료, JWT Stateless 인증, DB 쿼리 최적화 (N+1·인덱스·currency 컬럼), 회원 알림 구독 CRUD (이슈 #27) |
+| apps/api | Active | MVP 1 백엔드 완료, JWT Stateless 인증, DB 쿼리 최적화 (N+1·인덱스·currency 컬럼), 회원 알림 구독 CRUD (이슈 #27), Position 도메인 한국/해외 페어 모델로 재구조화 (이슈 #41) |
 | apps/batch | Active | 1초/30분 수집 + 1분/1시간/1일 집계, PremiumUpdatedEvent + 이메일 알림 리스너 (이슈 #27), WebSocket 공통 인프라 + Binance/Bithumb WS 수집 (Phase 1/2/3) |
 | apps/web | Active | Next.js 16 + shadcn/ui + TradingView Charts, 대시보드/포지션/인증 UI |
 | modules/redis | Active | ZSet 중복 제거 + 캐시 워밍, AggregationTimeUnit(DAYS 추가), TTL 확장 |
@@ -18,6 +18,7 @@
 ## Recent Changes
 
 ```text
+feat: Position 도메인 한국/해외 페어 모델로 재구조화 (#41)
 feat: Phase 3 Bithumb WebSocket 1Hz 다운샘플 수집 (#31)
 feat: Phase 2 Binance Futures WebSocket 실시간 수집 (#30)
 feat: Phase 1 WebSocket 공통 인프라 — ConnectionManager + Metrics (#29)
@@ -57,6 +58,7 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 - [x] Phase 1 (#29): WebSocket 공통 인프라 — Reactor Netty 기반 `WebSocketConnectionManager`, `WebSocketMetrics` (9종), `HeartbeatPolicy`, `WebSocketConnectionConfig`, 단위 테스트 18개
 - [x] Phase 2 (#30): 바이낸스 Futures WebSocket 실시간 수집 — `BinanceWebSocketClient` + `BinanceTickerIngestion` (CAS strict monotonic + lag 측정), `premium.ingestion.binance.mode` 토글, `TickerIngestionJob` mode 분기 + atomic await
 - [x] Phase 3 (#31): 빗썸 WebSocket 1Hz down-sample 수집 — `BithumbWebSocketClient` + `BithumbTickerIngestion` (AtomicReference 최신값 유지, same-second 수용), `BithumbFlushJob/Scheduler` (thin entrypoint), `TickerCacheService.saveToSecondsWithScore` (`{epochMs}:{price}` ZSet member 포맷)
+- [x] 이슈 #41: Position 도메인 한국/해외 페어 모델로 재구조화 — Flyway V12 (단일 거래소 컬럼 → korea_* rename + foreign_* 4개 컬럼 신규), `Position` 엔티티에 한국 long + 해외 short 페어 필드 + `foreignLeverage` (1~125), 도메인 검증 (`koreaExchange.region == KOREA`, `foreignExchange.region == FOREIGN` 및 `FX_PROVIDER` 거절, 수량/가격/환율 양수), `entryPremiumRate` 서버 계산 (`Premium.calculatePremiumRate`와 동일 `DIVISION_SCALE=10`, scale=2), Command/Criteria/Result/Request/Response/Controller 페어 필드로 변환, `POST /api/v1/positions` 페어 본문으로 교체
 
 ### Epic #28 — WebSocket 실시간 수집 전환
 
@@ -67,6 +69,15 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 | Phase 3 (#31) | 빗썸 WebSocket 클라이언트 + 1Hz 다운샘플 + ZSet 저장 | ✅ 완료 |
 | Phase 4 | REST 폴링 클라이언트 제거 + 규칙 문서화 | 예정 |
 
+### Epic #40 — Position 도메인 페어 모델 + AUTO/MANUAL 분기 + 프론트엔드
+
+| Child | 내용 | 상태 |
+|-------|------|------|
+| #41 | Position 도메인 한국/해외 페어 모델 재구조화 (V12, 엔티티/검증/API) | ✅ 완료 |
+| #42 | 포지션 입력 AUTO/MANUAL 분기 | 예정 |
+| #43 | KRW 기반 PnL 확장 (페어 인지 쿼리로 `PremiumService.findLatestBySymbol` 교체) | 예정 |
+| #44 | 페어 모델 프론트엔드 반영 | 예정 |
+
 ### Pending
 (없음)
 
@@ -74,6 +85,8 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 
 - Batch Docker 컨테이너는 `ZoneId.systemDefault()` = UTC로 동작 (로컬 개발 시 KST와 차이 주의)
 - Docker app-compose로 띄운 컨테이너와 bootRun이 동시 실행되면 포트 충돌 발생
+- **V12 마이그레이션은 dev/local 전용** — `position` 테이블 `TRUNCATE` 포함. staging/prod 배포 시 기존 행을 페어 컬럼으로 채우는 별도 backfill 마이그레이션이 선행되어야 한다 (이슈 #41).
+- **`GET /api/v1/positions/{id}/pnl` 정확성 미보장** — 이슈 #41만 머지된 상태에서는 `PremiumService.findLatestBySymbol`이 페어 정보를 모르므로 PnL 결과가 부정확할 수 있다 (dev only). 이슈 #43에서 페어 인지 쿼리로 교체 예정.
 
 ## Notes
 

@@ -1,6 +1,6 @@
 # Premium Spread System Architecture
 
-> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-13)
+> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-18)
 
 ## System Overview
 
@@ -247,6 +247,41 @@ BithumbFlushScheduler (@Scheduled fixedRate=1000, thin entrypoint)
 - `JavaMailSender` 빈은 `spring.mail.host` 자동 설정에 따라 등록 (Spring Boot)
 - 미설정 시 Service/Listener 빈 미등록 → 부팅 영향 없음 (local/test 안전)
 
+## Position Pair Model (이슈 #41)
+
+회원이 등록하는 포지션은 **한국 거래소 long + 해외 거래소 short 페어 1쌍**을 단일 행으로 보유한다.
+
+### 컬럼 구조 (position 테이블, V12 이후)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `korea_exchange` | VARCHAR(50) | 한국 거래소 — `Exchange.region == KOREA` |
+| `korea_quantity` | DECIMAL(30,10) | 한국 long 수량 ( > 0 ) |
+| `korea_entry_price` | DECIMAL(30,10) | 한국 진입 가격 (KRW, > 0) |
+| `foreign_exchange` | VARCHAR(50) | 해외 거래소 — `Exchange.region == FOREIGN` **AND** `FX_PROVIDER` 거절 |
+| `foreign_quantity` | DECIMAL(30,10) | 해외 short 수량 ( > 0 ) |
+| `foreign_entry_price` | DECIMAL(30,10) | 해외 진입 가격 (USD, > 0) |
+| `foreign_leverage` | INT | 해외 레버리지 (1 ~ 125) |
+| `entry_fx_rate` | DECIMAL | 진입 시점 환율 ( > 0 ) |
+| `entry_premium_rate` | DECIMAL | 서버 계산값 (입력값 무시) |
+
+### 도메인 검증 (Position 엔티티)
+
+- `koreaExchange.region == KOREA` 강제
+- `foreignExchange.region == FOREIGN` 강제 + `FX_PROVIDER` 거절
+- 수량/가격/환율 모두 `> 0`
+- `foreignLeverage ∈ [1, 125]`
+- `entryPremiumRate`는 서버가 `Premium.calculatePremiumRate`와 동일 정밀도(`DIVISION_SCALE=10`, scale=2)로 계산. 클라이언트 입력값은 신뢰하지 않음.
+
+### API 엔드포인트
+
+`POST /api/v1/positions` 한 개 엔드포인트 유지하되, 요청 본문이 페어 필드로 교체됨 (`koreaExchange/koreaQuantity/koreaEntryPrice/foreignExchange/foreignQuantity/foreignEntryPrice/foreignLeverage/entryFxRate/entryObservedAt`). AUTO/MANUAL 분기는 이슈 #42 후속 예정.
+
+### 알려진 한계 (이슈 #41 시점)
+
+- **PnL 정확성**: `PremiumService.findLatestBySymbol`은 페어 정보를 모르므로 `GET /positions/{id}/pnl` 결과가 부정확할 수 있다 (dev only). 이슈 #43에서 페어 인지 쿼리로 교체 예정.
+- **운영 배포 차단**: V12는 `TRUNCATE`를 포함하므로 staging/prod 적용 전 별도 backfill 마이그레이션 필요.
+
 ## Persistence (MySQL)
 
 - 원시/조회용
@@ -270,6 +305,7 @@ BithumbFlushScheduler (@Scheduled fixedRate=1000, thin entrypoint)
 | V9 | `add_indexes_and_currency_column` | 성능 인덱스 + ticker 집계 currency 컬럼 |
 | V10 | `add_fx_rate_to_premium_aggregation_tables` | premium 집계 테이블에 fx_rate 컬럼 |
 | V11 | `create_notification_subscription` | notification_subscription 테이블 (이슈 #27) |
+| V12 | `restructure_position_to_pair` | position 단일 거래소 컬럼 → 한국/해외 페어 컬럼 재구조화 (이슈 #41). `exchange/quantity/entry_price`를 `korea_*`로 rename 후 `foreign_exchange/foreign_quantity/foreign_entry_price/foreign_leverage` 신규 추가. **dev/local 한정 TRUNCATE 포함 — 운영 적용 전 별도 backfill 필요.** |
 
 ## Observability (As-Is)
 
