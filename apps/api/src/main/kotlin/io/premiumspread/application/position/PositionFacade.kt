@@ -18,6 +18,7 @@ class PositionFacade(
 
     companion object {
         private const val SNAPSHOT_MAX_AGE_SECONDS = 60L
+        private val SNAPSHOT_MAX_AGE: Duration = Duration.ofSeconds(SNAPSHOT_MAX_AGE_SECONDS)
     }
 
     @Transactional
@@ -27,10 +28,10 @@ class PositionFacade(
                 "Premium snapshot not available for symbol: ${criteria.symbol}",
             )
 
-        val ageSeconds = Duration.between(snapshot.observedAt, Instant.now()).seconds
-        if (ageSeconds > SNAPSHOT_MAX_AGE_SECONDS) {
+        val age = Duration.between(snapshot.observedAt, Instant.now())
+        if (age > SNAPSHOT_MAX_AGE) {
             throw StalePremiumSnapshotException(
-                "Premium snapshot is stale (age=${ageSeconds}s, max=${SNAPSHOT_MAX_AGE_SECONDS}s) for symbol: ${criteria.symbol}",
+                "Premium snapshot is stale (age=${age.toMillis()}ms, max=${SNAPSHOT_MAX_AGE.toMillis()}ms) for symbol: ${criteria.symbol}",
             )
         }
 
