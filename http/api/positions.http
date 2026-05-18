@@ -11,8 +11,22 @@ Content-Type: application/json
     client.global.set("accessToken", response.body.accessToken);
 %}
 
-### 포지션 오픈 (인증 필요)
-POST {{premium-api}}/api/v1/positions
+### 포지션 오픈 - AUTO (인증 필요)
+POST {{premium-api}}/api/v1/positions/auto
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "symbol": "BTC",
+  "koreaExchange": "BITHUMB",
+  "koreaQuantity": 0.157,
+  "foreignExchange": "BINANCE",
+  "foreignQuantity": 0.15,
+  "foreignLeverage": 5
+}
+
+### 포지션 오픈 - MANUAL (인증 필요)
+POST {{premium-api}}/api/v1/positions/manual
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
