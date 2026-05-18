@@ -55,6 +55,21 @@ Authorization: Bearer {{accessToken}}
 GET {{premium-api}}/api/v1/positions/1/pnl
 Authorization: Bearer {{accessToken}}
 
+# 응답 예시:
+# {
+#   "positionId": 1,
+#   "premiumDiff": 9.74,
+#   "entryPremiumRate": -10.13,
+#   "currentPremiumRate": -0.39,
+#   "koreaPnl": -6777343.344,
+#   "foreignPnlKrw": 8585481.2175,
+#   "totalPnlKrw": 1808137.8735,
+#   "koreaCurrentValue": 18577182,
+#   "totalPnlPercent": 9.73,
+#   "isProfit": true,
+#   "calculatedAt": "2026-05-18T10:30:00Z"
+# }
+
 ### 포지션 종료 (인증 필요)
 POST {{premium-api}}/api/v1/positions/1/close
 Authorization: Bearer {{accessToken}}

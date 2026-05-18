@@ -98,10 +98,15 @@ class PositionFacade(
             ?: throw PositionNotFoundException("Position not found: $positionId")
         verifyOwnership(position, memberId)
 
-        val currentPremium = premiumService.findLatestBySymbol(Symbol(position.symbol.code))
+        val snapshot = premiumService.findLatestSnapshotBySymbol(Symbol(position.symbol.code))
             ?: throw PremiumNotFoundException("Premium not found for symbol: ${position.symbol.code}")
 
-        val pnl = position.calculatePremiumDiff(currentPremium.premiumRate)
+        val pnl = position.calculatePnl(
+            currentKoreaPrice = snapshot.koreaPrice,
+            currentForeignPrice = snapshot.foreignPrice,
+            currentFxRate = snapshot.fxRate,
+            currentPremiumRate = snapshot.premiumRate,
+        )
         return PositionResult.Pnl.from(positionId, pnl)
     }
 

@@ -137,20 +137,92 @@ class PositionTest {
     }
 
     @Test
-    fun `프리미엄 차이를 계산한다 - 기존 동작 유지`() {
+    fun `PnL을 페어 기반 KRW 손익으로 계산한다 - 사용자 예시 회귀`() {
         val position = createPosition(
-            koreaEntryPrice = BigDecimal("103000"),
+            koreaEntryPrice = BigDecimal("161493792"),
+            koreaQuantity = BigDecimal("0.157"),
+            foreignEntryPrice = BigDecimal("118100"),
+            foreignQuantity = BigDecimal("0.15"),
+            entryFxRate = BigDecimal("1521.6"),
+        )
+
+        val pnl = position.calculatePnl(
+            currentKoreaPrice = BigDecimal("118326000"),
+            currentForeignPrice = BigDecimal("79699.1"),
+            currentFxRate = BigDecimal("1490.5"),
+            currentPremiumRate = BigDecimal("-0.39"),
+        )
+
+        assertThat(pnl.koreaPnl).isEqualByComparingTo(BigDecimal("-6777343.344"))
+        assertThat(pnl.foreignPnlKrw).isEqualByComparingTo(BigDecimal("8585481.2175"))
+        assertThat(pnl.totalPnlKrw).isEqualByComparingTo(BigDecimal("1808137.8735"))
+        assertThat(pnl.koreaCurrentValue).isEqualByComparingTo(BigDecimal("18577182"))
+        assertThat(pnl.totalPnlPercent).isEqualByComparingTo(BigDecimal("9.73"))
+        assertThat(pnl.isProfit()).isTrue()
+    }
+
+    @Test
+    fun `양쪽 손실일 때 totalPnlKrw 음수`() {
+        val position = createPosition(
+            koreaEntryPrice = BigDecimal("100000"),
+            koreaQuantity = BigDecimal("1.0"),
             foreignEntryPrice = BigDecimal("100"),
+            foreignQuantity = BigDecimal("1.0"),
             entryFxRate = BigDecimal("1000"),
         )
 
-        val pnl = position.calculatePremiumDiff(currentPremiumRate = BigDecimal("1.00"))
+        val pnl = position.calculatePnl(
+            currentKoreaPrice = BigDecimal("90000"),
+            currentForeignPrice = BigDecimal("110"),
+            currentFxRate = BigDecimal("1000"),
+            currentPremiumRate = BigDecimal("-18.18"),
+        )
 
-        assertThat(position.entryPremiumRate).isEqualByComparingTo(BigDecimal("3.00"))
-        assertThat(pnl.premiumDiff).isEqualByComparingTo(BigDecimal("-2.00"))
-        assertThat(pnl.entryPremiumRate).isEqualByComparingTo(BigDecimal("3.00"))
-        assertThat(pnl.currentPremiumRate).isEqualByComparingTo(BigDecimal("1.00"))
-        assertThat(pnl.isProfit()).isTrue()
+        assertThat(pnl.koreaPnl).isNegative()
+        assertThat(pnl.foreignPnlKrw).isNegative()
+        assertThat(pnl.totalPnlKrw).isNegative()
+        assertThat(pnl.isProfit()).isFalse()
+    }
+
+    @Test
+    fun `isProfit은 totalPnlKrw 기준이며 premiumDiff와 부호 불일치 가능`() {
+        val position = createPosition(
+            koreaEntryPrice = BigDecimal("100000"),
+            koreaQuantity = BigDecimal("1.0"),
+            foreignEntryPrice = BigDecimal("100"),
+            foreignQuantity = BigDecimal("1.0"),
+            entryFxRate = BigDecimal("1000"),
+        )
+
+        val pnl = position.calculatePnl(
+            currentKoreaPrice = BigDecimal("120000"),
+            currentForeignPrice = BigDecimal("105"),
+            currentFxRate = BigDecimal("1000"),
+            currentPremiumRate = BigDecimal("15.00"),
+        )
+
+        assertThat(position.entryPremiumRate).isEqualByComparingTo(BigDecimal("0.00"))
+        assertThat(pnl.premiumDiff).isPositive()
+        assertThat(pnl.totalPnlKrw).isPositive()
+        assertThat(pnl.isProfit()).isEqualTo(pnl.totalPnlKrw > BigDecimal.ZERO)
+    }
+
+    @Test
+    fun `시세가 0 이하면 IllegalArgumentException`() {
+        val position = createPosition()
+        val invalidCases = listOf(
+            { position.calculatePnl(BigDecimal.ZERO, BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00")) },
+            { position.calculatePnl(BigDecimal("-1"), BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00")) },
+            { position.calculatePnl(BigDecimal("129555000"), BigDecimal.ZERO, BigDecimal("1432.6"), BigDecimal("1.00")) },
+            { position.calculatePnl(BigDecimal("129555000"), BigDecimal("-1"), BigDecimal("1432.6"), BigDecimal("1.00")) },
+            { position.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal.ZERO, BigDecimal("1.00")) },
+            { position.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal("-1"), BigDecimal("1.00")) },
+        )
+
+        invalidCases.forEach { calculate ->
+            assertThatThrownBy { calculate() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+        }
     }
 
     private fun createPosition(

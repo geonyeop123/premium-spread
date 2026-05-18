@@ -62,12 +62,42 @@ class Position private constructor(
     val memberId: Long,
 ) : BaseEntity() {
 
-    fun calculatePremiumDiff(currentPremiumRate: BigDecimal): PositionPnl {
+    fun calculatePnl(
+        currentKoreaPrice: BigDecimal,
+        currentForeignPrice: BigDecimal,
+        currentFxRate: BigDecimal,
+        currentPremiumRate: BigDecimal,
+    ): PositionPnl {
+        require(currentKoreaPrice > BigDecimal.ZERO) { "currentKoreaPrice must be positive" }
+        require(currentForeignPrice > BigDecimal.ZERO) { "currentForeignPrice must be positive" }
+        require(currentFxRate > BigDecimal.ZERO) { "currentFxRate must be positive" }
+
+        val koreaPnl = currentKoreaPrice
+            .subtract(koreaEntryPrice)
+            .multiply(koreaQuantity)
+
+        val foreignPnlUsd = foreignEntryPrice
+            .subtract(currentForeignPrice)
+            .multiply(foreignQuantity)
+
+        val foreignPnlKrw = foreignPnlUsd.multiply(currentFxRate)
+        val totalPnlKrw = koreaPnl.add(foreignPnlKrw)
+        val koreaCurrentValue = currentKoreaPrice.multiply(koreaQuantity)
+        val totalPnlPercent = totalPnlKrw
+            .divide(koreaCurrentValue, 10, RoundingMode.HALF_UP)
+            .multiply(BigDecimal(100))
+            .setScale(2, RoundingMode.HALF_UP)
         val premiumDiff = currentPremiumRate.subtract(entryPremiumRate)
+
         return PositionPnl(
             premiumDiff = premiumDiff,
             entryPremiumRate = entryPremiumRate,
             currentPremiumRate = currentPremiumRate,
+            koreaPnl = koreaPnl,
+            foreignPnlKrw = foreignPnlKrw,
+            totalPnlKrw = totalPnlKrw,
+            koreaCurrentValue = koreaCurrentValue,
+            totalPnlPercent = totalPnlPercent,
             calculatedAt = Instant.now(),
         )
     }

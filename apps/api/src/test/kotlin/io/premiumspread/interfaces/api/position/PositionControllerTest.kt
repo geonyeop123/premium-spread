@@ -328,25 +328,22 @@ class PositionControllerTest {
     inner class GetPnl {
 
         @Test
-        fun `포지션의 PnL을 조회한다 - 이익`() {
-            val result = PositionResult.Pnl(
-                positionId = 1L,
-                premiumDiff = BigDecimal("-2.00"),
-                entryPremiumRate = BigDecimal("3.00"),
-                currentPremiumRate = BigDecimal("1.00"),
-                isProfit = true,
-                calculatedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-            every { positionFacade.calculatePnl(1L, 1L) } returns result
+        fun `포지션의 PnL을 조회한다`() {
+            every { positionFacade.calculatePnl(1L, 1L) } returns pnlResult()
 
             mockMvc.get("/api/v1/positions/1/pnl") {
                 with(user(testUserDetails))
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.positionId") { value(1) }
-                jsonPath("$.premiumDiff") { value(-2.00) }
-                jsonPath("$.entryPremiumRate") { value(3.00) }
-                jsonPath("$.currentPremiumRate") { value(1.00) }
+                jsonPath("$.premiumDiff") { value(9.74) }
+                jsonPath("$.entryPremiumRate") { value(-10.13) }
+                jsonPath("$.currentPremiumRate") { value(-0.39) }
+                jsonPath("$.koreaPnl") { value(-6777343.344) }
+                jsonPath("$.foreignPnlKrw") { value(8585481.2175) }
+                jsonPath("$.totalPnlKrw") { value(1808137.8735) }
+                jsonPath("$.koreaCurrentValue") { value(18577182) }
+                jsonPath("$.totalPnlPercent") { value(9.73) }
                 jsonPath("$.isProfit") { value(true) }
             }
         }
@@ -452,5 +449,19 @@ class PositionControllerTest {
         entryPremiumRate = BigDecimal("1.04"),
         entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
         status = status,
+    )
+
+    private fun pnlResult(): PositionResult.Pnl = PositionResult.Pnl(
+        positionId = 1L,
+        premiumDiff = BigDecimal("9.74"),
+        entryPremiumRate = BigDecimal("-10.13"),
+        currentPremiumRate = BigDecimal("-0.39"),
+        koreaPnl = BigDecimal("-6777343.344"),
+        foreignPnlKrw = BigDecimal("8585481.2175"),
+        totalPnlKrw = BigDecimal("1808137.8735"),
+        koreaCurrentValue = BigDecimal("18577182"),
+        totalPnlPercent = BigDecimal("9.73"),
+        isProfit = true,
+        calculatedAt = Instant.parse("2024-01-01T00:00:00Z"),
     )
 }

@@ -5,7 +5,6 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.PositionFixtures
-import io.premiumspread.PremiumFixtures
 import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionCommand
@@ -252,70 +251,45 @@ class PositionFacadeTest {
     inner class CalculatePnl {
 
         @Test
-        fun `포지션의 PnL을 계산한다 - 프리미엄 하락 시 이익`() {
+        fun `포지션의 PnL을 페어 기반 KRW 손익으로 계산한다`() {
             val position = PositionFixtures.openPosition(
                 id = 1L,
                 memberId = 1L,
-                koreaEntryPrice = BigDecimal("103000"),
-                foreignEntryPrice = BigDecimal("100"),
-                entryFxRate = BigDecimal("1000"),
+                koreaEntryPrice = BigDecimal("161493792"),
+                koreaQuantity = BigDecimal("0.157"),
+                foreignEntryPrice = BigDecimal("118100"),
+                foreignQuantity = BigDecimal("0.15"),
+                entryFxRate = BigDecimal("1521.6"),
             )
-            val currentPremium = PremiumFixtures.premiumWithRate(
-                symbol = "BTC",
-                premiumRate = BigDecimal("1.00"),
+            val snapshot = premiumSnapshot(
+                koreaPrice = BigDecimal("118326000"),
+                foreignPrice = BigDecimal("79699.1"),
+                fxRate = BigDecimal("1490.5"),
+                foreignPriceInKrw = BigDecimal("118791508.55"),
+                premiumRate = BigDecimal("-0.39"),
             )
 
             every { positionService.findById(1L) } returns position
-            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns currentPremium
+            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns snapshot
 
             val result = facade.calculatePnl(1L, 1L)
 
             assertThat(result.positionId).isEqualTo(1L)
-            assertThat(result.premiumDiff).isEqualByComparingTo(BigDecimal("-2.00"))
-            assertThat(result.entryPremiumRate).isEqualByComparingTo(BigDecimal("3.00"))
-            assertThat(result.currentPremiumRate).isEqualByComparingTo(BigDecimal("1.00"))
+            assertThat(result.currentPremiumRate).isEqualByComparingTo(BigDecimal("-0.39"))
+            assertThat(result.koreaPnl).isEqualByComparingTo(BigDecimal("-6777343.344"))
+            assertThat(result.foreignPnlKrw).isEqualByComparingTo(BigDecimal("8585481.2175"))
+            assertThat(result.totalPnlKrw).isEqualByComparingTo(BigDecimal("1808137.8735"))
+            assertThat(result.koreaCurrentValue).isEqualByComparingTo(BigDecimal("18577182"))
+            assertThat(result.totalPnlPercent).isEqualByComparingTo(BigDecimal("9.73"))
             assertThat(result.isProfit).isTrue()
         }
 
         @Test
-        fun `포지션의 PnL을 계산한다 - 프리미엄 상승 시 손실`() {
-            val position = PositionFixtures.openPosition(
-                id = 1L,
-                memberId = 1L,
-                koreaEntryPrice = BigDecimal("101000"),
-                foreignEntryPrice = BigDecimal("100"),
-                entryFxRate = BigDecimal("1000"),
-            )
-            val currentPremium = PremiumFixtures.premiumWithRate(
-                symbol = "BTC",
-                premiumRate = BigDecimal("3.00"),
-            )
-
-            every { positionService.findById(1L) } returns position
-            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns currentPremium
-
-            val result = facade.calculatePnl(1L, 1L)
-
-            assertThat(result.premiumDiff).isEqualByComparingTo(BigDecimal("2.00"))
-            assertThat(result.isProfit).isFalse()
-        }
-
-        @Test
-        fun `포지션이 없으면 예외를 던진다`() {
-            every { positionService.findById(999L) } returns null
-
-            assertThatThrownBy {
-                facade.calculatePnl(999L, 1L)
-            }.isInstanceOf(PositionNotFoundException::class.java)
-                .hasMessageContaining("Position not found")
-        }
-
-        @Test
-        fun `프리미엄이 없으면 예외를 던진다`() {
+        fun `프리미엄 스냅샷이 없으면 예외를 던진다`() {
             val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
 
             every { positionService.findById(1L) } returns position
-            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns null
+            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns null
 
             assertThatThrownBy {
                 facade.calculatePnl(1L, 1L)
@@ -331,6 +305,18 @@ class PositionFacadeTest {
 
             assertThatThrownBy {
                 facade.calculatePnl(1L, 999L)
+            }.isInstanceOf(PositionNotFoundException::class.java)
+                .hasMessageContaining("Position not found")
+
+            verify(exactly = 0) { premiumService.findLatestSnapshotBySymbol(any()) }
+        }
+
+        @Test
+        fun `포지션이 없으면 예외를 던진다`() {
+            every { positionService.findById(999L) } returns null
+
+            assertThatThrownBy {
+                facade.calculatePnl(999L, 1L)
             }.isInstanceOf(PositionNotFoundException::class.java)
                 .hasMessageContaining("Position not found")
         }
@@ -396,13 +382,18 @@ class PositionFacadeTest {
 
     private fun premiumSnapshot(
         observedAt: Instant = Instant.now(),
+        premiumRate: BigDecimal = BigDecimal("1.04"),
+        koreaPrice: BigDecimal = BigDecimal("129555000"),
+        foreignPrice: BigDecimal = BigDecimal("89500"),
+        foreignPriceInKrw: BigDecimal = BigDecimal("128203000"),
+        fxRate: BigDecimal = BigDecimal("1432.6"),
     ): PremiumSnapshot = PremiumSnapshot(
         symbol = "BTC",
-        premiumRate = BigDecimal("1.04"),
-        koreaPrice = BigDecimal("129555000"),
-        foreignPrice = BigDecimal("89500"),
-        foreignPriceInKrw = BigDecimal("128203000"),
-        fxRate = BigDecimal("1432.6"),
+        premiumRate = premiumRate,
+        koreaPrice = koreaPrice,
+        foreignPrice = foreignPrice,
+        foreignPriceInKrw = foreignPriceInKrw,
+        fxRate = fxRate,
         observedAt = observedAt,
     )
 }

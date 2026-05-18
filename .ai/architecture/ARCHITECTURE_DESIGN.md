@@ -1,6 +1,6 @@
 # Premium Spread System Architecture
 
-> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-18)
+> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-18, 이슈 #43 PnL 페어 기반 KRW 손익 확장 반영)
 
 ## System Overview
 
@@ -302,12 +302,72 @@ AUTO 경로는 `PositionFacade.openAutoPosition`이 처리하며, 스냅샷이 �
 | application | `PositionCriteria.Open` → `PositionCriteria.OpenAuto` + `PositionCriteria.OpenManual` |
 | interfaces | `PositionResponse.Detail` 변경 없음 |
 
-### 알려진 한계 (이슈 #41/#42 시점)
+### PnL 계산 (이슈 #43)
 
-- **PnL 정확성**: `PremiumService.findLatestBySymbol`은 페어 정보를 모르므로 `GET /positions/{id}/pnl` 결과가 부정확할 수 있다 (dev only). 이슈 #43에서 페어 인지 쿼리로 교체 예정.
-- **PremiumSnapshot 거래소 매칭 미지원**: AUTO 엔드포인트가 사용하는 `PremiumSnapshot`은 symbol 기반이므로 요청의 `koreaExchange`/`foreignExchange`와의 거래소 일치 여부는 검증되지 않는다. premium 도메인이 다중 거래소 지원으로 확장될 때 해소 (별도 후속 작업).
+`GET /api/v1/positions/{id}/pnl`은 페어 기반 KRW 손익을 반환한다. `Position.calculatePnl`은 `PremiumSnapshot`에 직접 의존하지 않고 4개의 `BigDecimal` 인자를 받는다 (Position 도메인이 read model에 결합되지 않도록 분리).
+
+```kotlin
+fun Position.calculatePnl(
+    currentKoreaPrice: BigDecimal,   // 현재 한국 가격 (KRW)
+    currentForeignPrice: BigDecimal, // 현재 해외 가격 (USD)
+    currentFxRate: BigDecimal,       // 현재 환율 (USD→KRW)
+    currentPremiumRate: BigDecimal,  // 현재 프리미엄율 (참고값)
+): PositionPnl
+```
+
+#### 수식
+
+| 값 | 계산식 |
+|----|-------|
+| `koreaPnl` | `(currentKoreaPrice - koreaEntryPrice) × koreaQuantity` (KRW) |
+| `foreignPnlUsd` (중간값) | `(foreignEntryPrice - currentForeignPrice) × foreignQuantity` (USD, short 포지션) |
+| `foreignPnlKrw` | `foreignPnlUsd × currentFxRate` (KRW) |
+| `totalPnlKrw` | `koreaPnl + foreignPnlKrw` (KRW) |
+| `koreaCurrentValue` | `currentKoreaPrice × koreaQuantity` (KRW) — % 기준 |
+| `totalPnlPercent` | `totalPnlKrw / koreaCurrentValue × 100` (scale=2, HALF_UP, 분자 division scale=10) |
+| `premiumDiff` | `currentPremiumRate - entryPremiumRate` (참고값) |
+
+#### 도메인 가드
+
+- `currentKoreaPrice`, `currentForeignPrice`, `currentFxRate`는 모두 `> 0`을 `require`로 강제 — 위반 시 `IllegalArgumentException` → 400. 0 이하 snapshot이 PnL을 0.00%로 마스킹하는 케이스를 차단한다.
+- Position 도메인은 외부 read model에 의존하지 않는다. snapshot 분해/검증은 `PositionFacade.calculatePnl`이 담당한다.
+
+#### `isProfit()` 시맨틱 변경 (Breaking)
+
+| 시점 | 기준 |
+|------|------|
+| ~#42 | `premiumDiff < BigDecimal.ZERO` |
+| #43~ | `totalPnlKrw > BigDecimal.ZERO` |
+
+실제 KRW 이익 여부를 직접 표현하도록 자연화. 같은 입력에서 부호가 달라질 수 있는 케이스가 존재하며, 회귀 테스트가 부호 불일치 케이스를 단언한다.
+
+#### Read 흐름
+
+```
+Controller → PositionFacade.calculatePnl
+              ├─ PremiumService.findLatestSnapshotBySymbol(symbol)
+              │     (없거나 stale 시 예외 — AUTO 오픈과 동일 경계 정책)
+              └─ Position.calculatePnl(snapshot.koreaPrice, snapshot.foreignPrice,
+                                       snapshot.fxRate, snapshot.premiumRate)
+```
+
+#### DTO 확장
+
+| 레이어 | 추가 필드 |
+|--------|-----------|
+| domain (`PositionPnl`) | `koreaPnl`, `foreignPnlKrw`, `totalPnlKrw`, `koreaCurrentValue`, `totalPnlPercent` |
+| application (`PositionResult.Pnl`) | 동일 5필드 |
+| interfaces (`PositionResponse.Pnl`) | 동일 5필드 |
+
+기존 `premiumDiff`, `entryPremiumRate`, `currentPremiumRate`, `isProfit`, `calculatedAt`은 유지된다 (응답 호환).
+
+### 알려진 한계 (이슈 #41/#42/#43 시점)
+
+- **PnL 정확성 — 부분 해소 (이슈 #43)**: 페어 인지 4-인자 수식 + 시세 양수 검증으로 KRW 손익 계산 자체는 정확해졌다. 다만 `PremiumSnapshot`은 여전히 symbol 단일 기준이므로 Position의 `koreaExchange`/`foreignExchange`와 시세가 매칭되는지 보장하지 못한다. dev 환경(거래소 1쌍 운용)에서는 정확. premium 도메인이 다중 거래소 지원으로 확장될 때 완전 해소.
+- **`isProfit()` 시맨틱 변경 (Breaking, 이슈 #43)**: `premiumDiff < 0` → `totalPnlKrw > 0`. 같은 데이터에 결과 부호가 달라질 수 있다. 프론트엔드는 #41 시점부터 PnL 표시가 동기화되지 않았으므로 사용자 영향은 없으며, 이슈 #44에서 신규 필드와 함께 갱신 예정.
+- **PremiumSnapshot 거래소 매칭 미지원**: AUTO 엔드포인트와 PnL 계산이 사용하는 `PremiumSnapshot`은 symbol 기반이라 요청/Position의 `koreaExchange`/`foreignExchange` 일치 여부를 검증하지 못한다 (이슈 #42/#43). premium 도메인이 다중 거래소 지원으로 확장될 때 해소.
 - **운영 배포 차단**: V12는 `TRUNCATE`를 포함하므로 staging/prod 적용 전 별도 backfill 마이그레이션 필요.
-- **프론트엔드 미동기화**: `apps/web/src/components/OpenPositionForm.tsx`는 #41 시점부터 단일 거래소 본문을 전송하여 오픈 호출이 실패한다. AUTO/MANUAL 폼 분리를 포함해 이슈 #44에서 해소 예정.
+- **프론트엔드 미동기화**: `apps/web/src/components/OpenPositionForm.tsx`는 #41 시점부터 단일 거래소 본문을 전송하여 오픈 호출이 실패한다. #43에서 추가된 PnL 신규 5필드도 미표시. AUTO/MANUAL 폼 분리 + PnL 카드 확장을 포함해 이슈 #44에서 해소 예정.
 
 ## Persistence (MySQL)
 

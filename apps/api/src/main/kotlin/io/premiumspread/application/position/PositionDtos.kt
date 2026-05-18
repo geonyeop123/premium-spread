@@ -75,6 +75,11 @@ class PositionResult private constructor() {
         val premiumDiff: BigDecimal,
         val entryPremiumRate: BigDecimal,
         val currentPremiumRate: BigDecimal,
+        val koreaPnl: BigDecimal,
+        val foreignPnlKrw: BigDecimal,
+        val totalPnlKrw: BigDecimal,
+        val koreaCurrentValue: BigDecimal,
+        val totalPnlPercent: BigDecimal,
         val isProfit: Boolean,
         val calculatedAt: Instant,
     ) {
@@ -84,6 +89,11 @@ class PositionResult private constructor() {
                 premiumDiff = pnl.premiumDiff,
                 entryPremiumRate = pnl.entryPremiumRate,
                 currentPremiumRate = pnl.currentPremiumRate,
+                koreaPnl = pnl.koreaPnl,
+                foreignPnlKrw = pnl.foreignPnlKrw,
+                totalPnlKrw = pnl.totalPnlKrw,
+                koreaCurrentValue = pnl.koreaCurrentValue,
+                totalPnlPercent = pnl.totalPnlPercent,
                 isProfit = pnl.isProfit(),
                 calculatedAt = pnl.calculatedAt,
             )

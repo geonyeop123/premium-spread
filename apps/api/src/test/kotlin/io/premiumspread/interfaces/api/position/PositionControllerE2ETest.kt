@@ -259,17 +259,20 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `PnL 계산 성공 - DB premium 기준으로 계산 (entryRate=3, currentRate=1 → diff=-2, isProfit=true)`() {
+    fun `PnL 계산 성공 - 최신 스냅샷 페어 가격으로 KRW 손익 계산`() {
         val position = createPosition(
-            koreaEntryPrice = BigDecimal("103000"),
-            foreignEntryPrice = BigDecimal("100"),
-            entryFxRate = BigDecimal("1000"),
+            koreaQuantity = BigDecimal("0.157"),
+            koreaEntryPrice = BigDecimal("161493792"),
+            foreignQuantity = BigDecimal("0.15"),
+            foreignEntryPrice = BigDecimal("118100"),
+            entryFxRate = BigDecimal("1521.6"),
         )
         val accessToken = login()
         savePremiumWithTickers(
-            koreaPrice = BigDecimal("101000"),
-            foreignPrice = BigDecimal("1000"),
-            fxRate = BigDecimal("100"),
+            koreaPrice = BigDecimal("118326000"),
+            foreignPrice = BigDecimal("79699.1"),
+            fxRate = BigDecimal("1490.5"),
+            observedAt = Instant.now(),
         )
 
         mockMvc.get("/api/v1/positions/${position.id}/pnl") {
@@ -277,15 +280,18 @@ class PositionControllerE2ETest @Autowired constructor(
         }.andExpect {
             status { isOk() }
             jsonPath("$.positionId") { value(position.id) }
-            jsonPath("$.entryPremiumRate") { value(3.00) }
-            jsonPath("$.currentPremiumRate") { value(1.00) }
-            jsonPath("$.premiumDiff") { value(-2.00) }
+            jsonPath("$.currentPremiumRate") { value(-0.39) }
+            jsonPath("$.koreaPnl") { value(-6777343.344) }
+            jsonPath("$.foreignPnlKrw") { value(8585481.2175) }
+            jsonPath("$.totalPnlKrw") { value(1808137.8735) }
+            jsonPath("$.koreaCurrentValue") { value(18577182) }
+            jsonPath("$.totalPnlPercent") { value(9.73) }
             jsonPath("$.isProfit") { value(true) }
         }
     }
 
     @Test
-    fun `DB fallback으로 PnL 계산 - Redis 비어 있을 때 DB premium 사용`() {
+    fun `DB 스냅샷으로 PnL 계산 - Redis 비어 있을 때 DB premium 사용`() {
         val position = createPosition(
             koreaEntryPrice = BigDecimal("101000"),
             foreignEntryPrice = BigDecimal("100"),
@@ -300,6 +306,8 @@ class PositionControllerE2ETest @Autowired constructor(
             status { isOk() }
             jsonPath("$.positionId") { value(position.id) }
             jsonPath("$.currentPremiumRate") { value(premium.premiumRate.toDouble()) }
+            jsonPath("$.totalPnlKrw") { exists() }
+            jsonPath("$.totalPnlPercent") { exists() }
         }
     }
 
@@ -313,6 +321,27 @@ class PositionControllerE2ETest @Autowired constructor(
         }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
+        }
+    }
+
+    @Test
+    fun `다른 회원의 포지션 PnL 조회 시 404 반환`() {
+        val position = createPosition()
+        val otherEmail = "other@example.com"
+        memberRepository.save(
+            Member.create(
+                email = otherEmail,
+                encodedPassword = passwordEncoder.encode("password123"),
+            ),
+        )
+        val accessToken = login(email = otherEmail)
+        savePremiumWithTickers(observedAt = Instant.now())
+
+        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+            header("Authorization", "Bearer $accessToken")
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("POSITION_NOT_FOUND") }
         }
     }
 
@@ -364,7 +393,9 @@ class PositionControllerE2ETest @Autowired constructor(
 
     private fun createPosition(
         symbol: String = "BTC",
+        koreaQuantity: BigDecimal = BigDecimal("0.5"),
         koreaEntryPrice: BigDecimal = BigDecimal("129555000"),
+        foreignQuantity: BigDecimal = BigDecimal("0.5"),
         foreignEntryPrice: BigDecimal = BigDecimal("89500"),
         entryFxRate: BigDecimal = BigDecimal("1432.6"),
     ): Position = positionRepository.save(
@@ -372,10 +403,10 @@ class PositionControllerE2ETest @Autowired constructor(
             memberId = memberId,
             symbol = Symbol(symbol),
             koreaExchange = Exchange.UPBIT,
-            koreaQuantity = BigDecimal("0.5"),
+            koreaQuantity = koreaQuantity,
             koreaEntryPrice = koreaEntryPrice,
             foreignExchange = Exchange.BINANCE,
-            foreignQuantity = BigDecimal("0.5"),
+            foreignQuantity = foreignQuantity,
             foreignEntryPrice = foreignEntryPrice,
             foreignLeverage = 1,
             entryFxRate = entryFxRate,
