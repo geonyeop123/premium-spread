@@ -19,12 +19,30 @@ class PositionController(
     private val positionFacade: PositionFacade,
 ) {
 
-    @PostMapping
-    fun open(
+    @PostMapping("/auto")
+    fun openAuto(
         @LoginMemberId memberId: Long,
-        @RequestBody request: PositionRequest.Open,
+        @RequestBody request: PositionRequest.OpenAuto,
     ): ResponseEntity<PositionResponse.Detail> {
-        val criteria = PositionCriteria.Open(
+        val criteria = PositionCriteria.OpenAuto(
+            memberId = memberId,
+            symbol = request.symbol,
+            koreaExchange = Exchange.valueOf(request.koreaExchange),
+            koreaQuantity = request.koreaQuantity,
+            foreignExchange = Exchange.valueOf(request.foreignExchange),
+            foreignQuantity = request.foreignQuantity,
+            foreignLeverage = request.foreignLeverage,
+        )
+        val result = positionFacade.openAutoPosition(criteria)
+        return ResponseEntity.status(HttpStatus.CREATED).body(PositionResponse.Detail.from(result))
+    }
+
+    @PostMapping("/manual")
+    fun openManual(
+        @LoginMemberId memberId: Long,
+        @RequestBody request: PositionRequest.OpenManual,
+    ): ResponseEntity<PositionResponse.Detail> {
+        val criteria = PositionCriteria.OpenManual(
             memberId = memberId,
             symbol = request.symbol,
             koreaExchange = Exchange.valueOf(request.koreaExchange),
@@ -37,7 +55,7 @@ class PositionController(
             entryFxRate = request.entryFxRate,
             entryObservedAt = request.entryObservedAt,
         )
-        val result = positionFacade.openPosition(criteria)
+        val result = positionFacade.openManualPosition(criteria)
         return ResponseEntity.status(HttpStatus.CREATED).body(PositionResponse.Detail.from(result))
     }
 

@@ -8,6 +8,8 @@ import io.premiumspread.application.position.PositionFacade
 import io.premiumspread.application.position.PositionNotFoundException
 import io.premiumspread.application.position.PositionResult
 import io.premiumspread.application.position.PremiumNotFoundException
+import io.premiumspread.application.position.PremiumSnapshotNotAvailableException
+import io.premiumspread.application.position.StalePremiumSnapshotException
 import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
@@ -63,28 +65,16 @@ class PositionControllerTest {
     }
 
     @Nested
-    inner class OpenPosition {
+    inner class OpenAutoPosition {
 
         @Test
-        fun `포지션을 생성한다`() {
-            val request = PositionRequest.Open(
-                symbol = "BTC",
-                koreaExchange = "UPBIT",
-                koreaQuantity = BigDecimal("0.5"),
-                koreaEntryPrice = BigDecimal("129555000"),
-                foreignExchange = "BINANCE",
-                foreignQuantity = BigDecimal("0.5"),
-                foreignEntryPrice = BigDecimal("89500"),
-                foreignLeverage = 1,
-                entryFxRate = BigDecimal("1432.6"),
-                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-            every { positionFacade.openPosition(any<PositionCriteria.Open>()) } returns positionDetail()
+        fun `AUTO 포지션을 생성한다`() {
+            every { positionFacade.openAutoPosition(any<PositionCriteria.OpenAuto>()) } returns positionDetail()
 
-            mockMvc.post("/api/v1/positions") {
+            mockMvc.post("/api/v1/positions/auto") {
                 with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(request)
+                content = objectMapper.writeValueAsString(openAutoRequest())
             }.andExpect {
                 status { isCreated() }
                 jsonPath("$.id") { value(1) }
@@ -98,34 +88,102 @@ class PositionControllerTest {
         }
 
         @Test
-        fun `잘못된 거래소로 요청하면 400을 반환한다`() {
-            val request = openRequest(koreaExchange = "INVALID_EXCHANGE")
+        fun `AUTO 포지션 생성 시 스냅샷이 없으면 409를 반환한다`() {
+            every {
+                positionFacade.openAutoPosition(any<PositionCriteria.OpenAuto>())
+            } throws PremiumSnapshotNotAvailableException("Premium snapshot not available for symbol: BTC")
 
-            mockMvc.post("/api/v1/positions") {
+            mockMvc.post("/api/v1/positions/auto") {
                 with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(request)
+                content = objectMapper.writeValueAsString(openAutoRequest())
             }.andExpect {
-                status { isBadRequest() }
-                jsonPath("$.code") { value("INVALID_ARGUMENT") }
+                status { isConflict() }
+                jsonPath("$.code") { value("PREMIUM_SNAPSHOT_NOT_AVAILABLE") }
+                jsonPath("$.message") { value("해당 종목의 최신 프리미엄 스냅샷이 없습니다.") }
             }
         }
 
         @Test
-        fun `도메인 유효성 오류면 400과 INVALID_POSITION 코드를 반환한다`() {
+        fun `AUTO 포지션 생성 시 스냅샷이 오래되면 409를 반환한다`() {
             every {
-                positionFacade.openPosition(any<PositionCriteria.Open>())
-            } throws InvalidPositionException("수량은 0보다 커야 합니다")
+                positionFacade.openAutoPosition(any<PositionCriteria.OpenAuto>())
+            } throws StalePremiumSnapshotException("Premium snapshot is stale")
 
-            mockMvc.post("/api/v1/positions") {
+            mockMvc.post("/api/v1/positions/auto") {
                 with(user(testUserDetails))
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(openRequest())
+                content = objectMapper.writeValueAsString(openAutoRequest())
+            }.andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("STALE_PREMIUM_SNAPSHOT") }
+                jsonPath("$.message") { value("프리미엄 스냅샷이 오래되어 사용할 수 없습니다. 잠시 후 다시 시도해주세요.") }
+            }
+        }
+
+        @Test
+        fun `AUTO 포지션 생성 시 도메인 유효성 오류면 400을 반환한다`() {
+            every {
+                positionFacade.openAutoPosition(any<PositionCriteria.OpenAuto>())
+            } throws InvalidPositionException("한국 거래소가 아닙니다")
+
+            mockMvc.post("/api/v1/positions/auto") {
+                with(user(testUserDetails))
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(openAutoRequest(koreaExchange = "BINANCE"))
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_POSITION") }
-                jsonPath("$.message") { value("유효하지 않은 포지션입니다.") }
             }
+        }
+    }
+
+    @Nested
+    inner class OpenManualPosition {
+
+        @Test
+        fun `MANUAL 포지션을 생성한다`() {
+            every { positionFacade.openManualPosition(any<PositionCriteria.OpenManual>()) } returns positionDetail()
+
+            mockMvc.post("/api/v1/positions/manual") {
+                with(user(testUserDetails))
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(openManualRequest())
+            }.andExpect {
+                status { isCreated() }
+                jsonPath("$.id") { value(1) }
+                jsonPath("$.symbol") { value("BTC") }
+                jsonPath("$.koreaExchange") { value("UPBIT") }
+                jsonPath("$.foreignExchange") { value("BINANCE") }
+                jsonPath("$.status") { value("OPEN") }
+            }
+        }
+
+        @Test
+        fun `MANUAL 포지션 생성 시 도메인 유효성 오류면 400을 반환한다`() {
+            every {
+                positionFacade.openManualPosition(any<PositionCriteria.OpenManual>())
+            } throws InvalidPositionException("한국 거래소가 아닙니다")
+
+            mockMvc.post("/api/v1/positions/manual") {
+                with(user(testUserDetails))
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(openManualRequest(koreaExchange = "BINANCE"))
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_POSITION") }
+            }
+        }
+    }
+
+    @Test
+    fun `루트 POST 포지션 생성 라우트는 제거되어 있다`() {
+        mockMvc.post("/api/v1/positions") {
+            with(user(testUserDetails))
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(openManualRequest())
+        }.andExpect {
+            status { isMethodNotAllowed() }
         }
     }
 
@@ -353,7 +411,16 @@ class PositionControllerTest {
         }
     }
 
-    private fun openRequest(koreaExchange: String = "UPBIT"): Map<String, Any> = mapOf(
+    private fun openAutoRequest(koreaExchange: String = "UPBIT"): Map<String, Any> = mapOf(
+        "symbol" to "BTC",
+        "koreaExchange" to koreaExchange,
+        "koreaQuantity" to 0.5,
+        "foreignExchange" to "BINANCE",
+        "foreignQuantity" to 0.5,
+        "foreignLeverage" to 1,
+    )
+
+    private fun openManualRequest(koreaExchange: String = "UPBIT"): Map<String, Any> = mapOf(
         "symbol" to "BTC",
         "koreaExchange" to koreaExchange,
         "koreaQuantity" to 0.5,

@@ -8,7 +8,17 @@ import java.math.BigDecimal
 import java.time.Instant
 
 class PositionCriteria private constructor() {
-    data class Open(
+    data class OpenAuto(
+        val memberId: Long,
+        val symbol: String,
+        val koreaExchange: Exchange,
+        val koreaQuantity: BigDecimal,
+        val foreignExchange: Exchange,
+        val foreignQuantity: BigDecimal,
+        val foreignLeverage: Int,
+    )
+
+    data class OpenManual(
         val memberId: Long,
         val symbol: String,
         val koreaExchange: Exchange,

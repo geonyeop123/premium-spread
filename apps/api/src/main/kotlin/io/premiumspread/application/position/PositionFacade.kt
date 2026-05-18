@@ -7,6 +7,8 @@ import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
+import java.time.Instant
 
 @Service
 class PositionFacade(
@@ -14,8 +16,45 @@ class PositionFacade(
     private val premiumService: PremiumService,
 ) {
 
+    companion object {
+        private const val SNAPSHOT_MAX_AGE_SECONDS = 60L
+        private val SNAPSHOT_MAX_AGE: Duration = Duration.ofSeconds(SNAPSHOT_MAX_AGE_SECONDS)
+    }
+
     @Transactional
-    fun openPosition(criteria: PositionCriteria.Open): PositionResult.Detail {
+    fun openAutoPosition(criteria: PositionCriteria.OpenAuto): PositionResult.Detail {
+        val snapshot = premiumService.findLatestSnapshotBySymbol(Symbol(criteria.symbol))
+            ?: throw PremiumSnapshotNotAvailableException(
+                "Premium snapshot not available for symbol: ${criteria.symbol}",
+            )
+
+        val age = Duration.between(snapshot.observedAt, Instant.now())
+        if (age > SNAPSHOT_MAX_AGE) {
+            throw StalePremiumSnapshotException(
+                "Premium snapshot is stale (age=${age.toMillis()}ms, max=${SNAPSHOT_MAX_AGE.toMillis()}ms) for symbol: ${criteria.symbol}",
+            )
+        }
+
+        val command = PositionCommand.Create(
+            memberId = criteria.memberId,
+            symbol = criteria.symbol,
+            koreaExchange = criteria.koreaExchange,
+            koreaQuantity = criteria.koreaQuantity,
+            koreaEntryPrice = snapshot.koreaPrice,
+            foreignExchange = criteria.foreignExchange,
+            foreignQuantity = criteria.foreignQuantity,
+            foreignEntryPrice = snapshot.foreignPrice,
+            foreignLeverage = criteria.foreignLeverage,
+            entryFxRate = snapshot.fxRate,
+            entryObservedAt = snapshot.observedAt,
+        )
+        val position = positionService.create(command)
+
+        return PositionResult.Detail.from(position)
+    }
+
+    @Transactional
+    fun openManualPosition(criteria: PositionCriteria.OpenManual): PositionResult.Detail {
         val command = PositionCommand.Create(
             memberId = criteria.memberId,
             symbol = criteria.symbol,
@@ -98,3 +137,5 @@ class PositionFacade(
 
 class PositionNotFoundException(message: String) : RuntimeException(message)
 class PremiumNotFoundException(message: String) : RuntimeException(message)
+class PremiumSnapshotNotAvailableException(message: String) : RuntimeException(message)
+class StalePremiumSnapshotException(message: String) : RuntimeException(message)

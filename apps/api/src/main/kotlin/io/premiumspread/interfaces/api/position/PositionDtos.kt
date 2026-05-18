@@ -5,7 +5,16 @@ import java.math.BigDecimal
 import java.time.Instant
 
 class PositionRequest private constructor() {
-    data class Open(
+    data class OpenAuto(
+        val symbol: String,
+        val koreaExchange: String,
+        val koreaQuantity: BigDecimal,
+        val foreignExchange: String,
+        val foreignQuantity: BigDecimal,
+        val foreignLeverage: Int,
+    )
+
+    data class OpenManual(
         val symbol: String,
         val koreaExchange: String,
         val koreaQuantity: BigDecimal,
