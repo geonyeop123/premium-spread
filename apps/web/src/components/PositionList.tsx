@@ -8,20 +8,29 @@ import { apiClient } from '@/lib/api';
 export interface Position {
   id: number;
   symbol: string;
-  exchange: string;
-  quantity: number;
-  entryPrice: number;
+  koreaExchange: string;
+  koreaQuantity: number;
+  koreaEntryPrice: number;
+  foreignExchange: string;
+  foreignQuantity: number;
+  foreignEntryPrice: number;
+  foreignLeverage: number;
   entryFxRate: number;
   entryPremiumRate: number;
   entryObservedAt: string;
   status: 'OPEN' | 'CLOSED';
 }
 
-interface PnlData {
+export interface PnlData {
   positionId: number;
   premiumDiff: number;
   entryPremiumRate: number;
   currentPremiumRate: number;
+  koreaPnl: number;
+  foreignPnlKrw: number;
+  totalPnlKrw: number;
+  koreaCurrentValue: number;
+  totalPnlPercent: number;
   isProfit: boolean;
   calculatedAt: string;
 }
@@ -30,13 +39,17 @@ interface PositionListProps {
   positions: Position[];
 }
 
-const formatKrw = (n: number) => n.toLocaleString('ko-KR');
-const formatDate = (iso: string) => new Date(iso).toLocaleString('ko-KR', {
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
+const formatKrw = (n: number) =>
+  n.toLocaleString('ko-KR', { maximumFractionDigits: 0 });
+const formatSigned = (n: number) =>
+  `${n > 0 ? '+' : ''}${n.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}`;
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleString('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
 export function PositionList({ positions }: PositionListProps) {
   const [pnlMap, setPnlMap] = useState<Record<number, PnlData>>({});
@@ -80,8 +93,8 @@ export function PositionList({ positions }: PositionListProps) {
         <thead>
           <tr className="border-b text-left text-muted-foreground">
             <th className="pb-2 pr-4 font-medium">심볼</th>
-            <th className="pb-2 pr-4 font-medium text-right">수량</th>
-            <th className="pb-2 pr-4 font-medium text-right">진입가격</th>
+            <th className="pb-2 pr-4 font-medium text-right">한국 수량</th>
+            <th className="pb-2 pr-4 font-medium text-right">한국 진입가</th>
             <th className="pb-2 pr-4 font-medium text-right">진입 프리미엄</th>
             <th className="pb-2 pr-4 font-medium text-right">현재 PnL</th>
             <th className="pb-2 pr-4 font-medium">진입 시각</th>
@@ -92,12 +105,13 @@ export function PositionList({ positions }: PositionListProps) {
         <tbody>
           {positions.map((p) => {
             const pnl = pnlMap[p.id];
+            const profitable = pnl ? pnl.totalPnlKrw >= 0 : false;
             return (
               <tr key={p.id} className="border-b last:border-0">
                 <td className="py-3 pr-4 font-medium">{p.symbol}</td>
-                <td className="py-3 pr-4 text-right">{p.quantity}</td>
+                <td className="py-3 pr-4 text-right">{p.koreaQuantity}</td>
                 <td className="py-3 pr-4 text-right">
-                  {formatKrw(p.entryPrice)} KRW
+                  {formatKrw(p.koreaEntryPrice)} KRW
                 </td>
                 <td className="py-3 pr-4 text-right">
                   <span
@@ -115,14 +129,21 @@ export function PositionList({ positions }: PositionListProps) {
                 </td>
                 <td className="py-3 pr-4 text-right">
                   {p.status === 'OPEN' && pnl ? (
-                    <span
+                    <div
                       className={`font-semibold ${
-                        pnl.isProfit ? 'text-green-600' : 'text-red-600'
+                        profitable ? 'text-green-600' : 'text-red-600'
                       }`}
                     >
-                      {pnl.premiumDiff > 0 ? '+' : ''}
-                      {pnl.premiumDiff.toFixed(2)}%p
-                    </span>
+                      <div>
+                        {pnl.premiumDiff > 0 ? '+' : ''}
+                        {pnl.premiumDiff.toFixed(2)}%p
+                      </div>
+                      <div className="text-xs font-normal">
+                        {formatSigned(pnl.totalPnlKrw)}원 (
+                        {pnl.totalPnlPercent > 0 ? '+' : ''}
+                        {pnl.totalPnlPercent.toFixed(2)}%)
+                      </div>
+                    </div>
                   ) : p.status === 'OPEN' ? (
                     <span className="text-muted-foreground">-</span>
                   ) : (

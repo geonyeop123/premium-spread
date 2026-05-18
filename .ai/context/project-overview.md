@@ -148,10 +148,18 @@ premium.roundTo(2)// 소수점 2자리
     - 오픈 엔드포인트 AUTO/MANUAL 분기 (이슈 #42)
         - AUTO: 진입가/환율/관측시각을 서버가 최신 프리미엄 스냅샷에서 자동 채움 (60초 신선도 검증)
         - MANUAL: 진입가/환율/관측시각을 사용자가 직접 입력
+    - 프론트엔드 오픈 폼 (이슈 #44): AUTO/MANUAL 모드 토글 (기본 AUTO)
+        - AUTO 입력: 심볼/한국 거래소/한국 수량/해외 거래소/해외 수량/해외 레버리지
+        - MANUAL 입력: AUTO 필드 + 한국 진입가(KRW)/해외 진입가(USD)/환율/관측 시각
+        - 한국(롱) / 해외(숏) 페어 필드를 시각적으로 그룹화하여 페어 트레이딩 구조를 명확히 안내
+        - 스냅샷 부재/오래된 경우 친화 메시지로 안내 ("현재 가격/환율 정보가 없거나 오래되었습니다…")
 - 손익 계산 및 저장
     - 페어 기반 KRW 손익 (이슈 #43): 한국 long PnL + 해외 short PnL(USD→KRW 환산) 합산
     - 표시 필드: `koreaPnl`, `foreignPnlKrw`, `totalPnlKrw`, `koreaCurrentValue`, `totalPnlPercent` + 기존 `premiumDiff`
     - `isProfit`은 `totalPnlKrw > 0` 기준 (실제 KRW 이익 여부)
+    - 프론트엔드 PnL 표시 (이슈 #44)
+        - 목록: `premiumDiff(%p)` + `totalPnlKrw원(totalPnlPercent%)` 2줄, 색상 기준 `totalPnlKrw >= 0`
+        - 상세: 한국/해외 분리 카드 + PnL 카드 헤드라인 = KRW 액수 + 총 PnL%, 한국 PnL / 해외 PnL KRW 환산 분리 표시
 - JWT Stateless 인증 (Access + Refresh Token)
 - Slack 알림 서비스 (배치 에러 알림)
 - DB 쿼리 최적화 (N+1 제거, 복합 인덱스)

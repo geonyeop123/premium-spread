@@ -1,6 +1,6 @@
 # Premium Spread System Architecture
 
-> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-18, 이슈 #43 PnL 페어 기반 KRW 손익 확장 반영)
+> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-18, 이슈 #44 프론트엔드 AUTO/MANUAL 폼 분리 + PnL KRW 표시 반영)
 
 ## System Overview
 
@@ -367,7 +367,38 @@ Controller → PositionFacade.calculatePnl
 - **`isProfit()` 시맨틱 변경 (Breaking, 이슈 #43)**: `premiumDiff < 0` → `totalPnlKrw > 0`. 같은 데이터에 결과 부호가 달라질 수 있다. 프론트엔드는 #41 시점부터 PnL 표시가 동기화되지 않았으므로 사용자 영향은 없으며, 이슈 #44에서 신규 필드와 함께 갱신 예정.
 - **PremiumSnapshot 거래소 매칭 미지원**: AUTO 엔드포인트와 PnL 계산이 사용하는 `PremiumSnapshot`은 symbol 기반이라 요청/Position의 `koreaExchange`/`foreignExchange` 일치 여부를 검증하지 못한다 (이슈 #42/#43). premium 도메인이 다중 거래소 지원으로 확장될 때 해소.
 - **운영 배포 차단**: V12는 `TRUNCATE`를 포함하므로 staging/prod 적용 전 별도 backfill 마이그레이션 필요.
-- **프론트엔드 미동기화**: `apps/web/src/components/OpenPositionForm.tsx`는 #41 시점부터 단일 거래소 본문을 전송하여 오픈 호출이 실패한다. #43에서 추가된 PnL 신규 5필드도 미표시. AUTO/MANUAL 폼 분리 + PnL 카드 확장을 포함해 이슈 #44에서 해소 예정.
+- ~~**프론트엔드 미동기화**~~: 이슈 #44에서 해소 (2026-05-18). 아래 "프론트엔드 Position 흐름 (이슈 #44)" 섹션 참고.
+
+### 프론트엔드 Position 흐름 (이슈 #44)
+
+`apps/web` 컴포넌트가 페어 모델 + AUTO/MANUAL 엔드포인트 + KRW 기반 PnL과 정합한다.
+
+| 컴포넌트 | 역할 |
+|----------|------|
+| `OpenPositionForm.tsx` | AUTO/MANUAL 모드 토글 (기본 AUTO). 한국(롱) / 해외(숏) 페어 필드 그룹화. AUTO → `POST /api/v1/positions/auto` (symbol, koreaExchange, koreaQuantity, foreignExchange, foreignQuantity, foreignLeverage), MANUAL → `POST /api/v1/positions/manual` (+ koreaEntryPrice, foreignEntryPrice, entryFxRate, entryObservedAt). 409 (`PREMIUM_SNAPSHOT_NOT_AVAILABLE`/`STALE_PREMIUM_SNAPSHOT`)는 친화적 한국어 메시지로 매핑한다. "현재 데이터 채우기"는 MANUAL 전용으로 `GET /api/v1/premiums/current/{symbol}` 응답을 폼에 채운다. |
+| `PositionList.tsx` | `Position` 타입을 페어 모델로 사용. 현재 PnL 셀은 `premiumDiff(%p)` + `totalPnlKrw원(totalPnlPercent%)` 2줄, 색상 기준은 `totalPnlKrw >= 0`. |
+| `positions/[id]/page.tsx` | 한국/해외 페어를 분리 카드로 렌더링. PnL 카드 헤드라인은 `totalPnlKrw` (KRW 액수) + `totalPnlPercent` (%). 한국 PnL (`koreaPnl`) / 해외 PnL KRW 환산 (`foreignPnlKrw`)을 분리 표시. |
+
+```
+[AUTO 흐름]
+사용자 입력(symbol/exchanges/quantities/leverage)
+  → POST /positions/auto
+  → PositionFacade.openAutoPosition
+       (PremiumService.findLatestSnapshotBySymbol, 60초 신선도)
+  → 409 시 OpenPositionForm이 한국어 메시지로 매핑
+
+[MANUAL 흐름]
+사용자 입력(+ entry prices, fxRate, observedAt)
+  → POST /positions/manual
+  → PositionFacade.openManualPosition (페어 검증)
+
+[PnL 표시]
+GET /positions/{id}/pnl
+  → PositionResponse.Pnl { koreaPnl, foreignPnlKrw, totalPnlKrw,
+                          koreaCurrentValue, totalPnlPercent, premiumDiff, ... }
+  → 목록: totalPnlKrw원 + totalPnlPercent%
+  → 상세: 헤드라인 KRW + %, 한국/해외 분리 카드
+```
 
 ## Persistence (MySQL)
 
