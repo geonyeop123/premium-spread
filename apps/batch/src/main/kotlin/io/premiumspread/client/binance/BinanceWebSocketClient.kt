@@ -106,7 +106,7 @@ class BinanceWebSocketClient(
     }
 
     companion object {
-        const val URL = "wss://fstream.binance.com/ws/btcusdt@miniTicker"
+        const val URL = "wss://fstream.binance.com/market/ws/btcusdt@miniTicker"
         private const val EXCHANGE = "binance"
         private const val EXCHANGE_UPPER = "BINANCE"
         // issue spec 준수: 다운스트림 TickerAggregationScheduler가 "USD"로 조회하므로 통일.
