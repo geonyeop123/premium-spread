@@ -149,6 +149,9 @@ premium.roundTo(2)// 소수점 2자리
         - AUTO: 진입가/환율/관측시각을 서버가 최신 프리미엄 스냅샷에서 자동 채움 (60초 신선도 검증)
         - MANUAL: 진입가/환율/관측시각을 사용자가 직접 입력
 - 손익 계산 및 저장
+    - 페어 기반 KRW 손익 (이슈 #43): 한국 long PnL + 해외 short PnL(USD→KRW 환산) 합산
+    - 표시 필드: `koreaPnl`, `foreignPnlKrw`, `totalPnlKrw`, `koreaCurrentValue`, `totalPnlPercent` + 기존 `premiumDiff`
+    - `isProfit`은 `totalPnlKrw > 0` 기준 (실제 KRW 이익 여부)
 - JWT Stateless 인증 (Access + Refresh Token)
 - Slack 알림 서비스 (배치 에러 알림)
 - DB 쿼리 최적화 (N+1 제거, 복합 인덱스)
