@@ -7,18 +7,12 @@ import { useAuth } from '@/lib/auth';
 import { apiClient, ApiError } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { Position } from '@/components/PositionList';
+import type { Position, PnlData } from '@/components/PositionList';
 
-interface PnlData {
-  positionId: number;
-  premiumDiff: number;
-  entryPremiumRate: number;
-  currentPremiumRate: number;
-  isProfit: boolean;
-  calculatedAt: string;
-}
-
-const formatKrw = (n: number) => n.toLocaleString('ko-KR');
+const formatKrw = (n: number) =>
+  n.toLocaleString('ko-KR', { maximumFractionDigits: 0 });
+const formatSigned = (n: number) =>
+  `${n > 0 ? '+' : ''}${n.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}`;
 
 export default function PositionDetailPage() {
   const { user, loading: authLoading } = useAuth();
@@ -130,6 +124,8 @@ export default function PositionDetailPage() {
 
   if (!position) return null;
 
+  const profitable = pnl ? pnl.totalPnlKrw >= 0 : false;
+
   return (
     <div className="container mx-auto space-y-6 px-4 py-6">
       <div className="flex items-center justify-between">
@@ -144,9 +140,7 @@ export default function PositionDetailPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>
-              {position.symbol} / {position.exchange}
-            </span>
+            <span>{position.symbol}</span>
             <span
               className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
                 position.status === 'OPEN'
@@ -158,18 +152,66 @@ export default function PositionDetailPage() {
             </span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">수량</p>
-              <p className="text-lg font-semibold">{position.quantity}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">진입가격</p>
-              <p className="text-lg font-semibold">
-                {formatKrw(position.entryPrice)} KRW
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border p-4">
+              <p className="mb-3 text-sm font-medium text-muted-foreground">
+                한국 (롱)
               </p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">거래소</span>
+                  <span className="font-medium">{position.koreaExchange}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">수량</span>
+                  <span className="font-medium">{position.koreaQuantity}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">진입가</span>
+                  <span className="font-medium">
+                    {formatKrw(position.koreaEntryPrice)} KRW
+                  </span>
+                </div>
+              </div>
             </div>
+            <div className="rounded-lg border p-4">
+              <p className="mb-3 text-sm font-medium text-muted-foreground">
+                해외 (숏)
+              </p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">거래소</span>
+                  <span className="font-medium">
+                    {position.foreignExchange}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">수량</span>
+                  <span className="font-medium">
+                    {position.foreignQuantity}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">진입가</span>
+                  <span className="font-medium">
+                    {position.foreignEntryPrice.toLocaleString('en-US', {
+                      maximumFractionDigits: 2,
+                    })}{' '}
+                    USD
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">레버리지</span>
+                  <span className="font-medium">
+                    {position.foreignLeverage}x
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3 text-sm">
             <div>
               <p className="text-muted-foreground">진입 환율</p>
               <p className="text-lg font-semibold">
@@ -197,11 +239,13 @@ export default function PositionDetailPage() {
                 </span>
               </p>
             </div>
+            <div>
+              <p className="text-muted-foreground">관측 시각</p>
+              <p className="text-lg font-semibold">
+                {new Date(position.entryObservedAt).toLocaleString('ko-KR')}
+              </p>
+            </div>
           </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            진입 시각:{' '}
-            {new Date(position.entryObservedAt).toLocaleString('ko-KR')}
-          </p>
         </CardContent>
       </Card>
 
@@ -215,20 +259,62 @@ export default function PositionDetailPage() {
               <div className="space-y-4">
                 <div
                   className={`rounded-lg p-4 text-center ${
-                    pnl.isProfit
+                    profitable
                       ? 'bg-green-50 dark:bg-green-900/20'
                       : 'bg-red-50 dark:bg-red-900/20'
                   }`}
                 >
-                  <p className="text-sm text-muted-foreground">프리미엄 차이</p>
+                  <p className="text-sm text-muted-foreground">총 PnL (KRW)</p>
                   <p
                     className={`text-3xl font-bold ${
-                      pnl.isProfit ? 'text-green-600' : 'text-red-600'
+                      profitable ? 'text-green-600' : 'text-red-600'
                     }`}
                   >
-                    {pnl.premiumDiff > 0 ? '+' : ''}
-                    {pnl.premiumDiff.toFixed(2)}%p
+                    {formatSigned(pnl.totalPnlKrw)}원
                   </p>
+                  <p
+                    className={`text-lg font-semibold ${
+                      profitable ? 'text-green-600' : 'text-red-600'
+                    }`}
+                  >
+                    {pnl.totalPnlPercent > 0 ? '+' : ''}
+                    {pnl.totalPnlPercent.toFixed(2)}%
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    프리미엄 차이{' '}
+                    <span
+                      className={
+                        profitable ? 'text-green-600' : 'text-red-600'
+                      }
+                    >
+                      {pnl.premiumDiff > 0 ? '+' : ''}
+                      {pnl.premiumDiff.toFixed(2)}%p
+                    </span>
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="rounded-lg border p-3">
+                    <p className="text-muted-foreground">한국 PnL</p>
+                    <p
+                      className={`text-lg font-semibold ${
+                        pnl.koreaPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}
+                    >
+                      {formatSigned(pnl.koreaPnl)}원
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-muted-foreground">해외 PnL (KRW 환산)</p>
+                    <p
+                      className={`text-lg font-semibold ${
+                        pnl.foreignPnlKrw >= 0
+                          ? 'text-green-600'
+                          : 'text-red-600'
+                      }`}
+                    >
+                      {formatSigned(pnl.foreignPnlKrw)}원
+                    </p>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -242,7 +328,7 @@ export default function PositionDetailPage() {
                     <p className="text-muted-foreground">현재 프리미엄</p>
                     <p
                       className={`text-lg font-semibold ${
-                        pnl.isProfit ? 'text-green-600' : 'text-red-600'
+                        profitable ? 'text-green-600' : 'text-red-600'
                       }`}
                     >
                       {pnl.currentPremiumRate > 0 ? '+' : ''}
