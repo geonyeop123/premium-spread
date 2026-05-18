@@ -145,6 +145,9 @@ premium.roundTo(2)// 소수점 2자리
     - 포지션 1건 = 한국 long + 해외 short 페어 단일 행 (이슈 #41, V12 마이그레이션)
     - 도메인 검증: 한국/해외 거래소 region 분리, 수량/가격/환율 양수, 해외 레버리지 1~125
     - 진입 프리미엄율은 서버가 `Premium.calculatePremiumRate`와 동일 정밀도로 계산
+    - 오픈 엔드포인트 AUTO/MANUAL 분기 (이슈 #42)
+        - AUTO: 진입가/환율/관측시각을 서버가 최신 프리미엄 스냅샷에서 자동 채움 (60초 신선도 검증)
+        - MANUAL: 진입가/환율/관측시각을 사용자가 직접 입력
 - 손익 계산 및 저장
 - JWT Stateless 인증 (Access + Refresh Token)
 - Slack 알림 서비스 (배치 에러 알림)

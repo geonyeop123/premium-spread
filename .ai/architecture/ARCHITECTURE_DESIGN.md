@@ -273,14 +273,41 @@ BithumbFlushScheduler (@Scheduled fixedRate=1000, thin entrypoint)
 - `foreignLeverage ∈ [1, 125]`
 - `entryPremiumRate`는 서버가 `Premium.calculatePremiumRate`와 동일 정밀도(`DIVISION_SCALE=10`, scale=2)로 계산. 클라이언트 입력값은 신뢰하지 않음.
 
-### API 엔드포인트
+### API 엔드포인트 (이슈 #42 이후)
 
-`POST /api/v1/positions` 한 개 엔드포인트 유지하되, 요청 본문이 페어 필드로 교체됨 (`koreaExchange/koreaQuantity/koreaEntryPrice/foreignExchange/foreignQuantity/foreignEntryPrice/foreignLeverage/entryFxRate/entryObservedAt`). AUTO/MANUAL 분기는 이슈 #42 후속 예정.
+오픈 엔드포인트는 AUTO/MANUAL 두 경로로 분기된다. 루트 `POST /api/v1/positions`는 제거되어 호출 시 405 `METHOD_NOT_ALLOWED` 응답을 반환한다.
 
-### 알려진 한계 (이슈 #41 시점)
+| 메서드 | 경로 | 본문 필드 | 진입가/환율/관측시각 처리 |
+|--------|------|----------|--------------------------|
+| POST | `/api/v1/positions/auto` | `symbol`, `koreaExchange`, `koreaQuantity`, `foreignExchange`, `foreignQuantity`, `foreignLeverage` | 서버가 `PremiumService.findLatestSnapshotBySymbol`로 자동 채움 (60초 신선도 검증) |
+| POST | `/api/v1/positions/manual` | AUTO 필드 + `koreaEntryPrice`, `foreignEntryPrice`, `entryFxRate`, `entryObservedAt` | 사용자가 직접 입력 |
+
+AUTO 경로는 `PositionFacade.openAutoPosition`이 처리하며, 스냅샷이 존재하지 않으면 `PremiumSnapshotNotAvailableException`, 스냅샷의 `observedAt`이 현재 시각 기준 60초를 초과하면 `StalePremiumSnapshotException`을 던진다. MANUAL 경로는 기존 페어 검증 로직(`openManualPosition`)을 그대로 수행한다.
+
+### 예외 매핑
+
+| 예외 | 코드 | HTTP | 의미 |
+|------|------|------|------|
+| `PremiumSnapshotNotAvailableException` | `PREMIUM_SNAPSHOT_NOT_AVAILABLE` | 409 | AUTO 요청 시 symbol의 최신 스냅샷이 없음 |
+| `StalePremiumSnapshotException` | `STALE_PREMIUM_SNAPSHOT` | 409 | AUTO 요청 시 스냅샷 `observedAt`이 60초 초과 |
+| `HttpRequestMethodNotSupportedException` | `METHOD_NOT_ALLOWED` | 405 | 제거된 루트 `POST /api/v1/positions` 등 미지원 메서드 호출 |
+
+세 예외 모두 `GlobalExceptionHandler`에 핸들러가 정의되어 있으며, 메시지는 `ERROR_MESSAGES` 한국어 매핑을 따른다.
+
+### DTO 분리 (이슈 #42)
+
+| 레이어 | 변경 |
+|--------|------|
+| interfaces | `PositionRequest.Open` → `PositionRequest.OpenAuto` + `PositionRequest.OpenManual` |
+| application | `PositionCriteria.Open` → `PositionCriteria.OpenAuto` + `PositionCriteria.OpenManual` |
+| interfaces | `PositionResponse.Detail` 변경 없음 |
+
+### 알려진 한계 (이슈 #41/#42 시점)
 
 - **PnL 정확성**: `PremiumService.findLatestBySymbol`은 페어 정보를 모르므로 `GET /positions/{id}/pnl` 결과가 부정확할 수 있다 (dev only). 이슈 #43에서 페어 인지 쿼리로 교체 예정.
+- **PremiumSnapshot 거래소 매칭 미지원**: AUTO 엔드포인트가 사용하는 `PremiumSnapshot`은 symbol 기반이므로 요청의 `koreaExchange`/`foreignExchange`와의 거래소 일치 여부는 검증되지 않는다. premium 도메인이 다중 거래소 지원으로 확장될 때 해소 (별도 후속 작업).
 - **운영 배포 차단**: V12는 `TRUNCATE`를 포함하므로 staging/prod 적용 전 별도 backfill 마이그레이션 필요.
+- **프론트엔드 미동기화**: `apps/web/src/components/OpenPositionForm.tsx`는 #41 시점부터 단일 거래소 본문을 전송하여 오픈 호출이 실패한다. AUTO/MANUAL 폼 분리를 포함해 이슈 #44에서 해소 예정.
 
 ## Persistence (MySQL)
 
