@@ -27,11 +27,14 @@ class PositionController(
         val criteria = PositionCriteria.Open(
             memberId = memberId,
             symbol = request.symbol,
-            exchange = Exchange.valueOf(request.exchange),
-            quantity = request.quantity,
-            entryPrice = request.entryPrice,
+            koreaExchange = Exchange.valueOf(request.koreaExchange),
+            koreaQuantity = request.koreaQuantity,
+            koreaEntryPrice = request.koreaEntryPrice,
+            foreignExchange = Exchange.valueOf(request.foreignExchange),
+            foreignQuantity = request.foreignQuantity,
+            foreignEntryPrice = request.foreignEntryPrice,
+            foreignLeverage = request.foreignLeverage,
             entryFxRate = request.entryFxRate,
-            entryPremiumRate = request.entryPremiumRate,
             entryObservedAt = request.entryObservedAt,
         )
         val result = positionFacade.openPosition(criteria)

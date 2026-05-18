@@ -142,6 +142,9 @@ premium.roundTo(2)// 소수점 2자리
     - 해외 거래소 API (바이낸스)
     - 환율 API
 - 회원이 직접 매수/매도 포지션 입력
+    - 포지션 1건 = 한국 long + 해외 short 페어 단일 행 (이슈 #41, V12 마이그레이션)
+    - 도메인 검증: 한국/해외 거래소 region 분리, 수량/가격/환율 양수, 해외 레버리지 1~125
+    - 진입 프리미엄율은 서버가 `Premium.calculatePremiumRate`와 동일 정밀도로 계산
 - 손익 계산 및 저장
 - JWT Stateless 인증 (Access + Refresh Token)
 - Slack 알림 서비스 (배치 에러 알림)

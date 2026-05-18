@@ -19,11 +19,14 @@ class PositionFacade(
         val command = PositionCommand.Create(
             memberId = criteria.memberId,
             symbol = criteria.symbol,
-            exchange = criteria.exchange,
-            quantity = criteria.quantity,
-            entryPrice = criteria.entryPrice,
+            koreaExchange = criteria.koreaExchange,
+            koreaQuantity = criteria.koreaQuantity,
+            koreaEntryPrice = criteria.koreaEntryPrice,
+            foreignExchange = criteria.foreignExchange,
+            foreignQuantity = criteria.foreignQuantity,
+            foreignEntryPrice = criteria.foreignEntryPrice,
+            foreignLeverage = criteria.foreignLeverage,
             entryFxRate = criteria.entryFxRate,
-            entryPremiumRate = criteria.entryPremiumRate,
             entryObservedAt = criteria.entryObservedAt,
         )
         val position = positionService.create(command)

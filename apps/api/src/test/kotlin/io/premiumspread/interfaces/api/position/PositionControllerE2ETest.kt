@@ -85,17 +85,21 @@ class PositionControllerE2ETest @Autowired constructor(
 
     private fun createPosition(
         symbol: String = "BTC",
-        exchange: Exchange = Exchange.UPBIT,
-        entryPremiumRate: BigDecimal = BigDecimal("1.28"),
+        koreaEntryPrice: BigDecimal = BigDecimal("129555000"),
+        foreignEntryPrice: BigDecimal = BigDecimal("89500"),
+        entryFxRate: BigDecimal = BigDecimal("1432.6"),
     ): Position = positionRepository.save(
         Position.create(
             memberId = memberId,
             symbol = Symbol(symbol),
-            exchange = exchange,
-            quantity = BigDecimal("0.5"),
-            entryPrice = BigDecimal("129555000"),
-            entryFxRate = BigDecimal("1432.6"),
-            entryPremiumRate = entryPremiumRate,
+            koreaExchange = Exchange.UPBIT,
+            koreaQuantity = BigDecimal("0.5"),
+            koreaEntryPrice = koreaEntryPrice,
+            foreignExchange = Exchange.BINANCE,
+            foreignQuantity = BigDecimal("0.5"),
+            foreignEntryPrice = foreignEntryPrice,
+            foreignLeverage = 1,
+            entryFxRate = entryFxRate,
             entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
         ),
     )
@@ -151,11 +155,14 @@ class PositionControllerE2ETest @Autowired constructor(
 
         val request = mapOf(
             "symbol" to "BTC",
-            "exchange" to "UPBIT",
-            "quantity" to "0.5",
-            "entryPrice" to "129555000",
+            "koreaExchange" to "UPBIT",
+            "koreaQuantity" to "0.5",
+            "koreaEntryPrice" to "129555000",
+            "foreignExchange" to "BINANCE",
+            "foreignQuantity" to "0.5",
+            "foreignEntryPrice" to "89500",
+            "foreignLeverage" to 1,
             "entryFxRate" to "1432.6",
-            "entryPremiumRate" to "1.28",
             "entryObservedAt" to "2024-01-01T00:00:00Z",
         )
 
@@ -168,6 +175,8 @@ class PositionControllerE2ETest @Autowired constructor(
             status { isCreated() }
             jsonPath("$.id") { isNumber() }
             jsonPath("$.symbol") { value("BTC") }
+            jsonPath("$.koreaExchange") { value("UPBIT") }
+            jsonPath("$.foreignExchange") { value("BINANCE") }
             jsonPath("$.status") { value("OPEN") }
         }
 
@@ -185,11 +194,14 @@ class PositionControllerE2ETest @Autowired constructor(
 
         val request = mapOf(
             "symbol" to "BTC",
-            "exchange" to "INVALID_EXCHANGE",
-            "quantity" to "0.5",
-            "entryPrice" to "129555000",
+            "koreaExchange" to "INVALID_EXCHANGE",
+            "koreaQuantity" to "0.5",
+            "koreaEntryPrice" to "129555000",
+            "foreignExchange" to "BINANCE",
+            "foreignQuantity" to "0.5",
+            "foreignEntryPrice" to "89500",
+            "foreignLeverage" to 1,
             "entryFxRate" to "1432.6",
-            "entryPremiumRate" to "1.28",
             "entryObservedAt" to "2024-01-01T00:00:00Z",
         )
 
@@ -201,6 +213,35 @@ class PositionControllerE2ETest @Autowired constructor(
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_ARGUMENT") }
+        }
+    }
+
+    @Test
+    fun `해외 거래소가 FOREIGN region이 아니면 오픈 시 400 반환`() {
+        // given
+        val accessToken = login()
+
+        val request = mapOf(
+            "symbol" to "BTC",
+            "koreaExchange" to "UPBIT",
+            "koreaQuantity" to "0.5",
+            "koreaEntryPrice" to "129555000",
+            "foreignExchange" to "BITHUMB",
+            "foreignQuantity" to "0.5",
+            "foreignEntryPrice" to "89500",
+            "foreignLeverage" to 1,
+            "entryFxRate" to "1432.6",
+            "entryObservedAt" to "2024-01-01T00:00:00Z",
+        )
+
+        // when & then
+        mockMvc.post("/api/v1/positions") {
+            header("Authorization", "Bearer $accessToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(request)
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_POSITION") }
         }
     }
 
@@ -279,7 +320,11 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `PnL 계산 성공 - DB premium 기준으로 계산 (entryRate=3, currentRate=1 → diff=-2, isProfit=true)`() {
         // given: OPEN 포지션 (entryPremiumRate=3.00)
-        val position = createPosition(entryPremiumRate = BigDecimal("3.00"))
+        val position = createPosition(
+            koreaEntryPrice = BigDecimal("103000"),
+            foreignEntryPrice = BigDecimal("100"),
+            entryFxRate = BigDecimal("1000"),
+        )
         val accessToken = login()
 
         // DB premium 저장: koreaPrice=101000, foreignPrice=1000, fxRate=100 → premiumRate=1.00
@@ -305,7 +350,11 @@ class PositionControllerE2ETest @Autowired constructor(
     @Test
     fun `DB fallback으로 PnL 계산 - Redis 비어 있을 때 DB premium 사용`() {
         // given: OPEN 포지션 + DB premium
-        val position = createPosition(entryPremiumRate = BigDecimal("1.00"))
+        val position = createPosition(
+            koreaEntryPrice = BigDecimal("101000"),
+            foreignEntryPrice = BigDecimal("100"),
+            entryFxRate = BigDecimal("1000"),
+        )
         val premium = savePremiumWithTickers()
         val accessToken = login()
 

@@ -18,12 +18,15 @@ Authorization: Bearer {{accessToken}}
 
 {
   "symbol": "BTC",
-  "exchange": "UPBIT",
-  "quantity": 0.1,
-  "entryPrice": 50000000,
-  "entryFxRate": 1350.00,
-  "entryPremiumRate": 3.5,
-  "entryObservedAt": "2024-01-15T10:30:00Z"
+  "koreaExchange": "BITHUMB",
+  "koreaQuantity": 0.157,
+  "koreaEntryPrice": 161493792,
+  "foreignExchange": "BINANCE",
+  "foreignQuantity": 0.15,
+  "foreignEntryPrice": 118100,
+  "foreignLeverage": 5,
+  "entryFxRate": 1521.6,
+  "entryObservedAt": "2026-04-01T10:30:00Z"
 }
 
 ### 열린 포지션 전체 조회 (인증 필요)

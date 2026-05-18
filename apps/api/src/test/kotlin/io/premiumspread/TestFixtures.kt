@@ -78,24 +78,31 @@ object PositionFixtures {
     fun openPosition(
         memberId: Long = 1L,
         symbol: String = "BTC",
-        exchange: Exchange = Exchange.UPBIT,
-        quantity: BigDecimal = BigDecimal("0.5"),
-        entryPrice: BigDecimal = BigDecimal("129555000"),
+        koreaExchange: Exchange = Exchange.UPBIT,
+        koreaQuantity: BigDecimal = BigDecimal("0.5"),
+        koreaEntryPrice: BigDecimal = BigDecimal("129555000"),
+        foreignExchange: Exchange = Exchange.BINANCE,
+        foreignQuantity: BigDecimal = BigDecimal("0.5"),
+        foreignEntryPrice: BigDecimal = BigDecimal("89500"),
+        foreignLeverage: Int = 1,
         entryFxRate: BigDecimal = BigDecimal("1432.6"),
-        entryPremiumRate: BigDecimal = BigDecimal("1.28"),
         entryObservedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
-        id: Long = 1L,
+        id: Long? = 1L,
     ): Position {
-        return Position.create(
+        val position = Position.create(
             memberId = memberId,
             symbol = Symbol(symbol),
-            exchange = exchange,
-            quantity = quantity,
-            entryPrice = entryPrice,
+            koreaExchange = koreaExchange,
+            koreaQuantity = koreaQuantity,
+            koreaEntryPrice = koreaEntryPrice,
+            foreignExchange = foreignExchange,
+            foreignQuantity = foreignQuantity,
+            foreignEntryPrice = foreignEntryPrice,
+            foreignLeverage = foreignLeverage,
             entryFxRate = entryFxRate,
-            entryPremiumRate = entryPremiumRate,
             entryObservedAt = entryObservedAt,
-        ).withId(id)
+        )
+        return id?.let { position.withId(it) } ?: position
     }
 }
 
