@@ -1,6 +1,6 @@
 # Binance bookTicker 전환 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Binance USD-M Futures 시세 수집 채널을 `@miniTicker`(2초 스냅샷)에서 `@bookTicker`(best bid/ask 실시간)로 전환하고, 관련 리포 문서의 miniTicker 주기 오기재(#51)를 정정한다.
 
@@ -38,7 +38,7 @@
 - Modify: `apps/batch/src/main/kotlin/io/premiumspread/client/binance/BinanceWebSocketClient.kt`
 - Test: `apps/batch/src/test/kotlin/io/premiumspread/client/binance/BinanceWebSocketClientTest.kt`
 
-- [ ] **Step 1: 테스트를 bookTicker 기준으로 교체**
+- [x] **Step 1: 테스트를 bookTicker 기준으로 교체**
 
 `BinanceWebSocketClientTest.kt` 전체를 아래로 교체한다.
 
@@ -124,12 +124,12 @@ class BinanceWebSocketClientTest {
 }
 ```
 
-- [ ] **Step 2: 테스트 실행하여 실패 확인**
+- [x] **Step 2: 테스트 실행하여 실패 확인**
 
 Run: `./gradlew :apps:batch:test --tests "io.premiumspread.client.binance.BinanceWebSocketClientTest"`
 Expected: FAIL — 기존 `parse()`가 `BinanceMiniTickerMessage`(필수 필드 `c`)로 역직렬화하므로 bookTicker payload가 파싱되지 않아 `정상 bookTicker payload...` 테스트가 실패.
 
-- [ ] **Step 3: payload 클래스를 bookTicker로 교체**
+- [x] **Step 3: payload 클래스를 bookTicker로 교체**
 
 `BinanceWebSocketResponse.kt` 전체를 아래로 교체한다.
 
@@ -163,7 +163,7 @@ data class BinanceBookTickerMessage(
 
 가격(`b`,`a`)·timestamp(`E`)·symbol(`s`)은 필수, 미사용 필드(`e`,`u`,`T`,`B`,`A`)는 nullable 기본값 — payload 일부 누락에도 회귀하지 않도록.
 
-- [ ] **Step 4: BinanceWebSocketClient를 bookTicker + mid 파싱으로 수정**
+- [x] **Step 4: BinanceWebSocketClient를 bookTicker + mid 파싱으로 수정**
 
 `BinanceWebSocketClient.kt`에서 다음 4곳을 수정한다.
 
@@ -229,12 +229,12 @@ import java.math.RoundingMode
     }
 ```
 
-- [ ] **Step 5: 테스트 실행하여 통과 확인**
+- [x] **Step 5: 테스트 실행하여 통과 확인**
 
 Run: `./gradlew :apps:batch:test --tests "io.premiumspread.client.binance.BinanceWebSocketClientTest"`
 Expected: PASS (5개 테스트)
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add apps/batch/src/main/kotlin/io/premiumspread/client/binance/BinanceWebSocketResponse.kt \
@@ -255,7 +255,7 @@ git commit -m "feat: Binance WebSocket을 bookTicker 채널 + mid 가격 파싱�
 - Modify: `apps/batch/src/main/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceTickerIngestion.kt`
 - Test: `apps/batch/src/test/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceTickerIngestionTest.kt`
 
-- [ ] **Step 1: 테스트를 latest 보관 + accept-equal 기준으로 교체**
+- [x] **Step 1: 테스트를 latest 보관 + accept-equal 기준으로 교체**
 
 `BinanceTickerIngestionTest.kt` 전체를 아래로 교체한다.
 
@@ -400,12 +400,12 @@ class BinanceTickerIngestionTest {
 }
 ```
 
-- [ ] **Step 2: 테스트 실행하여 실패 확인**
+- [x] **Step 2: 테스트 실행하여 실패 확인**
 
 Run: `./gradlew :apps:batch:test --tests "io.premiumspread.infrastructure.ingestion.binance.BinanceTickerIngestionTest"`
 Expected: FAIL — `ingestion.latest()` 메서드와 `LatestTicker`가 아직 없어 컴파일 실패.
 
-- [ ] **Step 3: BinanceTickerIngestion을 빗썸 패턴으로 교체**
+- [x] **Step 3: BinanceTickerIngestion을 빗썸 패턴으로 교체**
 
 `BinanceTickerIngestion.kt` 전체를 아래로 교체한다.
 
@@ -494,12 +494,12 @@ class BinanceTickerIngestion(
 }
 ```
 
-- [ ] **Step 4: 테스트 실행하여 통과 확인**
+- [x] **Step 4: 테스트 실행하여 통과 확인**
 
 Run: `./gradlew :apps:batch:test --tests "io.premiumspread.infrastructure.ingestion.binance.BinanceTickerIngestionTest"`
 Expected: PASS (6개 테스트)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add apps/batch/src/main/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceTickerIngestion.kt \
@@ -518,7 +518,7 @@ git commit -m "feat: BinanceTickerIngestion을 latest 보관 + accept-equal 패�
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceFlushJob.kt`
 - Test: `apps/batch/src/test/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceFlushJobTest.kt`
 
-- [ ] **Step 1: 실패 테스트 작성**
+- [x] **Step 1: 실패 테스트 작성**
 
 `BinanceFlushJobTest.kt`를 신규 생성한다.
 
@@ -642,12 +642,12 @@ class BinanceFlushJobTest {
 }
 ```
 
-- [ ] **Step 2: 테스트 실행하여 실패 확인**
+- [x] **Step 2: 테스트 실행하여 실패 확인**
 
 Run: `./gradlew :apps:batch:test --tests "io.premiumspread.infrastructure.ingestion.binance.BinanceFlushJobTest"`
 Expected: FAIL — `BinanceFlushJob` 클래스가 없어 컴파일 실패.
 
-- [ ] **Step 3: BinanceFlushJob 생성**
+- [x] **Step 3: BinanceFlushJob 생성**
 
 `BinanceFlushJob.kt`를 신규 생성한다.
 
@@ -721,12 +721,12 @@ class BinanceFlushJob(
 }
 ```
 
-- [ ] **Step 4: 테스트 실행하여 통과 확인**
+- [x] **Step 4: 테스트 실행하여 통과 확인**
 
 Run: `./gradlew :apps:batch:test --tests "io.premiumspread.infrastructure.ingestion.binance.BinanceFlushJobTest"`
 Expected: PASS (5개 테스트)
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add apps/batch/src/main/kotlin/io/premiumspread/infrastructure/ingestion/binance/BinanceFlushJob.kt \
@@ -744,7 +744,7 @@ git commit -m "feat: BinanceFlushJob 추가 — 1초 주기 ZSet down-sample flu
 **Files:**
 - Create: `apps/batch/src/main/kotlin/io/premiumspread/scheduler/BinanceFlushScheduler.kt`
 
-- [ ] **Step 1: BinanceFlushScheduler 생성**
+- [x] **Step 1: BinanceFlushScheduler 생성**
 
 `BinanceFlushScheduler.kt`를 신규 생성한다.
 
@@ -774,12 +774,12 @@ class BinanceFlushScheduler(
 }
 ```
 
-- [ ] **Step 2: 컴파일 확인**
+- [x] **Step 2: 컴파일 확인**
 
 Run: `./gradlew :apps:batch:compileKotlin`
 Expected: BUILD SUCCESSFUL
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add apps/batch/src/main/kotlin/io/premiumspread/scheduler/BinanceFlushScheduler.kt
@@ -795,7 +795,7 @@ git commit -m "feat: BinanceFlushScheduler 추가 — 1초 flush thin entrypoint
 
 기존 "메시지 1건 → 캐시 hash 갱신" 통합 테스트는 payload를 bookTicker로 교체하고 mid 가격(8 scale)에 맞춰 단언을 `compareTo` 기반으로 바꾼다. 추가로, 신규 production 경로(`WebSocket → BinanceTickerIngestion.latest() → BinanceFlushJob → Redis 초ZSet + LAST_RUN_KEY`)를 Redis Testcontainer로 검증하는 통합 테스트를 신규 추가한다 — mocked unit test가 잡지 못하는 Redis member/TTL·flush 배선을 커버 (codex-spec-review ISSUE-3).
 
-- [ ] **Step 1: import 추가**
+- [x] **Step 1: import 추가**
 
 `import java.time.Duration` 다음 줄에 추가:
 
@@ -816,7 +816,7 @@ import io.premiumspread.infrastructure.ingestion.binance.BinanceFlushJob
 import org.springframework.data.redis.core.StringRedisTemplate
 ```
 
-- [ ] **Step 2: redisTemplate 필드 autowire 추가**
+- [x] **Step 2: redisTemplate 필드 autowire 추가**
 
 클래스 본문의 `@Autowired private lateinit var tickerCacheService: TickerCacheService` 다음 줄에 추가:
 
@@ -824,7 +824,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
     @Autowired private lateinit var redisTemplate: StringRedisTemplate
 ```
 
-- [ ] **Step 3: 첫 번째 테스트의 payload·URL·단언 교체**
+- [x] **Step 3: 첫 번째 테스트의 payload·URL·단언 교체**
 
 `메시지 1건 push되면 TickerCacheService 캐시가 갱신된다` 테스트에서:
 
@@ -848,7 +848,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
         } matches { it != null && it.price.compareTo(BigDecimal("89277.10")) == 0 }
 ```
 
-- [ ] **Step 4: 두 번째 테스트의 URL 교체**
+- [x] **Step 4: 두 번째 테스트의 URL 교체**
 
 `연결됐지만 첫 메시지 timeout이 지나면 ...` 테스트에서 `url = server.url("/ws/btcusdt@miniTicker")...` 을 교체:
 
@@ -856,7 +856,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
                 url = server.url("/ws/btcusdt@bookTicker").toString().replace("http", "ws"),
 ```
 
-- [ ] **Step 5: flush 경로 end-to-end 통합 테스트 신규 추가**
+- [x] **Step 5: flush 경로 end-to-end 통합 테스트 신규 추가**
 
 클래스 본문에 아래 테스트 메서드를 추가한다 (`연결됐지만 첫 메시지 timeout...` 테스트 다음, 클래스 닫는 `}` 앞).
 
@@ -899,16 +899,16 @@ import org.springframework.data.redis.core.StringRedisTemplate
 
 `WebSocket → BinanceTickerIngestion.latest() → BinanceFlushJob → Redis 초ZSet + LAST_RUN_KEY` 경로 전체를 Redis Testcontainer로 검증한다.
 
-- [ ] **Step 6: EchoOnce 헬퍼 확인**
+- [x] **Step 6: EchoOnce 헬퍼 확인**
 
 파일 하단 `EchoOnce` / `IdleListener` 클래스는 그대로 사용 (변경 불필요).
 
-- [ ] **Step 7: 컴파일 확인**
+- [x] **Step 7: 컴파일 확인**
 
 Run: `./gradlew :apps:batch:compileTestKotlin`
 Expected: BUILD SUCCESSFUL — 통합 테스트(`@Tag("integration")`) 실행은 Docker(Testcontainers) 필요. 컴파일 통과가 구현 단계의 검증 기준. 전체 실행은 `./gradlew :apps:batch:integrationTest` (Docker 환경에서 가능 시).
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add apps/batch/src/test/kotlin/io/premiumspread/client/binance/BinanceWebSocketIntegrationTest.kt
@@ -921,17 +921,17 @@ git commit -m "test: Binance WebSocket 통합 테스트 bookTicker 전환 + flus
 
 **Files:** 없음 (검증 전용)
 
-- [ ] **Step 1: batch 모듈 단위 테스트 전체 실행**
+- [x] **Step 1: batch 모듈 단위 테스트 전체 실행**
 
 Run: `./gradlew :apps:batch:test`
 Expected: BUILD SUCCESSFUL — 모든 단위 테스트 통과. (`@Tag("integration")` 테스트는 unit `test`에서 제외됨)
 
-- [ ] **Step 2: 전체 컴파일 확인**
+- [x] **Step 2: 전체 컴파일 확인**
 
 Run: `./gradlew :apps:batch:compileKotlin :apps:batch:compileTestKotlin`
 Expected: BUILD SUCCESSFUL
 
-- [ ] **Step 3: 실패 시 수정**
+- [x] **Step 3: 실패 시 수정**
 
 테스트 실패 시 해당 테스트/구현을 수정하고 Step 1~2를 재실행한다. 모두 통과할 때까지 반복.
 
@@ -947,7 +947,7 @@ Expected: BUILD SUCCESSFUL
 
 GitHub 이슈 본문(#28/#30)은 **수정하지 않는다** (의사결정 — 리포 문서만 정정).
 
-- [ ] **Step 1: 설계 문서(2026-05-12-websocket-ingestion-design.md) 정정**
+- [x] **Step 1: 설계 문서(2026-05-12-websocket-ingestion-design.md) 정정**
 
 파일을 Read로 열어 다음을 정정한다.
 - 채널 비교 표의 `바이낸스 | btcusdt@miniTicker | 1초 고정 주기` 행 → `바이낸스 | btcusdt@bookTicker | 변동 시 실시간 push` 로 변경.
@@ -956,24 +956,24 @@ GitHub 이슈 본문(#28/#30)은 **수정하지 않는다** (의사결정 — �
   - 이후 이슈 #52에서 `@bookTicker`(실시간) + 1초 down-sample flush로 전환됨을 **연혁 노트**로 추가.
 - Phase 2 섹션의 "바이낸스는 1초 고정 push라 down-sample 불필요, 별도 flush job 없음" 문장 → "(#52 이후) bookTicker 전환으로 `BinanceFlushJob` 1초 down-sample 도입" 으로 갱신.
 
-- [ ] **Step 2: ARCHITECTURE_DESIGN.md 정정**
+- [x] **Step 2: ARCHITECTURE_DESIGN.md 정정**
 
 파일을 Read로 열어 다음을 정정한다.
 - `**바이낸스 — 1초 고정 push (`@miniTicker` 채널)**` → `**바이낸스 — 실시간 push (`@bookTicker` 채널, best bid/ask mid)**`
 - 바이낸스 데이터 흐름 다이어그램: `BinanceTickerIngestion (AtomicReference CAS, strict monotonic)` → `BinanceTickerIngestion (AtomicReference CAS, accept-equal) → BinanceFlushJob (1초 down-sample)` 형태로 갱신.
 - 디렉터리 트리 주석 `binance/BinanceTickerIngestion # CAS strict monotonic + lag 측정` → `binance/BinanceTickerIngestion # CAS accept-equal monotonic + latest 보관` 로 갱신하고, `BinanceFlushJob` 항목을 ingestion/binance 아래에 추가.
 
-- [ ] **Step 3: PROJECT_STATUS.md 정정**
+- [x] **Step 3: PROJECT_STATUS.md 정정**
 
 파일을 Read로 열어 다음을 정정한다.
 - Phase 2 (#30) 설명 줄의 `BinanceTickerIngestion (CAS strict monotonic + lag 측정)` → `(CAS accept-equal monotonic + latest 보관)`.
 - Epic #28 표 또는 인근에 `#52 Binance bookTicker 전환` 항목을 완료로 추가 (형식은 기존 표에 맞춤).
 
-- [ ] **Step 4: CLAUDE.md 확인**
+- [x] **Step 4: CLAUDE.md 확인**
 
 `batch/` 설명 줄(`REST 1초/30분 수집 또는 WebSocket 실시간 수집 + ...`)은 이미 "WebSocket 실시간 수집"으로 정확하므로 **변경 불필요**. Read로 확인만 하고 넘어간다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add docs/superpowers/specs/2026-05-12-websocket-ingestion-design.md \
@@ -988,10 +988,10 @@ git commit -m "docs: Binance miniTicker 주기 정정 + bookTicker 전환 반영
 
 ## 완료 기준 (DoD)
 
-- [ ] Task 1~7 전체 완료, 각 커밋 생성됨
-- [ ] `./gradlew :apps:batch:test` 통과
-- [ ] `./gradlew :apps:batch:compileKotlin :apps:batch:compileTestKotlin` 통과
-- [ ] `BinanceWebSocketClient.URL`이 `@bookTicker`
-- [ ] `BinanceFlushJob` / `BinanceFlushScheduler` 신규 추가, `@ConditionalOnProperty(binance.mode=websocket)` 가드
-- [ ] `TickerData` 계약 불변 — 다운스트림(집계·김프) 영향 없음
-- [ ] #51 리포 문서 3종 정정 완료 (CLAUDE.md는 확인만)
+- [x] Task 1~7 전체 완료, 각 커밋 생성됨
+- [x] `./gradlew :apps:batch:test` 통과
+- [x] `./gradlew :apps:batch:compileKotlin :apps:batch:compileTestKotlin` 통과
+- [x] `BinanceWebSocketClient.URL`이 `@bookTicker`
+- [x] `BinanceFlushJob` / `BinanceFlushScheduler` 신규 추가, `@ConditionalOnProperty(binance.mode=websocket)` 가드
+- [x] `TickerData` 계약 불변 — 다운스트림(집계·김프) 영향 없음
+- [x] #51 리포 문서 3종 정정 완료 (CLAUDE.md는 확인만)
