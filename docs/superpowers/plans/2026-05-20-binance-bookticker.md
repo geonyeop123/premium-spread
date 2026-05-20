@@ -217,6 +217,7 @@ import java.math.RoundingMode
 
 ```kotlin
     companion object {
+        // 엔트리포인트 `/market`은 2026-03-06 Binance WS 업그레이드 후 검증된 USD-M Futures 경로 (#46/#51). 유지.
         const val URL = "wss://fstream.binance.com/market/ws/btcusdt@bookTicker"
         private const val EXCHANGE = "binance"
         private const val EXCHANGE_UPPER = "BINANCE"
@@ -787,38 +788,59 @@ git commit -m "feat: BinanceFlushScheduler 추가 — 1초 flush thin entrypoint
 
 ---
 
-## Task 5: BinanceWebSocketIntegrationTest를 bookTicker payload로 갱신
+## Task 5: BinanceWebSocketIntegrationTest bookTicker 전환 + flush 경로 통합 테스트
 
 **Files:**
 - Modify: `apps/batch/src/test/kotlin/io/premiumspread/client/binance/BinanceWebSocketIntegrationTest.kt`
 
-`BinanceTickerIngestion`이 더 이상 ZSet을 직접 쓰지 않지만 hash(`save`)는 메시지 수신 즉시 갱신하므로, "메시지 1건 → 캐시 hash 갱신" 통합 테스트는 flush job 없이도 유효하다. payload만 bookTicker로 교체하고, mid 가격(8 scale)이라 가격 단언을 `compareTo` 기반으로 바꾼다.
+기존 "메시지 1건 → 캐시 hash 갱신" 통합 테스트는 payload를 bookTicker로 교체하고 mid 가격(8 scale)에 맞춰 단언을 `compareTo` 기반으로 바꾼다. 추가로, 신규 production 경로(`WebSocket → BinanceTickerIngestion.latest() → BinanceFlushJob → Redis 초ZSet + LAST_RUN_KEY`)를 Redis Testcontainer로 검증하는 통합 테스트를 신규 추가한다 — mocked unit test가 잡지 못하는 Redis member/TTL·flush 배선을 커버 (codex-spec-review ISSUE-3).
 
-- [ ] **Step 1: import에 BigDecimal 추가**
+- [ ] **Step 1: import 추가**
 
 `import java.time.Duration` 다음 줄에 추가:
 
 ```kotlin
 import java.math.BigDecimal
+import java.time.Instant
 ```
 
-- [ ] **Step 2: 첫 번째 테스트의 payload·URL·단언 교체**
+`import io.premiumspread.infrastructure.ingestion.binance.BinanceTickerIngestion` 다음 줄에 추가:
+
+```kotlin
+import io.premiumspread.infrastructure.ingestion.binance.BinanceFlushJob
+```
+
+`import org.springframework.test.context.ActiveProfiles` 다음 줄에 추가:
+
+```kotlin
+import org.springframework.data.redis.core.StringRedisTemplate
+```
+
+- [ ] **Step 2: redisTemplate 필드 autowire 추가**
+
+클래스 본문의 `@Autowired private lateinit var tickerCacheService: TickerCacheService` 다음 줄에 추가:
+
+```kotlin
+    @Autowired private lateinit var redisTemplate: StringRedisTemplate
+```
+
+- [ ] **Step 3: 첫 번째 테스트의 payload·URL·단언 교체**
 
 `메시지 1건 push되면 TickerCacheService 캐시가 갱신된다` 테스트에서:
 
-(2-1) payload 줄 교체:
+(3-1) payload 줄 교체:
 
 ```kotlin
         val payload = """{"e":"bookTicker","u":1,"E":1715470800000,"T":1715470800000,"s":"BTCUSDT","b":"89277.00","B":"1.5","a":"89277.20","A":"2.0"}"""
 ```
 
-(2-2) `url = server.url("/ws/btcusdt@miniTicker")...` 을 교체:
+(3-2) `url = server.url("/ws/btcusdt@miniTicker")...` 을 교체:
 
 ```kotlin
                 url = server.url("/ws/btcusdt@bookTicker").toString().replace("http", "ws"),
 ```
 
-(2-3) `await` 블록의 단언 교체 (mid = 89277.10, scale 8 → `toPlainString()`이 "89277.10000000"이므로 값 비교 사용):
+(3-3) `await` 블록의 단언 교체 (mid = 89277.10, scale 8 → `toPlainString()`이 "89277.10000000"이므로 값 비교 사용):
 
 ```kotlin
         await.atMost(Duration.ofSeconds(5)).untilCallTo {
@@ -826,7 +848,7 @@ import java.math.BigDecimal
         } matches { it != null && it.price.compareTo(BigDecimal("89277.10")) == 0 }
 ```
 
-- [ ] **Step 3: 두 번째 테스트의 URL 교체**
+- [ ] **Step 4: 두 번째 테스트의 URL 교체**
 
 `연결됐지만 첫 메시지 timeout이 지나면 ...` 테스트에서 `url = server.url("/ws/btcusdt@miniTicker")...` 을 교체:
 
@@ -834,20 +856,63 @@ import java.math.BigDecimal
                 url = server.url("/ws/btcusdt@bookTicker").toString().replace("http", "ws"),
 ```
 
-- [ ] **Step 4: EchoOnce 헬퍼 정리 확인**
+- [ ] **Step 5: flush 경로 end-to-end 통합 테스트 신규 추가**
 
-파일 하단 `EchoOnce` 클래스는 그대로 사용 (payload 문자열만 주입받으므로 변경 불필요). `IdleListener`도 그대로.
+클래스 본문에 아래 테스트 메서드를 추가한다 (`연결됐지만 첫 메시지 timeout...` 테스트 다음, 클래스 닫는 `}` 앞).
 
-- [ ] **Step 5: 컴파일 확인**
+```kotlin
+    @Test
+    fun `bookTicker 수신 후 BinanceFlushJob이 초ZSet과 last-run을 갱신한다`() {
+        val payload = """{"e":"bookTicker","u":1,"E":1715470800000,"T":1715470800000,"s":"BTCUSDT","b":"89277.00","B":"1.5","a":"89277.20","A":"2.0"}"""
+        server.enqueue(MockResponse().withWebSocketUpgrade(EchoOnce(payload)))
+
+        val ingestion = BinanceTickerIngestion(tickerCacheService, metrics, fakeAlertService, java.time.Clock.systemUTC())
+        val client = BinanceWebSocketClient(ingestion, metrics, fakeAlertService, ObjectMapper(), SimpleMeterRegistry())
+        val manager = WebSocketConnectionManager(
+            config = WebSocketConnectionConfig(
+                exchange = "binance",
+                url = server.url("/ws/btcusdt@bookTicker").toString().replace("http", "ws"),
+                onMessage = client::handlePayload,
+            ),
+            metrics = metrics,
+            alertService = fakeAlertService,
+        )
+        manager.start()
+
+        // 메시지 수신 → ingestion.latest() 갱신 대기
+        await.atMost(Duration.ofSeconds(5)).untilCallTo { ingestion.latest() } matches { it != null }
+        manager.stop()
+
+        // flush job 실행 → 초ZSet + last-run 갱신
+        val flushJob = BinanceFlushJob(
+            ingestion, tickerCacheService, metrics, fakeAlertService, redisTemplate, java.time.Clock.systemUTC(),
+        )
+        flushJob.run()
+
+        val now = Instant.now()
+        val seconds = tickerCacheService.getSecondsData("BINANCE", "BTC", now.minusSeconds(30), now.plusSeconds(5))
+        assertThat(seconds).isNotEmpty
+        assertThat(seconds.last().second).isEqualByComparingTo(BigDecimal("89277.10"))
+        assertThat(redisTemplate.opsForValue().get(BinanceFlushJob.LAST_RUN_KEY)).isNotNull()
+    }
+```
+
+`WebSocket → BinanceTickerIngestion.latest() → BinanceFlushJob → Redis 초ZSet + LAST_RUN_KEY` 경로 전체를 Redis Testcontainer로 검증한다.
+
+- [ ] **Step 6: EchoOnce 헬퍼 확인**
+
+파일 하단 `EchoOnce` / `IdleListener` 클래스는 그대로 사용 (변경 불필요).
+
+- [ ] **Step 7: 컴파일 확인**
 
 Run: `./gradlew :apps:batch:compileTestKotlin`
-Expected: BUILD SUCCESSFUL — 통합 테스트 실행은 Docker(Testcontainers) 필요. 컴파일 통과가 본 태스크의 검증 기준.
+Expected: BUILD SUCCESSFUL — 통합 테스트(`@Tag("integration")`) 실행은 Docker(Testcontainers) 필요. 컴파일 통과가 구현 단계의 검증 기준. 전체 실행은 `./gradlew :apps:batch:integrationTest` (Docker 환경에서 가능 시).
 
-- [ ] **Step 6: 커밋**
+- [ ] **Step 8: 커밋**
 
 ```bash
 git add apps/batch/src/test/kotlin/io/premiumspread/client/binance/BinanceWebSocketIntegrationTest.kt
-git commit -m "test: Binance WebSocket 통합 테스트를 bookTicker payload로 갱신 (#52)"
+git commit -m "test: Binance WebSocket 통합 테스트 bookTicker 전환 + flush 경로 검증 추가 (#52)"
 ```
 
 ---

@@ -78,7 +78,8 @@ Binance USD-M Futures `<symbol>@bookTicker` 페이로드:
 
 ### 5.2 BinanceWebSocketClient
 
-- `URL`: `wss://fstream.binance.com/market/ws/btcusdt@miniTicker` → `...@bookTicker`
+- `URL`: `wss://fstream.binance.com/market/ws/btcusdt@miniTicker` → `wss://fstream.binance.com/market/ws/btcusdt@bookTicker`
+  - **엔트리포인트 `/market`는 유지** — miniTicker의 잔재가 아니라 2026-03-06 Binance "M Futures WebSocket System Upgrade" 이후의 검증된 USD-M Futures WebSocket 엔트리포인트다. 이슈 #46(`fix/issue-46-binance-ws-market-endpoint`, PR #48)이 이 경로로 정정했고, #51이 공식 문서 대조 + 60초 외부 probe + 15시간 라이브 모니터링(27,167건 수신, reconnect 0)으로 실증했다. bookTicker와 miniTicker는 동일 connection 엔트리포인트를 공유하며 stream 이름만 다르다.
 - `parse(payload)`:
   - `BinanceBookTickerMessage`로 역직렬화
   - `bestBid`, `bestAsk`를 각각 `BigDecimal`로 파싱 — 둘 중 하나라도 실패 시 `recordParseError` 호출 후 `null` 반환
@@ -96,6 +97,16 @@ Binance USD-M Futures `<symbol>@bookTicker` 페이로드:
 - `onMessage(ticker)`:
   - monotonic check를 **accept-equal**로 완화 — `ticker.timestamp.isBefore(prev.timestamp)` 인 경우만 폐기.
     (현재 Binance는 strict `!isAfter`로 같은 ms도 폐기. bookTicker는 같은 `E` ms에 복수 메시지가 정상이므로 빗썸과 동일하게 완화)
+
+#### 5.3.1 updateId(`u`)를 monotonic 키로 쓰지 않는 이유
+
+bookTicker payload의 `u`(order book updateId)는 단조 증가하지만, monotonic 판정에는 `eventTime`만 사용한다(빗썸과 동일). 근거:
+
+1. **전송 계층이 순서를 보장한다** — 단일 WebSocket connection의 프레임은 TCP 순서 보장 + Reactor Netty inbound flux의 순차 처리로 도착·처리된다. 같은 `E` ms 내 메시지도 `u` 오름차순으로 도착하므로, accept-equal은 결과적으로 최고 `u`가 `latest()`에 남는다. (단위 테스트의 16스레드 동시 호출은 CAS 안전성 검증용 artifact일 뿐, 운영 경로는 순차다.)
+2. **1초 down-sample이 sub-ms 차이를 무의미하게 만든다** — `BinanceFlushJob`은 `latest()`를 초당 1회만 ZSet에 샘플링한다. 같은 ms 내 순서 역전이 가상으로 발생하더라도 ~1ms 뒤 다음 메시지가 즉시 교정하며, 1초 OHLC 집계 버킷에는 영향이 없다.
+3. **공유 모델 오염 회피** — `u`를 monotonic 키로 쓰려면 `TickerData`(REST/WS/빗썸 공유)에 Binance 전용 필드를 추가하거나 ingestion 경로에 별도 상태를 끼워야 한다. 전송 계층이 이미 보장하는 불변식을 위한 방어 코드는 프로젝트 원칙(CLAUDE.md "과도한 추상화 금지 — 필요할 때만")에 어긋난다.
+
+→ `u`는 payload DTO에는 보존하되(`BinanceBookTickerMessage.updateId`) ingestion 로직에서는 사용하지 않는다.
   - out-of-order 폐기 시 `metrics.recordOutOfOrder(EXCHANGE)`
   - `metrics.recordLag(EXCHANGE, lagMs)` 유지
   - **hash만 즉시 저장** (`tickerCacheService.save(ticker)`) — ZSet 저장은 제거
@@ -163,10 +174,11 @@ BinanceFlushScheduler (@Scheduled fixedRate=1000)
 | `BinanceWebSocketClientTest` (변경) | bookTicker payload 파싱, mid 계산 `(bid+ask)/2`, bid/ask 파싱 실패 시 parse error |
 | `BinanceTickerIngestionTest` (변경) | `latest()` 보관, monotonic accept-equal (같은 ms 수용 / 이전 ms 폐기), hash write |
 | `BinanceFlushJobTest` (신규) | stale skip(>10s), flush 성공, flush 실패 5회 → alert — `BithumbFlushJobTest` 미러 |
-| `BinanceWebSocketIntegrationTest` (변경) | mock 서버 payload를 bookTicker 포맷으로 교체 |
+| `BinanceWebSocketIntegrationTest` (변경) | (1) mock 서버 payload를 bookTicker 포맷으로 교체 (2) **신규: bookTicker 수신 → `BinanceFlushJob.run()` → Redis 초ZSet + `LAST_RUN_KEY` 갱신 검증** (flush 경로 end-to-end) |
 
 - 도구: AssertJ + MockK (프로젝트 규칙)
 - `./gradlew :apps:batch:compileKotlin` + `./gradlew :apps:batch:test` 통과
+- flush 경로 통합 테스트는 `@Tag("integration")` — Testcontainers(Redis) 필요. 구현 단계에서 컴파일 검증, 전체 실행은 `./gradlew :apps:batch:integrationTest` (Docker 환경)
 
 ## 10. 문서 정정 (#51 — 리포 문서만)
 
