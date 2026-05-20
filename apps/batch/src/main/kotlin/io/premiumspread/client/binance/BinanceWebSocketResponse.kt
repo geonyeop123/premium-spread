@@ -4,21 +4,22 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 
 /**
- * Binance Futures @miniTicker stream payload.
+ * Binance USD-M Futures @bookTicker stream payload.
  *
- * URL: wss://fstream.binance.com/ws/{symbol}@miniTicker
+ * URL: wss://fstream.binance.com/market/ws/{symbol}@bookTicker
  *
- * Push 주기: 1초 고정 (마지막 1초 동안의 close/open/high/low/volume).
+ * Push 주기: best bid/ask 변동 시마다 실시간 push (스냅샷이 아닌 변경 이벤트).
+ * 가격은 best bid/ask의 mid `(b + a) / 2`로 산정한다.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-data class BinanceMiniTickerMessage(
-    @JsonProperty("e") val eventType: String,
+data class BinanceBookTickerMessage(
     @JsonProperty("E") val eventTime: Long,
     @JsonProperty("s") val symbol: String,
-    @JsonProperty("c") val close: String,
-    @JsonProperty("o") val open: String? = null,
-    @JsonProperty("h") val high: String? = null,
-    @JsonProperty("l") val low: String? = null,
-    @JsonProperty("v") val volume: String? = null,
-    @JsonProperty("q") val quoteVolume: String? = null,
+    @JsonProperty("b") val bestBid: String,
+    @JsonProperty("a") val bestAsk: String,
+    @JsonProperty("e") val eventType: String? = null,
+    @JsonProperty("u") val updateId: Long? = null,
+    @JsonProperty("T") val transactTime: Long? = null,
+    @JsonProperty("B") val bidQty: String? = null,
+    @JsonProperty("A") val askQty: String? = null,
 )
