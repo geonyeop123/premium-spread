@@ -31,7 +31,8 @@ premium-spread/
 │           │   ├── HeartbeatPolicy              # sealed interface (Ping/Text/None)
 │           │   └── WebSocketConnectionConfig    # 연결 파라미터 data class
 │           └── ingestion/  # WebSocket 수신 → 캐시 반영 (Phase 2/3)
-│               ├── binance/BinanceTickerIngestion   # CAS strict monotonic + lag 측정
+│               ├── binance/BinanceTickerIngestion   # CAS accept-equal monotonic + latest 보관
+│               ├── binance/BinanceFlushJob          # 1Hz down-sample → saveToSecondsWithScore
 │               ├── bithumb/BithumbTickerIngestion   # AtomicReference 최신값 유지 (same-second 수용)
 │               └── bithumb/BithumbFlushJob          # 1Hz down-sample → saveToSecondsWithScore
 ├── modules/
@@ -59,13 +60,19 @@ premium-spread/
 
 #### 1-b) WebSocket 모드 (Phase 2/3, #30/#31)
 
-**바이낸스 — 1초 고정 push (`@miniTicker` 채널)**
+**바이낸스 — 실시간 push (`@bookTicker` 채널, best bid/ask mid)**
 
 ```
 Binance WS  → WebSocketConnectionManager (재연결/하트비트)
-            → BinanceWebSocketClient (JSON 파싱, parse-error 카운터)
-            → BinanceTickerIngestion (AtomicReference CAS, strict monotonic)
-            → TickerCacheService.save + saveToSeconds
+            → BinanceWebSocketClient (JSON 파싱, mid = (bestBid+bestAsk)/2, parse-error 카운터)
+            → BinanceTickerIngestion (AtomicReference CAS, accept-equal monotonic) → latest 보관
+            → TickerCacheService.save (Hash)
+
+BinanceFlushScheduler (@Scheduled fixedRate=1000, thin entrypoint)
+            → BinanceFlushJob (stale 10초, last-run 갱신, 5회 연속 실패 시 AlertService)
+            → TickerCacheService.saveToSecondsWithScore (ticker, Instant.now())
+              · ZSet member 포맷: `{epochMs}:{price}` — 동일 가격 반복 flush 누적 보장
+              · ticker hash는 갱신하지 않음
 ```
 
 **빗썸 — 변동 push + 1Hz down-sample (`ticker` 채널)**

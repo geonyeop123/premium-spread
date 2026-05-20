@@ -16,7 +16,7 @@
 
 | 거래소 | 채널 | Push 방식 |
 |--------|------|----------|
-| 바이낸스 | `btcusdt@miniTicker` | **1초 고정 주기** |
+| 바이낸스 | `btcusdt@bookTicker` | **변동 시 실시간 push** |
 | 빗썸 | `ticker` | **가격 변동 시 이벤트 기반** |
 
 ## 목표 / 비목표
@@ -45,7 +45,7 @@
 6. **메시지 수신 시 monotonic check** — 직전 메시지보다 exchange timestamp가 작으면 무시 (reorder/replay 방어)
 7. **Stale threshold 10초** — 빗썸 마지막 메시지 수신 후 10초 초과 시 flush skip + `ws.stale.bithumb` 카운터 증가
 8. **Connected-but-no-message 알람** — 연결 후 5초 내 첫 메시지 미수신 또는 `ws.last.message.age` Gauge가 10s 초과 시 알람 (silent ingestion outage 방어)
-9. **바이낸스는 `@miniTicker` 채널** (1초 고정 push) — 별도 down-sample 불필요
+9. **바이낸스 Phase 2 PoC는 `@miniTicker` 채널** (실제 update speed 2초, 1초 고정이 아님) — 별도 down-sample 불필요로 설계. **#52 이후 `@bookTicker`(변동 시 실시간 push)로 전환 + `BinanceFlushJob` 1초 down-sample 도입 (빗썸 패턴과 통일).**
 10. **Phase 2/3 운영 검증 후 Phase 4에서 REST 코드 완전 제거**
 11. **RatePerSecondLimiter 미도입** — @Scheduled fixedRate=1000 + AtomicReference로 1Hz 자연 보장 (YAGNI)
 
@@ -79,12 +79,21 @@ apps/batch/src/main/kotlin/io/premiumspread/
 ### 데이터 흐름
 
 ```
-[바이낸스 — 1초 고정 push]
-Binance WS @miniTicker
+[바이낸스 — 실시간 push (#52 이후, @bookTicker 채널)]
+Binance WS @bookTicker (best bid/ask 변동 시 실시간 push)
   → WebSocketConnectionManager (재연결/하트비트)
-  → BinanceWebSocketClient (JSON 파싱)
-  → BinanceTickerIngestion (수신 시 즉시 저장)
-  → TickerCacheService.save (Hash) + saveToSeconds (초ZSet)
+  → BinanceWebSocketClient (JSON 파싱, mid = (bestBid + bestAsk) / 2)
+  → BinanceTickerIngestion (AtomicReference latest 보관, accept-equal monotonic)
+  → TickerCacheService.save (Hash)
+
+BinanceFlushScheduler (@Scheduled fixedRate=1000, thin entrypoint)
+  → BinanceFlushJob.run()
+       ├─ stale 체크: now - lastReceivedAt > 10s 면 skip + ws.stale 메트릭
+       └─ TickerCacheService.saveToSecondsWithScore(latest.ticker, Instant.now())
+
+[참고 — Phase 2 PoC (@miniTicker 채널)]
+Binance WS @miniTicker (실제 update speed 2초 — 설계 당시 "1초 고정"으로 오기재)
+  → BinanceTickerIngestion (수신 시 즉시 Hash + 초ZSet 동시 저장, flush job 없음)
 
 [빗썸 — 변동 push + 1초 flush]
 Bithumb WS ticker
@@ -157,12 +166,14 @@ Phase 2/3은 Phase 1 머지 후 병렬 가능.
 **산출물**
 
 - `BinanceWebSocketClient` (`client/binance/`)
-  - URL: `wss://fstream.binance.com/ws/btcusdt@miniTicker`
-  - JSON 파싱 → `TickerData` 변환 (기존 모델 재사용, exchange="binance", currency="USD", price=miniTicker의 "c" 필드)
-- `BinanceTickerIngestion` (`application/ingestion/`)
-  - monotonic check (직전 exchange timestamp 비교, 오래된 것 폐기 + `ws.out_of_order` 증가)
-  - `onMessage(ticker)` → `tickerCacheService.save(ticker)` + `saveToSeconds(ticker)` (수신 즉시 hash+ZSet 동시 저장)
-  - 바이낸스는 1초 고정 push라 down-sample 불필요, 별도 flush job 없음
+  - Phase 2 PoC URL: `wss://fstream.binance.com/ws/btcusdt@miniTicker` (miniTicker, 실제 update speed 2초 — 1초 고정 아님)
+  - **#52 이후 URL**: `wss://fstream.binance.com/market/ws/btcusdt@bookTicker` (bookTicker, best bid/ask 변동 시 실시간 push)
+  - JSON 파싱 → `TickerData` 변환 (exchange="BINANCE", currency="USD", price = best bid/ask의 mid `(b+a)/2`)
+- `BinanceTickerIngestion` (`infrastructure/ingestion/binance/`)
+  - monotonic check (직전 exchange timestamp 비교, strict하게 오래된 것 폐기 + `ws.out_of_order` 증가)
+  - Phase 2 PoC: `onMessage(ticker)` → hash + ZSet 동시 저장, flush job 없음
+  - **#52 이후**: `onMessage(ticker)` → hash 저장 + `AtomicReference` latest 보관만 (ZSet은 `BinanceFlushJob`이 담당), accept-equal monotonic으로 완화 (bookTicker는 동일 eventTime ms에 복수 push 정상)
+- **`BinanceFlushJob` (#52 신규, `infrastructure/ingestion/binance/`)**: 1초 주기 ZSet down-sample flush (빗썸 `BithumbFlushJob` 패턴 이식, stale 10초 임계값)
 - 피처 플래그
   - `mode=websocket` 시 `BinanceWebSocketClient` + `BinanceTickerIngestion` 활성 (`@ConditionalOnProperty`)
   - `mode=rest` 시 기존 폴링 동작
