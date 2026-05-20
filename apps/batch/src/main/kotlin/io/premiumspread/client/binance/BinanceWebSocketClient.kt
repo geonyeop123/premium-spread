@@ -113,8 +113,10 @@ class BinanceWebSocketClient(
     }
 
     companion object {
-        // 엔트리포인트 `/market`은 2026-03-06 Binance WS 업그레이드 후 검증된 USD-M Futures 경로 (#46/#51). 유지.
-        const val URL = "wss://fstream.binance.com/market/ws/btcusdt@bookTicker"
+        // 엔트리포인트는 `/public`. bookTicker는 `/market`에서 핸드셰이크만 되고 프레임 0건(silent failure)이며,
+        // `/public/ws/<symbol>@bookTicker`만 실시간 프레임을 push한다 (endpoint probe로 검증).
+        // 참고: miniTicker는 `/market`에서 동작했으나(#46/#51) bookTicker는 엔트리포인트가 다르다.
+        const val URL = "wss://fstream.binance.com/public/ws/btcusdt@bookTicker"
         private const val EXCHANGE = "binance"
         private const val EXCHANGE_UPPER = "BINANCE"
         // issue spec 준수: 다운스트림 TickerAggregationScheduler가 "USD"로 조회하므로 통일.

@@ -78,8 +78,9 @@ Binance USD-M Futures `<symbol>@bookTicker` 페이로드:
 
 ### 5.2 BinanceWebSocketClient
 
-- `URL`: `wss://fstream.binance.com/market/ws/btcusdt@miniTicker` → `wss://fstream.binance.com/market/ws/btcusdt@bookTicker`
-  - **엔트리포인트 `/market`는 유지** — miniTicker의 잔재가 아니라 2026-03-06 Binance "M Futures WebSocket System Upgrade" 이후의 검증된 USD-M Futures WebSocket 엔트리포인트다. 이슈 #46(`fix/issue-46-binance-ws-market-endpoint`, PR #48)이 이 경로로 정정했고, #51이 공식 문서 대조 + 60초 외부 probe + 15시간 라이브 모니터링(27,167건 수신, reconnect 0)으로 실증했다. bookTicker와 miniTicker는 동일 connection 엔트리포인트를 공유하며 stream 이름만 다르다.
+- `URL`: `wss://fstream.binance.com/market/ws/btcusdt@miniTicker` → `wss://fstream.binance.com/public/ws/btcusdt@bookTicker`
+  - **엔트리포인트는 `/public`** — bookTicker는 miniTicker와 엔트리포인트가 다르다. miniTicker는 `/market`에서 정상 동작하지만(#46/#51 검증), bookTicker는 `/market`에서 핸드셰이크만 성공하고 프레임 0건(silent failure)이다. endpoint probe 결과 `/public/ws/btcusdt@bookTicker`만 실시간 프레임을 push한다 (`/public/ws` raw 포맷은 `BinanceBookTickerMessage`와 직접 일치, `/stream?streams=`는 `{stream,data}` wrapper라 부적합).
+  - ⚠️ 최초 설계는 "bookTicker도 miniTicker와 동일 `/market` 엔트리포인트"로 가정했으나 이는 오류였다. codex-spec-review가 `/public`을 지적(ISSUE-1)했고 endpoint probe로 확정되었다.
 - `parse(payload)`:
   - `BinanceBookTickerMessage`로 역직렬화
   - `bestBid`, `bestAsk`를 각각 `BigDecimal`로 파싱 — 둘 중 하나라도 실패 시 `recordParseError` 호출 후 `null` 반환
@@ -193,7 +194,7 @@ GitHub 이슈 본문(#28 Epic, #30 Phase 2)은 수정하지 않는다.
 
 ## 11. 수용 기준
 
-- [ ] 부팅 시 신규 URL 로그 (`/market/ws/btcusdt@bookTicker`)
+- [ ] 부팅 시 신규 URL 로그 (`/public/ws/btcusdt@bookTicker`)
 - [ ] bookTicker payload 정상 파싱 (`b`, `a`, `E` 매핑, mid 계산)
 - [ ] `./gradlew :apps:batch:compileKotlin` 통과
 - [ ] `./gradlew :apps:batch:test` 통과

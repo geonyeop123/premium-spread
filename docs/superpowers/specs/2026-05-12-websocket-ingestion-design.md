@@ -167,7 +167,7 @@ Phase 2/3은 Phase 1 머지 후 병렬 가능.
 
 - `BinanceWebSocketClient` (`client/binance/`)
   - Phase 2 PoC URL: `wss://fstream.binance.com/ws/btcusdt@miniTicker` (miniTicker, 실제 update speed 2초 — 1초 고정 아님)
-  - **#52 이후 URL**: `wss://fstream.binance.com/market/ws/btcusdt@bookTicker` (bookTicker, best bid/ask 변동 시 실시간 push)
+  - **#52 이후 URL**: `wss://fstream.binance.com/public/ws/btcusdt@bookTicker` (bookTicker, best bid/ask 변동 시 실시간 push — bookTicker는 `/market`이 아닌 `/public` 엔트리포인트)
   - JSON 파싱 → `TickerData` 변환 (exchange="BINANCE", currency="USD", price = best bid/ask의 mid `(b+a)/2`)
 - `BinanceTickerIngestion` (`infrastructure/ingestion/binance/`)
   - monotonic check (직전 exchange timestamp 비교, strict하게 오래된 것 폐기 + `ws.out_of_order` 증가)

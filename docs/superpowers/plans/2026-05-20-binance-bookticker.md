@@ -142,7 +142,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 /**
  * Binance USD-M Futures @bookTicker stream payload.
  *
- * URL: wss://fstream.binance.com/market/ws/{symbol}@bookTicker
+ * URL: wss://fstream.binance.com/public/ws/{symbol}@bookTicker
  *
  * Push 주기: best bid/ask 변동 시마다 실시간 push (스냅샷이 아닌 변경 이벤트).
  * 가격은 best bid/ask의 mid `(b + a) / 2`로 산정한다.
@@ -217,8 +217,8 @@ import java.math.RoundingMode
 
 ```kotlin
     companion object {
-        // 엔트리포인트 `/market`은 2026-03-06 Binance WS 업그레이드 후 검증된 USD-M Futures 경로 (#46/#51). 유지.
-        const val URL = "wss://fstream.binance.com/market/ws/btcusdt@bookTicker"
+        // bookTicker 엔트리포인트는 `/public` — `/market`은 핸드셰이크만 되고 프레임 0건(endpoint probe 검증).
+        const val URL = "wss://fstream.binance.com/public/ws/btcusdt@bookTicker"
         private const val EXCHANGE = "binance"
         private const val EXCHANGE_UPPER = "BINANCE"
         // issue spec 준수: 다운스트림 TickerAggregationScheduler가 "USD"로 조회하므로 통일.
