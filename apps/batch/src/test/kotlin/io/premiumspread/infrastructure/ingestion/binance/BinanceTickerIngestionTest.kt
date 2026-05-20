@@ -19,70 +19,78 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class BinanceTickerIngestionTest {
-    private val fixedNow = Instant.parse("2026-05-12T00:00:10Z")
-    private lateinit var tickerCacheService: TickerCacheService
+    private val fixedNow: Instant = Instant.parse("2026-05-12T00:00:10Z")
+    private lateinit var cache: TickerCacheService
     private lateinit var metrics: WebSocketMetrics
     private lateinit var alertService: AlertService
     private lateinit var ingestion: BinanceTickerIngestion
 
     @BeforeEach
     fun setUp() {
-        tickerCacheService = mockk(relaxed = true)
+        cache = mockk(relaxed = true)
         metrics = mockk(relaxed = true)
         alertService = mockk(relaxed = true)
         ingestion = BinanceTickerIngestion(
-            tickerCacheService, metrics, alertService,
-            Clock.fixed(fixedNow, ZoneOffset.UTC),
+            tickerCacheService = cache,
+            metrics = metrics,
+            alertService = alertService,
+            clock = Clock.fixed(fixedNow, ZoneOffset.UTC),
         )
     }
 
     @Test
-    fun `정상 메시지는 hash와 초ZSet 둘 다 저장하고 lag을 기록한다`() {
-        val ticker = tickerAt(Instant.parse("2026-05-12T00:00:08Z"))
+    fun `정상 메시지는 hash를 저장하고 latest를 갱신하며 lag를 기록한다`() {
+        val ts = Instant.parse("2026-05-12T00:00:08Z") // now - 2s
+        val ticker = tickerAt(ts)
 
         ingestion.onMessage(ticker)
 
-        verify(exactly = 1) { tickerCacheService.save(ticker) }
-        verify(exactly = 1) { tickerCacheService.saveToSeconds(ticker) }
+        verify(exactly = 1) { cache.save(ticker) }
         verify(exactly = 1) { metrics.recordLag("binance", 2000L) }
+        assertThat(ingestion.latest()?.ticker).isEqualTo(ticker)
+        assertThat(ingestion.latest()?.receivedAt).isEqualTo(fixedNow)
     }
 
     @Test
-    fun `직전 메시지보다 timestamp가 빠르면 폐기하고 out_of_order를 기록한다`() {
-        val first = tickerAt(Instant.parse("2026-05-12T00:00:01Z"))
-        val stale = tickerAt(Instant.parse("2026-05-12T00:00:00Z"))
+    fun `ZSet 직접 저장은 하지 않는다 (flush job이 담당)`() {
+        ingestion.onMessage(tickerAt(Instant.parse("2026-05-12T00:00:08Z")))
 
+        verify(exactly = 0) { cache.saveToSeconds(any()) }
+        verify(exactly = 0) { cache.saveToSecondsWithScore(any(), any()) }
+    }
+
+    @Test
+    fun `직전보다 strict하게 오래된 timestamp는 폐기되고 out_of_order가 증가한다`() {
+        val first = tickerAt(Instant.parse("2026-05-12T00:00:05Z"))
+        val stale = tickerAt(Instant.parse("2026-05-12T00:00:01Z"))
         ingestion.onMessage(first)
+
         ingestion.onMessage(stale)
 
-        verify(exactly = 1) { tickerCacheService.save(first) }
-        verify(exactly = 0) { tickerCacheService.save(stale) }
+        verify(exactly = 0) { cache.save(stale) }
         verify(exactly = 1) { metrics.recordOutOfOrder("binance") }
+        assertThat(ingestion.latest()?.ticker).isEqualTo(first)
     }
 
     @Test
-    fun `timestamp가 같으면 (=) 새 메시지는 폐기되어 한 번만 저장된다 (CAS strict ordering)`() {
-        val ts = Instant.parse("2026-05-12T00:00:00Z")
+    fun `같은 ms timestamp 메시지는 수용된다 (bookTicker는 동일 eventTime에 복수 push 정상)`() {
+        val ts = Instant.parse("2026-05-12T00:00:05Z")
+        val first = tickerAt(ts)
+        val sameMs = tickerAt(ts).copy(price = BigDecimal("200.00"))
 
-        ingestion.onMessage(tickerAt(ts))
-        ingestion.onMessage(tickerAt(ts))
+        ingestion.onMessage(first)
+        ingestion.onMessage(sameMs)
 
-        verify(exactly = 1) { tickerCacheService.save(any()) }
-        verify(exactly = 1) { metrics.recordOutOfOrder("binance") }
+        verify(exactly = 1) { cache.save(first) }
+        verify(exactly = 1) { cache.save(sameMs) }
+        verify(exactly = 0) { metrics.recordOutOfOrder("binance") }
+        assertThat(ingestion.latest()?.ticker).isEqualTo(sameMs)
     }
 
     @Test
-    fun `cache save 5회 연속 실패면 sendCriticalAlert가 호출되고 counter는 리셋된다`() {
-        every { tickerCacheService.save(any()) } throws RuntimeException("redis down")
-        repeat(5) { ingestion.onMessage(tickerAt(Instant.parse("2026-05-12T00:00:00Z").plusMillis(it.toLong()))) }
-
-        verify(exactly = 5) { metrics.recordFlushError(eq("binance"), any()) }
-        verify(exactly = 1) { alertService.sendCriticalAlert(match { it.contains("5회 연속") }) }
-    }
-
-    @Test
-    fun `동시에 다수 스레드에서 호출해도 최종 latest는 max timestamp가 된다 (CAS atomic)`() {
-        val threadCount = 16; val perThread = 100
+    fun `동시에 다수 스레드에서 호출해도 최종 latest는 최대 timestamp가 된다 (CAS atomic 보장)`() {
+        val threadCount = 16
+        val perThread = 100
         val executor = Executors.newFixedThreadPool(threadCount)
         val latch = CountDownLatch(threadCount)
         val base = Instant.parse("2026-05-12T00:00:00Z")
@@ -94,15 +102,29 @@ class BinanceTickerIngestionTest {
                     repeat(perThread) { i ->
                         ingestion.onMessage(tickerAt(base.plusMillis((t * perThread + i).toLong())))
                     }
-                } finally { latch.countDown() }
+                } finally {
+                    latch.countDown()
+                }
             }
         }
         assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue
         executor.shutdownNow()
 
-        // lastTimestamp는 private이므로 마지막 onMessage가 stale 처리되는지로 확인
-        ingestion.onMessage(tickerAt(base.plusMillis(maxOffsetMs - 1))) // max-1은 stale이어야 함
-        verify(atLeast = 1) { metrics.recordOutOfOrder("binance") }
+        val final = ingestion.latest()
+        assertThat(final).isNotNull
+        assertThat(final!!.ticker.timestamp).isEqualTo(base.plusMillis(maxOffsetMs))
+    }
+
+    @Test
+    fun `cache save 5회 연속 실패면 sendCriticalAlert가 호출되고 counter는 리셋된다`() {
+        every { cache.save(any()) } throws RuntimeException("redis down")
+
+        repeat(5) {
+            ingestion.onMessage(tickerAt(Instant.parse("2026-05-12T00:00:00Z").plusMillis(it.toLong())))
+        }
+
+        verify(exactly = 5) { metrics.recordFlushError(eq("binance"), any()) }
+        verify(exactly = 1) { alertService.sendCriticalAlert(match { it.contains("5회 연속") }) }
     }
 
     private fun tickerAt(timestamp: Instant) = TickerData(

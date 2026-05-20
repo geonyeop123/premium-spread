@@ -14,11 +14,13 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * 바이낸스 WebSocket으로 도착한 TickerData를 monotonic 검증 후 캐시에 저장한다.
+ * 바이낸스 WebSocket(@bookTicker)으로 도착한 TickerData를 in-memory에 보관하고 hash를 갱신한다.
  *
- * - `@miniTicker`는 1초 고정 push이므로 별도 down-sample 불필요. 메시지 수신 즉시 hash + 초ZSet 동시 저장.
- * - monotonic은 `updateAndGet` CAS로 atomic — 동시 메시지 race 차단.
- * - 캐시 write 실패 5회 연속 → critical alert (silent data loss 방지).
+ * - hash 갱신은 메시지 수신 시점 (exchange timestamp 그대로). TTL freshness 의미 보존.
+ * - ZSet 저장은 [BinanceFlushJob]이 1초 주기로 처리 (down-sample) — bookTicker는 초당 수십~수백 건 push.
+ * - monotonic check는 `updateAndGet` CAS로 atomic — strict하게 오래된 메시지만 폐기.
+ *   같은 ms 타임스탬프는 수용 (bookTicker는 동일 eventTime ms에 복수 push가 정상).
+ * - 캐시 저장 실패 5회 연속 → critical alert.
  */
 @Component
 @ConditionalOnProperty("premium.ingestion.binance.mode", havingValue = "websocket")
@@ -29,41 +31,49 @@ class BinanceTickerIngestion(
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val lastTimestamp = AtomicReference<Instant?>(null)
+    private val lastTicker = AtomicReference<LatestTicker?>(null)
     private val consecutiveSaveFailures = AtomicInteger(0)
 
+    data class LatestTicker(val ticker: TickerData, val receivedAt: Instant)
+
     fun onMessage(ticker: TickerData) {
-        // Atomic monotonic CAS: strict ordering — 같거나 이전이면 폐기.
-        // updateAndGet 람다는 retry될 수 있으므로 prev 캡처는 안전하지 않다. 대신 compareAndSet 루프로 명시.
-        while (true) {
-            val prev = lastTimestamp.get()
-            if (prev != null && !ticker.timestamp.isAfter(prev)) {
-                metrics.recordOutOfOrder(EXCHANGE)
-                log.debug("Discard out-of-order binance ticker: prev={}, current={}", prev, ticker.timestamp)
-                return
-            }
-            if (lastTimestamp.compareAndSet(prev, ticker.timestamp)) break
-            // CAS 실패: 다른 스레드가 먼저 업데이트 → 재평가
+        val now = Instant.now(clock)
+        val candidate = LatestTicker(ticker, now)
+
+        // Atomic monotonic CAS — strict하게 오래된 메시지만 폐기. 같은 ms 타임스탬프는 수용
+        // (bookTicker는 동일 eventTime ms에 복수 메시지가 정상).
+        val updated = lastTicker.updateAndGet { prev ->
+            if (prev != null && ticker.timestamp.isBefore(prev.ticker.timestamp)) prev else candidate
+        }
+        if (updated !== candidate) {
+            metrics.recordOutOfOrder(EXCHANGE)
+            log.debug(
+                "Discard out-of-order binance ticker: prev={}, current={}",
+                updated?.ticker?.timestamp, ticker.timestamp,
+            )
+            return
         }
 
-        val now = Instant.now(clock)
+        // lag 메트릭 (exchange timestamp → now)
         val lagMs = Duration.between(ticker.timestamp, now).toMillis().coerceAtLeast(0)
         metrics.recordLag(EXCHANGE, lagMs)
 
+        // Hash 저장 — 실패 시 메트릭 + threshold alert (lastTicker는 이미 갱신됐으므로 ZSet은 다음 flush에서 가능)
         try {
             tickerCacheService.save(ticker)
-            tickerCacheService.saveToSeconds(ticker)
             consecutiveSaveFailures.set(0)
         } catch (e: Exception) {
             metrics.recordFlushError(EXCHANGE, e)
             val failures = consecutiveSaveFailures.incrementAndGet()
-            log.warn("Binance ingestion cache write failed (consecutive={}): {}", failures, e.message)
+            log.warn("Binance ingestion hash save failed (consecutive={}): {}", failures, e.message)
             if (failures >= FAILURE_ALERT_THRESHOLD) {
-                alertService.sendCriticalAlert("[binance] WebSocket ingestion 캐시 저장 5회 연속 실패: ${e.message}")
+                alertService.sendCriticalAlert("[binance] WebSocket ingestion hash 저장 5회 연속 실패: ${e.message}")
                 consecutiveSaveFailures.set(0)
             }
         }
     }
+
+    fun latest(): LatestTicker? = lastTicker.get()
 
     companion object {
         private const val EXCHANGE = "binance"
