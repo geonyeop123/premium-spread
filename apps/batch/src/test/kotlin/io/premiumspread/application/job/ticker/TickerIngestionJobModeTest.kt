@@ -59,12 +59,15 @@ class TickerIngestionJobModeTest {
     }
 
     @Test
-    fun `둘 다 websocket이면 아무 REST도 호출하지 않고 Success를 반환한다`() {
+    fun `둘 다 websocket이면 아무 REST도 호출하지 않고 Skipped를 반환한다`() {
+        // no-op인데 Success를 반환하면 JobExecutor가 last-run/success를 갱신해
+        // WebSocket 수집 장애를 legacy ticker 헬스가 가린다 → Skipped로 명시 (#54)
         val job = TickerIngestionJob(bithumbClient, binanceClient, cache, binanceMode = "websocket", bithumbMode = "websocket")
 
         val result = job.run()
 
-        assertThat(result).isEqualTo(JobResult.Success)
+        assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
+        assertThat((result as JobResult.Skipped).reason).isEqualTo("no_rest_sources")
         coVerify(exactly = 0) { bithumbClient.getBtcTicker() }
         coVerify(exactly = 0) { binanceClient.getBtcFuturesTicker() }
         verify(exactly = 0) { cache.save(any()) }

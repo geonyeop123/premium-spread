@@ -59,6 +59,18 @@ premium:
 - YAML 파싱 정상.
 - `premium.ingestion.binance.mode == websocket`, `premium.ingestion.bithumb.mode == websocket`.
 
+## Task 2.5 — TickerIngestionJob no-op 경로를 Skipped로 정정 (codex 코드리뷰 반영)
+
+**파일:** `apps/batch/src/main/kotlin/io/premiumspread/application/job/ticker/TickerIngestionJob.kt`
+
+`run()` 시작부에 가드 추가: `bithumbMode != "rest" && binanceMode != "rest"`이면
+`JobResult.Skipped("no_rest_sources")` 반환. 양쪽 websocket(=prd)일 때 no-op인데도
+`Success`를 반환하면 `JobExecutor`가 `batch:last_run:ticker`/`scheduler.ticker.success`를
+갱신해 WebSocket 수집 장애를 가린다.
+
+**검증:** `TickerIngestionJobTest` / `TickerIngestionJobModeTest`에
+양쪽 websocket → `Skipped`, 한쪽만 websocket → `Success` 케이스 추가/갱신.
+
 ## Task 3 — 빌드/테스트
 
 ```bash
@@ -69,6 +81,7 @@ premium:
 
 ## 체크리스트
 
-- [ ] Task 1 — logback `prod` → `prd` rename (`dev`/`local`/`default` 보존)
-- [ ] Task 2 — `application-prd.yml` ingestion 모드 추가
-- [ ] Task 3 — 빌드/테스트 통과
+- [x] Task 1 — logback `prod` → `prd` rename (`dev`/`local`/`default` 보존)
+- [x] Task 2 — `application-prd.yml` ingestion 모드 추가
+- [x] Task 2.5 — `TickerIngestionJob` no-op 경로 Skipped 정정 (codex 리뷰 반영)
+- [x] Task 3 — 빌드/테스트 통과

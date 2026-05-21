@@ -1,6 +1,7 @@
 package io.premiumspread.application.job.ticker
 
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -123,6 +124,49 @@ class TickerIngestionJobTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
+        }
+
+        @Test
+        fun `양쪽 모두 websocket 모드면 REST fetch 없이 Skipped를 반환한다`() {
+            // given — prd 운영 환경: binance/bithumb 모두 websocket 수집
+            val websocketJob = TickerIngestionJob(
+                bithumbClient = bithumbClient,
+                binanceClient = binanceClient,
+                tickerCacheService = tickerCacheService,
+                binanceMode = "websocket",
+                bithumbMode = "websocket",
+            )
+
+            // when
+            val result = websocketJob.run()
+
+            // then — no-op이므로 Success가 아닌 Skipped (JobExecutor가 last-run/success를 갱신하지 않게)
+            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
+            assertThat((result as JobResult.Skipped).reason).isEqualTo("no_rest_sources")
+            verify(exactly = 0) { tickerCacheService.save(any()) }
+            verify(exactly = 0) { tickerCacheService.saveToSeconds(any()) }
+        }
+
+        @Test
+        fun `한쪽만 websocket이면 나머지 REST 수집은 정상 수행하고 Success를 반환한다`() {
+            // given — local 환경: binance websocket, bithumb rest
+            val mixedJob = TickerIngestionJob(
+                bithumbClient = bithumbClient,
+                binanceClient = binanceClient,
+                tickerCacheService = tickerCacheService,
+                binanceMode = "websocket",
+                bithumbMode = "rest",
+            )
+            val bithumb = bithumbTicker()
+            coEvery { bithumbClient.getBtcTicker() } returns bithumb
+
+            // when
+            val result = mixedJob.run()
+
+            // then — bithumb REST는 수행되므로 Success
+            assertThat(result).isEqualTo(JobResult.Success)
+            verify { tickerCacheService.save(bithumb) }
+            coVerify(exactly = 0) { binanceClient.getBtcFuturesTicker() }
         }
 
         @Test

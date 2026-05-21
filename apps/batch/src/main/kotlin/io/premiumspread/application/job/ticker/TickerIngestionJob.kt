@@ -21,6 +21,12 @@ class TickerIngestionJob(
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun run(): JobResult {
+        // 양쪽 모두 REST가 아니면(=WebSocket 수집) 이 Job은 수행할 작업이 없다.
+        // no-op인데 Success를 반환하면 JobExecutor가 scheduler.ticker.success/batch:last_run:ticker를
+        // 갱신해 WebSocket 수집 장애를 legacy ticker 헬스가 가리게 된다 → Skipped로 명시.
+        if (bithumbMode != REST_MODE && binanceMode != REST_MODE) {
+            return JobResult.Skipped(NO_REST_SOURCE_REASON)
+        }
         return try {
             runBlocking {
                 val bithumbDeferred = if (bithumbMode == REST_MODE) async { bithumbClient.getBtcTicker() } else null
@@ -50,5 +56,6 @@ class TickerIngestionJob(
 
     companion object {
         private const val REST_MODE = "rest"
+        private const val NO_REST_SOURCE_REASON = "no_rest_sources"
     }
 }

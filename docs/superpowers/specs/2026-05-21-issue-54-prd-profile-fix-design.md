@@ -50,6 +50,14 @@
      제거 시 dev 기동에서 동일한 무로깅 장애가 재발함.
 2. batch `application-prd.yml`에
    `premium.ingestion.binance.mode: websocket` + `premium.ingestion.bithumb.mode: websocket` 추가.
+3. (codex 코드리뷰 반영) `TickerIngestionJob.run()`이 양쪽 모두 비-REST 모드일 때
+   `JobResult.Success` 대신 `JobResult.Skipped("no_rest_sources")`를 반환하도록 수정.
+   - prd가 둘 다 websocket이 되면 `TickerIngestionJob`은 no-op인데 기존엔 `Success` 반환.
+   - `JobExecutor`는 `Success`에만 `batch:last_run:ticker` 갱신 + `scheduler.ticker.success`
+     카운트 → WebSocket 수집이 끊겨도 legacy ticker 헬스가 falsely-green.
+   - `Skipped`는 `scheduler.ticker.skipped` 카운트만 올리고 last-run을 갱신하지 않음
+     (`JobExecutor`의 기존 lock-miss 처리와 동일 패턴). REST 폴링 코드/스케줄러는
+     #32 롤백 대비로 유지 — 헬스 시그널만 정정.
 
 ## 비목표
 
@@ -76,6 +84,7 @@
 - [ ] logback `local` / `dev` / `default` 블록 보존.
 - [ ] XML well-formed.
 - [ ] batch `application-prd.yml`에 binance/bithumb mode `websocket` 추가.
+- [ ] `TickerIngestionJob.run()`이 양쪽 비-REST 모드에서 `JobResult.Skipped` 반환.
 - [ ] `./gradlew :apps:batch:compileKotlin :apps:batch:test` 통과.
 
 ## 영향 범위
