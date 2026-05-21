@@ -1,6 +1,6 @@
 # Project Status
 
-> Last updated: 2026-05-18 (이슈 #44 — 프론트엔드 Position AUTO/MANUAL 폼 분리 + PnL KRW 표시 반영)
+> Last updated: 2026-05-20 (이슈 #51/#52 — Binance miniTicker 주기 오기재 정정 + bookTicker 전환)
 
 ## Current State
 
@@ -18,6 +18,8 @@
 ## Recent Changes
 
 ```text
+docs: Binance miniTicker 주기 정정 + bookTicker 전환 반영 (#51, #52)
+feat: Binance WebSocket bookTicker 전환 + BinanceFlushJob 1초 down-sample (#52)
 feat: Position 프론트엔드 AUTO/MANUAL 폼 분리 + PnL KRW 표시 (#44)
 feat: Position PnL 수식 페어 기반 KRW 손익으로 확장 (#43)
 feat: Position 오픈 AUTO/MANUAL 엔드포인트 분기 (#42)
@@ -59,7 +61,8 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 - [x] 이슈 #27: 회원 프리미엄 임계값 도달 이메일 알림 (NotificationSubscription CRUD + 비동기 이벤트 리스너 + supports/email)
 
 - [x] Phase 1 (#29): WebSocket 공통 인프라 — Reactor Netty 기반 `WebSocketConnectionManager`, `WebSocketMetrics` (9종), `HeartbeatPolicy`, `WebSocketConnectionConfig`, 단위 테스트 18개
-- [x] Phase 2 (#30): 바이낸스 Futures WebSocket 실시간 수집 — `BinanceWebSocketClient` + `BinanceTickerIngestion` (CAS strict monotonic + lag 측정), `premium.ingestion.binance.mode` 토글, `TickerIngestionJob` mode 분기 + atomic await
+- [x] Phase 2 (#30): 바이낸스 Futures WebSocket 실시간 수집 — `BinanceWebSocketClient` + `BinanceTickerIngestion` (CAS accept-equal monotonic + latest 보관), `premium.ingestion.binance.mode` 토글, `TickerIngestionJob` mode 분기 + atomic await
+- [x] 이슈 #52: Binance bookTicker 전환 — `@miniTicker`(실제 2초 주기) → `@bookTicker`(변동 시 실시간 push), 가격 = best bid/ask mid, `BinanceFlushJob`/`BinanceFlushScheduler` 신규 (빗썸 패턴 이식, 1초 down-sample), accept-equal monotonic으로 완화 (#51 문서 오기재 함께 정정)
 - [x] Phase 3 (#31): 빗썸 WebSocket 1Hz down-sample 수집 — `BithumbWebSocketClient` + `BithumbTickerIngestion` (AtomicReference 최신값 유지, same-second 수용), `BithumbFlushJob/Scheduler` (thin entrypoint), `TickerCacheService.saveToSecondsWithScore` (`{epochMs}:{price}` ZSet member 포맷)
 - [x] 이슈 #41: Position 도메인 한국/해외 페어 모델로 재구조화 — Flyway V12 (단일 거래소 컬럼 → korea_* rename + foreign_* 4개 컬럼 신규), `Position` 엔티티에 한국 long + 해외 short 페어 필드 + `foreignLeverage` (1~125), 도메인 검증 (`koreaExchange.region == KOREA`, `foreignExchange.region == FOREIGN` 및 `FX_PROVIDER` 거절, 수량/가격/환율 양수), `entryPremiumRate` 서버 계산 (`Premium.calculatePremiumRate`와 동일 `DIVISION_SCALE=10`, scale=2), Command/Criteria/Result/Request/Response/Controller 페어 필드로 변환, `POST /api/v1/positions` 페어 본문으로 교체
 - [x] 이슈 #42: Position 오픈 AUTO/MANUAL 엔드포인트 분기 — `POST /api/v1/positions/auto` (서버가 `PremiumService.findLatestSnapshotBySymbol`로 진입가/환율/관측시각 자동 채움, 60초 신선도 검증) + `POST /api/v1/positions/manual` (진입가/환율/관측시각 사용자 입력) 신설, 루트 `POST /api/v1/positions` 제거 (405 응답). `PremiumSnapshotNotAvailableException`/`StalePremiumSnapshotException` 신규 + GlobalExceptionHandler 409 매핑, `HttpRequestMethodNotSupportedException` 405 매핑. DTO `PositionCriteria.Open`/`PositionRequest.Open` → `OpenAuto`+`OpenManual` 분리, Controller 두 엔드포인트로 분기.
@@ -73,6 +76,7 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 | Phase 1 (#29) | WebSocket 공통 인프라 (ConnectionManager + Metrics) | ✅ 완료 |
 | Phase 2 (#30) | 바이낸스 WebSocket 클라이언트 + REST/WS 모드 토글 | ✅ 완료 |
 | Phase 3 (#31) | 빗썸 WebSocket 클라이언트 + 1Hz 다운샘플 + ZSet 저장 | ✅ 완료 |
+| #51 / #52 | Binance miniTicker 주기 오기재 정정 + bookTicker 전환 + BinanceFlushJob 1초 down-sample | ✅ 완료 |
 | Phase 4 | REST 폴링 클라이언트 제거 + 규칙 문서화 | 예정 |
 
 ### Epic #40 — Position 도메인 페어 모델 + AUTO/MANUAL 분기 + 프론트엔드

@@ -15,13 +15,16 @@ import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * 바이낸스 BTCUSDT 무기한 선물 `@miniTicker` (1초 push) WebSocket 구독.
+ * 바이낸스 BTCUSDT 무기한 선물 `@bookTicker` (best bid/ask 실시간 push) WebSocket 구독.
  *
  * - 연결 직후 별도 subscribe 메시지 불필요 (URL에 채널이 포함됨).
+ * - 가격은 best bid/ask의 mid `(b + a) / 2`로 산정한다.
  * - 메시지마다 [BinanceTickerIngestion]로 위임.
  * - parse 실패는 `ws.parse.error{exchange=binance}` counter 증가 + 5회 연속 시 critical alert.
  */
@@ -72,15 +75,19 @@ class BinanceWebSocketClient(
 
     internal fun parse(payload: String): TickerData? {
         return try {
-            val msg = objectMapper.readValue(payload, BinanceMiniTickerMessage::class.java)
-            val price = msg.close.toBigDecimalOrNull()
-                ?: return recordParseError("invalid price: ${msg.close}")
+            val msg = objectMapper.readValue(payload, BinanceBookTickerMessage::class.java)
+            val bid = msg.bestBid.toBigDecimalOrNull()
+                ?: return recordParseError("invalid bestBid: ${msg.bestBid}")
+            val ask = msg.bestAsk.toBigDecimalOrNull()
+                ?: return recordParseError("invalid bestAsk: ${msg.bestAsk}")
+            // 가격 = mid = (bestBid + bestAsk) / 2. scale·RoundingMode 명시 (defensive).
+            val price = bid.add(ask).divide(BigDecimal(2), MID_PRICE_SCALE, RoundingMode.HALF_UP)
             TickerData(
                 exchange = EXCHANGE_UPPER,
                 symbol = extractBaseSymbol(msg.symbol),
                 currency = CURRENCY,
                 price = price,
-                volume = msg.volume?.toBigDecimalOrNull(),
+                volume = null,
                 timestamp = Instant.ofEpochMilli(msg.eventTime),
             )
         } catch (e: Exception) {
@@ -106,11 +113,16 @@ class BinanceWebSocketClient(
     }
 
     companion object {
-        const val URL = "wss://fstream.binance.com/market/ws/btcusdt@miniTicker"
+        // 엔트리포인트는 `/public`. bookTicker는 `/market`에서 핸드셰이크만 되고 프레임 0건(silent failure)이며,
+        // `/public/ws/<symbol>@bookTicker`만 실시간 프레임을 push한다 (endpoint probe로 검증).
+        // 참고: miniTicker는 `/market`에서 동작했으나(#46/#51) bookTicker는 엔트리포인트가 다르다.
+        const val URL = "wss://fstream.binance.com/public/ws/btcusdt@bookTicker"
         private const val EXCHANGE = "binance"
         private const val EXCHANGE_UPPER = "BINANCE"
         // issue spec 준수: 다운스트림 TickerAggregationScheduler가 "USD"로 조회하므로 통일.
         private const val CURRENCY = "USD"
+        // mid 계산 시 나눗셈 결과 정밀도 — BTC 선물 가격은 소수 1~2자리이므로 8자리면 충분.
+        private const val MID_PRICE_SCALE = 8
         private const val PARSE_FAILURE_ALERT_THRESHOLD = 5
     }
 }
