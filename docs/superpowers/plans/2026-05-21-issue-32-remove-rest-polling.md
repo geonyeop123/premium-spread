@@ -25,11 +25,19 @@ REST 1초 폴링 수집 경로와 `premium.ingestion.*.mode` 피처 플래그를
 
 - [ ] 완료
 
-## Task 2: 피처 플래그 `@ConditionalOnProperty` 제거
+## Task 2: 피처 플래그 `@ConditionalOnProperty` → `@Profile("!test")` 교체
 
 다음 8개 파일에서 `@ConditionalOnProperty("premium.ingestion.*.mode", havingValue="websocket")`
-어노테이션 줄과 `import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty`
-줄을 제거한다 (다른 용도로 import가 쓰이지 않음).
+어노테이션 줄을 제거하고, 대신 `@Profile("!test")`를 추가한다.
+import는 `org.springframework.boot.autoconfigure.condition.ConditionalOnProperty` 제거 +
+`org.springframework.context.annotation.Profile` 추가.
+
+**`@Profile("!test")` 이유 (codex 리뷰 ISSUE-1)**: `@ConditionalOnProperty`를 단순 제거하면
+`BinanceWebSocketClient`/`BithumbWebSocketClient` 빈이 모든 `@SpringBootTest`(integration test)
+컨텍스트에 등록되어 `@PostConstruct start()`가 실제 거래소로 outbound WS 연결을 연다.
+`test` 프로파일은 이미 `scheduling.enabled=false`/`redis.enabled=false`로 운영 빈을
+비활성화하므로 `@Profile("!test")`가 일관적이다. WS 통합 테스트는 `WebSocketConnectionManager`를
+수동 생성하므로 영향 없음.
 
 - `client/binance/BinanceWebSocketClient.kt`
 - `client/bithumb/BithumbWebSocketClient.kt`
@@ -99,10 +107,13 @@ REST 1초 폴링 수집 경로와 `premium.ingestion.*.mode` 피처 플래그를
 
 ```bash
 ./gradlew :apps:batch:compileKotlin :apps:batch:test
+./gradlew :apps:batch:integrationTest   # Docker 필요 — @Tag("integration")는 test 태스크에서 제외됨
 ./gradlew compileKotlin
 ```
 
 끊긴 참조(컴파일 에러)가 있으면 해소. 모두 통과해야 한다.
+integration test는 `@Profile("!test")` 적용으로 실제 WS 연결 없이 컨텍스트가 로드되는지 검증한다.
+Docker 미가용 환경이면 PR 본문에 명시하고 unit test + compile로 대체.
 
 - [ ] 완료
 

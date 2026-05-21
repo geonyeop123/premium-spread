@@ -94,11 +94,30 @@ REST 1초 폴링 경로와 `rest | websocket` 피처 플래그를 완전히 제�
 
 ## 영향 분석
 
-- WebSocket 통합 테스트(`BinanceWebSocketIntegrationTest`, `BithumbWebSocketIntegrationTest`)는
-  자체 Mock WebSocket을 사용하므로 영향 없음. 단 `@ConditionalOnProperty` 제거 후 `test` 프로파일에서도
-  WS 컴포넌트가 항상 빈으로 등록되므로, 통합 테스트 컨텍스트 로딩에 문제 없는지 확인 필요.
+### ⚠️ test 프로파일 WebSocket 자동 시작 회귀 (codex 리뷰 ISSUE-1)
+
+`@ConditionalOnProperty` 제거 후, Spring-managed `BinanceWebSocketClient`/`BithumbWebSocketClient`
+빈이 **모든 `@SpringBootTest` 컨텍스트**(integration test)에 등록된다. 두 클라이언트는
+`@PostConstruct start()`에서 실제 거래소(`fstream.binance.com`, `pubwss.bithumb.com`)로
+outbound WebSocket 연결을 연다. 현재는 `test` 프로파일에서 `premium.ingestion.*.mode`가
+`rest`(application.yml 기본값)이라 WS 빈이 등록되지 않아 안전했다.
+
+**대응**: WebSocket 컴포넌트 8개에 `@Profile("!test")`를 추가한다. `test` 프로파일은 이미
+`scheduling.enabled=false`, `redis.enabled=false`로 운영 빈을 비활성화하는 패턴을 쓰므로 일관적이다.
+WebSocket 통합 테스트(`BinanceWebSocketIntegrationTest`, `BithumbWebSocketIntegrationTest`)는
+`WebSocketConnectionManager`를 **수동 생성**해 Mock WebSocket Server에 붙으므로
+Spring-managed 빈에 의존하지 않는다 → `@Profile("!test")` 영향 없음.
+
+`@Profile("!test")` 대상 8개: `BinanceWebSocketClient`, `BithumbWebSocketClient`,
+`BinanceTickerIngestion`, `BinanceFlushJob`, `BinanceFlushScheduler`,
+`BithumbTickerIngestion`, `BithumbFlushJob`, `BithumbFlushScheduler`.
+
+### 기타
+
 - `JobExecutor`는 집계 Job에서 계속 사용 → 유지.
 - `WebClientConfig` 자체는 `exchangeRateWebClient` 때문에 유지.
+- DoD 검증에 `./gradlew :apps:batch:integrationTest`를 추가한다 (배치 통합 테스트는
+  `:apps:batch:test`에서 `@Tag("integration")` 제외로 빠지므로 별도 실행 필요).
 
 ## 문서 갱신
 
@@ -119,8 +138,10 @@ REST 1초 폴링 경로와 `rest | websocket` 피처 플래그를 완전히 제�
 ## DoD
 
 - `./gradlew :apps:batch:compileKotlin :apps:batch:test` 통과
+- `./gradlew :apps:batch:integrationTest` 통과 (Docker 필요 — 실행 불가 시 PR 본문에 명시)
 - `./gradlew compileKotlin` 통과 (멀티모듈 끊긴 참조 없음)
 - `premium.ingestion.*.mode` 키가 3개 yml 모두에서 제거됨
+- WS 컴포넌트 8개에 `@Profile("!test")` 적용 — test 프로파일에서 실제 WS 연결 미발생
 - `.ai/rules/batch.md`에 WebSocket ingestion 패턴 6개 항목 명문화 완료
 - `grep "premium.ingestion\|TickerScheduler\|TickerIngestionJob\|BinanceClient\|BithumbClient"` 결과 0건 (테스트/문서 제외)
 
