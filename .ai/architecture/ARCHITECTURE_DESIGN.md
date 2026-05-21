@@ -1,12 +1,12 @@
 # Premium Spread System Architecture
 
-> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-18, 이슈 #44 프론트엔드 AUTO/MANUAL 폼 분리 + PnL KRW 표시 반영)
+> 구현 기준(As-Is) 아키텍처 문서 (갱신: 2026-05-21, 이슈 #32 REST 폴링 코드 제거 — WebSocket 수집 전용)
 
 ## System Overview
 
 - 목적: 한국/해외 거래소 가격과 환율을 수집해 프리미엄을 계산하고, Redis + DB 집계 데이터를 API 조회 경로에 제공
 - 실행 주기:
-  - Ticker 수집: 1초
+  - Ticker 수집: WebSocket 실시간 push (Hash) + 1초 ZSet down-sample flush
   - Premium 계산: 1초
   - FX 수집: 30분 (+ 앱 시작 후 1회)
   - 집계: 1분 / 1시간 / 1일
@@ -18,10 +18,10 @@ premium-spread/
 ├── apps/
 │   ├── api/              # REST API 서버 (Port 8080)
 │   └── batch/            # 배치 스케줄러 (Port 8081)
-│       ├── scheduler/    # @Scheduled 작업 (TickerScheduler, BithumbFlushScheduler, ...)
+│       ├── scheduler/    # @Scheduled 작업 (Binance/BithumbFlushScheduler, 집계 scheduler, ...)
 │       ├── client/       # External API Client
-│       │   ├── binance/  # BinanceClient(REST) + BinanceWebSocketClient (Phase 2, #30)
-│       │   └── bithumb/  # BithumbClient(REST) + BithumbWebSocketClient (Phase 3, #31)
+│       │   ├── binance/  # BinanceWebSocketClient (Phase 2, #30 → #52 bookTicker 전환)
+│       │   └── bithumb/  # BithumbWebSocketClient (Phase 3, #31)
 │       ├── cache/        # Redis Cache Writer (TickerCacheService.saveToSecondsWithScore 추가)
 │       ├── repository/   # DB Writer (JdbcTemplate)
 │       └── infrastructure/
@@ -48,17 +48,7 @@ premium-spread/
 
 ### 1) Ticker 수집
 
-거래소별로 REST 폴링과 WebSocket 수신 중 하나를 선택할 수 있다 (`premium.ingestion.{binance,bithumb}.mode = rest | websocket`, 기본값 `rest`). 양 모드 모두 동일한 캐시 키(Hash + 초ZSet)에 저장하므로 다운스트림(집계/조회)은 무영향.
-
-#### 1-a) REST 모드 (기본, Phase 4에서 제거 예정)
-
-1. `TickerScheduler`가 1초마다 실행 (`lock:ticker:all`)
-2. `TickerIngestionJob`가 mode 분기 후, 활성 거래소만 병렬 호출 (`async { client.getBtcTicker() }`)
-3. **양쪽 await 완료 후** `TickerCacheService` 저장 (한쪽 실패 시 다른쪽도 캐시에 쓰지 않음 — atomic await)
-   - 현재값 Hash: `ticker:{exchange}:{symbol}`
-   - 초당 ZSet: `ticker:seconds:{exchange}:{symbol}`
-
-#### 1-b) WebSocket 모드 (Phase 2/3, #30/#31)
+거래소 시세는 WebSocket 실시간 스트림으로 수집한다 (REST 폴링 경로는 #32에서 제거). 거래소 메시지 수신 시점에 현재값 Hash(`ticker:{exchange}:{symbol}`)를 갱신하고, 별도 1초 flush Job이 초당 ZSet(`ticker:seconds:{exchange}:{symbol}`)을 down-sample로 갱신한다. WebSocket 컴포넌트는 `@Profile("!test")`로 가드되어 `test` 프로파일에서는 실제 연결을 열지 않는다.
 
 **바이낸스 — 실시간 push (`@bookTicker` 채널, best bid/ask mid)**
 

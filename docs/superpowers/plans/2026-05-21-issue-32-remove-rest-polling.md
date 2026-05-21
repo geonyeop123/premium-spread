@@ -23,7 +23,7 @@ REST 1초 폴링 수집 경로와 `premium.ingestion.*.mode` 피처 플래그를
 
 `application/job/ticker/` 디렉터리가 비면 함께 제거.
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 2: 피처 플래그 `@ConditionalOnProperty` → `@Profile("!test")` 교체
 
@@ -50,14 +50,14 @@ import는 `org.springframework.boot.autoconfigure.condition.ConditionalOnPropert
 
 `PremiumSpreadBatchApplication.kt`의 `@ConditionalOnProperty("scheduling.enabled")`는 건드리지 않음.
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 3: WebClientConfig REST 빈 제거
 
 `client/config/WebClientConfig.kt`에서 `binanceWebClient()`, `bithumbWebClient()` 빈 메서드를 제거한다.
 `exchangeRateWebClient()`와 `createWebClient()` 헬퍼는 유지.
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 4: Redis 키/TTL 정리
 
@@ -66,7 +66,7 @@ import는 `org.springframework.boot.autoconfigure.condition.ConditionalOnPropert
 
 `Lock.FX_LEASE`, `Lock.PREMIUM_LEASE`는 유지.
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 5: YAML 피처 플래그 키 제거
 
@@ -76,7 +76,7 @@ import는 `org.springframework.boot.autoconfigure.condition.ConditionalOnPropert
 - `apps/batch/src/main/resources/application-local.yml` (라인 4-9)
 - `apps/batch/src/main/resources/application-prd.yml` (라인 16-23, 주석 포함)
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 6: 테스트 파일 삭제
 
@@ -88,7 +88,7 @@ import는 `org.springframework.boot.autoconfigure.condition.ConditionalOnPropert
 - `application/job/ticker/TickerIngestionJobModeTest.kt`
 - `config/IngestionModeConfigTest.kt`
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 7: BatchTestConfig 정리
 
@@ -101,7 +101,7 @@ import는 `org.springframework.boot.autoconfigure.condition.ConditionalOnPropert
 
 유지: `exchangeRateMockServer()`, `@Primary exchangeRateClient(...)`, 그 외 전부.
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 8: 빌드/테스트 검증
 
@@ -115,7 +115,7 @@ import는 `org.springframework.boot.autoconfigure.condition.ConditionalOnPropert
 integration test는 `@Profile("!test")` 적용으로 실제 WS 연결 없이 컨텍스트가 로드되는지 검증한다.
 Docker 미가용 환경이면 PR 본문에 명시하고 unit test + compile로 대체.
 
-- [ ] 완료
+- [x] 완료
 
 ## Task 9: 문서 갱신
 
@@ -144,5 +144,5 @@ Docker 미가용 환경이면 PR 본문에 명시하고 unit test + compile로 �
 - Recent Changes에 `refactor: REST 폴링 코드 제거 (#32)` 추가
 - TODO/Completed 갱신
 
-- [ ] 완료
+- [x] 완료
 </content>

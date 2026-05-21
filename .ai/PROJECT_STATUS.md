@@ -1,13 +1,13 @@
 # Project Status
 
-> Last updated: 2026-05-20 (이슈 #51/#52 — Binance miniTicker 주기 오기재 정정 + bookTicker 전환)
+> Last updated: 2026-05-21 (이슈 #32 — REST 폴링 코드 제거, WebSocket 수집 전용)
 
 ## Current State
 
 | Module | Status | Notes |
 |--------|--------|-------|
 | apps/api | Active | MVP 1 백엔드 완료, JWT Stateless 인증, DB 쿼리 최적화 (N+1·인덱스·currency 컬럼), 회원 알림 구독 CRUD (이슈 #27), Position 도메인 한국/해외 페어 모델로 재구조화 (이슈 #41), Position 오픈 AUTO/MANUAL 엔드포인트 분기 (이슈 #42), Position PnL 페어 기반 KRW 손익 확장 (이슈 #43) |
-| apps/batch | Active | 1초/30분 수집 + 1분/1시간/1일 집계, PremiumUpdatedEvent + 이메일 알림 리스너 (이슈 #27), WebSocket 공통 인프라 + Binance/Bithumb WS 수집 (Phase 1/2/3) |
+| apps/batch | Active | WebSocket 실시간 시세 수집(Binance/Bithumb) + FX 30분 수집 + 1분/1시간/1일 집계, PremiumUpdatedEvent + 이메일 알림 리스너 (이슈 #27), REST 폴링 코드 제거 완료 (이슈 #32, Epic #28 Phase 4) |
 | apps/web | Active | Next.js 16 + shadcn/ui + TradingView Charts, 대시보드/포지션/인증 UI, Position 오픈 AUTO/MANUAL 폼 분리 + PnL KRW 표시 (이슈 #44) |
 | modules/redis | Active | ZSet 중복 제거 + 캐시 워밍, AggregationTimeUnit(DAYS 추가), TTL 확장 |
 | modules/jpa | Stable | - |
@@ -18,6 +18,7 @@
 ## Recent Changes
 
 ```text
+refactor: REST 폴링 수집 코드 및 피처 플래그 제거 (#32)
 docs: Binance miniTicker 주기 정정 + bookTicker 전환 반영 (#51, #52)
 feat: Binance WebSocket bookTicker 전환 + BinanceFlushJob 1초 down-sample (#52)
 feat: Position 프론트엔드 AUTO/MANUAL 폼 분리 + PnL KRW 표시 (#44)
@@ -64,6 +65,7 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 - [x] Phase 2 (#30): 바이낸스 Futures WebSocket 실시간 수집 — `BinanceWebSocketClient` + `BinanceTickerIngestion` (CAS accept-equal monotonic + latest 보관), `premium.ingestion.binance.mode` 토글, `TickerIngestionJob` mode 분기 + atomic await
 - [x] 이슈 #52: Binance bookTicker 전환 — `@miniTicker`(실제 2초 주기) → `@bookTicker`(변동 시 실시간 push), 가격 = best bid/ask mid, `BinanceFlushJob`/`BinanceFlushScheduler` 신규 (빗썸 패턴 이식, 1초 down-sample), accept-equal monotonic으로 완화 (#51 문서 오기재 함께 정정)
 - [x] Phase 3 (#31): 빗썸 WebSocket 1Hz down-sample 수집 — `BithumbWebSocketClient` + `BithumbTickerIngestion` (AtomicReference 최신값 유지, same-second 수용), `BithumbFlushJob/Scheduler` (thin entrypoint), `TickerCacheService.saveToSecondsWithScore` (`{epochMs}:{price}` ZSet member 포맷)
+- [x] Phase 4 (#32): REST 폴링 코드 및 피처 플래그 제거 — `TickerScheduler`/`TickerIngestionJob`/`BinanceClient`/`BithumbClient`/`Binance·BithumbResponse`/`IngestionModeConfig` 및 관련 테스트 7개 삭제, `premium.ingestion.*.mode` 피처 플래그 제거(3개 yml). WS 컴포넌트 8개의 `@ConditionalOnProperty`를 `@Profile("!test")`로 교체 (test 프로파일에서 `@PostConstruct` 실 거래소 연결 방지). `WebClientConfig`의 binance/bithumb WebClient 빈 + `RedisKeyGenerator.lockTickerKey`/`RedisTtl.Lock.TICKER_LEASE` 제거. `.ai/rules/batch.md`에 WebSocket ingestion 패턴 6개 항목 명문화
 - [x] 이슈 #41: Position 도메인 한국/해외 페어 모델로 재구조화 — Flyway V12 (단일 거래소 컬럼 → korea_* rename + foreign_* 4개 컬럼 신규), `Position` 엔티티에 한국 long + 해외 short 페어 필드 + `foreignLeverage` (1~125), 도메인 검증 (`koreaExchange.region == KOREA`, `foreignExchange.region == FOREIGN` 및 `FX_PROVIDER` 거절, 수량/가격/환율 양수), `entryPremiumRate` 서버 계산 (`Premium.calculatePremiumRate`와 동일 `DIVISION_SCALE=10`, scale=2), Command/Criteria/Result/Request/Response/Controller 페어 필드로 변환, `POST /api/v1/positions` 페어 본문으로 교체
 - [x] 이슈 #42: Position 오픈 AUTO/MANUAL 엔드포인트 분기 — `POST /api/v1/positions/auto` (서버가 `PremiumService.findLatestSnapshotBySymbol`로 진입가/환율/관측시각 자동 채움, 60초 신선도 검증) + `POST /api/v1/positions/manual` (진입가/환율/관측시각 사용자 입력) 신설, 루트 `POST /api/v1/positions` 제거 (405 응답). `PremiumSnapshotNotAvailableException`/`StalePremiumSnapshotException` 신규 + GlobalExceptionHandler 409 매핑, `HttpRequestMethodNotSupportedException` 405 매핑. DTO `PositionCriteria.Open`/`PositionRequest.Open` → `OpenAuto`+`OpenManual` 분리, Controller 두 엔드포인트로 분기.
 - [x] 이슈 #43: Position PnL 페어 기반 KRW 손익 확장 — `Position.calculatePremiumDiff(currentPremiumRate)` → `Position.calculatePnl(currentKoreaPrice, currentForeignPrice, currentFxRate, currentPremiumRate)` 4-인자 시그니처로 변경 (Position 도메인이 `PremiumSnapshot`에 직접 의존하지 않음). 시세 양수 검증(`require` koreaPrice/foreignPrice/fxRate > 0) 추가로 0 이하 snapshot이 0.00% PnL로 마스킹되는 케이스 차단. `PositionPnl`에 5개 필드 추가 (`koreaPnl`, `foreignPnlKrw`, `totalPnlKrw`, `koreaCurrentValue`, `totalPnlPercent`). `isProfit()` 시맨틱 `premiumDiff < 0` → `totalPnlKrw > 0` 으로 변경 (실제 KRW 이익 여부로 자연화). `PositionFacade.calculatePnl`이 `findLatestSnapshotBySymbol`을 사용하여 snapshot 분해 후 4-인자 전달, `PositionResult.Pnl`/`PositionResponse.Pnl`에 동일 필드 추가. 회귀 테스트 추가 (사용자 예시 0.157/0.15 → +1,808,138원 ≈ 9.73%, 양쪽 손실, isProfit/premiumDiff 부호 불일치, 시세 양수 검증).
@@ -77,7 +79,7 @@ fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
 | Phase 2 (#30) | 바이낸스 WebSocket 클라이언트 + REST/WS 모드 토글 | ✅ 완료 |
 | Phase 3 (#31) | 빗썸 WebSocket 클라이언트 + 1Hz 다운샘플 + ZSet 저장 | ✅ 완료 |
 | #51 / #52 | Binance miniTicker 주기 오기재 정정 + bookTicker 전환 + BinanceFlushJob 1초 down-sample | ✅ 완료 |
-| Phase 4 | REST 폴링 클라이언트 제거 + 규칙 문서화 | 예정 |
+| Phase 4 (#32) | REST 폴링 클라이언트 제거 + 피처 플래그 제거 + batch.md 규칙 문서화 | ✅ 완료 |
 
 ### Epic #40 — Position 도메인 페어 모델 + AUTO/MANUAL 분기 + 프론트엔드
 
