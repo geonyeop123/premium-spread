@@ -24,14 +24,6 @@ spring:
 exchange-rate:
   api-key: ${EXCHANGE_RATE_API_KEY}
 
-# 시세 수집 모드 (rest | websocket) — Phase 2/3 토글
-premium:
-  ingestion:
-    binance:
-      mode: rest
-    bithumb:
-      mode: rest
-
 # 사용자 알림 (이슈 #27)
 # ALERT_EMAIL_FROM 환경변수가 설정될 때만 PremiumThresholdNotificationService/Listener가 활성화된다.
 # 미설정 시 알림 빈은 등록되지 않음 (@ConditionalOnProperty 가드).

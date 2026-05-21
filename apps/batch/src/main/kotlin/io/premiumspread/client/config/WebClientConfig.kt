@@ -15,18 +15,6 @@ import java.util.concurrent.TimeUnit
 class WebClientConfig {
 
     @Bean
-    fun bithumbWebClient(): WebClient = createWebClient(
-        baseUrl = "https://api.bithumb.com",
-        name = "bithumb",
-    )
-
-    @Bean
-    fun binanceWebClient(): WebClient = createWebClient(
-        baseUrl = "https://fapi.binance.com",
-        name = "binance",
-    )
-
-    @Bean
     fun exchangeRateWebClient(): WebClient = createWebClient(
         baseUrl = "https://v6.exchangerate-api.com",
         name = "exchangerate",

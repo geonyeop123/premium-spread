@@ -14,14 +14,6 @@ alert:
 
 # spring.mail.* / alert.email.from은 application.yml(default)에 통합되어 모든 프로파일에서 동일하게 동작한다.
 
-# 시세 수집 모드 — 운영은 WebSocket 실시간 수집 (#52 Binance bookTicker, #31 Bithumb WebSocket)
-premium:
-  ingestion:
-    binance:
-      mode: websocket
-    bithumb:
-      mode: websocket
-
 logging:
   level:
     root: INFO

@@ -1,9 +1,2 @@
 exchange-rate:
   api-key: local-dummy-exchange-rate-api-key
-
-premium:
-  ingestion:
-    binance:
-      mode: websocket
-    bithumb:
-      mode: rest

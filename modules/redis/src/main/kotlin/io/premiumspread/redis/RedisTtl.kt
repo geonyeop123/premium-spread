@@ -46,9 +46,6 @@ object RedisTtl {
 
     // Lock lease time
     object Lock {
-        // Ticker 락: 2초 (1초 갱신 + 1초 여유)
-        val TICKER_LEASE: Duration = Duration.ofSeconds(2)
-
         // FX 락: 30초
         val FX_LEASE: Duration = Duration.ofSeconds(30)
 

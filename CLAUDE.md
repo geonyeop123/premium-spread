@@ -13,7 +13,7 @@
 ```
 apps/
 ├── api/          # REST API 서버 (Port 8080)
-└── batch/        # 배치 스케줄러 (Port 8081, REST 1초/30분 수집 또는 WebSocket 실시간 수집 + 1분/1시간/1일 집계)
+└── batch/        # 배치 스케줄러 (Port 8081, WebSocket 실시간 시세 수집 + FX 30분 수집 + 1분/1시간/1일 집계)
 
 modules/
 ├── jpa/          # JPA 공통 설정, BaseEntity
