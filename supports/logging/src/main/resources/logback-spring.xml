@@ -97,8 +97,8 @@
         </root>
     </springProfile>
 
-    <!-- prod 프로파일: JSON 로깅 (ELK 연동) -->
-    <springProfile name="prod">
+    <!-- prd 프로파일: JSON 로깅 (ELK 연동, 운영 컨테이너 SPRING_PROFILES_ACTIVE=prd) -->
+    <springProfile name="prd">
         <root level="INFO">
             <appender-ref ref="CONSOLE_JSON"/>
             <appender-ref ref="ASYNC_FILE_JSON"/>
