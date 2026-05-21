@@ -13,7 +13,7 @@ import io.premiumspread.monitoring.AlertService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * - parse 실패는 `ws.parse.error{exchange=binance}` counter 증가 + 5회 연속 시 critical alert.
  */
 @Component
-@ConditionalOnProperty("premium.ingestion.binance.mode", havingValue = "websocket")
+@Profile("!test")
 class BinanceWebSocketClient(
     private val ingestion: BinanceTickerIngestion,
     private val metrics: WebSocketMetrics,

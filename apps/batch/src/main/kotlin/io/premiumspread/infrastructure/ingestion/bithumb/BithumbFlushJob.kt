@@ -5,7 +5,7 @@ import io.premiumspread.infrastructure.websocket.WebSocketMetrics
 import io.premiumspread.monitoring.AlertService
 import io.premiumspread.redis.RedisTtl
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Profile
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import java.time.Clock
@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * - flush 실패 5회 연속 발생 시 critical alert.
  */
 @Component
-@ConditionalOnProperty("premium.ingestion.bithumb.mode", havingValue = "websocket")
+@Profile("!test")
 class BithumbFlushJob(
     private val ingestion: BithumbTickerIngestion,
     private val tickerCacheService: TickerCacheService,

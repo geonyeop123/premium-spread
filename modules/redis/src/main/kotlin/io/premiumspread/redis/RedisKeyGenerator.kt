@@ -51,9 +51,6 @@ object RedisKeyGenerator {
         "position:open:count"
 
     // Lock 키
-    fun lockTickerKey(): String =
-        "lock:ticker:all"
-
     fun lockFxKey(): String =
         "lock:fx"
 

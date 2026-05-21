@@ -1,7 +1,7 @@
 package io.premiumspread.scheduler
 
 import io.premiumspread.infrastructure.ingestion.bithumb.BithumbFlushJob
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Profile
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component
  * - 비즈니스/예외/메트릭/last-run/알람은 [BithumbFlushJob] 내부.
  */
 @Component
-@ConditionalOnProperty("premium.ingestion.bithumb.mode", havingValue = "websocket")
+@Profile("!test")
 class BithumbFlushScheduler(
     private val flushJob: BithumbFlushJob,
 ) {

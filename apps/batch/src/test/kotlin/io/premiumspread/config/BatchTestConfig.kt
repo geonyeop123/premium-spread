@@ -1,7 +1,5 @@
 package io.premiumspread.config
 
-import io.premiumspread.client.binance.BinanceClient
-import io.premiumspread.client.bithumb.BithumbClient
 import io.premiumspread.client.exchangerate.ExchangeRateClient
 import io.premiumspread.redis.DistributedLockManager
 import io.micrometer.core.instrument.MeterRegistry
@@ -59,23 +57,7 @@ class BatchTestConfig {
     }
 
     @Bean
-    fun bithumbMockServer() = MockWebServer().apply { start() }
-
-    @Bean
-    fun binanceMockServer() = MockWebServer().apply { start() }
-
-    @Bean
     fun exchangeRateMockServer() = MockWebServer().apply { start() }
-
-    @Bean
-    @Primary
-    fun bithumbClient(bithumbMockServer: MockWebServer, meterRegistry: MeterRegistry): BithumbClient =
-        BithumbClient(WebClient.create(bithumbMockServer.url("/").toString()), meterRegistry)
-
-    @Bean
-    @Primary
-    fun binanceClient(binanceMockServer: MockWebServer, meterRegistry: MeterRegistry): BinanceClient =
-        BinanceClient(WebClient.create(binanceMockServer.url("/").toString()), meterRegistry)
 
     @Bean
     @Primary

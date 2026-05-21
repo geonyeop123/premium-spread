@@ -13,7 +13,7 @@ import io.premiumspread.monitoring.AlertService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 import java.time.Duration
 import java.time.Instant
@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * - idle 60초 종료 정책 대응 → ClientPing 30s 주기.
  */
 @Component
-@ConditionalOnProperty("premium.ingestion.bithumb.mode", havingValue = "websocket")
+@Profile("!test")
 class BithumbWebSocketClient(
     private val ingestion: BithumbTickerIngestion,
     private val metrics: WebSocketMetrics,

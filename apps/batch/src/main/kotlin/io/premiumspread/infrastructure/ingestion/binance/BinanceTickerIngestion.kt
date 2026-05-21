@@ -5,7 +5,7 @@ import io.premiumspread.client.TickerData
 import io.premiumspread.infrastructure.websocket.WebSocketMetrics
 import io.premiumspread.monitoring.AlertService
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 import java.time.Clock
 import java.time.Duration
@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference
  * - 캐시 저장 실패 5회 연속 → critical alert.
  */
 @Component
-@ConditionalOnProperty("premium.ingestion.binance.mode", havingValue = "websocket")
+@Profile("!test")
 class BinanceTickerIngestion(
     private val tickerCacheService: TickerCacheService,
     private val metrics: WebSocketMetrics,
