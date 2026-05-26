@@ -62,12 +62,23 @@
 - stale 동안 ZSet 기록을 멈춰 오래된 가격이 신선한 데이터로 누적되는 오염을 막는다.
 - 재연결 후 첫 메시지가 도착하면 자동으로 flush를 재개한다.
 
-### 6. silent ingestion outage 방어 (연결 후 N초 내 첫 메시지 알람)
+### 6. silent ingestion outage 방어 + idle-timeout watchdog (이슈 #57)
 
-- TCP 연결은 살아있으나 메시지가 전혀 들어오지 않는 "silent outage"를 별도로 감지한다.
-- 연결 후 5초 내 첫 메시지 미수신 시 `ws.first.message.timeout{exchange}` 증가 + `AlertService` 호출.
-- `ws.last.message.age{exchange}` Gauge로 마지막 메시지 후 경과 시간을 노출하여, 임계값(10초) 초과를
-  모니터링 대시보드 룰로 알람한다.
-- 운영팀 식별 시그널: `ws.connection.state == 0`(TCP 끊김), `ws.stale.{exchange}` 증가,
-  `ws.last.message.age` 임계값 초과(connected-but-no-message).
+TCP 연결은 살아있으나 메시지가 전혀 들어오지 않는 "silent outage"를 두 레이어에서 처리한다.
+
+**WebSocket 연결 레이어 — `WebSocketConnectionManager`:**
+- 연결 후 `firstMessageTimeout`(5초) 내 첫 메시지 미수신 시 `ws.first.message.timeout{exchange}` 증가 +
+  `AlertService.sendCriticalAlert` + **강제 재연결**(이슈 #57).
+- 핸드셰이크 직후부터 idle-timeout watchdog 동작 — `now - lastMessageAt > idleTimeout`(기본 60초) 시
+  현재 연결을 강제 종료하고 backoff 후 재연결(`ws.reconnect.attempt{exchange}` 증가, `AlertService` 호출).
+- watchdog 콜백은 boundedElastic 스케줄러에서 alert를 dispatch하므로 alert hang에도 reconnect timer가 막히지 않는다.
+- 연결 세대 카운터(`connectionGeneration`)로 stale 콜백이 새 연결을 끊는 race를 방지한다.
+
+**Ingestion 레이어 — `*FlushJob.STALE_THRESHOLD`(10초):**
+- `ws.last.message.age{exchange}` Gauge로 마지막 메시지 후 경과 시간을 노출.
+- `*FlushJob`이 ZSet flush를 skip하고 `ws.stale.{exchange}` 카운터를 증가 — ticker-specific staleness.
+
+두 레이어는 직교한다: watchdog는 **모든 inbound 프레임**을 fresh로 인정하여 TCP-level 완전 침묵을 검출,
+FlushJob staleness는 ticker 데이터 stream 정체를 검출. 운영팀 식별 시그널은 `ws.connection.state == 0`,
+`ws.stale.{exchange}` 증가, `ws.last.message.age` 임계값 초과(connected-but-no-message), `ws.reconnect.attempt` 급증.
 </content>
