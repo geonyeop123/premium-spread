@@ -99,10 +99,23 @@ private val watchdogCheckInterval: Duration = Duration.ofSeconds(5)
 
 ### 4.4 거래소별 override
 
-- watchdog는 **inbound 메시지 도착**으로만 `lastMessageAt`을 갱신한다 (outbound ClientPing은 무관).
+- watchdog는 **모든 inbound WebSocket 프레임**(ticker, pong, subscribe response 등)으로 `lastMessageAt`을 갱신한다 — TCP-level zombie/완전 침묵 회복이 목적이기 때문.
 - Bithumb 24H ticker 채널은 healthy 상태에서 초당 1건 이상의 ticker 프레임을 수신하므로 60초 inbound 침묵은 명백한 이상 신호 (실증: 기존 `recordStale` 임계가 10초인데 4일간 false-positive 없이 운영).
 - Binance bookTicker는 초당 수십~수백 건 push이므로 60초 침묵은 명백한 이상.
 - 거래소별 override가 필요하면 `WebSocketConnectionConfig` 인스턴스화 시 `idleTimeout = Duration.ofSeconds(N)` 설정 (현재는 기본값만으로 충분).
+
+### 4.5 레이어드 idle detection — watchdog vs FlushJob stale
+
+이슈 #57 watchdog는 **WebSocket 연결 레이어**의 idle detection이다. ticker-specific staleness는 **별도 레이어**에서 처리된다.
+
+| 레이어 | 컴포넌트 | 임계 | 감지 대상 |
+|--------|---------|------|----------|
+| WebSocket 연결 | `WebSocketConnectionManager` watchdog | 60s | 모든 inbound 프레임 침묵 — TCP zombie, peer FIN-less close, 서버 ping 중단 |
+| Ingestion/Flush | `*FlushJob` `STALE_THRESHOLD` | 10s | ticker-specific staleness — pong/ack는 계속 와도 ticker 프레임이 멈춤 |
+
+두 레이어는 직교한다. 예를 들어 Bithumb 서버가 ticker는 안 보내고 pong만 계속 보내는 가상의 시나리오에서는 watchdog는 발동하지 않고 (모든 프레임 기준 idle 없음), FlushJob의 `recordStale`이 ticker-only outage를 카운터 + 모니터링 알람으로 처리한다.
+
+본 이슈는 watchdog만 추가하며, FlushJob staleness는 기존대로 유지한다.
 
 ## 5. 수용 기준 (Acceptance)
 

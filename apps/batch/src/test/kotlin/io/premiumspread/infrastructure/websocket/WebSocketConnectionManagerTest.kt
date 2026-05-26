@@ -416,6 +416,52 @@ class WebSocketConnectionManagerTest {
     }
 
     @Test
+    fun `재연결 후 새 watchdog만 활성이며 stale callback이 새 연결을 끊지 않는다 (이슈 #57 ISSUE-1)`() {
+        // 1차: 핸드셰이크만 성공, 메시지 0건 → firstMessageTimeout 짧게 설정해 빠르게 재연결 트리거.
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {}))
+        // 2차: 메시지를 빠르게 push해 firstReceived 되도록.
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                Thread {
+                    repeat(20) {
+                        Thread.sleep(100)
+                        try { webSocket.send("""{"i":$it}""") } catch (_: Exception) { return@Thread }
+                    }
+                }.start()
+            }
+        }))
+
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofMillis(200),
+            idleTimeout = Duration.ofSeconds(10),  // 충분히 길게 — 2차 연결은 정상 운영 중
+        )
+        manager = WebSocketConnectionManager(
+            config, metrics, client, fakeAlertService,
+            initialBackoff = Duration.ofMillis(100),
+            maxBackoff = Duration.ofMillis(500),
+            watchdogCheckInterval = Duration.ofMillis(50),
+        ).also { it.start() }
+
+        // 재연결 발생 + 2차 연결에서 메시지 수신 시작 확인
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted {
+            assertThat(registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(1.0)
+            assertThat(registry.find("ws.message.received").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(2.0)
+        }
+
+        // 2차 연결이 정상 운영 중인데 1차 stale watchdog가 발동하면 추가 reconnect가 일어남.
+        // 1.5초 더 대기하면서 reconnect 횟수가 더 늘지 않는지 확인 (1차 stale callback이 새 연결을 끊지 않음을 검증).
+        val reconnectsBefore = registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0
+        Thread.sleep(1500)
+        val reconnectsAfter = registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0
+        assertThat(reconnectsAfter).isEqualTo(reconnectsBefore)
+    }
+
+    @Test
     fun `stop 호출 후 watchdog가 잔여 alert를 발생시키지 않는다`() {
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
