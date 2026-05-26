@@ -295,6 +295,159 @@ class WebSocketConnectionManagerTest {
         }
     }
 
+    @Test
+    fun `첫 메시지 후 idleTimeout 경과 시 강제 재연결을 시도하고 ws_reconnect_attempt 메트릭과 critical alert가 트리거된다 (이슈 #57)`() {
+        val received = ConcurrentLinkedQueue<String>()
+        // 1차: 핸드셰이크 후 메시지 1건 push, 이후 침묵 (서버는 close 안 함)
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("""{"price":"100"}""")
+                // 의도적으로 close하지 않음 — silent dead 상태 시뮬레이션
+            }
+        }))
+        // 2차: 재연결 후 새 메시지 push
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("""{"price":"200"}""")
+            }
+        }))
+
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { received.add(it) },
+            firstMessageTimeout = Duration.ofSeconds(10),  // 첫 메시지는 즉시 도착하므로 발동 안 함
+            idleTimeout = Duration.ofMillis(500),
+        )
+        manager = WebSocketConnectionManager(
+            config, metrics, client, fakeAlertService,
+            initialBackoff = Duration.ofMillis(100),
+            maxBackoff = Duration.ofMillis(500),
+            watchdogCheckInterval = Duration.ofMillis(100),
+        ).also { it.start() }
+
+        // 첫 메시지 수신 확인
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted {
+            assertThat(received).contains("""{"price":"100"}""")
+        }
+        // idleTimeout(500ms) + watchdogCheck(100ms) 경과 후 재연결 + 2차 메시지 수신
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted {
+            assertThat(received).contains("""{"price":"200"}""")
+            assertThat(registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(1.0)
+            assertThat(capturedAlerts).anyMatch { it.contains("idle") }
+        }
+    }
+
+    @Test
+    fun `핸드셰이크 후 zero-message 침묵 시 firstMessageTimeout이 강제 재연결을 트리거한다 (이슈 #57 ISSUE-2)`() {
+        // 1차: 핸드셰이크만 성공, 메시지 0건
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {}))
+        // 2차: 재연결 후 메시지 push
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("""{"price":"300"}""")
+            }
+        }))
+
+        val received = ConcurrentLinkedQueue<String>()
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { received.add(it) },
+            firstMessageTimeout = Duration.ofMillis(300),
+            idleTimeout = Duration.ofSeconds(30),  // watchdog는 트리거 전 (firstMessageTimeout이 먼저)
+        )
+        manager = WebSocketConnectionManager(
+            config, metrics, client, fakeAlertService,
+            initialBackoff = Duration.ofMillis(100),
+            maxBackoff = Duration.ofMillis(500),
+            watchdogCheckInterval = Duration.ofMillis(100),
+        ).also { it.start() }
+
+        // firstMessageTimeout(300ms) 경과 후 강제 재연결 → 2차 메시지 수신
+        await().atMost(5, TimeUnit.SECONDS).untilAsserted {
+            assertThat(received).contains("""{"price":"300"}""")
+            assertThat(registry.find("ws.first.message.timeout").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(1.0)
+            assertThat(registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0)
+                .isGreaterThanOrEqualTo(1.0)
+            assertThat(capturedAlerts).isNotEmpty()
+        }
+    }
+
+    @Test
+    fun `메시지가 idleTimeout 내 지속 도착하면 watchdog이 발동하지 않는다`() {
+        // 핸드셰이크 후 100ms 간격으로 메시지 5회 push
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                Thread {
+                    repeat(8) {
+                        Thread.sleep(100)
+                        try { webSocket.send("""{"i":$it}""") } catch (_: Exception) { return@Thread }
+                    }
+                }.start()
+            }
+        }))
+
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofSeconds(5),
+            idleTimeout = Duration.ofMillis(500),
+        )
+        manager = WebSocketConnectionManager(
+            config, metrics, client, fakeAlertService,
+            initialBackoff = Duration.ofMillis(500),
+            maxBackoff = Duration.ofSeconds(2),
+            watchdogCheckInterval = Duration.ofMillis(100),
+        ).also { it.start() }
+
+        // 1초 대기 — 메시지가 100ms 간격으로 도착하므로 idle은 500ms 한 번도 안 넘어야 함
+        await().atMost(1500, TimeUnit.MILLISECONDS).until {
+            (registry.find("ws.message.received").tag("exchange", "test").counter()?.count() ?: 0.0) >= 3.0
+        }
+
+        // watchdog idle alert가 없어야 한다 (재연결 시도도 없음)
+        assertThat(capturedAlerts).noneMatch { it.contains("idle") }
+        assertThat(registry.find("ws.reconnect.attempt").tag("exchange", "test").counter()?.count() ?: 0.0)
+            .isEqualTo(0.0)
+    }
+
+    @Test
+    fun `stop 호출 후 watchdog가 잔여 alert를 발생시키지 않는다`() {
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("hello")
+                // 이후 침묵 → idleTimeout 발동 가능 상태
+            }
+        }))
+
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { },
+            firstMessageTimeout = Duration.ofSeconds(10),
+            idleTimeout = Duration.ofMillis(300),
+        )
+        manager = WebSocketConnectionManager(
+            config, metrics, client, fakeAlertService,
+            initialBackoff = Duration.ofMillis(500),
+            maxBackoff = Duration.ofSeconds(2),
+            watchdogCheckInterval = Duration.ofMillis(100),
+        ).also { it.start() }
+
+        await().atMost(2, TimeUnit.SECONDS).until {
+            (registry.find("ws.message.received").tag("exchange", "test").counter()?.count() ?: 0.0) >= 1.0
+        }
+        manager!!.stop()
+        // idleTimeout 경과보다 더 오래 대기 — stop 후 watchdog가 살아있으면 alert 발생
+        Thread.sleep(800)
+
+        assertThat(capturedAlerts).noneMatch { it.contains("idle") }
+    }
+
     private fun wsUrl(): String {
         val httpUrl = server.url("/ws")
         return "ws://${httpUrl.host}:${httpUrl.port}/ws"
