@@ -77,15 +77,15 @@ class WebSocketConnectionManager(
                 ?: Mono.empty()
 
             // Start first-message timeout as a separate cancellable side task.
-            // 발동 시 force-reconnect를 먼저 트리거하고 alert는 그 다음에 호출한다 — alert delivery가 hang해도
-            // 재연결 경로가 막히지 않도록 (Codex code review ISSUE-2 대응).
+            // 발동 시 force-reconnect를 먼저 트리거하고 alert는 boundedElastic로 분리 dispatch — alert delivery
+            // (SlackAlertService RestTemplate)가 hang해도 parallel scheduler 워커를 점유하지 않고 재연결이 막히지 않도록.
             val timer = Mono.delay(config.firstMessageTimeout, Schedulers.parallel())
                 .doOnNext {
                     if (firstReceived.compareAndSet(false, true).not()) return@doOnNext
                     if (myGeneration != connectionGeneration.get()) return@doOnNext  // stale callback (ISSUE-1)
                     metrics.recordFirstMessageTimeout(config.exchange)
                     triggerForceReconnect(myGeneration)
-                    alertService.sendCriticalAlert(
+                    dispatchAlert(
                         "[${config.exchange}] WebSocket 연결 후 ${config.firstMessageTimeout.toSeconds()}초 내 메시지 미수신 — 강제 재연결"
                     )
                 }
@@ -186,9 +186,10 @@ class WebSocketConnectionManager(
                         idle,
                         idleMs,
                     )
-                    // 재연결을 먼저 트리거하고 alert는 그 다음 — alert delivery hang시에도 재연결이 막히지 않도록.
+                    // 재연결을 먼저 트리거하고 alert는 boundedElastic에서 분리 dispatch — alert delivery hang에도
+                    // parallel scheduler 워커를 점유하지 않고 재연결 timer가 정상 동작하도록.
                     triggerForceReconnect(ownerGeneration)
-                    alertService.sendCriticalAlert(
+                    dispatchAlert(
                         "[${config.exchange}] WebSocket idle ${idle / 1000}s (threshold ${idleMs / 1000}s) — 강제 재연결"
                     )
                 }
@@ -212,5 +213,22 @@ class WebSocketConnectionManager(
         if (callerGeneration != connectionGeneration.get()) return  // stale caller
         forceReconnectArmed.set(true)
         subscription.getAndSet(null)?.dispose()
+    }
+
+    /**
+     * Alert delivery를 boundedElastic 스케줄러에서 fire-and-forget으로 dispatch한다.
+     *
+     * 운영의 SlackAlertService는 blocking RestTemplate 기반이고 timeout 미설정이라 hang 가능.
+     * boundedElastic(blocking I/O 전용 스케줄러)에서 실행해 parallel 스케줄러를 점유하지 않도록 한다 —
+     * 재연결 timer는 parallel 스케줄러에서 동작하므로 alert hang이 재연결을 막지 않는다 (ISSUE-2 대응).
+     */
+    private fun dispatchAlert(message: String) {
+        Mono.fromRunnable<Unit> { alertService.sendCriticalAlert(message) }
+            .subscribeOn(Schedulers.boundedElastic())
+            .onErrorResume { t ->
+                log.warn("Alert dispatch failed (suppressed): {}", t.message)
+                Mono.empty()
+            }
+            .subscribe()
     }
 }

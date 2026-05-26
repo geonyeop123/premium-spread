@@ -462,6 +462,54 @@ class WebSocketConnectionManagerTest {
     }
 
     @Test
+    fun `alert delivery가 hang해도 재연결이 차단되지 않는다 (이슈 #57 ISSUE-2)`() {
+        // 영원히 block하는 AlertService — boundedElastic 분리가 없다면 watchdog/timer 워커가 점유됨.
+        val alertEntered = java.util.concurrent.atomic.AtomicInteger(0)
+        val alertGate = java.util.concurrent.CountDownLatch(1)
+        val hangingAlertService = object : io.premiumspread.monitoring.AlertService {
+            override fun sendAlert(message: String, severity: io.premiumspread.monitoring.AlertService.Severity) {
+                alertEntered.incrementAndGet()
+                alertGate.await()  // hang until test completes
+            }
+        }
+
+        // 1차: 핸드셰이크만, 메시지 0건 → firstMessageTimeout 발동.
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {}))
+        // 2차: 메시지 push.
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                webSocket.send("""{"price":"after-hang"}""")
+            }
+        }))
+
+        val received = ConcurrentLinkedQueue<String>()
+        val config = WebSocketConnectionConfig(
+            exchange = "test",
+            url = wsUrl(),
+            onMessage = { received.add(it) },
+            firstMessageTimeout = Duration.ofMillis(200),
+            idleTimeout = Duration.ofSeconds(30),
+        )
+        val managerWithHangingAlerts = WebSocketConnectionManager(
+            config, metrics, client, hangingAlertService,
+            initialBackoff = Duration.ofMillis(100),
+            maxBackoff = Duration.ofMillis(500),
+            watchdogCheckInterval = Duration.ofMillis(100),
+        ).also { it.start() }
+
+        try {
+            // alert가 hang 중이어도 force-reconnect 경로가 막히지 않음을 검증 — 2차 연결 메시지 수신
+            await().atMost(5, TimeUnit.SECONDS).untilAsserted {
+                assertThat(received).contains("""{"price":"after-hang"}""")
+                assertThat(alertEntered.get()).isGreaterThanOrEqualTo(1)  // alert는 시작은 됐고
+            }
+        } finally {
+            alertGate.countDown()
+            managerWithHangingAlerts.stop()
+        }
+    }
+
+    @Test
     fun `stop 호출 후 watchdog가 잔여 alert를 발생시키지 않는다`() {
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
