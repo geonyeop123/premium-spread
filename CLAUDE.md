@@ -4,9 +4,9 @@
 
 ## Tech Stack
 
-- Kotlin 2.0, Java 21, Spring Boot 3.4
+- Kotlin 2.x, Java 21, Spring Boot 3.x
 - MySQL 8, Redis 7, Testcontainers
-- Gradle 멀티모듈
+- Gradle 멀티모듈 (정확한 버전은 `gradle.properties`/`build.gradle.kts` 참조)
 
 ## Module Structure
 
