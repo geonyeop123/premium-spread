@@ -7,10 +7,11 @@ services:
     ports:
       - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_USER=application
-      - MYSQL_PASSWORD=application
-      - MYSQL_DATABASE=premiumspread
+      # prd: .env 값으로 override, 로컬: 기존 기본값 유지 (앱의 MYSQL_USER/MYSQL_PWD와 동일 소스)
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root}
+      - MYSQL_USER=${MYSQL_USER:-application}
+      - MYSQL_PASSWORD=${MYSQL_PWD:-application}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-premiumspread}
       - MYSQL_CHARACTER_SET=utf8mb4
       - MYSQL_COLLATE=utf8mb4_unicode_ci
     volumes:
@@ -40,9 +41,9 @@ services:
       - --latency-monitor-threshold
       - "100"
       - --requirepass
-      - local-redis-password
+      - ${REDIS_PASSWORD:-local-redis-password}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "local-redis-password", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-local-redis-password}", "ping"]
       interval: 5s
       timeout: 2s
       retries: 10
@@ -71,11 +72,11 @@ services:
       - --latency-monitor-threshold
       - "100"
       - --requirepass
-      - local-redis-password
+      - ${REDIS_PASSWORD:-local-redis-password}
       - --masterauth
-      - local-redis-password
+      - ${REDIS_PASSWORD:-local-redis-password}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "local-redis-password", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-local-redis-password}", "ping"]
       interval: 5s
       timeout: 2s
       retries: 10
