@@ -2,6 +2,18 @@
 
 > 이슈 [#25](../../../issues/25) Always Free(ARM Ampere A1) 배포 절차. 계정 가입(1단계) 이후 진행.
 
+## 브랜치 전략
+
+서버는 **`prd` 브랜치만** 추적한다 (`dev`는 진행 중 통합 브랜치이므로 서버가 끌어가면 안 됨).
+
+```
+feature/* → dev (통합·테스트) → prd (= 서버가 배포·추적하는 실체)
+```
+
+- 릴리스 = `dev → prd` 머지 (필요 시 `vX.Y.Z` 태그)
+- 서버는 `prd`만 clone/pull → `deploy.sh --pull`이 `prd`의 최신 커밋만 반영
+- 운영 config는 `prd` 프로파일(`application-prd.yml`)이 담당, 시크릿은 `.env`(gitignore)로 주입
+
 ## 0. 한눈에 보는 흐름
 
 ```
@@ -53,7 +65,7 @@
 ```bash
 ssh -i <개인키> ubuntu@<PUBLIC_IP>     # Oracle Linux면 opc@<PUBLIC_IP>
 
-git clone https://github.com/geonyeop123/premium-spread.git
+git clone -b prd https://github.com/geonyeop123/premium-spread.git   # 서버는 prd 브랜치 추적
 cd premium-spread
 
 chmod +x deploy/*.sh
