@@ -6,6 +6,9 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     container_name: premium-spread-api
+    # JVM MaxRAMPercentage=75가 호스트(6GB) 전체가 아닌 이 한도 기준으로 힙을 잡도록 강제 (OOM 방지)
+    mem_limit: ${API_MEM_LIMIT:-1536m}
+    mem_reservation: 512m
     ports:
       - "8080:8080"
     environment:
@@ -28,6 +31,8 @@ services:
       context: ..
       dockerfile: apps/batch/Dockerfile
     container_name: premium-spread-batch
+    mem_limit: ${BATCH_MEM_LIMIT:-1536m}
+    mem_reservation: 512m
     ports:
       - "8081:8081"
     environment:
@@ -51,6 +56,8 @@ services:
       context: ..
       dockerfile: apps/web/Dockerfile
     container_name: premium-spread-web
+    mem_limit: ${WEB_MEM_LIMIT:-512m}
+    mem_reservation: 256m
     environment:
       NEXT_PUBLIC_API_URL: /api/v1
     restart: unless-stopped
