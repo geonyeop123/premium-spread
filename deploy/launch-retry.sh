@@ -32,7 +32,8 @@ attempt=0
 while :; do
   attempt=$((attempt + 1))
   log "시도 #$attempt ..."
-  out="$(oci compute instance launch \
+  # --no-retry: SDK 내부 재시도(지수 백오프 ~95s)를 끄고, 본 루프가 cadence를 제어 → 시간당 시도 횟수 ↑
+  out="$(oci --no-retry compute instance launch \
       --availability-domain "$AD_NAME" \
       --compartment-id "$COMPARTMENT_OCID" \
       --shape VM.Standard.A1.Flex \
