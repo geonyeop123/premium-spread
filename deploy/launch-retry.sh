@@ -61,11 +61,12 @@ while :; do
     exit 0
   fi
 
-  # 재시도 대상: 용량부족 / rate limit / 일시적 5xx
-  if printf '%s' "$out" | grep -qiE 'Out of (host )?capacity|too ?many ?requests|"status": ?429|"status": ?5[0-9][0-9]|InternalError'; then
-    log "용량/일시 오류 — ${RETRY_INTERVAL}s 후 재시도"
+  # 중단(exit) 대상: 재시도해도 안 풀리는 오류만 명시 — 인증/권한/쿼터/파라미터/없는 OCID.
+  # 그 외(용량부족·rate limit·5xx·네트워크 타임아웃·연결 끊김 등 일시 오류)는 모두 재시도한다.
+  if printf '%s' "$out" | grep -qiE 'NotAuthenticated|NotAuthorized|"status": ?40[0134]|LimitExceeded|QuotaExceeded|InvalidParameter|CannotParseRequest|NotFound'; then
+    log "❌ 재시도 불가 오류(인증/권한/쿼터/파라미터) — 중단:"; printf '%s\n' "$out"; exit 1
   else
-    log "❌ 재시도 불가 오류 — 설정 확인 필요:"; printf '%s\n' "$out"; exit 1
+    log "재시도 대기 — ${RETRY_INTERVAL}s 후 (용량/rate-limit/네트워크 등 일시 오류)"
   fi
 
   if [ "$MAX_ATTEMPTS" -gt 0 ] && [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
