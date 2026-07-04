@@ -61,12 +61,13 @@ while :; do
     exit 0
   fi
 
-  # 중단(exit) 대상: 재시도해도 안 풀리는 오류만 명시 — 인증/권한/쿼터/파라미터/없는 OCID.
-  # 그 외(용량부족·rate limit·5xx·네트워크 타임아웃·연결 끊김 등 일시 오류)는 모두 재시도한다.
-  if printf '%s' "$out" | grep -qiE 'NotAuthenticated|NotAuthorized|"status": ?40[0134]|LimitExceeded|QuotaExceeded|InvalidParameter|CannotParseRequest|NotFound'; then
-    log "❌ 재시도 불가 오류(인증/권한/쿼터/파라미터) — 중단:"; printf '%s\n' "$out"; exit 1
+  # 중단(exit) 대상: 재시도해도 안 풀리는 확정 오류만 — 인증실패(401)/잘못된요청(400)/쿼터/파라미터.
+  # 403·404(NotAuthorized/NotFound)는 사전 검증된 OCID 기준 '일시적'(PAYG 전환·간헐)으로 보고 재시도.
+  # capacity·429(rate limit)·5xx·네트워크 타임아웃도 모두 재시도한다.
+  if printf '%s' "$out" | grep -qiE 'NotAuthenticated|"status": ?40[01]|LimitExceeded|QuotaExceeded|InvalidParameter|CannotParseRequest'; then
+    log "❌ 재시도 불가 오류(인증/쿼터/파라미터) — 중단:"; printf '%s\n' "$out"; exit 1
   else
-    log "재시도 대기 — ${RETRY_INTERVAL}s 후 (용량/rate-limit/네트워크 등 일시 오류)"
+    log "재시도 대기 — ${RETRY_INTERVAL}s 후 (용량/rate-limit/403·404/네트워크 등 일시 오류)"
   fi
 
   if [ "$MAX_ATTEMPTS" -gt 0 ] && [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
