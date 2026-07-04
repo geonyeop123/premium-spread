@@ -48,6 +48,15 @@ feature/* → dev (통합·테스트) → prd (= 서버가 배포·추적하는 
 - SSH 키: 키쌍 생성 후 공개키 등록 (개인키는 로컬 보관)
 - 생성 후 **Public IP** 확보
 
+### "Out of host capacity" 자동 재시도
+서울/춘천은 단일 AD라 AD 변경이 불가하고 용량이 자주 소진된다. 콘솔 반복 클릭 대신
+`deploy/launch-retry.sh`로 자동화한다 (로컬에서 OCI CLI로 launch 반복):
+
+```bash
+cp deploy/.oci-launch.env.example .oci-launch.env   # OCID 5개 채우기 (수집법은 파일 주석 참고)
+./deploy/launch-retry.sh                            # 용량 날 때까지 재시도 → 성공 시 Public IP 출력
+```
+
 ### VCN Security List 인그레스 규칙 추가 (클라우드 레이어)
 콘솔 → Networking → VCN → Security Lists → Default → Add Ingress Rules:
 
