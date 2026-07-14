@@ -1,29 +1,31 @@
 package io.premiumspread.interfaces.api.position
 
 import io.premiumspread.application.position.PositionResult
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
 import java.math.BigDecimal
 import java.time.Instant
 
 class PositionRequest private constructor() {
     data class OpenAuto(
-        val symbol: String,
-        val koreaExchange: String,
-        val koreaQuantity: BigDecimal,
-        val foreignExchange: String,
-        val foreignQuantity: BigDecimal,
-        val foreignLeverage: Int,
+        @field:NotBlank val symbol: String,
+        @field:NotBlank val koreaExchange: String,
+        @field:Positive val koreaQuantity: BigDecimal,
+        @field:NotBlank val foreignExchange: String,
+        @field:Positive val foreignQuantity: BigDecimal,
+        @field:Positive val foreignLeverage: Int,
     )
 
     data class OpenManual(
-        val symbol: String,
-        val koreaExchange: String,
-        val koreaQuantity: BigDecimal,
-        val koreaEntryPrice: BigDecimal,
-        val foreignExchange: String,
-        val foreignQuantity: BigDecimal,
-        val foreignEntryPrice: BigDecimal,
-        val foreignLeverage: Int,
-        val entryFxRate: BigDecimal,
+        @field:NotBlank val symbol: String,
+        @field:NotBlank val koreaExchange: String,
+        @field:Positive val koreaQuantity: BigDecimal,
+        @field:Positive val koreaEntryPrice: BigDecimal,
+        @field:NotBlank val foreignExchange: String,
+        @field:Positive val foreignQuantity: BigDecimal,
+        @field:Positive val foreignEntryPrice: BigDecimal,
+        @field:Positive val foreignLeverage: Int,
+        @field:Positive val entryFxRate: BigDecimal,
         val entryObservedAt: Instant,
     )
 }
@@ -48,17 +50,17 @@ class PositionResponse private constructor() {
             fun from(result: PositionResult.Detail): Detail = Detail(
                 id = result.id,
                 symbol = result.symbol,
-                koreaExchange = result.koreaExchange.name,
+                koreaExchange = result.koreaExchange,
                 koreaQuantity = result.koreaQuantity,
                 koreaEntryPrice = result.koreaEntryPrice,
-                foreignExchange = result.foreignExchange.name,
+                foreignExchange = result.foreignExchange,
                 foreignQuantity = result.foreignQuantity,
                 foreignEntryPrice = result.foreignEntryPrice,
                 foreignLeverage = result.foreignLeverage,
                 entryFxRate = result.entryFxRate,
                 entryPremiumRate = result.entryPremiumRate,
                 entryObservedAt = result.entryObservedAt,
-                status = result.status.name,
+                status = result.status,
             )
         }
     }

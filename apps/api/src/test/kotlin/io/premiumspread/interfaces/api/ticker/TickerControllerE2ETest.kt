@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
@@ -51,6 +52,7 @@ class TickerControllerE2ETest @Autowired constructor(
 
         // when & then
         mockMvc.post("/api/v1/tickers") {
+            with(user("ingestion"))
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
@@ -64,7 +66,7 @@ class TickerControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `잘못된 거래소로 등록 시 400 반환`() {
+    fun `잘못된 거래소로 등록 시 422 반환`() {
         // given
         val request = mapOf(
             "exchange" to "INVALID_EXCHANGE",
@@ -76,11 +78,12 @@ class TickerControllerE2ETest @Autowired constructor(
 
         // when & then
         mockMvc.post("/api/v1/tickers") {
+            with(user("ingestion"))
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_ARGUMENT") }
+            status { isUnprocessableEntity() }
+            jsonPath("$.code") { value("INVALID_TICKER") }
         }
     }
 }

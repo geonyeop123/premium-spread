@@ -134,3 +134,14 @@ legacy key를 `Symbol.code` 대문자로 조합하면 기존 소문자 Redis key
 cutover window가 무기한 연장된다. legacy premium seconds/minutes/hours/days/summary key를 소문자로 canonicalize하고,
 현재 TTL이 cutover window보다 길거나 영구 키일 때만 줄인다. 반복 조회가 TTL을 연장하지 않는 계약을 테스트로
 고정했다.
+
+## 7. Phase 5 실행 중 추가 확인사항
+
+### F-16 동일 leaf project name의 Gradle component 좌표 충돌
+
+Gradle project path가 달라도 공통 group 아래 `apps/api`와 `infrastructure/api`의 기본 component 좌표는 모두
+`io.premiumspread:api`가 된다. API test runtime classpath에서 `:infrastructure:api -> :apps:api` conflict
+substitution이 발생해 자동 설정 jar 전체가 빠졌고, 첫 증상은 Domain `PasswordEncoder` bean 누락이었다.
+`infrastructure:api`에 고유 group을 부여해 runtime component identity를 분리했으며, dependency report와 실제
+116개 통합 테스트로 회귀를 검증했다. 같은 구조의 Batch 두 모듈은 Phase 6 runtimeOnly 전환 시 함께 고유 좌표로
+분리하고 Phase 9 전역 dependency gate에서 중복 component 좌표를 차단한다.

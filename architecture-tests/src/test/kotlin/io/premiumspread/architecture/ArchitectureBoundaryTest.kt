@@ -1,7 +1,10 @@
 package io.premiumspread.architecture
 
 import com.tngtech.archunit.core.domain.Dependency
+import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.domain.JavaClasses
+import com.tngtech.archunit.core.domain.JavaCodeUnit
+import com.tngtech.archunit.core.domain.JavaModifier
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import java.nio.file.Files
 import java.nio.file.Path
@@ -51,6 +54,17 @@ class ArchitectureBoundaryTest {
     }
 
     @Test
+    fun `api application does not depend on technical implementations`() {
+        val apiClasses = ArchitectureTarget.APPS_API.importClasses()
+        assertExactDebt(
+            classes = apiClasses,
+            originPackage = API_APPLICATION_PACKAGE,
+            forbiddenTargetPackages = API_APPLICATION_FORBIDDEN_PACKAGES,
+            allowedEdges = emptySet(),
+        )
+    }
+
+    @Test
     fun `batch application technical debt is explicit and cannot grow`() {
         val batchClasses = ArchitectureTarget.APPS_BATCH.importClasses()
         assertExactDebt(
@@ -69,6 +83,150 @@ class ArchitectureBoundaryTest {
             forbiddenTargetPackages = API_INTERFACES_FORBIDDEN_PACKAGES,
             allowedEdges = API_INTERFACES_SOURCE_DEBT,
         )
+    }
+
+    @Test
+    fun `api application source does not import technical implementations`() {
+        assertExactSourceDebt(
+            sourceRootProperty = "architecture.source.apps.api",
+            boundaryPackagePath = "io/premiumspread/application",
+            forbiddenTargetPackages = API_APPLICATION_FORBIDDEN_PACKAGES,
+            allowedEdges = emptySet(),
+        )
+    }
+
+    @Test
+    fun `api app does not own domain or infrastructure implementation classes`() {
+        val apiClasses = ArchitectureTarget.APPS_API.importClasses()
+        val compiledForbiddenClasses =
+            apiClasses
+                .filter { javaClass ->
+                    javaClass.packageName.startsWith(API_INFRASTRUCTURE_PACKAGE) ||
+                        javaClass.packageName.startsWith(DOMAIN_PACKAGE)
+                }
+                .map { javaClass -> javaClass.name }
+                .sorted()
+        assertTrue(
+            compiledForbiddenClasses.isEmpty(),
+            "apps-api main output must not contain domain/infrastructure classes: $compiledForbiddenClasses",
+        )
+
+        val sourceRoot = requiredSourceRoot("architecture.source.apps.api")
+        val forbiddenSources =
+            listOf("io/premiumspread/domain", "io/premiumspread/infrastructure")
+                .flatMap { packagePath ->
+                    val packageRoot = sourceRoot.resolve(packagePath)
+                    if (Files.isDirectory(packageRoot)) {
+                        Files.walk(packageRoot).use { paths ->
+                            paths
+                                .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+                                .map { path -> sourceRoot.relativize(path).toString().replace('\\', '/') }
+                                .toList()
+                        }
+                    } else {
+                        emptyList()
+                    }
+                }.sorted()
+        assertTrue(
+            forbiddenSources.isEmpty(),
+            "apps-api main source must not own domain/infrastructure files: $forbiddenSources",
+        )
+    }
+
+    @Test
+    fun `every REST controller injects exactly one application facade`() {
+        val apiClasses = ArchitectureTarget.APPS_API.importClasses()
+        val controllers =
+            apiClasses
+                .filter { javaClass -> javaClass.isAnnotatedWith(REST_CONTROLLER_ANNOTATION) }
+                .sortedBy { javaClass -> javaClass.name }
+        assertTrue(controllers.isNotEmpty(), "REST controller class-count guard must find at least one class")
+
+        val violations =
+            controllers.mapNotNull { controller ->
+                val constructors =
+                    controller.constructors.filterNot { constructor ->
+                        JavaModifier.SYNTHETIC in constructor.modifiers
+                    }
+                if (constructors.size != 1) {
+                    return@mapNotNull "${controller.name} has ${constructors.size} non-synthetic constructors"
+                }
+
+                val parameters = constructors.single().rawParameterTypes
+                val facade = parameters.singleOrNull()
+                if (
+                    facade == null ||
+                    !facade.packageName.startsWith("$API_APPLICATION_PACKAGE.") ||
+                    !facade.simpleName.endsWith("Facade")
+                ) {
+                    val actual = parameters.joinToString(prefix = "[", postfix = "]") { it.name }
+                    "${controller.name} constructor dependencies must be exactly one application Facade, but were $actual"
+                } else {
+                    null
+                }
+            }
+
+        assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
+    }
+
+    @Test
+    fun `facade public contracts do not expose domain or infrastructure types`() {
+        val apiClasses = ArchitectureTarget.APPS_API.importClasses()
+        val facades =
+            apiClasses
+                .filter { javaClass ->
+                    javaClass.packageName.startsWith("$API_APPLICATION_PACKAGE.") &&
+                        javaClass.simpleName.endsWith("Facade") &&
+                        !javaClass.isNestedClass
+                }.sortedBy { javaClass -> javaClass.name }
+        assertTrue(facades.isNotEmpty(), "Facade class-count guard must find at least one class")
+
+        val contractTypes = ArrayDeque<JavaClass>()
+        val violations = sortedSetOf<String>()
+        facades.forEach { facade ->
+            facade.methods
+                .filter(::isPublicContractCodeUnit)
+                .forEach { method ->
+                    method.allInvolvedRawTypes.forEach { involvedType ->
+                        when {
+                            involvedType.isFacadeContractForbidden() ->
+                                violations += "${method.fullName} exposes ${involvedType.name}"
+                            involvedType.isApplicationContractType() && involvedType.name != facade.name ->
+                                contractTypes += involvedType
+                        }
+                    }
+                }
+        }
+
+        val inspectedContractTypes = mutableSetOf<String>()
+        while (contractTypes.isNotEmpty()) {
+            val contractType = contractTypes.removeFirst()
+            if (!inspectedContractTypes.add(contractType.name)) continue
+
+            contractType.fields
+                .filter { field -> JavaModifier.PUBLIC in field.modifiers }
+                .forEach { field ->
+                    val involvedType = field.rawType
+                    when {
+                        involvedType.isFacadeContractForbidden() ->
+                            violations += "${field.fullName} exposes ${involvedType.name}"
+                        involvedType.isApplicationContractType() -> contractTypes += involvedType
+                    }
+                }
+            contractType.codeUnits
+                .filter(::isPublicContractCodeUnit)
+                .forEach { codeUnit ->
+                    codeUnit.allInvolvedRawTypes.forEach { involvedType ->
+                        when {
+                            involvedType.isFacadeContractForbidden() ->
+                                violations += "${codeUnit.fullName} exposes ${involvedType.name}"
+                            involvedType.isApplicationContractType() -> contractTypes += involvedType
+                        }
+                    }
+                }
+        }
+
+        assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
     }
 
     @Test
@@ -142,6 +300,10 @@ class ArchitectureBoundaryTest {
             configuredPrefixes = API_INTERFACES_FORBIDDEN_PACKAGES.toSet(),
         )
         assertContainsMandatoryTechnicalPrefixes(
+            boundary = "api application",
+            configuredPrefixes = API_APPLICATION_FORBIDDEN_PACKAGES.toSet(),
+        )
+        assertContainsMandatoryTechnicalPrefixes(
             boundary = "batch application",
             configuredPrefixes = BATCH_TECHNICAL_PACKAGES.toSet(),
         )
@@ -212,10 +374,7 @@ class ArchitectureBoundaryTest {
         forbiddenTargetPackages: Array<String>,
         allowedEdges: Set<String>,
     ) {
-        val sourceRootValue = System.getProperty(sourceRootProperty)
-        check(!sourceRootValue.isNullOrBlank()) { "Missing system property: $sourceRootProperty" }
-
-        val sourceRoot = Path.of(sourceRootValue)
+        val sourceRoot = requiredSourceRoot(sourceRootProperty)
         val boundaryRoot = sourceRoot.resolve(boundaryPackagePath)
         check(Files.isDirectory(boundaryRoot)) { "Architecture source boundary does not exist: $boundaryRoot" }
         val scanner = KotlinSourceDependencyScanner(forbiddenTargetPackages.toSet())
@@ -245,10 +404,32 @@ class ArchitectureBoundaryTest {
         )
     }
 
+    private fun requiredSourceRoot(propertyName: String): Path {
+        val sourceRootValue = System.getProperty(propertyName)
+        check(!sourceRootValue.isNullOrBlank()) { "Missing system property: $propertyName" }
+        return Path.of(sourceRootValue)
+    }
+
+    private fun isPublicContractCodeUnit(codeUnit: JavaCodeUnit): Boolean =
+        JavaModifier.PUBLIC in codeUnit.modifiers &&
+            JavaModifier.SYNTHETIC !in codeUnit.modifiers &&
+            JavaModifier.BRIDGE !in codeUnit.modifiers
+
+    private fun JavaClass.isFacadeContractForbidden(): Boolean =
+        FACADE_CONTRACT_FORBIDDEN_PACKAGES.any { forbiddenPackage -> packageName.startsWith(forbiddenPackage) }
+
+    private fun JavaClass.isApplicationContractType(): Boolean =
+        packageName.startsWith("$API_APPLICATION_PACKAGE.") && !simpleName.endsWith("Facade")
+
     private fun Dependency.targetsAny(packagePrefixes: Array<String>): Boolean =
         packagePrefixes.any { targetClass.packageName.startsWith(it) }
 
     private companion object {
+        const val API_APPLICATION_PACKAGE = "io.premiumspread.application"
+        const val API_INFRASTRUCTURE_PACKAGE = "io.premiumspread.infrastructure"
+        const val DOMAIN_PACKAGE = "io.premiumspread.domain"
+        const val REST_CONTROLLER_ANNOTATION = "org.springframework.web.bind.annotation.RestController"
+
         val INFRASTRUCTURE_TARGETS =
             listOf(
                 ArchitectureTarget.INFRASTRUCTURE_COMMON,
@@ -346,6 +527,35 @@ class ArchitectureBoundaryTest {
         val API_INTERFACES_DEBT = loadDebtAllowlist("api-interfaces-debt.allowlist")
         val API_INTERFACES_SOURCE_DEBT = loadDebtAllowlist("api-interfaces-source-debt.allowlist")
         val DOMAIN_SOURCE_DEBT = loadDebtAllowlist("domain-source-debt.allowlist")
+
+        val API_APPLICATION_FORBIDDEN_PACKAGES =
+            (
+                MANDATORY_TECHNICAL_PREFIXES +
+                    setOf(
+                        "io.premiumspread.cache",
+                        "io.premiumspread.client",
+                        "io.premiumspread.email",
+                        API_INFRASTRUCTURE_PACKAGE,
+                        "io.premiumspread.logging",
+                        "io.premiumspread.monitoring",
+                        "io.premiumspread.repository",
+                        "jakarta.persistence",
+                        "jakarta.servlet",
+                        "org.hibernate",
+                        "org.springframework.boot",
+                        "org.springframework.data.jpa",
+                        "org.springframework.data.repository",
+                        "org.springframework.http",
+                        "org.springframework.orm",
+                        "org.springframework.web",
+                    )
+            ).sorted().toTypedArray()
+
+        val FACADE_CONTRACT_FORBIDDEN_PACKAGES =
+            setOf(
+                "io.premiumspread.domain",
+                API_INFRASTRUCTURE_PACKAGE,
+            )
 
         val BATCH_TECHNICAL_PACKAGES =
             (

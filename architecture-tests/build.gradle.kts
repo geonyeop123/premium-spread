@@ -55,6 +55,15 @@ val writeProjectDependencyGraph =
                     }.sorted()
             val graph =
                 buildList {
+                    val apiRuntimeProjects = listOf(project(":apps:api"), project(":infrastructure:api"))
+                    val apiCoordinates = apiRuntimeProjects.associate { candidate ->
+                        candidate.path to "${candidate.group}:${candidate.name}"
+                    }
+                    require(apiCoordinates.values.toSet().size == apiCoordinates.size) {
+                        "API runtime project component coordinates must be unique: $apiCoordinates"
+                    }
+                    add("# inspected API runtime project component coordinates")
+                    apiCoordinates.toSortedMap().forEach { (path, coordinate) -> add("$path => $coordinate") }
                     add(
                         "# inspected project dependency configurations: " +
                             productionConfigurations.joinToString(),

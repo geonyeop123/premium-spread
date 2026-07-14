@@ -1,9 +1,8 @@
 package io.premiumspread.interfaces.api.auth
 
-import io.premiumspread.infrastructure.security.CustomUserDetails
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.core.MethodParameter
 import org.springframework.http.HttpStatus
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.support.WebDataBinderFactory
 import org.springframework.web.context.request.NativeWebRequest
 import org.springframework.web.method.support.HandlerMethodArgumentResolver
@@ -22,11 +21,8 @@ class LoginMemberArgumentResolver : HandlerMethodArgumentResolver {
         webRequest: NativeWebRequest,
         binderFactory: WebDataBinderFactory?,
     ): Any {
-        val authentication = SecurityContextHolder.getContext().authentication
-        val principal = authentication?.principal
-        if (principal is CustomUserDetails) {
-            return principal.memberId
-        }
+        val principal = webRequest.getNativeRequest(HttpServletRequest::class.java)?.userPrincipal
+        principal?.name?.toLongOrNull()?.let { return it }
         throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다.")
     }
 }

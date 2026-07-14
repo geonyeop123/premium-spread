@@ -1,71 +1,77 @@
 package io.premiumspread.interfaces.api.auth
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import io.premiumspread.infrastructure.security.JwtTokenProvider
-import io.premiumspread.infrastructure.security.JwtValidationResult
-import io.premiumspread.infrastructure.security.LoginSuccessHandler
-import jakarta.servlet.http.HttpServletResponse
+import io.premiumspread.application.auth.AuthCriteria
+import io.premiumspread.application.auth.AuthCookieContract
+import io.premiumspread.application.auth.AuthFacade
+import io.premiumspread.application.auth.AuthResult
+import jakarta.validation.Valid
+import jakarta.validation.constraints.Email
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import org.springframework.http.HttpHeaders
-import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseCookie
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.CookieValue
 import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/api/v1/auth")
 class AuthController(
-    private val jwtTokenProvider: JwtTokenProvider,
-    private val objectMapper: ObjectMapper,
+    private val authFacade: AuthFacade,
 ) {
-
-    @PostMapping("/refresh")
-    fun refresh(
-        @CookieValue(name = LoginSuccessHandler.REFRESH_TOKEN_COOKIE, required = false) refreshToken: String?,
-        response: HttpServletResponse,
-    ): ResponseEntity<Map<String, Any>> {
-        if (refreshToken == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("code" to "INVALID_TOKEN", "message" to "리프레시 토큰이 없습니다."))
-        }
-
-        val result = jwtTokenProvider.validateAndGetClaims(refreshToken)
-        if (result !is JwtValidationResult.Valid || result.tokenType != JwtTokenProvider.TOKEN_TYPE_REFRESH) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("code" to "INVALID_TOKEN", "message" to "유효하지 않은 리프레시 토큰입니다."))
-        }
-
-        val newAccessToken = jwtTokenProvider.generateAccessToken(result.memberId, result.email)
-        val newRefreshToken = jwtTokenProvider.generateRefreshToken(result.memberId, result.email)
-
-        val refreshCookie = ResponseCookie.from(LoginSuccessHandler.REFRESH_TOKEN_COOKIE, newRefreshToken)
-            .httpOnly(true)
-            .secure(true)
-            .path("/")
-            .maxAge(jwtTokenProvider.getRefreshTokenExpirySeconds())
-            .sameSite("Strict")
-            .build()
-
-        response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString())
-
-        return ResponseEntity.ok(mapOf("accessToken" to newAccessToken as Any))
+    @PostMapping("/api/v1/members/login")
+    fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<LoginResponse> {
+        val result = authFacade.login(AuthCriteria.Login(request.email, request.password))
+        return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, result.refreshCookie.toResponseCookie().toString())
+            .body(LoginResponse(result.accessToken, result.id, result.email, result.nickname))
     }
 
-    @PostMapping("/logout")
-    fun logout(response: HttpServletResponse): ResponseEntity<Map<String, String>> {
-        val expiredCookie = ResponseCookie.from(LoginSuccessHandler.REFRESH_TOKEN_COOKIE, "")
-            .httpOnly(true)
-            .secure(true)
-            .path("/")
-            .maxAge(0)
-            .sameSite("Strict")
+    @PostMapping("/api/v1/auth/refresh")
+    fun refresh(
+        @CookieValue(name = AuthCookieContract.NAME_PLACEHOLDER, required = false) refreshToken: String?,
+    ): ResponseEntity<RefreshResponse> {
+        val result = authFacade.refresh(AuthCriteria.Refresh(refreshToken))
+        return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, result.refreshCookie.toResponseCookie().toString())
+            .body(RefreshResponse(result.accessToken))
+    }
+
+    @PostMapping("/api/v1/auth/logout")
+    fun logout(
+        @CookieValue(name = AuthCookieContract.NAME_PLACEHOLDER, required = false) refreshToken: String?,
+    ): ResponseEntity<Void> {
+        val result = authFacade.logout(AuthCriteria.Logout(refreshToken))
+        return ResponseEntity.noContent()
+            .header(HttpHeaders.SET_COOKIE, result.refreshCookie.toResponseCookie().toString())
             .build()
+    }
 
-        response.addHeader(HttpHeaders.SET_COOKIE, expiredCookie.toString())
+    data class LoginRequest(
+        @field:NotBlank @field:Email @field:Size(max = 254)
+        val email: String = "",
+        @field:NotBlank @field:Size(min = 8, max = 100)
+        val password: String = "",
+    )
 
-        return ResponseEntity.ok(mapOf("message" to "로그아웃 되었습니다."))
+    data class LoginResponse(
+        val accessToken: String,
+        val id: Long,
+        val email: String,
+        val nickname: String,
+    )
+
+    data class RefreshResponse(val accessToken: String)
+
+    private fun AuthResult.Cookie.toResponseCookie(): ResponseCookie {
+        val builder = ResponseCookie.from(name, value)
+            .httpOnly(httpOnly)
+            .secure(secure)
+            .path(path)
+            .maxAge(maxAgeSeconds)
+            .sameSite(sameSite)
+        domain?.takeIf(String::isNotBlank)?.let(builder::domain)
+        return builder.build()
     }
 }

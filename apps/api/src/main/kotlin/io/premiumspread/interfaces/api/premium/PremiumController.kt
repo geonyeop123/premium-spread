@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.time.Duration
 import java.time.Instant
 
 @RestController
@@ -26,8 +25,7 @@ class PremiumController(
 
     @GetMapping("/current/{symbol}")
     fun getCurrent(@PathVariable symbol: String): ResponseEntity<PremiumResponse.Current> {
-        val result = premiumFacade.findLatestSnapshot(symbol)
-            ?: return ResponseEntity.notFound().build()
+        val result = premiumFacade.findCurrent(PremiumCriteria.FindCurrent(symbol))
         return ResponseEntity.ok(PremiumResponse.Current.from(result))
     }
 
@@ -37,8 +35,8 @@ class PremiumController(
         @RequestParam from: Instant,
         @RequestParam to: Instant,
     ): ResponseEntity<List<PremiumResponse.Detail>> {
-        val results = premiumFacade.findByPeriod(symbol, from, to)
-        return ResponseEntity.ok(results.map { PremiumResponse.Detail.from(it) })
+        val result = premiumFacade.findByPeriod(PremiumCriteria.FindHistory(symbol, from, to))
+        return ResponseEntity.ok(result.items.map { PremiumResponse.Detail.from(it) })
     }
 
     @GetMapping("/aggregation/{symbol}")
@@ -48,14 +46,11 @@ class PremiumController(
         @RequestParam from: Instant,
         @RequestParam to: Instant,
     ): ResponseEntity<PremiumResponse.AggregationPage> {
-        val maxRange = mapOf("1m" to Duration.ofHours(24), "1h" to Duration.ofDays(30), "1d" to Duration.ofDays(365))
-        val hasMore = maxRange[interval]?.let { from > to.minus(it) } ?: true
-
-        val results = premiumFacade.findAggregation(symbol, interval, from, to)
+        val result = premiumFacade.findAggregation(PremiumCriteria.FindAggregation(symbol, interval, from, to))
         return ResponseEntity.ok(
             PremiumResponse.AggregationPage(
-                data = results.map { PremiumResponse.Aggregation.from(it) },
-                hasMore = hasMore,
+                data = result.data.map { PremiumResponse.Aggregation.from(it) },
+                hasMore = result.hasMore,
             ),
         )
     }

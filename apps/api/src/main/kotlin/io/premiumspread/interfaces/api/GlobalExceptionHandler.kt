@@ -1,26 +1,18 @@
 package io.premiumspread.interfaces.api
 
-import io.premiumspread.application.position.PositionNotFoundException
-import io.premiumspread.application.position.PremiumNotFoundException
-import io.premiumspread.application.position.PremiumSnapshotNotAvailableException
-import io.premiumspread.application.position.StalePremiumSnapshotException
-import io.premiumspread.application.premium.TickerNotFoundException
-import io.premiumspread.domain.DomainException
-import io.premiumspread.domain.InvalidPremiumInputException
-import io.premiumspread.domain.InvalidQuoteException
-import io.premiumspread.domain.InvalidTickerException
-import io.premiumspread.domain.member.DuplicateEmailException
-import io.premiumspread.domain.notification.NotificationSubscriptionNotFoundException
-import io.premiumspread.domain.position.InvalidPositionException
+import io.premiumspread.application.common.ApplicationError
+import io.premiumspread.application.common.ApplicationException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.HttpRequestMethodNotSupportedException
+import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import java.time.Clock
 import java.time.Instant
 
@@ -31,82 +23,11 @@ class GlobalExceptionHandler(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @ExceptionHandler(DuplicateEmailException::class)
-    fun handleDuplicateEmail(ex: DuplicateEmailException): ResponseEntity<ErrorResponse> {
+    @ExceptionHandler(ApplicationException::class)
+    fun handleApplicationException(ex: ApplicationException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
-            .status(HttpStatus.CONFLICT)
-            .body(error("DUPLICATE_EMAIL"))
-    }
-
-    @ExceptionHandler(DomainException::class)
-    fun handleDomainException(ex: DomainException): ResponseEntity<ErrorResponse> {
-        val errorCode = when (ex) {
-            is InvalidTickerException -> "INVALID_TICKER"
-            is InvalidQuoteException -> "INVALID_QUOTE"
-            is InvalidPremiumInputException -> "INVALID_PREMIUM_INPUT"
-            is InvalidPositionException -> "INVALID_POSITION"
-            else -> "DOMAIN_ERROR"
-        }
-        return ResponseEntity
-            .status(HttpStatus.BAD_REQUEST)
-            .body(error(errorCode, ERROR_MESSAGES[errorCode] ?: "요청을 처리할 수 없습니다."))
-    }
-
-    @ExceptionHandler(TickerNotFoundException::class)
-    fun handleTickerNotFound(ex: TickerNotFoundException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(error("TICKER_NOT_FOUND"))
-    }
-
-    @ExceptionHandler(PositionNotFoundException::class)
-    fun handlePositionNotFound(ex: PositionNotFoundException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(error("POSITION_NOT_FOUND"))
-    }
-
-    @ExceptionHandler(PremiumNotFoundException::class)
-    fun handlePremiumNotFound(ex: PremiumNotFoundException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(error("PREMIUM_NOT_FOUND"))
-    }
-
-    @ExceptionHandler(PremiumSnapshotNotAvailableException::class)
-    fun handlePremiumSnapshotNotAvailable(ex: PremiumSnapshotNotAvailableException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
-            .status(HttpStatus.CONFLICT)
-            .body(
-                error("PREMIUM_SNAPSHOT_NOT_AVAILABLE"),
-            )
-    }
-
-    @ExceptionHandler(StalePremiumSnapshotException::class)
-    fun handleStalePremiumSnapshot(ex: StalePremiumSnapshotException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
-            .status(HttpStatus.CONFLICT)
-            .body(
-                error("STALE_PREMIUM_SNAPSHOT"),
-            )
-    }
-
-    @ExceptionHandler(NotificationSubscriptionNotFoundException::class)
-    fun handleNotificationSubscriptionNotFound(
-        ex: NotificationSubscriptionNotFoundException,
-    ): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(
-                error("NOTIFICATION_SUBSCRIPTION_NOT_FOUND"),
-            )
-    }
-
-    @ExceptionHandler(IllegalArgumentException::class)
-    fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
-            .status(HttpStatus.BAD_REQUEST)
-            .body(error("INVALID_ARGUMENT"))
+            .status(statusOf(ex.error))
+            .body(error(ex.error.name))
     }
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
@@ -150,9 +71,43 @@ class GlobalExceptionHandler(
     private fun error(code: String, message: String = ERROR_MESSAGES.getValue(code)): ErrorResponse =
         ErrorResponse(code = code, message = message, timestamp = clock.instant())
 
+    private fun statusOf(error: ApplicationError): HttpStatus = when (error) {
+        ApplicationError.AUTHENTICATION_FAILED,
+        ApplicationError.INVALID_REFRESH_TOKEN -> HttpStatus.UNAUTHORIZED
+
+        ApplicationError.MEMBER_NOT_FOUND,
+        ApplicationError.TICKER_NOT_FOUND,
+        ApplicationError.POSITION_NOT_FOUND,
+        ApplicationError.PREMIUM_NOT_FOUND,
+        ApplicationError.NOTIFICATION_SUBSCRIPTION_NOT_FOUND -> HttpStatus.NOT_FOUND
+
+        ApplicationError.DUPLICATE_EMAIL,
+        ApplicationError.PREMIUM_SNAPSHOT_NOT_AVAILABLE,
+        ApplicationError.STALE_PREMIUM_SNAPSHOT -> HttpStatus.CONFLICT
+
+        ApplicationError.INVALID_TICKER,
+        ApplicationError.INVALID_QUOTE,
+        ApplicationError.INVALID_PREMIUM_INPUT,
+        ApplicationError.INVALID_POSITION,
+        ApplicationError.DOMAIN_ERROR -> HttpStatus.UNPROCESSABLE_ENTITY
+    }
+
+    @ExceptionHandler(
+        MethodArgumentTypeMismatchException::class,
+        MissingServletRequestParameterException::class,
+    )
+    fun handleRequestBinding(ex: Exception): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(error("INVALID_ARGUMENT"))
+    }
+
     companion object {
         val ERROR_MESSAGES = mapOf(
+            "AUTHENTICATION_FAILED" to "인증에 실패했습니다.",
+            "INVALID_REFRESH_TOKEN" to "유효하지 않은 리프레시 토큰입니다.",
             "DUPLICATE_EMAIL" to "이미 사용 중인 이메일입니다.",
+            "MEMBER_NOT_FOUND" to "회원을 찾을 수 없습니다.",
             "INVALID_TICKER" to "유효하지 않은 티커입니다.",
             "INVALID_QUOTE" to "유효하지 않은 시세입니다.",
             "INVALID_PREMIUM_INPUT" to "유효하지 않은 프리미엄 입력값입니다.",

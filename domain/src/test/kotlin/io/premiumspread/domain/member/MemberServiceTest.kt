@@ -92,4 +92,35 @@ class MemberServiceTest {
             assertThat(result).isNull()
         }
     }
+
+    @Nested
+    inner class Authenticate {
+
+        @Test
+        fun `이메일과 비밀번호가 일치하면 회원을 반환한다`() {
+            val member = Member.create(
+                email = "member@example.com",
+                encodedPassword = "encoded_password",
+            ).withId(7L)
+            every { memberRepository.findByEmail("member@example.com") } returns member
+            every { passwordEncoder.matches("password123", "encoded_password") } returns true
+
+            val result = service.authenticate("member@example.com", "password123")
+
+            assertThat(result).isEqualTo(member)
+        }
+
+        @Test
+        fun `회원이 없거나 비밀번호가 다르면 null을 반환한다`() {
+            every { memberRepository.findByEmail("missing@example.com") } returns null
+            every { memberRepository.findByEmail("member@example.com") } returns Member.create(
+                email = "member@example.com",
+                encodedPassword = "encoded_password",
+            ).withId(7L)
+            every { passwordEncoder.matches("wrong-password", "encoded_password") } returns false
+
+            assertThat(service.authenticate("missing@example.com", "password123")).isNull()
+            assertThat(service.authenticate("member@example.com", "wrong-password")).isNull()
+        }
+    }
 }

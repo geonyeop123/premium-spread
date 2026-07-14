@@ -39,8 +39,8 @@ class NotificationSubscriptionController(
 
     @GetMapping
     fun list(@LoginMemberId memberId: Long): ResponseEntity<List<NotificationSubscriptionResponse.Detail>> {
-        val list = facade.findAllByMemberId(memberId).map { NotificationSubscriptionResponse.Detail.from(it) }
-        return ResponseEntity.ok(list)
+        val result = facade.findAll(NotificationSubscriptionCriteria.FindAll(memberId))
+        return ResponseEntity.ok(result.items.map { NotificationSubscriptionResponse.Detail.from(it) })
     }
 
     @GetMapping("/{id}")
@@ -48,7 +48,7 @@ class NotificationSubscriptionController(
         @LoginMemberId memberId: Long,
         @PathVariable id: Long,
     ): ResponseEntity<NotificationSubscriptionResponse.Detail> {
-        val result = facade.findByIdAndMemberId(id, memberId)
+        val result = facade.find(NotificationSubscriptionCriteria.Find(id, memberId))
         return ResponseEntity.ok(NotificationSubscriptionResponse.Detail.from(result))
     }
 
@@ -56,7 +56,7 @@ class NotificationSubscriptionController(
     fun update(
         @LoginMemberId memberId: Long,
         @PathVariable id: Long,
-        @RequestBody request: NotificationSubscriptionRequest.Update,
+        @Valid @RequestBody request: NotificationSubscriptionRequest.Update,
     ): ResponseEntity<NotificationSubscriptionResponse.Detail> {
         val result = facade.update(
             NotificationSubscriptionCriteria.Update(
@@ -75,7 +75,7 @@ class NotificationSubscriptionController(
         @LoginMemberId memberId: Long,
         @PathVariable id: Long,
     ): ResponseEntity<Void> {
-        facade.delete(id, memberId)
+        facade.delete(NotificationSubscriptionCriteria.Delete(id, memberId))
         return ResponseEntity.noContent().build()
     }
 }

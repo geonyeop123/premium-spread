@@ -1,7 +1,6 @@
 package io.premiumspread.interfaces.api.premium
 
 import io.premiumspread.application.premium.PremiumResult
-import io.premiumspread.domain.premium.PremiumSnapshot
 import java.math.BigDecimal
 import java.time.Instant
 
@@ -69,14 +68,14 @@ class PremiumResponse private constructor() {
         val observedAt: Instant,
     ) {
         companion object {
-            fun from(snapshot: PremiumSnapshot): Current = Current(
-                symbol = snapshot.symbol,
-                premiumRate = snapshot.apiDisplayPremiumRate,
-                koreaPrice = snapshot.koreaPrice,
-                foreignPrice = snapshot.foreignPrice,
-                foreignPriceInKrw = snapshot.foreignPriceInKrw,
-                fxRate = snapshot.fxRate,
-                observedAt = snapshot.observedAt,
+            fun from(result: PremiumResult.Current): Current = Current(
+                symbol = result.symbol,
+                premiumRate = result.premiumRate,
+                koreaPrice = result.koreaPrice,
+                foreignPrice = result.foreignPrice,
+                foreignPriceInKrw = result.foreignPriceInKrw,
+                fxRate = result.fxRate,
+                observedAt = result.observedAt,
             )
         }
     }

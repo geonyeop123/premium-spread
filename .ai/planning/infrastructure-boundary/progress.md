@@ -8,8 +8,9 @@
 | 1. 긴급 운영 안전장치 | COMPLETE | `e1f1487` | `origin/refactor/infrastructure-boundary` | unit 473 green, API integration 91개 중 90 green/1 approved disabled |
 | 2. Gradle 모듈 경계/Architecture Test | COMPLETE | `8268148` | `origin/refactor/infrastructure-boundary` | unit 505 green, architecture 11 green, Batch integration은 Phase 3 retention 2건만 실패 |
 | 3. 공통 Domain/계산/시간 정책 | COMPLETE | `937e092` | `origin/refactor/infrastructure-boundary` | Domain 103/API unit 240/Batch unit 184/Redis 8/Architecture 11/API integration 96 green+1 approved disabled/Batch integration 68 green |
-| 4. 공통 Persistence/Redis Infrastructure | COMPLETE | 이번 Phase commit | push 예정 | JPA 2, Redis 13, Common unit 40/integration 5, API unit 168/integration 108 green+1 approved disabled, Batch unit 196/integration 68, Architecture 12 green |
-| 5~10 | NOT_STARTED | 없음 | 없음 | Phase 4 commit/push 후 Phase 5 착수 |
+| 4. 공통 Persistence/Redis Infrastructure | COMPLETE | `ccd5952` | `origin/refactor/infrastructure-boundary` | JPA 2, Redis 13, Common unit 40/integration 5, API unit 168/integration 108 green+1 approved disabled, Batch unit 196/integration 68, Architecture 12 green |
+| 5. API Facade/인증 세션 | COMPLETE | 이번 Phase commit | push 예정 | Infrastructure API 29, API unit 78/integration 116, Architecture 17, Web lint/build green, disabled 0 |
+| 6~10 | NOT_STARTED | 없음 | 없음 | Phase 5 commit/push 후 Phase 6 착수 |
 
 ## Phase 0 실행 기록
 
@@ -155,8 +156,35 @@
 - 위 목록은 `architecture-tests/src/test/resources/batch-phase6-technical-adapter-files.allowlist`와 exact
   일치하며, common concrete adapter와 modules Redis 직접 import가 추가되면 Architecture Test가 실패한다.
 
+## Phase 5 실행 기록
+
+- 여섯 HTTP Controller를 각각 하나의 Application Facade만 주입하는 구조로 통일했다. Request/Response와
+  Criteria/Result 경계를 분리하고 Facade가 Domain 예외를 안정된 Application error로 변환하도록 해
+  interfaces의 Domain/Infrastructure import와 application의 Infrastructure import를 모두 0건으로 만들었다.
+- Security/JWT/refresh cookie/cache warmup 구현을 `infrastructure:api`로 이동하고 API 앱은 이를 `runtimeOnly`로
+  소비한다. public endpoint는 method+path SSOT를 사용하며 Premium/Ticker 공개 범위는 GET으로 제한했다.
+- JWT issuer/audience/type/TTL/clock-skew와 validated secret을 적용하고, cookie refresh/logout에는 명시적
+  Origin/Sec-Fetch-Site 검증을 추가했다. local cookie는 secure=false, prd는 secure=true와 기본 secret/HMAC key
+  금지를 startup policy로 검증한다.
+- Refresh 원문 대신 HMAC-SHA-256 hash, jti, memberId, expiry, familyId, generation을 Redis에 저장한다. 로그인은
+  회원별 세션을 교체하고 Lua CAS rotation은 같은 family의 동시 loser만 401로 거부하며 승자 세션을 보존한다.
+  grace 이후 old-token 재사용은 해당 family를 revoke하고 이전 login family는 현재 family를 건드리지 않는다.
+- logout은 현재/직전 refresh proof만 원자 revoke하고 cookie를 만료시키며 204를 반환한다. Access Token은
+  blacklist하지 않아 TTL까지 유효한 계약을 E2E로 고정했고 기존 disabled blacklist 테스트를 제거했다.
+- Web client는 Access Token을 메모리+sessionStorage에 보관하고 Bearer/credentials를 적용한다. 초기 `/me` 401은
+  공유 중인 refresh 요청 한 번으로 복구하며 204/빈 응답을 안전하게 처리한다. Position polling lint 회귀도 제거했다.
+- `apps/api`와 `infrastructure/api`가 동일한 기본 Gradle `group:name`을 가져 runtime dependency가 앱 자신으로
+  치환되는 문제를 발견했다. `infrastructure:api` group을 고유하게 분리하고 실제 test runtime classpath와 전체
+  Spring context에서 보안 자동 설정 bean이 로드됨을 검증했다.
+- Refresh grace 시간은 API JVM Clock이 아니라 Lua 내부 Redis `TIME`으로 판정해 node clock skew가 승자 family를
+  잘못 revoke하지 않도록 했고, 서로 60초 어긋난 요청 시각에서도 승자 후속 회전이 유지되는 통합 테스트를 추가했다.
+  Redis 시각 역행 흔적은 grace로 인정하지 않고 fail-closed 처리한다.
+- 최종 검증은 Infrastructure API 29, API unit/controller 78, API integration 116, Architecture 17이 모두
+  failure/error/skip 0으로 green이다. Web lint와 production build, 금지 import scan, `git diff --check`도 green이다.
+- 최종 독립 spec/code 리뷰는 보정 후 BLOCKER 0 / MAJOR 0 / MINOR 0으로 PASS했다.
+
 ## 승인 및 재개 상태
 
 2026-07-14 사용자 결정: 운영/스테이징 없음, 불명확한 로컬 timestamp는 변환하지 않는 추천안 채택,
-스펙 리뷰 보정안 전체 승인. Phase 0~3 commit/push를 완료했고 Phase 4 구현·검증 및 독립 리뷰를 완료해
+스펙 리뷰 보정안 전체 승인. Phase 0~4 commit/push를 완료했고 Phase 5 구현·검증을 완료해 독립 리뷰 후
 commit/push한다.

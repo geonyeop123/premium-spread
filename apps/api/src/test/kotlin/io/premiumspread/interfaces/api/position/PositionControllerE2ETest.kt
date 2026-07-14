@@ -127,7 +127,7 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `AUTO 포지션 오픈 시 region 위반이면 400 반환`() {
+    fun `AUTO 포지션 오픈 시 region 위반이면 422 반환`() {
         val accessToken = login()
         savePremiumWithTickers(observedAt = Instant.now())
 
@@ -136,7 +136,7 @@ class PositionControllerE2ETest @Autowired constructor(
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openAutoRequest(koreaExchange = "BINANCE"))
         }.andExpect {
-            status { isBadRequest() }
+            status { isUnprocessableEntity() }
             jsonPath("$.code") { value("INVALID_POSITION") }
         }
     }
@@ -163,7 +163,7 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `MANUAL 포지션 오픈 시 region 위반이면 400 반환`() {
+    fun `MANUAL 포지션 오픈 시 region 위반이면 422 반환`() {
         val accessToken = login()
 
         mockMvc.post("/api/v1/positions/manual") {
@@ -171,7 +171,7 @@ class PositionControllerE2ETest @Autowired constructor(
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openManualRequest(koreaExchange = "BINANCE"))
         }.andExpect {
-            status { isBadRequest() }
+            status { isUnprocessableEntity() }
             jsonPath("$.code") { value("INVALID_POSITION") }
         }
     }

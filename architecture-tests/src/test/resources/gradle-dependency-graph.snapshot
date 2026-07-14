@@ -1,3 +1,6 @@
+# inspected API runtime project component coordinates
+:apps:api => io.premiumspread:api
+:infrastructure:api => io.premiumspread.infrastructure:api
 # inspected project dependency configurations: api, compileOnly, compileOnlyApi, implementation, runtimeOnly
 :apps:api [implementation] -> :domain
 :apps:api [runtimeOnly] -> :infrastructure:api
@@ -13,6 +16,7 @@
 :apps:batch [runtimeOnly] -> :supports:logging
 :infrastructure:api [implementation] -> :domain
 :infrastructure:api [implementation] -> :infrastructure:common
+:infrastructure:api [implementation] -> :modules:redis
 :infrastructure:batch [implementation] -> :domain
 :infrastructure:batch [implementation] -> :infrastructure:common
 :infrastructure:common [implementation] -> :domain

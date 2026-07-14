@@ -1,13 +1,17 @@
 package io.premiumspread.application.position
 
+import io.premiumspread.application.common.ApplicationError
+import io.premiumspread.application.common.ApplicationException
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.position.PositionPnl
 import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
 import io.premiumspread.domain.premium.PremiumPolicy
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.domain.ticker.Exchange
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -27,33 +31,23 @@ class PositionFacade(
     }
 
     @Transactional
-    fun openAutoPosition(criteria: PositionCriteria.OpenAuto): PositionResult.Detail {
-        val pair = runCatching {
-            MarketPair(
-                symbol = Symbol(criteria.symbol),
-                koreaExchange = criteria.koreaExchange,
-                foreignExchange = criteria.foreignExchange,
-            )
-        }.getOrElse { throw InvalidPositionException(it.message ?: "Invalid market pair.") }
+    fun openAutoPosition(criteria: PositionCriteria.OpenAuto): PositionResult.Detail = translateInvalidPosition {
+        val pair = parsePair(criteria.symbol, criteria.koreaExchange, criteria.foreignExchange)
         val snapshot = premiumService.findLatestSnapshot(pair)
-            ?: throw PremiumSnapshotNotAvailableException(
-                "Premium snapshot not available for symbol: ${criteria.symbol}",
-            )
+            ?: throw ApplicationException(ApplicationError.PREMIUM_SNAPSHOT_NOT_AVAILABLE)
 
         val age = Duration.between(snapshot.observedAt, clock.instant())
         if (age > SNAPSHOT_MAX_AGE) {
-            throw StalePremiumSnapshotException(
-                "Premium snapshot is stale (age=${age.toMillis()}ms, max=${SNAPSHOT_MAX_AGE.toMillis()}ms) for symbol: ${criteria.symbol}",
-            )
+            throw ApplicationException(ApplicationError.STALE_PREMIUM_SNAPSHOT)
         }
 
         val command = PositionCommand.Create(
             memberId = criteria.memberId,
             symbol = criteria.symbol,
-            koreaExchange = criteria.koreaExchange,
+            koreaExchange = pair.koreaExchange,
             koreaQuantity = criteria.koreaQuantity,
             koreaEntryPrice = snapshot.koreaPrice,
-            foreignExchange = criteria.foreignExchange,
+            foreignExchange = pair.foreignExchange,
             foreignQuantity = criteria.foreignQuantity,
             foreignEntryPrice = snapshot.foreignPrice,
             foreignLeverage = criteria.foreignLeverage,
@@ -62,18 +56,18 @@ class PositionFacade(
         )
         val position = positionService.create(command)
 
-        return PositionResult.Detail.from(position)
+        toDetail(position)
     }
 
     @Transactional
-    fun openManualPosition(criteria: PositionCriteria.OpenManual): PositionResult.Detail {
+    fun openManualPosition(criteria: PositionCriteria.OpenManual): PositionResult.Detail = translateInvalidPosition {
         val command = PositionCommand.Create(
             memberId = criteria.memberId,
             symbol = criteria.symbol,
-            koreaExchange = criteria.koreaExchange,
+            koreaExchange = parseExchange(criteria.koreaExchange),
             koreaQuantity = criteria.koreaQuantity,
             koreaEntryPrice = criteria.koreaEntryPrice,
-            foreignExchange = criteria.foreignExchange,
+            foreignExchange = parseExchange(criteria.foreignExchange),
             foreignQuantity = criteria.foreignQuantity,
             foreignEntryPrice = criteria.foreignEntryPrice,
             foreignLeverage = criteria.foreignLeverage,
@@ -82,36 +76,39 @@ class PositionFacade(
         )
         val position = positionService.create(command)
 
-        return PositionResult.Detail.from(position)
+        toDetail(position)
     }
 
     @Transactional(readOnly = true)
-    fun findById(id: Long, memberId: Long): PositionResult.Detail? {
-        val position = positionService.findById(id) ?: return null
-        verifyOwnership(position, memberId)
-        return PositionResult.Detail.from(position)
+    fun findById(criteria: PositionCriteria.FindById): PositionResult.Detail {
+        val position = positionService.findById(criteria.positionId)
+            ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
+        verifyOwnership(position, criteria.memberId)
+        return toDetail(position)
     }
 
     @Transactional(readOnly = true)
-    fun findAllOpenByMemberId(memberId: Long): List<PositionResult.Detail> {
-        return positionService.findAllOpenByMemberId(memberId)
-            .map { PositionResult.Detail.from(it) }
+    fun findAllOpenByMemberId(criteria: PositionCriteria.FindAllOpen): PositionResult.Details {
+        return PositionResult.Details(
+            positionService.findAllOpenByMemberId(criteria.memberId).map(::toDetail),
+        )
     }
 
     @Transactional(readOnly = true)
-    fun findAllClosedByMemberId(memberId: Long): List<PositionResult.Detail> {
-        return positionService.findAllClosedByMemberId(memberId)
-            .map { PositionResult.Detail.from(it) }
+    fun findAllClosedByMemberId(criteria: PositionCriteria.FindAllClosed): PositionResult.Details {
+        return PositionResult.Details(
+            positionService.findAllClosedByMemberId(criteria.memberId).map(::toDetail),
+        )
     }
 
     @Transactional(readOnly = true)
-    fun calculatePnl(positionId: Long, memberId: Long): PositionResult.Pnl {
-        val position = positionService.findById(positionId)
-            ?: throw PositionNotFoundException("Position not found: $positionId")
-        verifyOwnership(position, memberId)
+    fun calculatePnl(criteria: PositionCriteria.CalculatePnl): PositionResult.Pnl = translateInvalidPosition {
+        val position = positionService.findById(criteria.positionId)
+            ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
+        verifyOwnership(position, criteria.memberId)
 
         val snapshot = premiumService.findLatestSnapshot(position.pair)
-            ?: throw PremiumNotFoundException("Premium not found for symbol: ${position.symbol.code}")
+            ?: throw ApplicationException(ApplicationError.PREMIUM_NOT_FOUND)
 
         val pnl = position.calculatePnl(
             currentKoreaPrice = snapshot.koreaPrice,
@@ -120,13 +117,13 @@ class PositionFacade(
             currentPremiumRate = PremiumPolicy.normalizeEntity(snapshot.premiumRate),
             calculatedAt = clock.instant(),
         )
-        return PositionResult.Pnl.from(positionId, pnl)
+        toPnl(criteria.positionId, pnl)
     }
 
     @Transactional(readOnly = true)
-    fun getSummary(memberId: Long): PositionResult.Summary {
-        val openCount = positionService.countOpenByMemberId(memberId)
-        val closedCount = positionService.countClosedByMemberId(memberId)
+    fun getSummary(criteria: PositionCriteria.Summary): PositionResult.Summary {
+        val openCount = positionService.countOpenByMemberId(criteria.memberId)
+        val closedCount = positionService.countClosedByMemberId(criteria.memberId)
         return PositionResult.Summary(
             totalPositions = Math.toIntExact(openCount + closedCount),
             openPositions = Math.toIntExact(openCount),
@@ -135,25 +132,78 @@ class PositionFacade(
     }
 
     @Transactional
-    fun closePosition(positionId: Long, memberId: Long): PositionResult.Detail {
-        val position = positionService.findById(positionId)
-            ?: throw PositionNotFoundException("Position not found: $positionId")
-        verifyOwnership(position, memberId)
+    fun closePosition(criteria: PositionCriteria.Close): PositionResult.Detail = translateInvalidPosition {
+        val position = positionService.findById(criteria.positionId)
+            ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
+        verifyOwnership(position, criteria.memberId)
 
         position.close()
         val savedPosition = positionService.save(position)
 
-        return PositionResult.Detail.from(savedPosition)
+        toDetail(savedPosition)
     }
 
     private fun verifyOwnership(position: Position, memberId: Long) {
         if (position.memberId != memberId) {
-            throw PositionNotFoundException("Position not found: ${position.id}")
+            throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
         }
     }
-}
 
-class PositionNotFoundException(message: String) : RuntimeException(message)
-class PremiumNotFoundException(message: String) : RuntimeException(message)
-class PremiumSnapshotNotAvailableException(message: String) : RuntimeException(message)
-class StalePremiumSnapshotException(message: String) : RuntimeException(message)
+    private fun toDetail(position: Position): PositionResult.Detail = PositionResult.Detail(
+        id = position.id,
+        memberId = position.memberId,
+        symbol = position.symbol.code,
+        koreaExchange = position.koreaExchange.name,
+        koreaQuantity = position.koreaQuantity,
+        koreaEntryPrice = position.koreaEntryPrice,
+        foreignExchange = position.foreignExchange.name,
+        foreignQuantity = position.foreignQuantity,
+        foreignEntryPrice = position.foreignEntryPrice,
+        foreignLeverage = position.foreignLeverage,
+        entryFxRate = position.entryFxRate,
+        entryPremiumRate = position.entryPremiumRate,
+        entryObservedAt = position.entryObservedAt,
+        status = position.status.name,
+    )
+
+    private fun toPnl(positionId: Long, pnl: PositionPnl): PositionResult.Pnl = PositionResult.Pnl(
+        positionId = positionId,
+        premiumDiff = pnl.premiumDiff,
+        entryPremiumRate = pnl.entryPremiumRate,
+        currentPremiumRate = pnl.currentPremiumRate,
+        koreaPnl = pnl.koreaPnl,
+        foreignPnlKrw = pnl.foreignPnlKrw,
+        totalPnlKrw = pnl.totalPnlKrw,
+        koreaCurrentValue = pnl.koreaCurrentValue,
+        totalPnlPercent = pnl.totalPnlPercent,
+        isProfit = pnl.isProfit(),
+        calculatedAt = pnl.calculatedAt,
+    )
+
+    private inline fun <T> translateInvalidPosition(block: () -> T): T =
+        try {
+            block()
+        } catch (ex: ApplicationException) {
+            throw ex
+        } catch (ex: InvalidPositionException) {
+            throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
+        }
+
+    private fun parsePair(symbol: String, koreaExchange: String, foreignExchange: String): MarketPair =
+        try {
+            MarketPair(
+                symbol = Symbol(symbol),
+                koreaExchange = Exchange.valueOf(koreaExchange),
+                foreignExchange = Exchange.valueOf(foreignExchange),
+            )
+        } catch (ex: IllegalArgumentException) {
+            throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
+        }
+
+    private fun parseExchange(raw: String): Exchange =
+        try {
+            Exchange.valueOf(raw)
+        } catch (ex: IllegalArgumentException) {
+            throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
+        }
+}

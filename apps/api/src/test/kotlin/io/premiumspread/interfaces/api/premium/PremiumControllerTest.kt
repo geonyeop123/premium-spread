@@ -2,18 +2,15 @@ package io.premiumspread.interfaces.api.premium
 
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
+import io.premiumspread.application.common.ApplicationError
+import io.premiumspread.application.common.ApplicationException
 import io.premiumspread.application.premium.PremiumCriteria
 import io.premiumspread.application.premium.PremiumFacade
 import io.premiumspread.application.premium.PremiumResult
-import io.premiumspread.application.premium.TickerNotFoundException
-import io.premiumspread.domain.premium.PremiumSnapshot
-import io.premiumspread.infrastructure.security.JwtTokenProvider
-import io.premiumspread.infrastructure.security.SecurityConfig
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
-import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -21,252 +18,54 @@ import java.math.BigDecimal
 import java.time.Instant
 
 @WebMvcTest(PremiumController::class)
-@Import(SecurityConfig::class)
+@AutoConfigureMockMvc(addFilters = false)
 class PremiumControllerTest {
+    @Autowired lateinit var mockMvc: MockMvc
+    @MockkBean lateinit var facade: PremiumFacade
+    private val from = Instant.parse("2024-01-01T00:00:00Z")
+    private val to = Instant.parse("2024-01-01T01:00:00Z")
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-
-    @MockkBean
-    private lateinit var premiumFacade: PremiumFacade
-
-    @MockkBean(relaxed = true)
-    private lateinit var jwtTokenProvider: JwtTokenProvider
-
-    @Nested
-    inner class Calculate {
-
-        @Test
-        fun `프리미엄을 계산하고 저장한다`() {
-            val result = PremiumResult.Detail(
-                id = 1L,
-                symbol = "BTC",
-                koreaTickerId = 1L,
-                foreignTickerId = 2L,
-                fxTickerId = 3L,
-                premiumRate = BigDecimal("1.30"),
-                observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-
-            every { premiumFacade.calculateAndSave(PremiumCriteria.Create("BTC")) } returns result
-
-            mockMvc.post("/api/v1/premiums/calculate/BTC")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.id") { value(1) }
-                    jsonPath("$.symbol") { value("BTC") }
-                    jsonPath("$.koreaTickerId") { value(1) }
-                    jsonPath("$.foreignTickerId") { value(2) }
-                    jsonPath("$.fxTickerId") { value(3) }
-                    jsonPath("$.premiumRate") { value(1.30) }
-                }
-        }
-
-        @Test
-        fun `티커가 없으면 404를 반환한다`() {
-            every {
-                premiumFacade.calculateAndSave(PremiumCriteria.Create("BTC"))
-            } throws TickerNotFoundException("Korea ticker not found for symbol: BTC")
-
-            mockMvc.post("/api/v1/premiums/calculate/BTC")
-                .andExpect {
-                    status { isNotFound() }
-                    jsonPath("$.code") { value("TICKER_NOT_FOUND") }
-                    jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }
-                }
+    @Test
+    fun `calculate는 기존 200 계약을 유지한다`() {
+        every { facade.calculateAndSave(PremiumCriteria.Create("BTC")) } returns detail()
+        mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
+            status { isOk() }
+            jsonPath("$.symbol") { value("BTC") }
         }
     }
 
-    @Nested
-    inner class GetCurrent {
-
-        @Test
-        fun `최신 프리미엄을 조회한다`() {
-            val snapshot = PremiumSnapshot(
-                symbol = "BTC",
-                premiumRate = BigDecimal("1.2350"),
-                koreaPrice = BigDecimal("50000000"),
-                foreignPrice = BigDecimal("40000"),
-                foreignPriceInKrw = BigDecimal("49350000"),
-                fxRate = BigDecimal("1233.75"),
-                observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-
-            every { premiumFacade.findLatestSnapshot("BTC") } returns snapshot
-
-            mockMvc.get("/api/v1/premiums/current/BTC")
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.symbol") { value("BTC") }
-                    jsonPath("$.premiumRate") { value(1.24) }
-                    jsonPath("$.koreaPrice") { value(50000000) }
-                    jsonPath("$.foreignPrice") { value(40000) }
-                    jsonPath("$.source") { doesNotExist() }
-                }
-        }
-
-        @Test
-        fun `프리미엄이 없으면 404를 반환한다`() {
-            every { premiumFacade.findLatestSnapshot("BTC") } returns null
-
-            mockMvc.get("/api/v1/premiums/current/BTC")
-                .andExpect {
-                    status { isNotFound() }
-                }
+    @Test
+    fun `current 미발견은 안정된 404 envelope를 반환한다`() {
+        every { facade.findCurrent(PremiumCriteria.FindCurrent("BTC")) } throws
+            ApplicationException(ApplicationError.PREMIUM_NOT_FOUND)
+        mockMvc.get("/api/v1/premiums/current/BTC").andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("PREMIUM_NOT_FOUND") }
         }
     }
 
-    @Nested
-    inner class GetAggregation {
-
-        @Test
-        fun `집계 데이터를 AggregationPage로 반환한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-01T01:00:00Z")
-
-            val results = listOf(
-                PremiumResult.Aggregation(
-                    symbol = "BTC",
-                    high = BigDecimal("2.50"),
-                    low = BigDecimal("1.20"),
-                    open = BigDecimal("1.50"),
-                    close = BigDecimal("2.00"),
-                    avg = BigDecimal("1.80"),
-                    count = 60,
-                    observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-                    fxRate = BigDecimal("1365.50"),
-                ),
-            )
-
-            every { premiumFacade.findAggregation("BTC", "1m", from, to) } returns results
-
-            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
-                param("interval", "1m")
-                param("from", "2024-01-01T00:00:00Z")
-                param("to", "2024-01-01T01:00:00Z")
-            }.andExpect {
-                status { isOk() }
-                jsonPath("$.data") { isArray() }
-                jsonPath("$.data.length()") { value(1) }
-                jsonPath("$.data[0].symbol") { value("BTC") }
-                jsonPath("$.data[0].high") { value(2.50) }
-                jsonPath("$.data[0].low") { value(1.20) }
-                jsonPath("$.data[0].count") { value(60) }
-                jsonPath("$.hasMore") { isBoolean() }
-            }
-        }
-
-        @Test
-        fun `from이 최대 범위 내이면 hasMore는 true`() {
-            val now = Instant.now()
-            val from = now.minusSeconds(3600)  // 1시간 전 (1m 최대 24h 이내)
-
-            every { premiumFacade.findAggregation(any(), any(), any(), any()) } returns emptyList()
-
-            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
-                param("interval", "1m")
-                param("from", from.toString())
-                param("to", now.toString())
-            }.andExpect {
-                status { isOk() }
-                jsonPath("$.hasMore") { value(true) }
-            }
-        }
-
-        @Test
-        fun `from이 최대 범위에 도달하면 hasMore는 false`() {
-            val now = Instant.now()
-            val from = now.minusSeconds(48 * 3600)  // 48시간 전 (1m 최대 24h 초과)
-
-            every { premiumFacade.findAggregation(any(), any(), any(), any()) } returns emptyList()
-
-            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
-                param("interval", "1m")
-                param("from", from.toString())
-                param("to", now.toString())
-            }.andExpect {
-                status { isOk() }
-                jsonPath("$.hasMore") { value(false) }
-            }
-        }
-
-        @Test
-        fun `집계 데이터가 없으면 빈 data 배열을 반환한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-01T01:00:00Z")
-
-            every { premiumFacade.findAggregation("BTC", "1m", from, to) } returns emptyList()
-
-            mockMvc.get("/api/v1/premiums/aggregation/BTC") {
-                param("interval", "1m")
-                param("from", "2024-01-01T00:00:00Z")
-                param("to", "2024-01-01T01:00:00Z")
-            }.andExpect {
-                status { isOk() }
-                jsonPath("$.data") { isArray() }
-                jsonPath("$.data.length()") { value(0) }
-            }
+    @Test
+    fun `aggregation은 Facade의 data와 hasMore Result만 Response로 옮긴다`() {
+        every { facade.findAggregation(PremiumCriteria.FindAggregation("BTC", "1m", from, to)) } returns
+            PremiumResult.AggregationPage(emptyList(), true)
+        mockMvc.get("/api/v1/premiums/aggregation/BTC") {
+            param("interval", "1m"); param("from", from.toString()); param("to", to.toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.data") { isArray() }
+            jsonPath("$.hasMore") { value(true) }
         }
     }
 
-    @Nested
-    inner class GetHistory {
-
-        @Test
-        fun `기간별 프리미엄 목록을 조회한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
-
-            val results = listOf(
-                PremiumResult.Detail(
-                    id = 1L,
-                    symbol = "BTC",
-                    koreaTickerId = 1L,
-                    foreignTickerId = 2L,
-                    fxTickerId = 3L,
-                    premiumRate = BigDecimal("1.30"),
-                    observedAt = Instant.parse("2024-01-01T01:00:00Z"),
-                ),
-                PremiumResult.Detail(
-                    id = 2L,
-                    symbol = "BTC",
-                    koreaTickerId = 4L,
-                    foreignTickerId = 5L,
-                    fxTickerId = 6L,
-                    premiumRate = BigDecimal("1.50"),
-                    observedAt = Instant.parse("2024-01-01T02:00:00Z"),
-                ),
-            )
-
-            every { premiumFacade.findByPeriod("BTC", from, to) } returns results
-
-            mockMvc.get("/api/v1/premiums/history/BTC") {
-                param("from", "2024-01-01T00:00:00Z")
-                param("to", "2024-01-02T00:00:00Z")
-            }.andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(2) }
-                jsonPath("$[0].id") { value(1) }
-                jsonPath("$[0].premiumRate") { value(1.30) }
-                jsonPath("$[1].id") { value(2) }
-                jsonPath("$[1].premiumRate") { value(1.50) }
-            }
-        }
-
-        @Test
-        fun `프리미엄이 없으면 빈 배열을 반환한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
-
-            every { premiumFacade.findByPeriod("BTC", from, to) } returns emptyList()
-
-            mockMvc.get("/api/v1/premiums/history/BTC") {
-                param("from", "2024-01-01T00:00:00Z")
-                param("to", "2024-01-02T00:00:00Z")
-            }.andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(0) }
-            }
-        }
+    @Test
+    fun `semantic 범위 오류는 422다`() {
+        every { facade.findByPeriod(any()) } throws ApplicationException(ApplicationError.INVALID_PREMIUM_INPUT)
+        mockMvc.get("/api/v1/premiums/history/BTC") {
+            param("from", to.toString()); param("to", from.toString())
+        }.andExpect { status { isUnprocessableEntity() } }
     }
+
+    private fun detail() = PremiumResult.Detail(
+        1L, "BTC", 1L, 2L, 3L, BigDecimal("1.3"), from,
+    )
 }

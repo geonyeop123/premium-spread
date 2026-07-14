@@ -1,6 +1,5 @@
 plugins {
     id("premiumspread.spring-boot-application")
-    id("org.jetbrains.kotlin.plugin.jpa")
 }
 
 tasks.named<Test>("test") {
@@ -37,12 +36,6 @@ dependencies {
     // serialization
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
-
-    // security
-    implementation("org.springframework.boot:spring-boot-starter-security")
-    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 
     // web
     implementation("org.springframework.boot:spring-boot-starter-web")

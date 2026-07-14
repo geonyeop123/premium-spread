@@ -3,14 +3,14 @@ package io.premiumspread.interfaces.api.member
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.config.TestConfig
 import io.premiumspread.domain.member.Member
+import io.premiumspread.domain.member.PasswordEncoder
 import io.premiumspread.domain.member.MemberRepository
-import io.premiumspread.infrastructure.security.LoginSuccessHandler
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
 import jakarta.servlet.http.Cookie
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -20,11 +20,16 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
-import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.options
 import org.springframework.test.web.servlet.post
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @Tag("integration")
 @SpringBootTest
@@ -56,29 +61,31 @@ class MemberControllerE2ETest @Autowired constructor(
         ),
     )
 
-    private fun login(email: String, password: String): String {
+    private fun loginResult(email: String, password: String): MvcResult {
         val request = mapOf("email" to email, "password" to password)
-        val result = mockMvc.post("/api/v1/members/login") {
+        return mockMvc.post("/api/v1/members/login") {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
-        }.andReturn()
+        }.andExpect { status { isOk() } }.andReturn()
+    }
+
+    private fun login(email: String, password: String): String {
+        val result = loginResult(email, password)
         val body = objectMapper.readTree(result.response.contentAsString)
         return body["accessToken"].asText()
     }
 
     private fun loginRefreshCookie(email: String, password: String): Cookie {
-        val request = mapOf("email" to email, "password" to password)
-        val result = mockMvc.post("/api/v1/members/login") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(request)
-        }.andExpect {
-            status { isOk() }
-        }.andReturn()
+        val result = loginResult(email, password)
 
-        return requireNotNull(result.response.getCookie(LoginSuccessHandler.REFRESH_TOKEN_COOKIE)) {
+        return requireNotNull(result.response.getCookie(REFRESH_COOKIE_NAME)) {
             "로그인 응답에 refresh_token 쿠키가 없습니다."
         }
     }
+
+    private fun refresh(cookie: Cookie): MvcResult = mockMvc.post("/api/v1/auth/refresh") {
+        cookie(cookie)
+    }.andReturn()
 
     // -- POST /api/v1/members/register --
 
@@ -199,9 +206,119 @@ class MemberControllerE2ETest @Autowired constructor(
                 status { isOk() }
                 jsonPath("$.accessToken") { isString() }
                 jsonPath("$.refreshToken") { doesNotExist() }
-                cookie { exists(LoginSuccessHandler.REFRESH_TOKEN_COOKIE) }
-                cookie { httpOnly(LoginSuccessHandler.REFRESH_TOKEN_COOKIE, true) }
-                cookie { secure(LoginSuccessHandler.REFRESH_TOKEN_COOKIE, true) }
+                cookie { exists(REFRESH_COOKIE_NAME) }
+                cookie { httpOnly(REFRESH_COOKIE_NAME, true) }
+                cookie { secure(REFRESH_COOKIE_NAME, false) }
+                header { string("Set-Cookie", org.hamcrest.Matchers.containsString("Path=/api/v1/auth")) }
+                header { string("Set-Cookie", org.hamcrest.Matchers.containsString("SameSite=Strict")) }
+                header { string("Set-Cookie", org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Domain="))) }
+            }
+        }
+
+        @Test
+        fun `access token을 refresh cookie로 제출하면 거부한다`() {
+            createMember(email = "access-as-refresh@example.com")
+            val accessToken = login("access-as-refresh@example.com", "password123")
+
+            mockMvc.post("/api/v1/auth/refresh") {
+                cookie(Cookie(REFRESH_COOKIE_NAME, accessToken))
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("INVALID_REFRESH_TOKEN") }
+            }
+        }
+
+        @Test
+        fun `회전된 이전 refresh는 거부하지만 승자 token은 계속 회전할 수 있다`() {
+            createMember(email = "rotate@example.com")
+            val first = loginRefreshCookie("rotate@example.com", "password123")
+            val firstRefresh = refresh(first)
+            assertThat(firstRefresh.response.status).isEqualTo(200)
+            val winner = requireNotNull(firstRefresh.response.getCookie(REFRESH_COOKIE_NAME))
+
+            assertThat(refresh(first).response.status).isEqualTo(401)
+            assertThat(refresh(winner).response.status).isEqualTo(200)
+        }
+
+        @Test
+        fun `동시 refresh는 하나만 성공하고 승자 session은 유지된다`() {
+            createMember(email = "concurrent@example.com")
+            val original = loginRefreshCookie("concurrent@example.com", "password123")
+            val executor = Executors.newFixedThreadPool(2)
+            val start = CountDownLatch(1)
+            try {
+                val requests = List(2) {
+                    executor.submit(
+                        Callable {
+                            check(start.await(10, TimeUnit.SECONDS))
+                            refresh(Cookie(REFRESH_COOKIE_NAME, original.value))
+                        },
+                    )
+                }
+                start.countDown()
+                val results = requests.map { it.get(10, TimeUnit.SECONDS) }
+                assertThat(results.map { it.response.status }.sorted()).containsExactly(200, 401)
+
+                val winner = results.single { it.response.status == 200 }
+                    .response.getCookie(REFRESH_COOKIE_NAME)
+                assertThat(winner).isNotNull
+                assertThat(refresh(requireNotNull(winner)).response.status).isEqualTo(200)
+            } finally {
+                executor.shutdownNow()
+            }
+        }
+
+        @Test
+        fun `이전 로그인 family token은 현재 로그인 session을 revoke하지 않는다`() {
+            createMember(email = "family@example.com")
+            val previousFamily = loginRefreshCookie("family@example.com", "password123")
+            val currentFamily = loginRefreshCookie("family@example.com", "password123")
+
+            assertThat(refresh(previousFamily).response.status).isEqualTo(401)
+            assertThat(refresh(currentFamily).response.status).isEqualTo(200)
+        }
+
+        @Test
+        fun `Redis session에는 refresh token 원문을 저장하지 않는다`() {
+            createMember(email = "hashed@example.com")
+            val refreshCookie = loginRefreshCookie("hashed@example.com", "password123")
+
+            val keys = redisTemplate.keys("auth:refresh:*")
+            assertThat(keys).hasSize(1)
+            val entries = redisTemplate.opsForHash<String, String>().entries(keys.single())
+            assertThat(entries.values).doesNotContain(refreshCookie.value)
+            assertThat(keys.single()).doesNotContain(refreshCookie.value)
+        }
+    }
+
+    @Nested
+    inner class CorsPreflight {
+
+        @Test
+        fun `허용 origin method header preflight는 실제 security chain을 통과한다`() {
+            mockMvc.options("/api/v1/auth/refresh") {
+                header("Origin", "http://localhost:3000")
+                header("Access-Control-Request-Method", "POST")
+                header("Access-Control-Request-Headers", "Content-Type")
+            }.andExpect {
+                status { isOk() }
+                header { string("Access-Control-Allow-Origin", "http://localhost:3000") }
+                header { string("Access-Control-Allow-Credentials", "true") }
+            }
+        }
+
+        @Test
+        fun `허용되지 않은 origin method header preflight는 거부한다`() {
+            listOf(
+                Triple("https://attacker.example.com", "POST", "Content-Type"),
+                Triple("http://localhost:3000", "PUT", "Content-Type"),
+                Triple("http://localhost:3000", "POST", "X-Forbidden"),
+            ).forEach { (origin, method, headers) ->
+                mockMvc.options("/api/v1/auth/refresh") {
+                    header("Origin", origin)
+                    header("Access-Control-Request-Method", method)
+                    header("Access-Control-Request-Headers", headers)
+                }.andExpect { status { isForbidden() } }
             }
         }
     }
@@ -222,16 +339,24 @@ class MemberControllerE2ETest @Autowired constructor(
         }
     }
 
-    // -- POST /api/v1/members/logout --
+    // -- POST /api/v1/auth/logout --
 
     @Nested
     inner class Logout {
 
         @Test
-        fun `로그아웃 성공 - 200 반환`() {
-            mockMvc.post("/api/v1/members/logout").andExpect {
-                status { isOk() }
+        fun `로그아웃은 refresh session을 revoke하고 204와 만료 cookie를 반환한다`() {
+            createMember(email = "logout-refresh@example.com")
+            val refreshCookie = loginRefreshCookie("logout-refresh@example.com", "password123")
+
+            mockMvc.post("/api/v1/auth/logout") {
+                cookie(refreshCookie)
+            }.andExpect {
+                status { isNoContent() }
+                cookie { maxAge(REFRESH_COOKIE_NAME, 0) }
             }
+
+            assertThat(refresh(refreshCookie).response.status).isEqualTo(401)
         }
     }
 
@@ -263,22 +388,24 @@ class MemberControllerE2ETest @Autowired constructor(
         }
 
         @Test
-        @Disabled("JWT 토큰 블랙리스트 미구현 - 로그아웃 후에도 토큰이 만료 전까지 유효")
-        fun `로그아웃 후 내 정보 조회 시 401 반환`() {
+        fun `로그아웃 후에도 기존 access token은 만료까지 유효하다`() {
             createMember(email = "logout@example.com", rawPassword = "password123")
 
-            val accessToken = login("logout@example.com", "password123")
+            val loginResult = loginResult("logout@example.com", "password123")
+            val accessToken = objectMapper.readTree(loginResult.response.contentAsString)["accessToken"].asText()
+            val refreshCookie = requireNotNull(loginResult.response.getCookie(REFRESH_COOKIE_NAME))
 
             // 로그아웃
             mockMvc.post("/api/v1/auth/logout") {
-                header("Authorization", "Bearer $accessToken")
-            }
+                cookie(refreshCookie)
+            }.andExpect { status { isNoContent() } }
 
             // 로그아웃 후 /me 조회
             mockMvc.get("/api/v1/members/me") {
                 header("Authorization", "Bearer $accessToken")
             }.andExpect {
-                status { isUnauthorized() }
+                status { isOk() }
+                jsonPath("$.email") { value("logout@example.com") }
             }
         }
     }
@@ -301,7 +428,9 @@ class MemberControllerE2ETest @Autowired constructor(
         }
 
         // 2. 로그인 → accessToken 획득
-        val accessToken = login("flow@example.com", "password123")
+        val loginResult = loginResult("flow@example.com", "password123")
+        val accessToken = objectMapper.readTree(loginResult.response.contentAsString)["accessToken"].asText()
+        val refreshCookie = requireNotNull(loginResult.response.getCookie(REFRESH_COOKIE_NAME))
 
         // 3. 내 정보 조회
         mockMvc.get("/api/v1/members/me") {
@@ -314,15 +443,20 @@ class MemberControllerE2ETest @Autowired constructor(
 
         // 4. 로그아웃 (refresh_token 쿠키 삭제)
         mockMvc.post("/api/v1/auth/logout") {
+            cookie(refreshCookie)
+        }.andExpect {
+            status { isNoContent() }
+        }
+
+        // 5. access token은 blacklist하지 않으므로 만료 전까지 유효
+        mockMvc.get("/api/v1/members/me") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
         }
+    }
 
-        // 5. 로그아웃 후 accessToken은 블랙리스트 미구현으로 여전히 유효
-        // 토큰 없이 요청하면 401 반환됨을 검증
-        mockMvc.get("/api/v1/members/me").andExpect {
-            status { isUnauthorized() }
-        }
+    private companion object {
+        const val REFRESH_COOKIE_NAME = "refresh_token"
     }
 }

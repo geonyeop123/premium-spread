@@ -1,25 +1,27 @@
 package io.premiumspread.application.notification
 
-import io.premiumspread.domain.notification.NotificationSubscription
-import io.premiumspread.domain.notification.SubscriptionStatus
-import io.premiumspread.domain.notification.ThresholdDirection
 import java.math.BigDecimal
 
 class NotificationSubscriptionCriteria private constructor() {
     data class Create(
         val memberId: Long,
         val symbol: String,
-        val direction: ThresholdDirection,
+        val direction: String,
         val threshold: BigDecimal,
     )
+
+    data class Find(val id: Long, val memberId: Long)
+    data class FindAll(val memberId: Long)
 
     data class Update(
         val id: Long,
         val memberId: Long,
-        val status: SubscriptionStatus?,
-        val direction: ThresholdDirection?,
+        val status: String?,
+        val direction: String?,
         val threshold: BigDecimal?,
     )
+
+    data class Delete(val id: Long, val memberId: Long)
 }
 
 class NotificationSubscriptionResult private constructor() {
@@ -27,19 +29,10 @@ class NotificationSubscriptionResult private constructor() {
         val id: Long,
         val memberId: Long,
         val symbol: String,
-        val direction: ThresholdDirection,
+        val direction: String,
         val threshold: BigDecimal,
-        val status: SubscriptionStatus,
-    ) {
-        companion object {
-            fun from(entity: NotificationSubscription): Detail = Detail(
-                id = entity.id,
-                memberId = entity.memberId,
-                symbol = entity.symbol,
-                direction = entity.direction,
-                threshold = entity.threshold,
-                status = entity.status,
-            )
-        }
-    }
+        val status: String,
+    )
+
+    data class Details(val items: List<Detail>)
 }

@@ -2,14 +2,15 @@ package io.premiumspread
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter
-import org.springframework.boot.context.properties.ConfigurationPropertiesScan
+import io.premiumspread.config.AggregationProperties
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.context.TypeExcludeFilter
 import org.springframework.boot.runApplication
 import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.FilterType
 
 @SpringBootApplication(excludeName = ["org.redisson.spring.starter.RedissonAutoConfigurationV2"])
-@ConfigurationPropertiesScan
+@EnableConfigurationProperties(AggregationProperties::class)
 @ComponentScan(
     excludeFilters = [
         ComponentScan.Filter(
@@ -23,7 +24,7 @@ import org.springframework.context.annotation.FilterType
         ComponentScan.Filter(
             type = FilterType.REGEX,
             pattern = [
-                "io\\.premiumspread\\.infrastructure\\.common\\..*",
+                "io\\.premiumspread\\.infrastructure\\..*",
                 "io\\.premiumspread\\.config\\.jpa\\..*",
                 "io\\.premiumspread\\.redis\\..*",
             ],

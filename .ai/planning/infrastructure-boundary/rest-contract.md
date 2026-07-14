@@ -8,7 +8,7 @@
 | POST | `/api/v1/members/login` | 200 | `accessToken`; refresh cookie |
 | GET | `/api/v1/members/me` | 200 | `MemberResponse.Detail` |
 | POST | `/api/v1/auth/refresh` | 200 | `accessToken`; rotated refresh cookie |
-| POST | `/api/v1/auth/logout` | 200 | `{message}`; expired refresh cookie |
+| POST | `/api/v1/auth/logout` | 204 | empty; expired refresh cookie |
 | POST | `/api/v1/tickers` | 201 | `TickerResponse.Detail` |
 | POST | `/api/v1/premiums/calculate/{symbol}` | 200 | `PremiumResponse.Detail` |
 | GET | `/api/v1/premiums/current/{symbol}` | 200 | `PremiumResponse.Current` |
@@ -28,7 +28,7 @@
 | PATCH | `/api/v1/notifications/subscriptions/{id}` | 200 | subscription detail |
 | DELETE | `/api/v1/notifications/subscriptions/{id}` | 204 | empty |
 
-오류 envelope는 `{code,message}`다. 현재 integration contract가 확인하는 주요 상태는 400, 401, 404,
-405, 409, 500이며 기준 실행은 `JAVA_TOOL_OPTIONS=-Dapi.version=1.44 bash gradlew
-:apps:api:integrationTest --rerun-tasks --offline --no-daemon`이다. 실행 결과는 88 tests, failure/error 0,
-skip 1이다. Controller 선언과 `apps/api/src/test`의 MockMvc/E2E 테스트가 실행 가능한 원본 fixture다.
+오류 envelope는 `{code,message}`다. Phase 5 계약은 transport 400/405, 인증 401, 미발견 404, 충돌 409,
+semantic 422, 미분류 500을 구분한다. 실행 명령은 `bash gradlew :apps:api:integrationTest --rerun-tasks
+--offline --no-daemon`이며 116 tests, failure/error/skip 0이다. Controller 선언과 `apps/api/src/test`의
+MockMvc/E2E 테스트가 실행 가능한 원본 fixture다.

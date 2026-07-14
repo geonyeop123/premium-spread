@@ -25,6 +25,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -119,7 +120,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         val expectedRate = PremiumPolicy.calculate(koreaPrice, foreignPrice, fxRate).entityPremiumRate
 
         // when & then
-        mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
+        mockMvc.post("/api/v1/premiums/calculate/BTC") { with(user("internal")) }.andExpect {
             status { isOk() }
             jsonPath("$.id") { isNumber() }
             jsonPath("$.symbol") { value("BTC") }
@@ -134,7 +135,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         saveFxTicker()
 
         // when & then
-        mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
+        mockMvc.post("/api/v1/premiums/calculate/BTC") { with(user("internal")) }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("TICKER_NOT_FOUND") }
             jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }
@@ -148,7 +149,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         saveFxTicker()
 
         // when & then
-        mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
+        mockMvc.post("/api/v1/premiums/calculate/BTC") { with(user("internal")) }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("TICKER_NOT_FOUND") }
             jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }
@@ -162,7 +163,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         saveForeignTicker()
 
         // when & then
-        mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
+        mockMvc.post("/api/v1/premiums/calculate/BTC") { with(user("internal")) }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("TICKER_NOT_FOUND") }
             jsonPath("$.message") { value("티커를 찾을 수 없습니다.") }

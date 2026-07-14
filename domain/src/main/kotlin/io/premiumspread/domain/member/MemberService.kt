@@ -27,4 +27,10 @@ class MemberService(
     fun findById(id: Long): Member? {
         return memberRepository.findById(id)
     }
+
+    @Transactional(readOnly = true)
+    fun authenticate(email: String, rawPassword: String): Member? {
+        val member = memberRepository.findByEmail(email) ?: return null
+        return member.takeIf { passwordEncoder.matches(rawPassword, it.password) }
+    }
 }

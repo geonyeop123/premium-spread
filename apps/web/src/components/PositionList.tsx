@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api';
@@ -54,30 +54,37 @@ const formatDate = (iso: string) =>
 export function PositionList({ positions }: PositionListProps) {
   const [pnlMap, setPnlMap] = useState<Record<number, PnlData>>({});
 
-  const fetchPnls = useCallback(async () => {
-    const openPositions = positions.filter((p) => p.status === 'OPEN');
-    if (openPositions.length === 0) return;
-
-    const results = await Promise.allSettled(
-      openPositions.map((p) =>
-        apiClient<PnlData>(`/positions/${p.id}/pnl`)
-      ),
-    );
-
-    const newMap: Record<number, PnlData> = {};
-    results.forEach((r, i) => {
-      if (r.status === 'fulfilled') {
-        newMap[openPositions[i].id] = r.value;
-      }
-    });
-    setPnlMap((prev) => ({ ...prev, ...newMap }));
-  }, [positions]);
-
   useEffect(() => {
-    fetchPnls();
-    const timer = setInterval(fetchPnls, 5000);
-    return () => clearInterval(timer);
-  }, [fetchPnls]);
+    let active = true;
+    const openPositions = positions.filter((p) => p.status === 'OPEN');
+
+    const fetchPnls = async () => {
+      if (openPositions.length === 0) return;
+
+      const results = await Promise.allSettled(
+        openPositions.map((p) =>
+          apiClient<PnlData>(`/positions/${p.id}/pnl`)
+        ),
+      );
+      if (!active) return;
+
+      const newMap: Record<number, PnlData> = {};
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          newMap[openPositions[index].id] = result.value;
+        }
+      });
+      setPnlMap((previous) => ({ ...previous, ...newMap }));
+    };
+
+    const initialTimer = window.setTimeout(() => void fetchPnls(), 0);
+    const pollingTimer = window.setInterval(() => void fetchPnls(), 5000);
+    return () => {
+      active = false;
+      window.clearTimeout(initialTimer);
+      window.clearInterval(pollingTimer);
+    };
+  }, [positions]);
 
   if (positions.length === 0) {
     return (

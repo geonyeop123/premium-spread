@@ -2,239 +2,84 @@ package io.premiumspread.interfaces.api.notification
 
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
-import io.mockk.verify
+import io.mockk.justRun
+import io.premiumspread.application.common.ApplicationError
+import io.premiumspread.application.common.ApplicationException
+import io.premiumspread.application.notification.NotificationSubscriptionCriteria
 import io.premiumspread.application.notification.NotificationSubscriptionFacade
 import io.premiumspread.application.notification.NotificationSubscriptionResult
-import io.premiumspread.domain.notification.NotificationSubscriptionNotFoundException
-import io.premiumspread.domain.notification.SubscriptionStatus
-import io.premiumspread.domain.notification.ThresholdDirection
-import io.premiumspread.infrastructure.security.CustomUserDetails
-import io.premiumspread.infrastructure.security.CustomUserDetailsService
-import io.premiumspread.infrastructure.security.JwtTokenProvider
-import io.premiumspread.infrastructure.security.JwtValidationResult
-import io.premiumspread.infrastructure.security.SecurityConfig
 import io.premiumspread.interfaces.api.config.WebMvcConfig
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.anonymous
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
-import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
+import java.security.Principal
 
 @WebMvcTest(NotificationSubscriptionController::class)
-@Import(SecurityConfig::class, WebMvcConfig::class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import(WebMvcConfig::class)
 class NotificationSubscriptionControllerTest {
-
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-
-    @MockkBean
-    private lateinit var facade: NotificationSubscriptionFacade
-
-    @MockkBean(relaxed = true)
-    private lateinit var jwtTokenProvider: JwtTokenProvider
-
-    @MockkBean(relaxed = true)
-    private lateinit var userDetailsService: CustomUserDetailsService
-
-    private val testUserDetails = CustomUserDetails(
-        memberId = 1L,
-        email = "u@x.com",
-        nickname = "user",
-        encodedPassword = "pw",
-    )
-
-    @BeforeEach
-    fun setUp() {
-        SecurityContextHolder.clearContext()
-        every { jwtTokenProvider.validateAndGetClaims(any()) } returns JwtValidationResult.Invalid
-    }
-
-    @AfterEach
-    fun tearDown() {
-        SecurityContextHolder.clearContext()
-    }
+    @Autowired lateinit var mockMvc: MockMvc
+    @MockkBean lateinit var facade: NotificationSubscriptionFacade
+    private val principal = Principal { "1" }
 
     @Test
-    fun `POST 정상 201`() {
-        every { facade.create(any()) } returns NotificationSubscriptionResult.Detail(
-            id = 100L,
-            memberId = 1L,
-            symbol = "BTC",
-            direction = ThresholdDirection.ABOVE,
-            threshold = BigDecimal("5.00"),
-            status = SubscriptionStatus.ACTIVE,
-        )
-
+    fun `create는 문자열 Criteria로 변환하고 201을 반환한다`() {
+        every { facade.create(NotificationSubscriptionCriteria.Create(1L, "BTC", "ABOVE", BigDecimal("5"))) } returns detail()
         mockMvc.post("/api/v1/notifications/subscriptions") {
-            with(user(testUserDetails))
+            principal = this@NotificationSubscriptionControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
-            content = """{"symbol":"BTC","direction":"ABOVE","threshold":5.00}"""
+            content = """{"symbol":"BTC","direction":"ABOVE","threshold":5}"""
         }.andExpect {
             status { isCreated() }
-            jsonPath("$.id") { value(100) }
-            jsonPath("$.symbol") { value("BTC") }
-            jsonPath("$.status") { value("ACTIVE") }
+            jsonPath("$.direction") { value("ABOVE") }
         }
-
-        verify { facade.create(any()) }
     }
 
     @Test
-    fun `POST 유효성 실패 400`() {
+    fun `빈 symbol은 transport 400이다`() {
         mockMvc.post("/api/v1/notifications/subscriptions") {
-            with(user(testUserDetails))
+            principal = this@NotificationSubscriptionControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
-            content = """{"symbol":"","direction":"ABOVE","threshold":5.00}"""
+            content = """{"symbol":"","direction":"ABOVE","threshold":5}"""
         }.andExpect { status { isBadRequest() } }
     }
 
     @Test
-    fun `POST 잘못된 enum 값은 400을 반환한다`() {
+    fun `잘못된 enum semantic 오류는 422다`() {
+        every { facade.create(any()) } throws ApplicationException(ApplicationError.DOMAIN_ERROR)
         mockMvc.post("/api/v1/notifications/subscriptions") {
-            with(user(testUserDetails))
+            principal = this@NotificationSubscriptionControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
-            content = """{"symbol":"BTC","direction":"INVALID","threshold":5.00}"""
-        }.andExpect { status { isBadRequest() } }
+            content = """{"symbol":"BTC","direction":"WRONG","threshold":5}"""
+        }.andExpect { status { isUnprocessableEntity() } }
     }
 
     @Test
-    fun `POST 미인증 401`() {
-        mockMvc.post("/api/v1/notifications/subscriptions") {
-            with(anonymous())
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"symbol":"BTC","direction":"ABOVE","threshold":5.00}"""
-        }.andExpect { status { isUnauthorized() } }
-    }
-
-    @Test
-    fun `GET 목록 200`() {
-        every { facade.findAllByMemberId(1L) } returns emptyList()
-
+    fun `목록 Details는 기존 배열 Response로 변환한다`() {
+        every { facade.findAll(NotificationSubscriptionCriteria.FindAll(1L)) } returns
+            NotificationSubscriptionResult.Details(listOf(detail()))
         mockMvc.get("/api/v1/notifications/subscriptions") {
-            with(user(testUserDetails))
-        }.andExpect { status { isOk() } }
+            principal = this@NotificationSubscriptionControllerTest.principal
+        }.andExpect { jsonPath("$.length()") { value(1) } }
     }
 
     @Test
-    fun `GET 목록 미인증 401`() {
-        mockMvc.get("/api/v1/notifications/subscriptions") {
-            with(anonymous())
-        }.andExpect { status { isUnauthorized() } }
-    }
-
-    @Test
-    fun `GET 단건 본인 200`() {
-        every { facade.findByIdAndMemberId(10L, 1L) } returns NotificationSubscriptionResult.Detail(
-            id = 10L,
-            memberId = 1L,
-            symbol = "BTC",
-            direction = ThresholdDirection.ABOVE,
-            threshold = BigDecimal("5.00"),
-            status = SubscriptionStatus.ACTIVE,
-        )
-
-        mockMvc.get("/api/v1/notifications/subscriptions/10") {
-            with(user(testUserDetails))
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.id") { value(10) }
-            jsonPath("$.symbol") { value("BTC") }
-        }
-    }
-
-    @Test
-    fun `GET 단건 타인 또는 없음 404`() {
-        every {
-            facade.findByIdAndMemberId(10L, 1L)
-        } throws NotificationSubscriptionNotFoundException("not found")
-
-        mockMvc.get("/api/v1/notifications/subscriptions/10") {
-            with(user(testUserDetails))
-        }.andExpect { status { isNotFound() } }
-    }
-
-    @Test
-    fun `GET 단건 미인증 401`() {
-        mockMvc.get("/api/v1/notifications/subscriptions/10") {
-            with(anonymous())
-        }.andExpect { status { isUnauthorized() } }
-    }
-
-    @Test
-    fun `PATCH 본인 200`() {
-        every { facade.update(any()) } returns NotificationSubscriptionResult.Detail(
-            id = 10L,
-            memberId = 1L,
-            symbol = "BTC",
-            direction = ThresholdDirection.BELOW,
-            threshold = BigDecimal("-2.00"),
-            status = SubscriptionStatus.INACTIVE,
-        )
-
-        mockMvc.patch("/api/v1/notifications/subscriptions/10") {
-            with(user(testUserDetails))
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"status":"INACTIVE","direction":"BELOW","threshold":-2.00}"""
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.status") { value("INACTIVE") }
-            jsonPath("$.direction") { value("BELOW") }
-        }
-    }
-
-    @Test
-    fun `PATCH 타인 404`() {
-        every { facade.update(any()) } throws NotificationSubscriptionNotFoundException("not found")
-
-        mockMvc.patch("/api/v1/notifications/subscriptions/10") {
-            with(user(testUserDetails))
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"status":"INACTIVE"}"""
-        }.andExpect { status { isNotFound() } }
-    }
-
-    @Test
-    fun `PATCH 미인증 401`() {
-        mockMvc.patch("/api/v1/notifications/subscriptions/10") {
-            with(anonymous())
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"status":"INACTIVE"}"""
-        }.andExpect { status { isUnauthorized() } }
-    }
-
-    @Test
-    fun `DELETE 본인 204`() {
-        every { facade.delete(10L, 1L) } returns Unit
-
+    fun `delete는 Criteria를 전달하고 기존 204를 유지한다`() {
+        justRun { facade.delete(NotificationSubscriptionCriteria.Delete(10L, 1L)) }
         mockMvc.delete("/api/v1/notifications/subscriptions/10") {
-            with(user(testUserDetails))
+            principal = this@NotificationSubscriptionControllerTest.principal
         }.andExpect { status { isNoContent() } }
     }
 
-    @Test
-    fun `DELETE 타인 404`() {
-        every { facade.delete(10L, 1L) } throws NotificationSubscriptionNotFoundException("not found")
-
-        mockMvc.delete("/api/v1/notifications/subscriptions/10") {
-            with(user(testUserDetails))
-        }.andExpect { status { isNotFound() } }
-    }
-
-    @Test
-    fun `DELETE 미인증 401`() {
-        mockMvc.delete("/api/v1/notifications/subscriptions/10") {
-            with(anonymous())
-        }.andExpect { status { isUnauthorized() } }
-    }
+    private fun detail() = NotificationSubscriptionResult.Detail(
+        10L, 1L, "BTC", "ABOVE", BigDecimal("5"), "ACTIVE",
+    )
 }

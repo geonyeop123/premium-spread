@@ -2,8 +2,8 @@ package io.premiumspread.interfaces.api.position
 
 import io.premiumspread.application.position.PositionCriteria
 import io.premiumspread.application.position.PositionFacade
-import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.interfaces.api.auth.LoginMemberId
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -22,14 +22,14 @@ class PositionController(
     @PostMapping("/auto")
     fun openAuto(
         @LoginMemberId memberId: Long,
-        @RequestBody request: PositionRequest.OpenAuto,
+        @Valid @RequestBody request: PositionRequest.OpenAuto,
     ): ResponseEntity<PositionResponse.Detail> {
         val criteria = PositionCriteria.OpenAuto(
             memberId = memberId,
             symbol = request.symbol,
-            koreaExchange = Exchange.valueOf(request.koreaExchange),
+            koreaExchange = request.koreaExchange,
             koreaQuantity = request.koreaQuantity,
-            foreignExchange = Exchange.valueOf(request.foreignExchange),
+            foreignExchange = request.foreignExchange,
             foreignQuantity = request.foreignQuantity,
             foreignLeverage = request.foreignLeverage,
         )
@@ -40,15 +40,15 @@ class PositionController(
     @PostMapping("/manual")
     fun openManual(
         @LoginMemberId memberId: Long,
-        @RequestBody request: PositionRequest.OpenManual,
+        @Valid @RequestBody request: PositionRequest.OpenManual,
     ): ResponseEntity<PositionResponse.Detail> {
         val criteria = PositionCriteria.OpenManual(
             memberId = memberId,
             symbol = request.symbol,
-            koreaExchange = Exchange.valueOf(request.koreaExchange),
+            koreaExchange = request.koreaExchange,
             koreaQuantity = request.koreaQuantity,
             koreaEntryPrice = request.koreaEntryPrice,
-            foreignExchange = Exchange.valueOf(request.foreignExchange),
+            foreignExchange = request.foreignExchange,
             foreignQuantity = request.foreignQuantity,
             foreignEntryPrice = request.foreignEntryPrice,
             foreignLeverage = request.foreignLeverage,
@@ -61,14 +61,14 @@ class PositionController(
 
     @GetMapping("/summary")
     fun getSummary(@LoginMemberId memberId: Long): ResponseEntity<PositionResponse.Summary> {
-        val result = positionFacade.getSummary(memberId)
+        val result = positionFacade.getSummary(PositionCriteria.Summary(memberId))
         return ResponseEntity.ok(PositionResponse.Summary.from(result))
     }
 
     @GetMapping("/history")
     fun getHistory(@LoginMemberId memberId: Long): ResponseEntity<List<PositionResponse.Detail>> {
-        val results = positionFacade.findAllClosedByMemberId(memberId)
-        return ResponseEntity.ok(results.map { PositionResponse.Detail.from(it) })
+        val result = positionFacade.findAllClosedByMemberId(PositionCriteria.FindAllClosed(memberId))
+        return ResponseEntity.ok(result.items.map { PositionResponse.Detail.from(it) })
     }
 
     @GetMapping("/{id}")
@@ -76,15 +76,14 @@ class PositionController(
         @PathVariable id: Long,
         @LoginMemberId memberId: Long,
     ): ResponseEntity<PositionResponse.Detail> {
-        val result = positionFacade.findById(id, memberId)
-            ?: return ResponseEntity.notFound().build()
+        val result = positionFacade.findById(PositionCriteria.FindById(id, memberId))
         return ResponseEntity.ok(PositionResponse.Detail.from(result))
     }
 
     @GetMapping
     fun getAllOpen(@LoginMemberId memberId: Long): ResponseEntity<List<PositionResponse.Detail>> {
-        val results = positionFacade.findAllOpenByMemberId(memberId)
-        return ResponseEntity.ok(results.map { PositionResponse.Detail.from(it) })
+        val result = positionFacade.findAllOpenByMemberId(PositionCriteria.FindAllOpen(memberId))
+        return ResponseEntity.ok(result.items.map { PositionResponse.Detail.from(it) })
     }
 
     @GetMapping("/{id}/pnl")
@@ -92,7 +91,7 @@ class PositionController(
         @PathVariable id: Long,
         @LoginMemberId memberId: Long,
     ): ResponseEntity<PositionResponse.Pnl> {
-        val result = positionFacade.calculatePnl(id, memberId)
+        val result = positionFacade.calculatePnl(PositionCriteria.CalculatePnl(id, memberId))
         return ResponseEntity.ok(PositionResponse.Pnl.from(result))
     }
 
@@ -101,7 +100,7 @@ class PositionController(
         @PathVariable id: Long,
         @LoginMemberId memberId: Long,
     ): ResponseEntity<PositionResponse.Detail> {
-        val result = positionFacade.closePosition(id, memberId)
+        val result = positionFacade.closePosition(PositionCriteria.Close(id, memberId))
         return ResponseEntity.ok(PositionResponse.Detail.from(result))
     }
 }
