@@ -7,7 +7,11 @@ import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
 
 @Component
-@ConditionalOnProperty(prefix = "alert.email", name = ["from"])
+@ConditionalOnProperty(
+    prefix = "notification.email",
+    name = ["enabled"],
+    havingValue = "true",
+)
 class PremiumThresholdNotificationListener(
     private val service: PremiumThresholdNotificationService,
 ) {

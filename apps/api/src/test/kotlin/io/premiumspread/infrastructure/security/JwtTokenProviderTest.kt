@@ -1,9 +1,13 @@
 package io.premiumspread.infrastructure.security
 
+import io.jsonwebtoken.Jwts
+import io.jsonwebtoken.security.Keys
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import java.util.Date
 
 class JwtTokenProviderTest {
 
@@ -15,6 +19,9 @@ class JwtTokenProviderTest {
             secretKeyString = "test-secret-key-must-be-at-least-32-bytes-long!!",
             accessTokenExpiryMs = 1800000L,
             refreshTokenExpiryMs = 604800000L,
+            issuer = TEST_ISSUER,
+            audience = TEST_AUDIENCE,
+            clockSkewSeconds = 30L,
         )
     }
 
@@ -57,14 +64,10 @@ class JwtTokenProviderTest {
 
         @Test
         fun `만료된 토큰은 Expired를 반환한다`() {
-            val expiredProvider = JwtTokenProvider(
-                secretKeyString = "test-secret-key-must-be-at-least-32-bytes-long!!",
-                accessTokenExpiryMs = -1000L,
-                refreshTokenExpiryMs = -1000L,
-            )
-            val token = expiredProvider.generateAccessToken(1L, "test@example.com")
+            val strictProvider = tokenProvider(clockSkewSeconds = 0L)
+            val token = signedToken(expirationOffsetMs = -1_000L)
 
-            val result = provider.validateAndGetClaims(token)
+            val result = strictProvider.validateAndGetClaims(token)
 
             assertThat(result).isEqualTo(JwtValidationResult.Expired)
         }
@@ -82,6 +85,9 @@ class JwtTokenProviderTest {
                 secretKeyString = "other-secret-key-must-be-at-least-32-bytes-long!!!",
                 accessTokenExpiryMs = 1800000L,
                 refreshTokenExpiryMs = 604800000L,
+                issuer = TEST_ISSUER,
+                audience = TEST_AUDIENCE,
+                clockSkewSeconds = 30L,
             )
             val token = otherProvider.generateAccessToken(1L, "test@example.com")
 
@@ -96,6 +102,44 @@ class JwtTokenProviderTest {
 
             assertThat(result).isEqualTo(JwtValidationResult.Invalid)
         }
+
+        @Test
+        fun `issuer가 다르면 Invalid를 반환한다`() {
+            val otherIssuerProvider = tokenProvider(issuer = "another-issuer")
+            val token = otherIssuerProvider.generateAccessToken(1L, "test@example.com")
+
+            val result = provider.validateAndGetClaims(token)
+
+            assertThat(result).isEqualTo(JwtValidationResult.Invalid)
+        }
+
+        @Test
+        fun `audience가 다르면 Invalid를 반환한다`() {
+            val otherAudienceProvider = tokenProvider(audience = "another-audience")
+            val token = otherAudienceProvider.generateAccessToken(1L, "test@example.com")
+
+            val result = provider.validateAndGetClaims(token)
+
+            assertThat(result).isEqualTo(JwtValidationResult.Invalid)
+        }
+
+        @Test
+        fun `clock skew 이내로 만료된 토큰은 검증을 통과한다`() {
+            val token = signedToken(expirationOffsetMs = -1_000L)
+
+            val result = provider.validateAndGetClaims(token)
+
+            assertThat(result).isInstanceOf(JwtValidationResult.Valid::class.java)
+        }
+
+        @Test
+        fun `clock skew를 초과해 만료된 토큰은 Expired를 반환한다`() {
+            val token = signedToken(expirationOffsetMs = -31_000L)
+
+            val result = provider.validateAndGetClaims(token)
+
+            assertThat(result).isEqualTo(JwtValidationResult.Expired)
+        }
     }
 
     @Nested
@@ -105,5 +149,67 @@ class JwtTokenProviderTest {
         fun `리프레시 토큰 만료 시간을 초 단위로 반환한다`() {
             assertThat(provider.getRefreshTokenExpirySeconds()).isEqualTo(604800L)
         }
+    }
+
+    @Nested
+    inner class ConfigurationValidation {
+
+        @Test
+        fun `secret은 비어 있거나 32 bytes보다 짧을 수 없다`() {
+            assertThatIllegalArgumentException().isThrownBy { tokenProvider(secret = "") }
+            assertThatIllegalArgumentException().isThrownBy { tokenProvider(secret = "short-secret") }
+        }
+
+        @Test
+        fun `access와 refresh TTL은 양수여야 한다`() {
+            assertThatIllegalArgumentException().isThrownBy { tokenProvider(accessTokenExpiryMs = 0L) }
+            assertThatIllegalArgumentException().isThrownBy { tokenProvider(refreshTokenExpiryMs = -1L) }
+        }
+
+        @Test
+        fun `issuer와 audience는 비어 있을 수 없다`() {
+            assertThatIllegalArgumentException().isThrownBy { tokenProvider(issuer = " ") }
+            assertThatIllegalArgumentException().isThrownBy { tokenProvider(audience = "") }
+        }
+
+        @Test
+        fun `clock skew는 음수일 수 없다`() {
+            assertThatIllegalArgumentException().isThrownBy { tokenProvider(clockSkewSeconds = -1L) }
+        }
+    }
+
+    private fun tokenProvider(
+        secret: String = "test-secret-key-must-be-at-least-32-bytes-long!!",
+        accessTokenExpiryMs: Long = 1_800_000L,
+        refreshTokenExpiryMs: Long = 604_800_000L,
+        issuer: String = TEST_ISSUER,
+        audience: String = TEST_AUDIENCE,
+        clockSkewSeconds: Long = 30L,
+    ): JwtTokenProvider = JwtTokenProvider(
+        secretKeyString = secret,
+        accessTokenExpiryMs = accessTokenExpiryMs,
+        refreshTokenExpiryMs = refreshTokenExpiryMs,
+        issuer = issuer,
+        audience = audience,
+        clockSkewSeconds = clockSkewSeconds,
+    )
+
+    private fun signedToken(expirationOffsetMs: Long): String {
+        val now = Date()
+        return Jwts.builder()
+            .issuer(TEST_ISSUER)
+            .subject("test@example.com")
+            .audience().add(TEST_AUDIENCE).and()
+            .claim(JwtTokenProvider.CLAIM_MEMBER_ID, 1L)
+            .claim(JwtTokenProvider.CLAIM_TOKEN_TYPE, JwtTokenProvider.TOKEN_TYPE_ACCESS)
+            .issuedAt(now)
+            .expiration(Date(now.time + expirationOffsetMs))
+            .signWith(Keys.hmacShaKeyFor("test-secret-key-must-be-at-least-32-bytes-long!!".toByteArray()))
+            .compact()
+    }
+
+    companion object {
+        private const val TEST_ISSUER = "premium-spread"
+        private const val TEST_AUDIENCE = "premium-spread-api"
     }
 }

@@ -12,7 +12,7 @@ alert:
   slack:
     webhook-url: ${SLACK_WEBHOOK_URL:}
 
-# spring.mail.* / alert.email.from은 application.yml(default)에 통합되어 모든 프로파일에서 동일하게 동작한다.
+# notification.email.*은 application.yml(default)에서 환경변수로 주입한다.
 
 logging:
   level:

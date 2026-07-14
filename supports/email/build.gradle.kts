@@ -1,6 +1,7 @@
 dependencies {
     // Spring Mail
     api("org.springframework.boot:spring-boot-starter-mail")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // Spring Boot autoconfigure (compileOnly: 런타임에는 앱이 제공)
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")

@@ -39,9 +39,11 @@ class SecurityConfig(
                 it.requestMatchers(
                     AntPathRequestMatcher("/api/v1/members/register", "POST"),
                     AntPathRequestMatcher("/api/v1/members/login", "POST"),
+                    AntPathRequestMatcher("/api/v1/auth/refresh", "POST"),
                     AntPathRequestMatcher("/api/v1/premiums/**"),
                     AntPathRequestMatcher("/api/v1/tickers/**"),
-                    AntPathRequestMatcher("/actuator/**"),
+                    AntPathRequestMatcher("/actuator/health/liveness", "GET"),
+                    AntPathRequestMatcher("/actuator/health/readiness", "GET"),
                     AntPathRequestMatcher("/swagger-ui/**"),
                     AntPathRequestMatcher("/v3/api-docs/**"),
                 ).permitAll()

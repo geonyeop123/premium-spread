@@ -13,7 +13,11 @@ import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
 @Service
-@ConditionalOnProperty(prefix = "alert.email", name = ["from"])
+@ConditionalOnProperty(
+    prefix = "notification.email",
+    name = ["enabled"],
+    havingValue = "true",
+)
 class PremiumThresholdNotificationService(
     private val readRepository: ActiveSubscriptionReadRepository,
     private val cooldownStore: NotificationCooldownStore,

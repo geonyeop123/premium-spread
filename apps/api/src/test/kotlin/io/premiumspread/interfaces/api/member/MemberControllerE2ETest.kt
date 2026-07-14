@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.config.TestConfig
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
+import io.premiumspread.infrastructure.security.LoginSuccessHandler
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
+import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Nested
@@ -62,6 +64,20 @@ class MemberControllerE2ETest @Autowired constructor(
         }.andReturn()
         val body = objectMapper.readTree(result.response.contentAsString)
         return body["accessToken"].asText()
+    }
+
+    private fun loginRefreshCookie(email: String, password: String): Cookie {
+        val request = mapOf("email" to email, "password" to password)
+        val result = mockMvc.post("/api/v1/members/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(request)
+        }.andExpect {
+            status { isOk() }
+        }.andReturn()
+
+        return requireNotNull(result.response.getCookie(LoginSuccessHandler.REFRESH_TOKEN_COOKIE)) {
+            "로그인 응답에 refresh_token 쿠키가 없습니다."
+        }
     }
 
     // -- POST /api/v1/members/register --
@@ -164,6 +180,45 @@ class MemberControllerE2ETest @Autowired constructor(
                 status { isUnauthorized() }
                 jsonPath("$.code") { value("AUTHENTICATION_FAILED") }
             }
+        }
+    }
+
+    // -- POST /api/v1/auth/refresh --
+
+    @Nested
+    inner class Refresh {
+
+        @Test
+        fun `실제 로그인 응답의 refresh cookie만으로 access token을 재발급한다`() {
+            createMember(email = "refresh@example.com", rawPassword = "password123")
+            val refreshCookie = loginRefreshCookie("refresh@example.com", "password123")
+
+            mockMvc.post("/api/v1/auth/refresh") {
+                cookie(refreshCookie)
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.accessToken") { isString() }
+                jsonPath("$.refreshToken") { doesNotExist() }
+                cookie { exists(LoginSuccessHandler.REFRESH_TOKEN_COOKIE) }
+                cookie { httpOnly(LoginSuccessHandler.REFRESH_TOKEN_COOKIE, true) }
+                cookie { secure(LoginSuccessHandler.REFRESH_TOKEN_COOKIE, true) }
+            }
+        }
+    }
+
+    // -- Actuator security boundary --
+
+    @Nested
+    inner class ActuatorBoundary {
+
+        @Test
+        fun `실제 actuator liveness와 readiness만 인증 없이 공개한다`() {
+            mockMvc.get("/actuator/health/liveness")
+                .andExpect { status { isOk() } }
+            mockMvc.get("/actuator/health/readiness")
+                .andExpect { status { isOk() } }
+            mockMvc.get("/actuator/health")
+                .andExpect { status { isUnauthorized() } }
         }
     }
 

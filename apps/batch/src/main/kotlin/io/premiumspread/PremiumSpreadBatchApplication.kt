@@ -2,11 +2,12 @@ package io.premiumspread
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
 import org.springframework.boot.runApplication
 import org.springframework.context.annotation.Configuration
 import org.springframework.scheduling.annotation.EnableScheduling
 
-@SpringBootApplication
+@SpringBootApplication(exclude = [MailSenderAutoConfiguration::class])
 class PremiumSpreadBatchApplication
 
 @Configuration

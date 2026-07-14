@@ -19,11 +19,31 @@ spring:
     import:
       - jpa.yml
       - redis.yml
+  flyway:
+    enabled: true
 
 jwt:
-  secret-key: ${JWT_SECRET_KEY:default-local-secret-key-must-be-at-least-32-bytes-long!!}
-  access-token-expiry-ms: 1800000
-  refresh-token-expiry-ms: 604800000
+  secret-key: ${JWT_SECRET_KEY:}
+  issuer: ${JWT_ISSUER:}
+  audience: ${JWT_AUDIENCE:}
+  access-token-expiry-ms: ${JWT_ACCESS_TOKEN_EXPIRY_MS:}
+  refresh-token-expiry-ms: ${JWT_REFRESH_TOKEN_EXPIRY_MS:}
+  clock-skew-seconds: ${JWT_CLOCK_SKEW_SECONDS:}
+
+migration:
+  v12:
+    allow-empty-position-migration: ${MIGRATION_V12_ALLOW_EMPTY:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
 
 warmup:
   enabled: true
@@ -46,11 +66,31 @@ spring:
     activate:
       on-profile: local
 
+jwt:
+  secret-key: ${JWT_SECRET_KEY:default-local-secret-key-must-be-at-least-32-bytes-long!!}
+  issuer: ${JWT_ISSUER:premium-spread-local}
+  audience: ${JWT_AUDIENCE:premium-spread-api-local}
+  access-token-expiry-ms: ${JWT_ACCESS_TOKEN_EXPIRY_MS:1800000}
+  refresh-token-expiry-ms: ${JWT_REFRESH_TOKEN_EXPIRY_MS:604800000}
+  clock-skew-seconds: ${JWT_CLOCK_SKEW_SECONDS:30}
+
 ---
 spring:
   config:
     activate:
       on-profile: test
+
+jwt:
+  secret-key: test-secret-key-must-be-at-least-32-bytes-long!!
+  issuer: premium-spread-test
+  audience: premium-spread-api-test
+  access-token-expiry-ms: 1800000
+  refresh-token-expiry-ms: 604800000
+  clock-skew-seconds: 30
+
+migration:
+  v12:
+    allow-empty-position-migration: true
 
 warmup:
   enabled: false

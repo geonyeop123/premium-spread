@@ -1,23 +1,41 @@
 package io.premiumspread.email
 
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.AutoConfiguration
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.mail.javamail.JavaMailSender
+import org.springframework.mail.javamail.JavaMailSenderImpl
 
-@AutoConfiguration(after = [MailSenderAutoConfiguration::class])
+@AutoConfiguration
+@ConditionalOnProperty(
+    prefix = "notification.email",
+    name = ["enabled"],
+    havingValue = "true",
+)
+@EnableConfigurationProperties(
+    NotificationEmailProperties::class,
+    SmtpConnectionProperties::class,
+)
 class EmailAutoConfiguration {
 
     @Bean
-    @ConditionalOnBean(JavaMailSender::class)
-    @ConditionalOnProperty(name = ["alert.email.from"])
+    @ConditionalOnMissingBean(JavaMailSender::class)
+    fun javaMailSender(properties: SmtpConnectionProperties): JavaMailSender =
+        JavaMailSenderImpl().apply {
+            host = properties.host
+            port = properties.port
+            username = properties.username
+            password = properties.password
+            javaMailProperties["mail.smtp.auth"] = "true"
+            javaMailProperties["mail.smtp.starttls.enable"] = "true"
+        }
+
+    @Bean
     @ConditionalOnMissingBean(EmailSender::class)
     fun emailSender(
         mailSender: JavaMailSender,
-        @Value("\${alert.email.from}") from: String,
-    ): EmailSender = JavaMailEmailSender(mailSender, from)
+        properties: NotificationEmailProperties,
+    ): EmailSender = JavaMailEmailSender(mailSender, properties.from)
 }
