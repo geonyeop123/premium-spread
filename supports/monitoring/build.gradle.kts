@@ -1,3 +1,7 @@
+plugins {
+    id("premiumspread.spring-library")
+}
+
 dependencies {
     // Actuator
     api("org.springframework.boot:spring-boot-starter-actuator")
@@ -11,6 +15,8 @@ dependencies {
     compileOnly("com.fasterxml.jackson.core:jackson-databind")
 
     // Test
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework:spring-web")
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

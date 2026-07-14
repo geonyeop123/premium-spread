@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS ticker_minute (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     exchange VARCHAR(20) NOT NULL,
     symbol VARCHAR(10) NOT NULL,
+    currency VARCHAR(10) NOT NULL,
     minute_at DATETIME NOT NULL,
     high DECIMAL(20,2) NOT NULL,
     low DECIMAL(20,2) NOT NULL,
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS ticker_hour (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     exchange VARCHAR(20) NOT NULL,
     symbol VARCHAR(10) NOT NULL,
+    currency VARCHAR(10) NOT NULL,
     hour_at DATETIME NOT NULL,
     high DECIMAL(20,2) NOT NULL,
     low DECIMAL(20,2) NOT NULL,
@@ -74,6 +76,7 @@ CREATE TABLE IF NOT EXISTS ticker_day (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     exchange VARCHAR(20) NOT NULL,
     symbol VARCHAR(10) NOT NULL,
+    currency VARCHAR(10) NOT NULL,
     day_at DATE NOT NULL,
     high DECIMAL(20,2) NOT NULL,
     low DECIMAL(20,2) NOT NULL,
@@ -96,6 +99,7 @@ CREATE TABLE IF NOT EXISTS premium_minute (
     close DECIMAL(10,4) NOT NULL,
     avg DECIMAL(10,4) NOT NULL,
     count INT NOT NULL,
+    fx_rate DECIMAL(10,4) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_symbol_minute (symbol, minute_at),
     INDEX idx_minute_at (minute_at)
@@ -111,6 +115,7 @@ CREATE TABLE IF NOT EXISTS premium_hour (
     close DECIMAL(10,4) NOT NULL,
     avg DECIMAL(10,4) NOT NULL,
     count INT NOT NULL,
+    fx_rate DECIMAL(10,4) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_symbol_hour (symbol, hour_at),
     INDEX idx_hour_at (hour_at)
@@ -126,6 +131,7 @@ CREATE TABLE IF NOT EXISTS premium_day (
     close DECIMAL(10,4) NOT NULL,
     avg DECIMAL(10,4) NOT NULL,
     count INT NOT NULL,
+    fx_rate DECIMAL(10,4) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_symbol_day (symbol, day_at),
     INDEX idx_day_at (day_at)

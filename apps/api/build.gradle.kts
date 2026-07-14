@@ -1,4 +1,5 @@
 plugins {
+    id("premiumspread.spring-boot-application")
     id("org.jetbrains.kotlin.plugin.jpa")
 }
 
@@ -20,13 +21,27 @@ tasks.register<Test>("integrationTest") {
 }
 
 dependencies {
+    implementation(project(":domain"))
+    runtimeOnly(project(":infrastructure:common"))
+    runtimeOnly(project(":infrastructure:api"))
+
     // modules
+    // TODO(Phase 4): Remove after JPA adapters, entity scanning, and migrations move to infrastructure:common.
     implementation(project(":modules:jpa"))
+    // TODO(Phase 4): Remove after API cache adapters move to infrastructure:common and consume Redis transitively.
     implementation(project(":modules:redis"))
 
     // supports
-    implementation(project(":supports:logging"))
-    implementation(project(":supports:monitoring"))
+    runtimeOnly(project(":supports:logging"))
+    runtimeOnly(project(":supports:monitoring"))
+
+    // Kotlin / Spring
+    implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+
+    // serialization
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
 
     // flyway
     implementation("org.flywaydb:flyway-core")
@@ -43,11 +58,22 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:${project.properties["springDocOpenApiVersion"]}")
 
-    // querydsl
-    kapt("com.querydsl:querydsl-apt::jakarta")
-
     // security-test
     testImplementation("org.springframework.security:spring-security-test")
+
+    // test
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly("com.mysql:mysql-connector-j")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("com.ninja-squad:springmockk:${project.properties["springMockkVersion"]}")
+    testImplementation("org.mockito:mockito-core:${project.properties["mockitoVersion"]}")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:${project.properties["mockitoKotlinVersion"]}")
+    testImplementation("org.instancio:instancio-junit:${project.properties["instancioJUnitVersion"]}")
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.testcontainers:testcontainers")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:mysql")
 
     // test-fixtures
     testImplementation(testFixtures(project(":modules:jpa")))

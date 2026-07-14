@@ -1,3 +1,7 @@
+plugins {
+    id("premiumspread.spring-library")
+}
+
 dependencies {
     // Spring Mail
     api("org.springframework.boot:spring-boot-starter-mail")
@@ -7,6 +11,7 @@ dependencies {
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
 
     // Test
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("com.ninja-squad:springmockk:${project.properties["springMockkVersion"]}")
 }

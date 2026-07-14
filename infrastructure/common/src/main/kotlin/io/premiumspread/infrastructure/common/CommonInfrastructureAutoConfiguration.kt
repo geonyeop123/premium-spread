@@ -1,0 +1,6 @@
+package io.premiumspread.infrastructure.common
+
+import org.springframework.boot.autoconfigure.AutoConfiguration
+
+@AutoConfiguration
+class CommonInfrastructureAutoConfiguration
