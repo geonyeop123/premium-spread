@@ -11,8 +11,9 @@
 | 4. 공통 Persistence/Redis Infrastructure | COMPLETE | `ccd5952` | `origin/refactor/infrastructure-boundary` | JPA 2, Redis 13, Common unit 40/integration 5, API unit 168/integration 108 green+1 approved disabled, Batch unit 196/integration 68, Architecture 12 green |
 | 5. API Facade/인증 세션 | COMPLETE | `78e9239` | `origin/refactor/infrastructure-boundary` | Infrastructure API 29, API unit 78/integration 116, Architecture 17, Web lint/build green, disabled 0 |
 | 6. Batch Port/외부 Adapter | COMPLETE | `193cf35` | `origin/refactor/infrastructure-boundary` | Domain 109, Email 7, Monitoring 7, Infrastructure Batch 34, Batch unit 38/integration 62, Architecture 21 green |
-| 7. Durable Notification Delivery | COMPLETE | `feat: 사용자 알림 전달을 내구성 큐로 전환` | push 예정 | Domain 114, Email 12, Common unit 40/integration 14, Infrastructure Batch 36, API unit 83/integration 117, Batch unit 52/integration 69, Architecture 21 green |
-| 8~10 | NOT_STARTED | 없음 | 없음 | Phase 7 commit/push 후 Phase 8 착수 |
+| 7. Durable Notification Delivery | COMPLETE | `6d46477` | `origin/refactor/infrastructure-boundary` | Domain 114, Email 12, Common unit 40/integration 14, Infrastructure Batch 36, API unit 83/integration 117, Batch unit 52/integration 69, Architecture 21 green |
+| 8. 설정·시간·관측성·배포 | COMPLETE | 다음 Phase 기록 | push 전 | unit 454, Common integration 14, API integration 118, Batch integration 69 green |
+| 9~10 | NOT_STARTED | 없음 | 없음 | Phase 8 commit/push 후 Phase 9 착수 |
 
 ## Phase 0 실행 기록
 
@@ -237,3 +238,27 @@ commit/push한다.
   `verifyMigrations`, `git diff --check`가 성공했다. 최종 spec/code review는 BLOCKER 0 / MAJOR 0 / MINOR 0이다.
 - 최종 검증은 Domain 114, Email 12, Common unit 40/integration 14, Infrastructure Batch 36,
   API unit 83/integration 117, Batch unit 52/integration 69, Architecture 21이 failure/error/skip 0으로 전부 green이다.
+
+## Phase 8 실행 기록
+
+- datasource/Redis 설정을 각각 표준 `spring.datasource`, `spring.data.redis` SSOT로 통합하고 Hikari, Redisson,
+  scheduler, notification deadline 설정을 typed properties와 교차 validation으로 fail-fast 처리했다. local/test/prd
+  profile 역할과 운영 기본값 금지 정책을 문서 및 startup test로 고정했다.
+- 모든 실행 시각은 `Clock` 또는 명시적 입력으로 통제하고 aggregation cron zone을 `Asia/Seoul` 정책과 일치시켰다.
+  UTC 저장/KST bucket 경계와 cache timestamp 손상 시 전체 폐기 및 bounded corrupt metric을 검증했다.
+- correlation ID의 요청/응답/MDC 및 async 전파, 구조화 로그 민감정보 masking, metric 이름/tag allowlist와 cardinality
+  제한을 적용했다. API readiness는 DB/Redis, Batch readiness는 DB/Redis/필수 ingestion 상태를 반영한다.
+- API/Batch 관리 포트를 9080/9081로 고정하고 health/Prometheus를 애플리케이션 ingress와 분리했다. 실제 별도 관리
+  포트 HTTP 통합 테스트로 readiness 200/UP, Prometheus 200, 애플리케이션 포트의 actuator 404를 확인했다.
+- SHA image 배포, API readiness 후 Batch 시작, migration 실패 시 중단, smoke 실패 시 이전 SHA rollback을 구현했다.
+  배포 workflow는 unit뿐 아니라 migration/API/Batch/common integration과 compose 계약을 모두 선행한다.
+- 운영 Hibernate SQL logger는 WARN이고 local/test에서만 DEBUG다. Prometheus scrape target, 고정 관리 포트,
+  배포 workflow task를 `docker/deploy-contract-test.sh`로 회귀 방지한다.
+- 독립 spec/code review의 최초 Major 5건과 Minor 2건은 운영 SQL logger, Prometheus 실제 노출, 관리 포트 원자성,
+  deploy integration gate, profile 표와 실제 management HTTP 테스트로 보완했다. 최종 판정과 전체 검증 결과는
+  각각 BLOCKER 0 / MAJOR 0 / MINOR 0이다.
+- 최종 검증은 unit/architecture 454, Common integration 14, API integration 118, Batch integration 69가
+  failure/error/skip 0으로 green이다. `verifyMigrations`, 실제 management HTTP, deploy/compose 계약,
+  production direct-now/`@Value` scan과 `git diff --check`도 성공했다.
+- 최초 묶음 회귀 실행에서 기존 동시 refresh E2E가 한 차례 winner 후속 회전 401을 반환했으나, 해당 경합 테스트를
+  clean rerun하고 API 전체 118개를 다시 실행해 모두 성공했다. Phase 9에서 flaky 진단/반복 정책의 입력으로 보존한다.

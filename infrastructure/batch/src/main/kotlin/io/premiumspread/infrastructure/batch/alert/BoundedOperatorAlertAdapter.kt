@@ -7,6 +7,7 @@ import io.premiumspread.domain.job.OperatorAlertMessage
 import io.premiumspread.monitoring.AlertService
 import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
+import org.slf4j.MDC
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadFactory
@@ -32,7 +33,16 @@ class BoundedOperatorAlertAdapter(
 
     override fun send(alert: OperatorAlertMessage) {
         try {
-            executor.execute { deliver(alert) }
+            val context = MDC.getCopyOfContextMap()
+            executor.execute {
+                val previous = MDC.getCopyOfContextMap()
+                try {
+                    if (context.isNullOrEmpty()) MDC.clear() else MDC.setContextMap(context)
+                    deliver(alert)
+                } finally {
+                    if (previous.isNullOrEmpty()) MDC.clear() else MDC.setContextMap(previous)
+                }
+            }
             meterRegistry.counter(METRIC_NAME, "outcome", "accepted").increment()
         } catch (_: RejectedExecutionException) {
             meterRegistry.counter(METRIC_NAME, "outcome", "dropped").increment()

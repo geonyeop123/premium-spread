@@ -10,12 +10,18 @@ class TickerAggregationScheduler(
     private val job: TickerAggregationJob,
     @Suppress("unused") private val scheduling: BatchSchedulingProperties,
 ) {
-    @Scheduled(cron = "\${batch.scheduling.ticker-aggregation.minute-cron:2 * * * * *}")
+    @Scheduled(
+        cron = "\${batch.scheduling.ticker-aggregation.minute-cron:2 * * * * *}",
+        zone = "\${batch.scheduling.zone:Asia/Seoul}",
+    )
     fun aggregateMinute() {
         job.aggregateMinute()
     }
 
-    @Scheduled(cron = "\${batch.scheduling.ticker-aggregation.hour-cron:7 0 * * * *}")
+    @Scheduled(
+        cron = "\${batch.scheduling.ticker-aggregation.hour-cron:7 0 * * * *}",
+        zone = "\${batch.scheduling.zone:Asia/Seoul}",
+    )
     fun aggregateHour() {
         job.aggregateHour()
     }

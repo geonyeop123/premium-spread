@@ -188,3 +188,30 @@ enqueue/poller/SMTP bean은 비활성화하되 retention properties/REQUIRES_NEW
 hostname+UUID worker ID가 `locked_by`보다 길면 strict mode claim 실패 또는 truncate 후 모든 guarded update 실패가
 발생한다. worker ID를 100자로 제한하고 경계 테스트를 추가했다. 또한 lifecycle metric은 JDBC update 직후가 아니라
 transaction after-commit에만 증가시켜 rollback된 상태를 운영 신호로 남기지 않는다.
+
+## 10. Phase 8 실행 중 추가 확인사항
+
+### F-23 관리 포트는 하나의 원자적 배포 계약이어야 함
+
+애플리케이션의 `MANAGEMENT_PORT`, Compose port mapping/healthcheck, Prometheus target, deploy smoke URL 중 하나라도
+독립 override를 허용하면 정상 기동한 컨테이너가 unhealthy 또는 rollback 대상으로 오판된다. API 9080, Batch 9081을
+단일 고정 계약으로 만들고 override 환경변수를 제거했으며 deploy contract test가 모든 소비 지점의 일치를 검증한다.
+
+### F-24 Prometheus 설정 존재는 실제 scrape 가능성을 증명하지 않음
+
+registry 의존성과 scrape target만 있어도 actuator exposure 또는 management 네트워크 정책이 빠지면 404/접근 실패가
+발생한다. exporter 활성화, `health,prometheus` exposure, 내부 management network를 함께 구성하고 실제 별도 포트 HTTP
+통합 테스트로 readiness와 Prometheus 응답 및 application ingress 비노출을 동시에 증명한다.
+
+### F-25 조건부 자동 설정은 placeholder 해석 시점까지 고려해야 함
+
+Testcontainers dynamic property가 주입되기 전 조건 평가에서 해석 불가능한 datasource placeholder가 있으면 JPA가
+비활성화되거나 context가 조기에 실패할 수 있다. local/test에만 안전한 non-production 기본값을 두고 prd validator가
+그 기본값과 누락 secret을 차단하도록 분리했다. Redis-only context는 datasource validation 자체를 생성하지 않는다.
+
+### F-26 경합 E2E는 단일 green뿐 아니라 재현 진단 가능성이 필요함
+
+Phase 8 최종 묶음 게이트에서 동시 refresh 테스트가 한 차례 winner 후속 회전 401을 반환했지만 격리 clean rerun과
+API 전체 118개 재실행에서는 성공했다. 실패 시 Redis session state와 rotation result가 노출되지 않아 원인을 확정할
+증거가 부족했다. Phase 9 test 정책에서 경합 테스트의 제한 반복과 실패 state 진단을 추가하고, retry로 실패를 숨기지
+않은 채 최초 실패 artifact를 보존해야 한다.

@@ -1,73 +1,90 @@
-version: '3.8'
-
 services:
   api:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
+    image: ${IMAGE_REGISTRY:?IMAGE_REGISTRY is required}/${IMAGE_NAMESPACE:?IMAGE_NAMESPACE is required}/api:${DEPLOY_SHA:?DEPLOY_SHA is required}
     container_name: premium-spread-api
     # JVM MaxRAMPercentage=75가 호스트(6GB) 전체가 아닌 이 한도 기준으로 힙을 잡도록 강제 (OOM 방지)
     mem_limit: ${API_MEM_LIMIT:-1536m}
     mem_reservation: 512m
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9080:9080"
     environment:
       SPRING_PROFILES_ACTIVE: prd
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PWD: ${MYSQL_PWD}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PWD: ${MYSQL_PWD:?MYSQL_PWD is required}
       REDIS_MASTER_HOST: redis-master
       REDIS_MASTER_PORT: 6379
       REDIS_REPLICA_1_HOST: redis-readonly
       REDIS_REPLICA_1_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      JWT_ISSUER: ${JWT_ISSUER}
-      JWT_AUDIENCE: ${JWT_AUDIENCE}
-      JWT_ACCESS_TOKEN_EXPIRY_MS: ${JWT_ACCESS_TOKEN_EXPIRY_MS}
-      JWT_REFRESH_TOKEN_EXPIRY_MS: ${JWT_REFRESH_TOKEN_EXPIRY_MS}
-      JWT_CLOCK_SKEW_SECONDS: ${JWT_CLOCK_SKEW_SECONDS}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      JWT_ISSUER: ${JWT_ISSUER:?JWT_ISSUER is required}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:?JWT_AUDIENCE is required}
+      JWT_ACCESS_TOKEN_EXPIRY_MS: ${JWT_ACCESS_TOKEN_EXPIRY_MS:?JWT_ACCESS_TOKEN_EXPIRY_MS is required}
+      JWT_REFRESH_TOKEN_EXPIRY_MS: ${JWT_REFRESH_TOKEN_EXPIRY_MS:?JWT_REFRESH_TOKEN_EXPIRY_MS is required}
+      JWT_CLOCK_SKEW_SECONDS: ${JWT_CLOCK_SKEW_SECONDS:?JWT_CLOCK_SKEW_SECONDS is required}
+      AUTH_REFRESH_HMAC_KEY: ${AUTH_REFRESH_HMAC_KEY:?AUTH_REFRESH_HMAC_KEY is required}
+      AUTH_CORS_ALLOWED_ORIGINS: ${AUTH_CORS_ALLOWED_ORIGINS:?AUTH_CORS_ALLOWED_ORIGINS is required}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       MIGRATION_V12_ALLOW_EMPTY: ${MIGRATION_V12_ALLOW_EMPTY:-false}
+      MANAGEMENT_ADDRESS: 0.0.0.0
+      MANAGEMENT_PORT: 9080
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9080/actuator/health/readiness || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 30s
     restart: unless-stopped
     networks:
       - premium-spread
 
   batch:
-    build:
-      context: ..
-      dockerfile: apps/batch/Dockerfile
+    image: ${IMAGE_REGISTRY:?IMAGE_REGISTRY is required}/${IMAGE_NAMESPACE:?IMAGE_NAMESPACE is required}/batch:${DEPLOY_SHA:?DEPLOY_SHA is required}
     container_name: premium-spread-batch
     mem_limit: ${BATCH_MEM_LIMIT:-1536m}
     mem_reservation: 512m
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:9081:9081"
     environment:
       SPRING_PROFILES_ACTIVE: prd
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PWD: ${MYSQL_PWD}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PWD: ${MYSQL_PWD:?MYSQL_PWD is required}
       REDIS_MASTER_HOST: redis-master
       REDIS_MASTER_PORT: 6379
       REDIS_REPLICA_1_HOST: redis-readonly
       REDIS_REPLICA_1_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      EXCHANGE_RATE_API_KEY: ${EXCHANGE_RATE_API_KEY}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      EXCHANGE_RATE_API_KEY: ${EXCHANGE_RATE_API_KEY:?EXCHANGE_RATE_API_KEY is required}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
       NOTIFICATION_EMAIL_ENABLED: ${NOTIFICATION_EMAIL_ENABLED:-false}
+      MANAGEMENT_ADDRESS: 0.0.0.0
+      MANAGEMENT_PORT: 9081
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9081/actuator/health/readiness || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 30s
     restart: unless-stopped
     networks:
       - premium-spread
 
   web:
-    build:
-      context: ..
-      dockerfile: apps/web/Dockerfile
+    image: ${IMAGE_REGISTRY:?IMAGE_REGISTRY is required}/${IMAGE_NAMESPACE:?IMAGE_NAMESPACE is required}/web:${DEPLOY_SHA:?DEPLOY_SHA is required}
     container_name: premium-spread-web
     mem_limit: ${WEB_MEM_LIMIT:-512m}
     mem_reservation: 256m
@@ -88,8 +105,10 @@ services:
       - ./certbot/www:/var/www/certbot
       - ./certbot/conf:/etc/letsencrypt
     depends_on:
-      - api
-      - web
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
     restart: unless-stopped
     networks:
       - premium-spread

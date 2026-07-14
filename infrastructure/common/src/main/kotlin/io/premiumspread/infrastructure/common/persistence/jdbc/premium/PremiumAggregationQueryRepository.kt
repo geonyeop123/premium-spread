@@ -2,7 +2,7 @@ package io.premiumspread.infrastructure.common.persistence.jdbc.premium
 
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumAggregationSnapshot
-import org.springframework.beans.factory.annotation.Value
+import io.premiumspread.infrastructure.common.config.AggregationInfrastructureProperties
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.Date
@@ -12,10 +12,9 @@ import java.time.Instant
 @Repository
 class PremiumAggregationQueryRepository(
     private val jdbcTemplate: JdbcTemplate,
-    @Value("\${aggregation.zone:Asia/Seoul}") aggregationZone: String,
+    properties: AggregationInfrastructureProperties,
 ) {
-
-    private val zoneId = java.time.ZoneId.of(aggregationZone)
+    private val zoneId = properties.aggregationZone.zoneId
 
     fun findByInterval(
         pair: MarketPair,

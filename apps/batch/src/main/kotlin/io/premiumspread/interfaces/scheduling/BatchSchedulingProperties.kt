@@ -3,6 +3,7 @@ package io.premiumspread.interfaces.scheduling
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.scheduling.support.CronExpression
 import org.springframework.validation.annotation.Validated
 import java.time.Duration
 
@@ -43,6 +44,9 @@ data class BatchSchedulingProperties(
     ) {
         init {
             require(summaryFixedRate.isPositive()) { "premiumAggregation.summaryFixedRate must be positive." }
+            validateCron(minuteCron, "premiumAggregation.minuteCron")
+            validateCron(hourCron, "premiumAggregation.hourCron")
+            validateCron(dayCron, "premiumAggregation.dayCron")
         }
     }
 
@@ -50,7 +54,19 @@ data class BatchSchedulingProperties(
         @field:NotBlank val minuteCron: String = "2 * * * * *",
         @field:NotBlank val hourCron: String = "7 0 * * * *",
         @field:NotBlank val dayCron: String = "12 0 0 * * *",
-    )
+    ) {
+        init {
+            validateCron(minuteCron, "tickerAggregation.minuteCron")
+            validateCron(hourCron, "tickerAggregation.hourCron")
+            validateCron(dayCron, "tickerAggregation.dayCron")
+        }
+    }
+
+    companion object {
+        private fun validateCron(expression: String, property: String) {
+            require(runCatching { CronExpression.parse(expression) }.isSuccess) { "$property must be a valid cron expression." }
+        }
+    }
 }
 
 private fun Duration.isPositive(): Boolean = !isZero && !isNegative

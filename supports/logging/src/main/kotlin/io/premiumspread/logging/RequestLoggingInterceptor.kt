@@ -4,15 +4,16 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
-import org.springframework.web.servlet.HandlerInterceptor
-import java.util.UUID
+import org.springframework.web.context.request.async.WebAsyncUtils
+import org.springframework.web.context.request.async.CallableProcessingInterceptor
+import org.springframework.web.servlet.AsyncHandlerInterceptor
 
 /**
  * HTTP 요청 로깅 인터셉터
  *
  * MDC에 요청 정보를 추가하고 요청/응답 로깅
  */
-class RequestLoggingInterceptor : HandlerInterceptor {
+class RequestLoggingInterceptor : AsyncHandlerInterceptor {
     private val log = LoggerFactory.getLogger(javaClass)
 
     companion object {
@@ -29,8 +30,8 @@ class RequestLoggingInterceptor : HandlerInterceptor {
         response: HttpServletResponse,
         handler: Any,
     ): Boolean {
-        val requestId = request.getHeader(REQUEST_ID_HEADER)
-            ?: UUID.randomUUID().toString().replace("-", "").take(16)
+        val requestId = CorrelationIdSupport.resolve(request)
+        request.setAttribute(CorrelationIdSupport.REQUEST_ID_ATTR, requestId)
 
         // MDC 설정
         MDC.put(MDC_REQUEST_ID, requestId)
@@ -43,6 +44,12 @@ class RequestLoggingInterceptor : HandlerInterceptor {
 
         // 시작 시간 기록
         request.setAttribute(START_TIME_ATTR, System.currentTimeMillis())
+
+        // Servlet async callable은 다른 thread에서 실행되므로 제출 시점 MDC snapshot을 명시적으로 전파한다.
+        WebAsyncUtils.getAsyncManager(request).registerCallableInterceptor(
+            javaClass.name,
+            MdcCallableProcessingInterceptor(MDC.getCopyOfContextMap()),
+        )
 
         log.debug("Request started: {} {}", request.method, request.requestURI)
         return true
@@ -76,7 +83,16 @@ class RequestLoggingInterceptor : HandlerInterceptor {
             )
         }
 
-        // MDC 정리
+        clearMdc()
+    }
+
+    override fun afterConcurrentHandlingStarted(
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        handler: Any,
+    ) = clearMdc()
+
+    private fun clearMdc() {
         MDC.remove(MDC_REQUEST_ID)
         MDC.remove(MDC_REQUEST_URI)
         MDC.remove(MDC_REQUEST_METHOD)
@@ -89,6 +105,22 @@ class RequestLoggingInterceptor : HandlerInterceptor {
             request.remoteAddr
         } else {
             xForwardedFor.split(",").first().trim()
+        }
+    }
+
+    private class MdcCallableProcessingInterceptor(
+        private val context: Map<String, String>?,
+    ) : CallableProcessingInterceptor {
+        override fun <T : Any?> preProcess(request: org.springframework.web.context.request.NativeWebRequest, task: java.util.concurrent.Callable<T>) {
+            MdcContext.restore(context)
+        }
+
+        override fun <T : Any?> postProcess(
+            request: org.springframework.web.context.request.NativeWebRequest,
+            task: java.util.concurrent.Callable<T>,
+            concurrentResult: Any?,
+        ) {
+            MDC.clear()
         }
     }
 }

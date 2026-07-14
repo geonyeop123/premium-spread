@@ -18,4 +18,10 @@ class PublicEndpointPolicyTest {
         assertThat(PublicEndpointPolicy.isPublic(HttpMethod.GET, "/swagger-ui.html")).isTrue()
         assertThat(PublicEndpointPolicy.isPublic(HttpMethod.POST, "/swagger-ui.html")).isFalse()
     }
+
+    @Test
+    fun `내부 management Prometheus scrape는 GET만 허용한다`() {
+        assertThat(PublicEndpointPolicy.isPublic(HttpMethod.GET, "/actuator/prometheus")).isTrue()
+        assertThat(PublicEndpointPolicy.isPublic(HttpMethod.POST, "/actuator/prometheus")).isFalse()
+    }
 }

@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.HttpRequestMethodNotSupportedException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -49,6 +50,13 @@ class GlobalExceptionHandler(
         return ResponseEntity
             .status(HttpStatus.METHOD_NOT_ALLOWED)
             .body(error("METHOD_NOT_ALLOWED"))
+    }
+
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResourceFound(ex: NoResourceFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(error("NOT_FOUND"))
     }
 
     @ExceptionHandler(ResponseStatusException::class)
@@ -122,6 +130,7 @@ class GlobalExceptionHandler(
             "UNAUTHORIZED" to "로그인이 필요합니다.",
             "INVALID_ARGUMENT" to "잘못된 요청 값입니다.",
             "METHOD_NOT_ALLOWED" to "해당 경로에서 지원하지 않는 메서드입니다.",
+            "NOT_FOUND" to "요청한 경로를 찾을 수 없습니다.",
             "INTERNAL_ERROR" to "서버 내부 오류가 발생했습니다.",
         )
     }

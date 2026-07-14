@@ -21,6 +21,8 @@ object PublicEndpointPolicy {
         PublicEndpoint(HttpMethod.GET, "/api/v1/tickers/**"),
         PublicEndpoint(HttpMethod.GET, "/actuator/health/liveness"),
         PublicEndpoint(HttpMethod.GET, "/actuator/health/readiness"),
+        // Management port는 Docker 내부/host loopback으로 제한되며 Prometheus가 인증 없이 scrape한다.
+        PublicEndpoint(HttpMethod.GET, "/actuator/prometheus"),
         PublicEndpoint(HttpMethod.GET, "/swagger-ui/**"),
         PublicEndpoint(HttpMethod.GET, "/swagger-ui.html"),
         PublicEndpoint(HttpMethod.GET, "/v3/api-docs/**"),

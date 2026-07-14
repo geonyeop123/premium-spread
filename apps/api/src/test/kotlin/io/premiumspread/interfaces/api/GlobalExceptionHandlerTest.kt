@@ -6,8 +6,10 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.http.HttpStatus
+import org.springframework.http.HttpMethod
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.mock.http.MockHttpInputMessage
+import org.springframework.web.servlet.resource.NoResourceFoundException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -48,6 +50,14 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
         assertThat(response.body!!.message).isEqualTo("포지션을 찾을 수 없습니다.")
+    }
+
+    @Test
+    fun `없는 정적 경로는 500이 아닌 404를 반환한다`() {
+        val response = handler.handleNoResourceFound(NoResourceFoundException(HttpMethod.GET, "/missing"))
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(response.body!!.code).isEqualTo("NOT_FOUND")
     }
 
     @Test

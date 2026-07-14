@@ -33,7 +33,7 @@ class PremiumMetrics(
     /**
      * 프리미엄 게이지 등록
      */
-    fun registerPremiumGauge(symbol: String) {
+    private fun registerPremiumGauge(symbol: String) {
         val rateRef = premiumRates.computeIfAbsent(symbol) { AtomicReference(0.0) }
         val koreaRef = koreaPrices.computeIfAbsent(symbol) { AtomicReference(0.0) }
         val foreignRef = foreignPrices.computeIfAbsent(symbol) { AtomicReference(0.0) }

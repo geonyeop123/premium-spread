@@ -86,4 +86,16 @@ class WebSocketMetrics(
     }
 
     fun currentEpochMilli(): Long = clock.millis()
+
+    fun snapshot(exchange: String): WebSocketHealthSnapshot = WebSocketHealthSnapshot(
+        connected = connectionStates[exchange]?.get() == 1.0,
+        lastMessageAge = lastMessageMs[exchange]?.let { last ->
+            java.time.Duration.ofMillis((clock.millis() - last.get()).coerceAtLeast(0L))
+        },
+    )
 }
+
+data class WebSocketHealthSnapshot(
+    val connected: Boolean,
+    val lastMessageAge: java.time.Duration?,
+)

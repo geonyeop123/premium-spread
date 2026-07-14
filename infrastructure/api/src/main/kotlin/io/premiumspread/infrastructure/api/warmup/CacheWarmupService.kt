@@ -7,14 +7,23 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.event.EventListener
+import org.springframework.validation.annotation.Validated
 import java.util.concurrent.TimeUnit
 
+@Validated
 @ConfigurationProperties(prefix = "warmup")
 data class WarmupProperties(
     val enabled: Boolean = true,
     val symbols: List<String> = listOf("btc"),
     val exchanges: List<ExchangePair> = listOf(ExchangePair("bithumb", "btc"), ExchangePair("binance", "btc")),
 ) {
+    init {
+        require(symbols.all(String::isNotBlank)) { "warmup.symbols must not contain blank values" }
+        require(exchanges.all { it.exchange.isNotBlank() && it.symbol.isNotBlank() }) {
+            "warmup.exchanges exchange and symbol must not be blank"
+        }
+    }
+
     data class ExchangePair(val exchange: String = "", val symbol: String = "")
 }
 

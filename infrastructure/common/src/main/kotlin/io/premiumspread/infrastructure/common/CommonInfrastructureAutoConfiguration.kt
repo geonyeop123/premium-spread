@@ -12,6 +12,7 @@ import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheReader
 import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheWriter
 import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheReader
 import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheWriter
+import io.premiumspread.infrastructure.common.config.AggregationInfrastructureProperties
 import io.premiumspread.infrastructure.common.persistence.CommonPersistenceMarker
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.ExchangeRateQueryRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
@@ -37,6 +38,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
 import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories
@@ -56,6 +58,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
         RedisTimeSeriesAutoConfiguration::class,
     ],
 )
+@EnableConfigurationProperties(AggregationInfrastructureProperties::class)
 @Import(CommonJdbcConfiguration::class, CommonJpaConfiguration::class, CommonCacheConfiguration::class)
 class CommonInfrastructureAutoConfiguration
 

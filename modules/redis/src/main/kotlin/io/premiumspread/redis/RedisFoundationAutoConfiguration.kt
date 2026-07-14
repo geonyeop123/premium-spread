@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -16,10 +17,12 @@ import java.time.Clock
  * Owns the Redis/Redisson foundation independently of an application's component scan.
  */
 @AutoConfiguration(before = [RedissonAutoConfigurationV2::class, RedisAutoConfiguration::class])
+@EnableConfigurationProperties(RedisFeatureProperties::class, RedisRuntimeProperties::class, RedissonClientProperties::class)
 @Import(
     RedisConfig::class,
     RedissonConfig::class,
     DistributedLockManager::class,
+    ProductionRedisSettingsValidator::class,
 )
 class RedisFoundationAutoConfiguration
 

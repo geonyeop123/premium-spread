@@ -41,7 +41,7 @@ batch:
       minute-cron: ${TICKER_MINUTE_CRON:2 * * * * *}
       hour-cron: ${TICKER_HOUR_CRON:7 0 * * * *}
       day-cron: ${TICKER_DAY_CRON:12 0 0 * * *}
-    zone: ${BATCH_SCHEDULING_ZONE:Asia/Seoul}
+    zone: ${AGGREGATION_ZONE:Asia/Seoul}
   jobs:
     fx-ingestion: { lock-key: "${FX_JOB_LOCK_KEY:lock:fx}", lease: "${FX_JOB_LEASE:35s}", execution-timeout: "${FX_JOB_TIMEOUT:30s}" }
     premium-realtime: { lock-key: "${PREMIUM_JOB_LOCK_KEY:lock:premium}", lease: "${PREMIUM_JOB_LEASE:5s}", execution-timeout: "${PREMIUM_JOB_TIMEOUT:3s}" }
@@ -116,12 +116,17 @@ notification:
 
 # Actuator 설정
 management:
+  prometheus:
+    metrics:
+      export:
+        enabled: true
   server:
+    address: ${MANAGEMENT_ADDRESS:127.0.0.1}
     port: ${MANAGEMENT_PORT:9081}
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       probes:

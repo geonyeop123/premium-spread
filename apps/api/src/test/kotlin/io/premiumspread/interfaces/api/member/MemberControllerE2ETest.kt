@@ -329,11 +329,11 @@ class MemberControllerE2ETest @Autowired constructor(
     inner class ActuatorBoundary {
 
         @Test
-        fun `실제 actuator liveness와 readiness만 인증 없이 공개한다`() {
+        fun `application port에서는 actuator endpoint를 공개하지 않는다`() {
             mockMvc.get("/actuator/health/liveness")
-                .andExpect { status { isOk() } }
+                .andExpect { status { isNotFound() } }
             mockMvc.get("/actuator/health/readiness")
-                .andExpect { status { isOk() } }
+                .andExpect { status { isNotFound() } }
             mockMvc.get("/actuator/health")
                 .andExpect { status { isUnauthorized() } }
         }

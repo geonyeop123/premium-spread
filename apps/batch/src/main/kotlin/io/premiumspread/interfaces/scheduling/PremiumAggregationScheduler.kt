@@ -15,12 +15,18 @@ class PremiumAggregationScheduler(
         job.updateSummary()
     }
 
-    @Scheduled(cron = "\${batch.scheduling.premium-aggregation.minute-cron:0 * * * * *}")
+    @Scheduled(
+        cron = "\${batch.scheduling.premium-aggregation.minute-cron:0 * * * * *}",
+        zone = "\${batch.scheduling.zone:Asia/Seoul}",
+    )
     fun aggregateMinute() {
         job.aggregateMinute()
     }
 
-    @Scheduled(cron = "\${batch.scheduling.premium-aggregation.hour-cron:5 0 * * * *}")
+    @Scheduled(
+        cron = "\${batch.scheduling.premium-aggregation.hour-cron:5 0 * * * *}",
+        zone = "\${batch.scheduling.zone:Asia/Seoul}",
+    )
     fun aggregateHour() {
         job.aggregateHour()
     }

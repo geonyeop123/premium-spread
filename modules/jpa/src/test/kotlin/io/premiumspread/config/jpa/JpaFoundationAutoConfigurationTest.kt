@@ -17,7 +17,7 @@ class JpaFoundationAutoConfigurationTest {
             .run { context ->
                 assertThat(context).hasSingleBean(JpaFoundationAutoConfiguration::class.java)
                 assertThat(context).hasSingleBean(DataSource::class.java)
-                assertThat(context).doesNotHaveBean(DataSourceConfig::class.java)
+                assertThat(context).doesNotHaveBean(ProductionDatabaseSettingsValidator::class.java)
             }
     }
 

@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguratio
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
+import org.springframework.core.task.TaskDecorator
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
@@ -19,6 +20,10 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 @AutoConfiguration(after = [WebMvcAutoConfiguration::class])
 @Import(LoggingAutoConfiguration.LoggingWebMvcConfiguration::class)
 class LoggingAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(TaskDecorator::class)
+    fun mdcTaskDecorator(): TaskDecorator = MdcTaskDecorator()
+
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(WebMvcConfigurer::class)
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -28,6 +33,10 @@ class LoggingAutoConfiguration {
         fun requestLoggingInterceptor(): RequestLoggingInterceptor = RequestLoggingInterceptor()
 
         @Bean
+        @ConditionalOnMissingBean
+        fun correlationIdFilter(): CorrelationIdFilter = CorrelationIdFilter()
+
+        @Bean
         fun requestLoggingWebMvcConfigurer(
             requestLoggingInterceptor: RequestLoggingInterceptor,
         ): WebMvcConfigurer =
@@ -35,7 +44,7 @@ class LoggingAutoConfiguration {
                 override fun addInterceptors(registry: InterceptorRegistry) {
                     registry
                         .addInterceptor(requestLoggingInterceptor)
-                        .addPathPatterns("/api/**")
+                        .addPathPatterns("/**")
                 }
             }
     }

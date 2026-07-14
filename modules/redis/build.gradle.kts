@@ -8,6 +8,7 @@ dependencies {
 
     // Redis
     api("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // Redisson (분산 락)
     api("org.redisson:redisson-spring-boot-starter:${project.properties["redissonVersion"]}")

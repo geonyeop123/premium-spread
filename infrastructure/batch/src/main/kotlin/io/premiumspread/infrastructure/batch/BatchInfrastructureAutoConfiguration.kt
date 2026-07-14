@@ -38,11 +38,13 @@ import io.premiumspread.infrastructure.batch.ingestion.bithumb.BithumbTickerInge
 import io.premiumspread.infrastructure.batch.job.RedisJobRunRecorderAdapter
 import io.premiumspread.infrastructure.batch.job.RedisJobLockAdapter
 import io.premiumspread.infrastructure.batch.notification.DurableEmailNotificationSender
+import io.premiumspread.infrastructure.batch.notification.NotificationDeliveryDeadlineProperties
 import io.premiumspread.infrastructure.batch.notification.NotificationDeliveryMetrics
 import io.premiumspread.infrastructure.batch.notification.NotificationDeliveryStartupValidator
 import io.premiumspread.infrastructure.batch.notification.ObservedNotificationDeliveryPort
 import io.premiumspread.infrastructure.batch.observability.AggregationZoneMetricProperties
 import io.premiumspread.infrastructure.batch.observability.AggregationZoneMetrics
+import io.premiumspread.infrastructure.batch.observability.BatchIngestionReadinessHealth
 import io.premiumspread.infrastructure.batch.websocket.WebSocketMetrics
 import io.premiumspread.infrastructure.batch.websocket.WebSocketTickerFlushObserver
 import io.premiumspread.infrastructure.batch.websocket.WebSocketStreamProperties
@@ -63,7 +65,6 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Profile
 import org.springframework.beans.factory.ObjectProvider
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Primary
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.validation.annotation.Validated
@@ -188,6 +189,7 @@ class BatchJobSupportConfiguration
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "notification.email", name = ["enabled"], havingValue = "true")
 @ConditionalOnBean(JdbcNotificationDeliveryRepository::class, EmailSender::class)
+@EnableConfigurationProperties(NotificationDeliveryDeadlineProperties::class)
 class BatchNotificationAdapterConfiguration {
     @Bean
     fun notificationDeliveryMetrics(
@@ -209,8 +211,8 @@ class BatchNotificationAdapterConfiguration {
     @Bean
     fun notificationDeliveryStartupValidator(
         smtp: SmtpConnectionProperties,
-        @Value("\${notification.delivery.hard-send-deadline:30s}") hardSendDeadline: java.time.Duration,
-    ): NotificationDeliveryStartupValidator = NotificationDeliveryStartupValidator(smtp, hardSendDeadline)
+        delivery: NotificationDeliveryDeadlineProperties,
+    ): NotificationDeliveryStartupValidator = NotificationDeliveryStartupValidator(smtp, delivery.hardSendDeadline)
 
     @Bean
     @ConditionalOnMissingBean(PremiumThresholdEvaluator::class)
@@ -230,6 +232,7 @@ class BatchNotificationDisabledConfiguration {
 @ConditionalOnBean(StringRedisTemplate::class, MeterRegistry::class, OperatorAlert::class)
 @Import(
     WebSocketMetrics::class,
+    BatchIngestionReadinessHealth::class,
     BinanceTickerIngestion::class,
     BithumbTickerIngestion::class,
     BinanceWebSocketClient::class,

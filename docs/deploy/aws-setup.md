@@ -32,7 +32,7 @@
 ```bash
 # Docker 설치
 sudo yum update -y
-sudo yum install -y docker git
+sudo yum install -y docker curl
 sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -aG docker ec2-user
@@ -41,10 +41,11 @@ sudo usermod -aG docker ec2-user
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
 
-# 프로젝트 클론
+# GitHub Actions가 검증된 deploy bundle을 전송할 디렉터리만 생성한다.
+# 운영 서버에서 source checkout/build는 수행하지 않는다.
 cd /home/ec2-user
-git clone https://github.com/geonyeop123/premium-spread.git
-cd premium-spread
+mkdir -p premium-spread/docker premium-spread/.deploy
+chown -R ec2-user:ec2-user premium-spread
 ```
 
 ## 5. SSL 인증서 발급 (Let's Encrypt)
@@ -53,9 +54,8 @@ cd premium-spread
 # certbot 디렉터리 생성
 mkdir -p docker/certbot/www docker/certbot/conf
 
-# 먼저 HTTP만으로 nginx 시작
-docker compose -f docker/infra-compose.yml up -d
-docker compose -f docker/app-compose.yml up -d
+# 최초 application 배포는 production Environment 승인 후 GitHub Actions workflow로 수행한다.
+# 서버에서 git pull 또는 docker compose --build를 실행하지 않는다.
 
 # certbot으로 인증서 발급
 docker run -it --rm \
@@ -66,28 +66,26 @@ docker run -it --rm \
   -d yourdomain.com
 
 # SSL 발급 후 nginx.conf에 HTTPS 블록 추가 (수동)
-# 그 후 nginx 재시작
-docker compose -f docker/app-compose.yml restart nginx
+# 그 후 실행 중인 nginx 재시작
+docker restart premium-spread-nginx
 ```
 
 ## 6. 인프라 실행
 
 ```bash
-# Docker 네트워크 생성
-docker network create premium-spread
+# production Environment secret/variable을 등록하고 main의 Deploy workflow를 승인한다.
+# workflow가 SHA-tag image pull, migration/API readiness, Batch, smoke/rollback 순서를 수행한다.
 
-# 인프라 (MySQL + Redis) 시작
-docker compose -f docker/infra-compose.yml up -d
-
-# 앱 (API + Batch + Web + Nginx) 시작
-docker compose -f docker/app-compose.yml up -d --build
+# 배포 후 서버에서 확인
+cat /home/ec2-user/premium-spread/.deploy/last-successful.env
+docker inspect --format '{{.Config.Image}} {{.State.Health.Status}}' premium-spread-api premium-spread-batch
 ```
 
 ## 7. certbot 자동 갱신
 
 ```bash
 # crontab에 추가
-echo "0 0 1 * * docker run --rm -v $(pwd)/docker/certbot/conf:/etc/letsencrypt -v $(pwd)/docker/certbot/www:/var/www/certbot certbot/certbot renew && docker compose -f docker/app-compose.yml restart nginx" | crontab -
+echo "0 0 1 * * docker run --rm -v $(pwd)/docker/certbot/conf:/etc/letsencrypt -v $(pwd)/docker/certbot/www:/var/www/certbot certbot/certbot renew && docker restart premium-spread-nginx" | crontab -
 ```
 
 ## 8. 예상 비용

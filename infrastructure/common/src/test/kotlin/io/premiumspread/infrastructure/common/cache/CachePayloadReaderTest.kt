@@ -57,6 +57,21 @@ class CachePayloadReaderTest {
     }
 
     @Test
+    fun `FX timestamp parse 실패는 데이터를 폐기하고 corrupt metric을 기록한다`() {
+        every { hashOps.entries("fx:usd:krw") } returns mapOf(
+            "schema_version" to "2",
+            "base" to "USD",
+            "quote" to "KRW",
+            "rate" to "1432.6",
+            "timestamp" to "not-an-epoch",
+            "source" to "FX_PROVIDER",
+        )
+
+        assertThat(FxCacheReader(redisTemplate, metrics).get("usd", "krw")).isNull()
+        verify { metrics.record("fx", CacheReadOutcome.CORRUPT) }
+    }
+
+    @Test
     fun `FX key와 payload currency가 다르면 corrupt 처리한다`() {
         every { hashOps.entries("fx:usd:krw") } returns mapOf(
             "base" to "EUR",
