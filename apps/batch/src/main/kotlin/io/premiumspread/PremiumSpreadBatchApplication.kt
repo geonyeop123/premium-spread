@@ -1,23 +1,22 @@
 package io.premiumspread
 
-import org.springframework.boot.autoconfigure.SpringBootApplication
-import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
-import org.springframework.boot.context.properties.EnableConfigurationProperties
-import org.springframework.boot.context.TypeExcludeFilter
 import io.premiumspread.config.AggregationProperties
+import io.premiumspread.config.BatchJobProperties
+import io.premiumspread.interfaces.scheduling.BatchSchedulingProperties
+import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
+import org.springframework.boot.context.TypeExcludeFilter
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
-import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.FilterType
-import org.springframework.scheduling.annotation.EnableScheduling
 
 @SpringBootApplication(
     exclude = [MailSenderAutoConfiguration::class],
     excludeName = ["org.redisson.spring.starter.RedissonAutoConfigurationV2"],
 )
-@EnableConfigurationProperties(AggregationProperties::class)
+@EnableConfigurationProperties(AggregationProperties::class, BatchSchedulingProperties::class, BatchJobProperties::class)
 @ComponentScan(
     excludeFilters = [
         ComponentScan.Filter(
@@ -35,7 +34,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
         ComponentScan.Filter(
             type = FilterType.REGEX,
             pattern = [
-                "io\\.premiumspread\\.infrastructure\\.common\\..*",
+                "io\\.premiumspread\\.infrastructure\\..*",
                 "io\\.premiumspread\\.config\\.jpa\\..*",
                 "io\\.premiumspread\\.redis\\..*",
             ],
@@ -43,11 +42,6 @@ import org.springframework.scheduling.annotation.EnableScheduling
     ],
 )
 class PremiumSpreadBatchApplication
-
-@Configuration
-@EnableScheduling
-@ConditionalOnProperty(name = ["scheduling.enabled"], havingValue = "true", matchIfMissing = true)
-class SchedulingConfig
 
 fun main(args: Array<String>) {
     runApplication<PremiumSpreadBatchApplication>(*args)

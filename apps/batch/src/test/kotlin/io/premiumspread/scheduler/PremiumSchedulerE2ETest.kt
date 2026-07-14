@@ -1,5 +1,6 @@
-package io.premiumspread.scheduler
+package io.premiumspread.interfaces.scheduling
 
+import io.premiumspread.application.job.premium.PremiumRealtimeJob
 import io.premiumspread.support.BatchIntegrationTestBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -14,7 +15,7 @@ import java.time.Instant
 class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
 
     @Autowired
-    lateinit var premiumScheduler: PremiumScheduler
+    lateinit var premiumJob: PremiumRealtimeJob
 
     private val nowMillis = Instant.now().toEpochMilli()
 
@@ -71,7 +72,7 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `실행 후 프리미엄 캐시가 저장된다`() {
             // when
-            premiumScheduler.calculatePremium()
+            premiumJob.run()
 
             // then
             val hash = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc")
@@ -87,7 +88,7 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `실행 후 프리미엄 초당 ZSet에 데이터가 저장된다`() {
             // when
-            premiumScheduler.calculatePremium()
+            premiumJob.run()
 
             // then
             val zsetSize = redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:seconds")
@@ -105,7 +106,7 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `실행 후 히스토리 ZSet에 데이터가 항상 저장된다`() {
             // when - 포지션 유무와 관계없이 히스토리 저장
-            premiumScheduler.calculatePremium()
+            premiumJob.run()
 
             // then
             val zsetSize = redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:history")
@@ -125,7 +126,7 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
             redisTemplate.delete("ticker:binance:btc")
 
             // when
-            premiumScheduler.calculatePremium()
+            premiumJob.run()
 
             // then - premium 캐시 없음
             assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc")).isEmpty()

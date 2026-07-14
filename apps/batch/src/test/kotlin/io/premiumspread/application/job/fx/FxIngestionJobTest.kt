@@ -1,121 +1,80 @@
 package io.premiumspread.application.job.fx
 
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
+import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
-import io.premiumspread.cache.FxCacheService
-import io.premiumspread.client.FxRateData
-import io.premiumspread.client.exchangerate.ExchangeRateClient
-import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
+import io.premiumspread.domain.batch.BatchMarket
+import io.premiumspread.domain.batch.BatchMarketProvider
+import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.domain.market.ExchangeRateProvider
+import io.premiumspread.domain.market.FxRateCacheWritePort
+import io.premiumspread.domain.market.FxRateWritePort
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Currency
+import io.premiumspread.domain.ticker.Quote
+import io.premiumspread.domain.ticker.Symbol
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
 
 class FxIngestionJobTest {
-
-    private lateinit var exchangeRateClient: ExchangeRateClient
-    private lateinit var fxCacheService: FxCacheService
-    private lateinit var exchangeRateRepository: JdbcExchangeRateWriteRepository
+    private val provider = mockk<ExchangeRateProvider>()
+    private val writer = mockk<FxRateWritePort>(relaxed = true)
+    private val cacheWriter = mockk<FxRateCacheWritePort>(relaxed = true)
+    private val marketProvider = mockk<BatchMarketProvider>()
+    private val executor = mockk<JobExecutor>()
     private lateinit var job: FxIngestionJob
+    private val snapshot = ExchangeRateSnapshot("USD", "KRW", BigDecimal("1432.6"), Instant.parse("2026-07-14T00:00:00Z"))
 
     @BeforeEach
     fun setUp() {
-        exchangeRateClient = mockk()
-        fxCacheService = mockk(relaxed = true)
-        exchangeRateRepository = mockk(relaxed = true)
-        job = FxIngestionJob(
-            exchangeRateClient = exchangeRateClient,
-            fxCacheService = fxCacheService,
-            exchangeRateRepository = exchangeRateRepository,
-        )
+        every { executor.execute(any(), any()) } answers { secondArg<() -> JobResult>().invoke() }
+        every { marketProvider.defaultMarket() } returns market()
+        job = FxIngestionJob(provider, writer, cacheWriter, marketProvider, executor)
     }
 
-    private val now = Instant.now()
+    @Test
+    fun `provider 결과를 DB-first 순서로 저장한다`() {
+        every { provider.fetch(any(), any()) } returns snapshot
 
-    private fun fxRate() = FxRateData(
-        baseCurrency = "USD",
-        quoteCurrency = "KRW",
-        rate = BigDecimal("1432.6"),
-        timestamp = now,
-    )
-
-    @Nested
-    @DisplayName("실행")
-    inner class Run {
-
-        @Test
-        fun `성공 시 캐시와 DB에 저장한다`() {
-            // given
-            val fxRate = fxRate()
-            coEvery { exchangeRateClient.getUsdKrwRate() } returns fxRate
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isEqualTo(JobResult.Success)
-            verify { fxCacheService.save(fxRate) }
-            verify {
-                exchangeRateRepository.save(
-                    baseCurrency = "USD",
-                    quoteCurrency = "KRW",
-                    rate = BigDecimal("1432.6"),
-                    observedAt = now,
-                )
-            }
+        assertThat(job.run()).isEqualTo(JobResult.Success)
+        verifyOrder {
+            writer.save(snapshot)
+            cacheWriter.save(snapshot)
         }
+    }
 
-        @Test
-        fun `클라이언트 예외 시 Failure를 반환한다`() {
-            // given
-            coEvery { exchangeRateClient.getUsdKrwRate() } throws RuntimeException("api error")
+    @Test
+    fun `DB 저장 실패 시 cache를 쓰지 않는다`() {
+        every { provider.fetch(any(), any()) } returns snapshot
+        every { writer.save(snapshot) } throws IllegalStateException("db")
 
-            // when
-            val result = job.run()
+        assertThat(job.run()).isInstanceOf(JobResult.Failure::class.java)
+        verify(exactly = 0) { cacheWriter.save(any()) }
+    }
 
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            assertThat((result as JobResult.Failure).exception.message).isEqualTo("api error")
-            verify(exactly = 0) { fxCacheService.save(any()) }
-        }
+    @Test
+    fun `cache 저장 실패는 durable write 이후 failure다`() {
+        every { provider.fetch(any(), any()) } returns snapshot
+        every { cacheWriter.save(snapshot) } throws IllegalStateException("redis")
 
-        @Test
-        fun `캐시 저장 예외 시 Failure를 반환하지만 DB 저장은 먼저 완료한다`() {
-            // given
-            val fxRate = fxRate()
-            coEvery { exchangeRateClient.getUsdKrwRate() } returns fxRate
-            every { fxCacheService.save(fxRate) } throws RuntimeException("redis error")
+        assertThat(job.run()).isInstanceOf(JobResult.Failure::class.java)
+        verify(exactly = 1) { writer.save(snapshot) }
+    }
 
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
-            verify(exactly = 1) { exchangeRateRepository.save(any(), any(), any(), any()) }
-        }
-
-        @Test
-        fun `DB 저장 예외 시 Failure를 반환하고 cache는 쓰지 않는다`() {
-            // given
-            val fxRate = fxRate()
-            coEvery { exchangeRateClient.getUsdKrwRate() } returns fxRate
-            every {
-                exchangeRateRepository.save(any(), any(), any(), any())
-            } throws RuntimeException("db error")
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            verify(exactly = 0) { fxCacheService.save(fxRate) }
-        }
+    private fun market(): BatchMarket {
+        val symbol = Symbol("BTC")
+        return BatchMarket(
+            MarketPair.default(symbol),
+            Quote.coin(symbol, Currency.KRW),
+            Quote.coin(symbol, Currency.USD),
+            Currency.USD,
+            Currency.KRW,
+        )
     }
 }

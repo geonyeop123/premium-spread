@@ -19,33 +19,17 @@ tasks.register<Test>("integrationTest") {
 
 dependencies {
     implementation(project(":domain"))
-    // TODO(Phase 6): Port 전환 후 runtimeOnly로 복원한다.
-    implementation(project(":infrastructure:common"))
+    runtimeOnly(project(":infrastructure:common"))
     runtimeOnly(project(":infrastructure:batch"))
-
-    // modules
-    // TODO(Phase 6): Remove after Batch cache/lock adapters move behind ports in infrastructure modules.
-    implementation(project(":modules:redis"))
 
     // supports
     runtimeOnly(project(":supports:logging"))
-    // TODO(Phase 7): Remove after durable notification delivery owns the SMTP adapter outside the Batch app.
-    implementation(project(":supports:email"))
-    // TODO(Phase 6): Remove after OperatorAlert and metric adapters move to infrastructure:batch.
-    implementation(project(":supports:monitoring"))
+    runtimeOnly(project(":supports:monitoring"))
 
-    // Kotlin / serialization
+    // Application runtime foundation and scheduling annotations
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
-
-    // WebFlux (External API 호출용)
-    implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-validation")
-
-    // Coroutines (비동기 처리)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:${project.properties["kotlinCoroutinesVersion"]}")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:${project.properties["kotlinCoroutinesVersion"]}")
 
     // Test
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -60,10 +44,18 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:mysql")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${project.properties["kotlinCoroutinesVersion"]}")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.awaitility:awaitility:4.2.0")
     testImplementation("org.awaitility:awaitility-kotlin:4.2.0")
+
+    // Runtime adapter contracts referenced only by application integration tests.
+    testImplementation(project(":infrastructure:common"))
+    testImplementation(project(":infrastructure:batch"))
+    testImplementation(project(":modules:redis"))
+    testImplementation(project(":supports:email"))
+    testImplementation(project(":supports:monitoring"))
+    testImplementation("org.springframework.boot:spring-boot-starter-webflux")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${project.properties["kotlinCoroutinesVersion"]}")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
     // test-fixtures (TestContainers, DatabaseCleanUp)
     testImplementation(testFixtures(project(":modules:jpa")))

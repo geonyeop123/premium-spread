@@ -15,6 +15,7 @@ data class PremiumAggregationSnapshot(
     val count: Int,
     val observedAt: Instant,
     val fxRate: BigDecimal? = null,
+    val updatedAt: Instant = observedAt,
 ) {
     val symbol: String
         get() = pair.symbol.code

@@ -1,44 +1,53 @@
 package io.premiumspread.application.job.premium
 
+import io.premiumspread.application.common.JobConfig
+import io.premiumspread.application.common.JobExecutor
+import io.premiumspread.application.common.JobConfigProvider
+import io.premiumspread.application.common.DefaultJobConfigProvider
 import io.premiumspread.application.common.JobResult
-import io.premiumspread.application.notification.PremiumUpdatedEvent
-import io.premiumspread.cache.FxCacheService
-import io.premiumspread.cache.PremiumCacheService
-import io.premiumspread.cache.TickerCacheService
-import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.batch.BatchMarketProvider
+import io.premiumspread.domain.job.JobId
+import io.premiumspread.domain.market.FxRateReadPort
+import io.premiumspread.domain.market.TickerReadPort
 import io.premiumspread.domain.premium.PremiumPolicy
+import io.premiumspread.domain.premium.PremiumRealtimeWritePort
 import io.premiumspread.domain.premium.PremiumSnapshot
-import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.domain.premium.PremiumThresholdEvaluator
 import org.slf4j.LoggerFactory
-import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 
 @Component
 class PremiumRealtimeJob(
-    private val tickerCacheService: TickerCacheService,
-    private val fxCacheService: FxCacheService,
-    private val premiumCacheService: PremiumCacheService,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val tickerReader: TickerReadPort,
+    private val fxRateReader: FxRateReadPort,
+    private val premiumWriter: PremiumRealtimeWritePort,
+    private val thresholdEvaluator: PremiumThresholdEvaluator,
+    private val marketProvider: BatchMarketProvider,
+    private val executor: JobExecutor,
+    private val jobConfigs: JobConfigProvider = DefaultJobConfigProvider,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    companion object {
-        private const val BITHUMB = "bithumb"
-        private const val BINANCE = "binance"
-        private const val BTC = "btc"
+    fun run(): JobResult {
+        return executor.execute(jobConfigs.get(JobId.PREMIUM_REALTIME)) {
+            calculate()
+        }
     }
 
-    fun run(): JobResult {
+    private fun calculate(): JobResult {
         return try {
-            val bithumbTicker = tickerCacheService.getSnapshot(BITHUMB, BTC)
-            val binanceTicker = tickerCacheService.getSnapshot(BINANCE, BTC)
-            val fxSnapshot = fxCacheService.getUsdKrwSnapshot()
+            val market = marketProvider.defaultMarket()
+            val bithumbTicker = tickerReader.findLatest(market.pair.koreaExchange, market.koreaQuote)
+            val binanceTicker = tickerReader.findLatest(market.pair.foreignExchange, market.foreignQuote)
+            val fxSnapshot = fxRateReader.findLatest(market.fxBase, market.fxQuote)
 
             if (bithumbTicker == null || binanceTicker == null || fxSnapshot == null) {
                 log.warn(
-                    "Missing data for premium calculation - Bithumb: {}, Binance: {}, FX: {}",
+                    "Missing data for premium calculation - korea({}): {}, foreign({}): {}, FX: {}",
+                    market.pair.koreaExchange,
                     bithumbTicker != null,
+                    market.pair.foreignExchange,
                     binanceTicker != null,
                     fxSnapshot != null,
                 )
@@ -47,15 +56,15 @@ class PremiumRealtimeJob(
 
             if (bithumbTicker.price <= BigDecimal.ZERO || binanceTicker.price <= BigDecimal.ZERO || fxSnapshot.rate <= BigDecimal.ZERO) {
                 log.warn(
-                    "Invalid price detected - Bithumb: {}, Binance: {}, FX: {}",
+                    "Invalid price detected - korea({}): {}, foreign({}): {}, FX: {}",
+                    market.pair.koreaExchange,
                     bithumbTicker.price,
+                    market.pair.foreignExchange,
                     binanceTicker.price,
                     fxSnapshot.rate,
                 )
                 return JobResult.Skipped("invalid_price")
             }
-
-            val pair = MarketPair.default(Symbol(bithumbTicker.symbol))
 
             val calculation = PremiumPolicy.calculate(
                 koreaPrice = bithumbTicker.price,
@@ -63,7 +72,7 @@ class PremiumRealtimeJob(
                 fxRate = fxSnapshot.rate,
             )
             val premium = PremiumSnapshot(
-                pair = pair,
+                pair = market.pair,
                 premiumRate = calculation.storagePremiumRate,
                 koreaPrice = bithumbTicker.price,
                 foreignPrice = binanceTicker.price,
@@ -74,25 +83,26 @@ class PremiumRealtimeJob(
                 fxObservedAt = fxSnapshot.observedAt,
             )
 
-            premiumCacheService.save(premium)
-            premiumCacheService.saveToSeconds(premium)
+            premiumWriter.saveCurrent(premium)
+            premiumWriter.saveSecond(premium)
 
             runCatching {
-                premiumCacheService.saveHistory(premium)
+                premiumWriter.saveHistory(premium)
             }.onFailure { e ->
                 log.warn("saveHistory failed (non-critical): {}", e.message)
             }
 
-            eventPublisher.publishEvent(
-                PremiumUpdatedEvent(symbol = premium.symbol, premiumRate = premium.premiumRate),
-            )
+            thresholdEvaluator.evaluate(premium)
 
             log.debug(
-                "Calculated premium: {}% (Korea: {} KRW, Foreign: {} USDT = {} KRW)",
+                "Calculated premium: {}% (korea {}: {}, foreign {}: {} = {} {})",
                 premium.premiumRate,
+                market.pair.koreaExchange,
                 premium.koreaPrice,
+                market.pair.foreignExchange,
                 premium.foreignPrice,
                 premium.foreignPriceInKrw,
+                market.fxQuote,
             )
 
             JobResult.Success
@@ -101,4 +111,5 @@ class PremiumRealtimeJob(
             JobResult.Failure(e)
         }
     }
+
 }

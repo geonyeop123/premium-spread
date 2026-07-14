@@ -30,6 +30,9 @@ class EmailAutoConfiguration {
             password = properties.password
             javaMailProperties["mail.smtp.auth"] = "true"
             javaMailProperties["mail.smtp.starttls.enable"] = "true"
+            javaMailProperties["mail.smtp.connectiontimeout"] = properties.connectTimeout.toMillis().toString()
+            javaMailProperties["mail.smtp.timeout"] = properties.readTimeout.toMillis().toString()
+            javaMailProperties["mail.smtp.writetimeout"] = properties.writeTimeout.toMillis().toString()
         }
 
     @Bean

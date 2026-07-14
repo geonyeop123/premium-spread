@@ -1,7 +1,8 @@
-package io.premiumspread.scheduler
+package io.premiumspread.interfaces.scheduling
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.premiumspread.client.exchangerate.ExchangeRateResponse
+import io.premiumspread.application.job.fx.FxIngestionJob
+import io.premiumspread.infrastructure.batch.exchange.ExchangeRateResponse
 import io.premiumspread.support.BatchIntegrationTestBase
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -16,7 +17,7 @@ import java.math.BigDecimal
 class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
 
     @Autowired
-    lateinit var exchangeRateScheduler: ExchangeRateScheduler
+    lateinit var exchangeRateJob: FxIngestionJob
 
     @Autowired
     lateinit var exchangeRateMockServer: MockWebServer
@@ -48,7 +49,7 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             enqueueSuccessResponse()
 
             // when
-            exchangeRateScheduler.fetchExchangeRate()
+            exchangeRateJob.run()
 
             // then
             val hash = redisTemplate.opsForHash<String, String>().entries("fx:usd:krw")
@@ -65,7 +66,7 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             enqueueSuccessResponse()
 
             // when
-            exchangeRateScheduler.fetchExchangeRate()
+            exchangeRateJob.run()
 
             // then
             val results = jdbcTemplate.queryForList(
@@ -82,7 +83,7 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             repeat(3) { exchangeRateMockServer.enqueue(MockResponse().setResponseCode(500)) }
 
             // when
-            exchangeRateScheduler.fetchExchangeRate()
+            exchangeRateJob.run()
 
             // then - 캐시 없음
             assertThat(redisTemplate.opsForHash<String, String>().entries("fx:usd:krw")).isEmpty()
@@ -105,7 +106,7 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             enqueueSuccessResponse()
 
             // when
-            exchangeRateScheduler.fetchExchangeRateOnStartup()
+            exchangeRateJob.run()
 
             // then - 캐시 검증
             val hash = redisTemplate.opsForHash<String, String>().entries("fx:usd:krw")

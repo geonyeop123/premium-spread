@@ -23,7 +23,7 @@ class MonitoringAutoConfiguration {
     fun slackAlertService(
         properties: SlackAlertProperties,
         objectMapper: ObjectMapper,
-    ): AlertService = SlackAlertService(properties.webhookUrl, objectMapper)
+    ): AlertService = SlackAlertService(properties, objectMapper)
 
     @Bean
     @ConditionalOnMissingBean(AlertService::class)

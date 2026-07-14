@@ -1,6 +1,7 @@
 package io.premiumspread.config
 
-import io.premiumspread.client.exchangerate.ExchangeRateClient
+import io.premiumspread.infrastructure.batch.exchange.ExchangeRateClient
+import io.premiumspread.infrastructure.batch.exchange.ExchangeRateClientProperties
 import io.premiumspread.redis.DistributedLockManager
 import io.micrometer.core.instrument.MeterRegistry
 import okhttp3.mockwebserver.MockWebServer
@@ -63,5 +64,9 @@ class BatchTestConfig {
     @Bean
     @Primary
     fun exchangeRateClient(exchangeRateMockServer: MockWebServer, meterRegistry: MeterRegistry): ExchangeRateClient =
-        ExchangeRateClient(WebClient.create(exchangeRateMockServer.url("/").toString()), meterRegistry, "test-dummy-key")
+        ExchangeRateClient(
+            WebClient.create(exchangeRateMockServer.url("/").toString()),
+            meterRegistry,
+            ExchangeRateClientProperties(apiKey = "test-dummy-key", maxRetries = 2),
+        )
 }

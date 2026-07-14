@@ -140,14 +140,14 @@ class PositionServiceTest {
 
         @Test
         fun `회원의 상태별 포지션을 엔티티 로딩 없이 집계한다`() {
-            every { positionRepository.countByMemberIdAndStatus(7L, PositionStatus.OPEN) } returns 2L
-            every { positionRepository.countByMemberIdAndStatus(7L, PositionStatus.CLOSED) } returns 3L
+            every { positionRepository.countOpenByMemberId(7L) } returns 2L
+            every { positionRepository.countClosedByMemberId(7L) } returns 3L
 
             assertThat(service.countOpenByMemberId(7L)).isEqualTo(2L)
             assertThat(service.countClosedByMemberId(7L)).isEqualTo(3L)
 
-            verify(exactly = 1) { positionRepository.countByMemberIdAndStatus(7L, PositionStatus.OPEN) }
-            verify(exactly = 1) { positionRepository.countByMemberIdAndStatus(7L, PositionStatus.CLOSED) }
+            verify(exactly = 1) { positionRepository.countOpenByMemberId(7L) }
+            verify(exactly = 1) { positionRepository.countClosedByMemberId(7L) }
             verify(exactly = 0) { positionRepository.findAllByMemberIdAndStatus(any(), any()) }
         }
     }

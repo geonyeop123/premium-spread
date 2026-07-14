@@ -1,39 +1,46 @@
 package io.premiumspread.application.job.fx
 
+import io.premiumspread.application.common.JobConfig
+import io.premiumspread.application.common.JobExecutor
+import io.premiumspread.application.common.JobConfigProvider
+import io.premiumspread.application.common.DefaultJobConfigProvider
 import io.premiumspread.application.common.JobResult
-import io.premiumspread.cache.FxCacheService
-import io.premiumspread.client.exchangerate.ExchangeRateClient
-import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
-import kotlinx.coroutines.runBlocking
+import io.premiumspread.domain.batch.BatchMarketProvider
+import io.premiumspread.domain.job.JobId
+import io.premiumspread.domain.market.ExchangeRateProvider
+import io.premiumspread.domain.market.FxRateCacheWritePort
+import io.premiumspread.domain.market.FxRateWritePort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 @Component
 class FxIngestionJob(
-    private val exchangeRateClient: ExchangeRateClient,
-    private val fxCacheService: FxCacheService,
-    private val exchangeRateRepository: JdbcExchangeRateWriteRepository,
+    private val exchangeRateProvider: ExchangeRateProvider,
+    private val rateWriter: FxRateWritePort,
+    private val cacheWriter: FxRateCacheWritePort,
+    private val marketProvider: BatchMarketProvider,
+    private val executor: JobExecutor,
+    private val jobConfigs: JobConfigProvider = DefaultJobConfigProvider,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun run(): JobResult {
-        return try {
-            val fxRate = runBlocking { exchangeRateClient.getUsdKrwRate() }
+        return executor.execute(jobConfigs.get(JobId.FX_INGESTION)) {
+            try {
+                val market = marketProvider.defaultMarket()
+                val fxRate = exchangeRateProvider.fetch(market.fxBase, market.fxQuote)
 
-            exchangeRateRepository.save(
-                baseCurrency = fxRate.baseCurrency,
-                quoteCurrency = fxRate.quoteCurrency,
-                rate = fxRate.rate,
-                observedAt = fxRate.timestamp,
-            )
+                // DB-first ordering is intentional. A failed durable write must never publish a cache-only rate.
+                rateWriter.save(fxRate)
+                cacheWriter.save(fxRate)
 
-            fxCacheService.save(fxRate)
-
-            log.info("Fetched exchange rate - USD/KRW: {}", fxRate.rate)
-            JobResult.Success
-        } catch (e: Exception) {
-            log.error("Failed to fetch exchange rate", e)
-            JobResult.Failure(e)
+                log.info("Fetched exchange rate - USD/KRW: {}", fxRate.rate)
+                JobResult.Success
+            } catch (exception: Exception) {
+                log.error("Failed to fetch exchange rate", exception)
+                JobResult.Failure(exception)
+            }
         }
     }
+
 }

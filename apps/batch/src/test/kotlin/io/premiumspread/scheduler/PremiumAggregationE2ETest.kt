@@ -1,5 +1,6 @@
-package io.premiumspread.scheduler
+package io.premiumspread.interfaces.scheduling
 
+import io.premiumspread.application.job.aggregation.PremiumAggregationJob
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
@@ -21,7 +22,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
     private val pair = MarketPair.default(Symbol("BTC"))
 
     @Autowired
-    lateinit var premiumAggregationScheduler: PremiumAggregationScheduler
+    lateinit var premiumAggregationJob: PremiumAggregationJob
 
     @Autowired
     lateinit var aggregationRepository: PremiumAggregationRepository
@@ -76,7 +77,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             seedSecondsData(prevMinuteStart.plusSeconds(50), "1.80")
 
             // when
-            premiumAggregationScheduler.aggregateMinute()
+            premiumAggregationJob.aggregateMinute()
 
             // then - 분 캐시 검증
             val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:minutes", 0, -1)
@@ -93,7 +94,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             seedSecondsData(prevMinuteStart.plusSeconds(50), "1.80")
 
             // when
-            premiumAggregationScheduler.aggregateMinute()
+            premiumAggregationJob.aggregateMinute()
 
             // then - DB 검증
             val result = aggregationRepository.findLatestMinute(pair)
@@ -115,7 +116,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             // given - 소스 데이터 없음 (cleanUp에서 Redis 비워짐)
 
             // when
-            premiumAggregationScheduler.aggregateMinute()
+            premiumAggregationJob.aggregateMinute()
 
             // then
             assertThat(aggregationRepository.findLatestMinute(pair)).isNull()
@@ -137,7 +138,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             seedMinutesData(prevHourStart.plus(50, ChronoUnit.MINUTES), "2.80", "1.80")
 
             // when
-            premiumAggregationScheduler.aggregateHour()
+            premiumAggregationJob.aggregateHour()
 
             // then
             val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:hours", 0, -1)
@@ -154,7 +155,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             seedMinutesData(prevHourStart.plus(50, ChronoUnit.MINUTES), "2.80", "1.80")
 
             // when
-            premiumAggregationScheduler.aggregateHour()
+            premiumAggregationJob.aggregateHour()
 
             // then
             val result = aggregationRepository.findLatestHour(pair)
@@ -174,7 +175,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             // given - 소스 데이터 없음
 
             // when
-            premiumAggregationScheduler.aggregateHour()
+            premiumAggregationJob.aggregateHour()
 
             // then
             assertThat(aggregationRepository.findLatestHour(pair)).isNull()
@@ -195,7 +196,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             seedHoursData(prevDayStart.plus(20, ChronoUnit.HOURS), "2.80", "1.80")
 
             // when
-            premiumAggregationScheduler.aggregateDay()
+            premiumAggregationJob.aggregateDay()
 
             // then - DB 검증
             val result = aggregationRepository.findLatestDay(pair)
@@ -225,7 +226,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             // given - 소스 데이터 없음
 
             // when
-            premiumAggregationScheduler.updateSummaryCache()
+            premiumAggregationJob.updateSummary()
 
             // then - 4개 구간 모두 키 없음
             assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1m")).isEmpty()
@@ -252,7 +253,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             seedHoursData(prevHour, "4.00", "0.50")
 
             // when
-            premiumAggregationScheduler.updateSummaryCache()
+            premiumAggregationJob.updateSummary()
 
             // then - 1m summary
             val summary1m = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1m")

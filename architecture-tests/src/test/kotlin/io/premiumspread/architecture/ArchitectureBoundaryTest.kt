@@ -69,9 +69,110 @@ class ArchitectureBoundaryTest {
         val batchClasses = ArchitectureTarget.APPS_BATCH.importClasses()
         assertExactDebt(
             classes = batchClasses,
-            originPackage = "io.premiumspread.application",
+            originPackage = BATCH_APPLICATION_PACKAGE,
             forbiddenTargetPackages = BATCH_TECHNICAL_PACKAGES,
             allowedEdges = BATCH_APPLICATION_DEBT,
+        )
+    }
+
+    @Test
+    fun `batch app does not own technical adapter or legacy scheduler packages`() {
+        val batchClasses = ArchitectureTarget.APPS_BATCH.importClasses()
+        val compiledForbiddenClasses =
+            batchClasses
+                .filter { javaClass ->
+                    BATCH_FORBIDDEN_OWNED_PACKAGES.any { forbiddenPackage ->
+                        javaClass.packageName == forbiddenPackage ||
+                            javaClass.packageName.startsWith("$forbiddenPackage.")
+                    }
+                }.map { javaClass -> javaClass.name }
+                .sorted()
+        assertTrue(
+            compiledForbiddenClasses.isEmpty(),
+            "apps-batch main output must not own technical adapters or legacy schedulers: $compiledForbiddenClasses",
+        )
+
+        val sourceRoot = requiredSourceRoot("architecture.source.apps.batch")
+        val forbiddenSources =
+            BATCH_FORBIDDEN_OWNED_PACKAGE_PATHS
+                .flatMap { packagePath ->
+                    val packageRoot = sourceRoot.resolve(packagePath)
+                    if (Files.isDirectory(packageRoot)) {
+                        Files.walk(packageRoot).use { paths ->
+                            paths
+                                .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+                                .map { path -> sourceRoot.relativize(path).toString().replace('\\', '/') }
+                                .toList()
+                        }
+                    } else {
+                        emptyList()
+                    }
+                }.sorted()
+        assertTrue(
+            forbiddenSources.isEmpty(),
+            "apps-batch main source must not own technical adapters or legacy schedulers: $forbiddenSources",
+        )
+    }
+
+    @Test
+    fun `batch schedulers inject one application job and at most one scheduling config`() {
+        val batchClasses = ArchitectureTarget.APPS_BATCH.importClasses()
+        val schedulers =
+            batchClasses
+                .filter { javaClass ->
+                    javaClass.packageName.startsWith(BATCH_SCHEDULING_PACKAGE) &&
+                        javaClass.simpleName.endsWith("Scheduler") &&
+                        !javaClass.isNestedClass
+                }.sortedBy { javaClass -> javaClass.name }
+        assertTrue(schedulers.isNotEmpty(), "Batch scheduler class-count guard must find at least one class")
+
+        val violations =
+            schedulers.mapNotNull { scheduler ->
+                val constructors =
+                    scheduler.constructors.filterNot { constructor ->
+                        JavaModifier.SYNTHETIC in constructor.modifiers
+                    }
+                if (constructors.size != 1) {
+                    return@mapNotNull "${scheduler.name} has ${constructors.size} non-synthetic constructors"
+                }
+
+                val parameters = constructors.single().rawParameterTypes
+                val applicationJobs =
+                    parameters.filter { parameter ->
+                        parameter.packageName.startsWith("$BATCH_APPLICATION_PACKAGE.") &&
+                            (parameter.simpleName.endsWith("Job") || parameter.simpleName.endsWith("JobFacade"))
+                    }
+                val supplementaryParameters = parameters - applicationJobs.toSet()
+                val validSupplementaryParameters =
+                    supplementaryParameters.size <= 1 &&
+                        supplementaryParameters.all { parameter ->
+                            parameter.simpleName in BATCH_SCHEDULER_CONFIG_TYPES
+                        }
+                if (applicationJobs.size != 1 || !validSupplementaryParameters) {
+                    val actual = parameters.joinToString(prefix = "[", postfix = "]") { it.name }
+                    "${scheduler.name} must inject one application Job and at most one scheduling config, but was $actual"
+                } else {
+                    null
+                }
+            }
+
+        assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
+    }
+
+    @Test
+    fun `batch scheduling interfaces do not depend on technical implementations`() {
+        val batchClasses = ArchitectureTarget.APPS_BATCH.importClasses()
+        assertExactDebt(
+            classes = batchClasses,
+            originPackage = BATCH_SCHEDULING_PACKAGE,
+            forbiddenTargetPackages = BATCH_TECHNICAL_PACKAGES,
+            allowedEdges = emptySet(),
+        )
+        assertExactSourceDebt(
+            sourceRootProperty = "architecture.source.apps.batch",
+            boundaryPackagePath = "io/premiumspread/interfaces/scheduling",
+            forbiddenTargetPackages = BATCH_TECHNICAL_PACKAGES,
+            allowedEdges = emptySet(),
         )
     }
 
@@ -429,6 +530,25 @@ class ArchitectureBoundaryTest {
         const val API_INFRASTRUCTURE_PACKAGE = "io.premiumspread.infrastructure"
         const val DOMAIN_PACKAGE = "io.premiumspread.domain"
         const val REST_CONTROLLER_ANNOTATION = "org.springframework.web.bind.annotation.RestController"
+        const val BATCH_APPLICATION_PACKAGE = "io.premiumspread.application"
+        const val BATCH_SCHEDULING_PACKAGE = "io.premiumspread.interfaces.scheduling"
+
+        val BATCH_FORBIDDEN_OWNED_PACKAGES =
+            setOf(
+                "io.premiumspread.cache",
+                "io.premiumspread.client",
+                "io.premiumspread.infrastructure",
+                "io.premiumspread.repository",
+                "io.premiumspread.scheduler",
+            )
+        val BATCH_FORBIDDEN_OWNED_PACKAGE_PATHS =
+            BATCH_FORBIDDEN_OWNED_PACKAGES.map { packageName -> packageName.replace('.', '/') }
+        val BATCH_SCHEDULER_CONFIG_TYPES =
+            setOf(
+                "BatchSchedulingProperties",
+                "SchedulingProperties",
+                "JobConfig",
+            )
 
         val INFRASTRUCTURE_TARGETS =
             listOf(

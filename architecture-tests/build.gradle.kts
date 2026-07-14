@@ -53,17 +53,40 @@ val writeProjectDependencyGraph =
                                 ":domain [$configurationName] => $coordinate"
                             }.orEmpty()
                     }.sorted()
+            val batchExternalEdges =
+                productionConfigurations
+                    .flatMap { configurationName ->
+                        project(":apps:batch")
+                            .configurations
+                            .findByName(configurationName)
+                            ?.dependencies
+                            ?.withType(ExternalModuleDependency::class.java)
+                            ?.filterNot { dependency ->
+                                dependency.group == "org.jetbrains.kotlin" && dependency.name == "kotlin-stdlib"
+                            }
+                            ?.map { dependency ->
+                                val module = "${checkNotNull(dependency.group)}:${dependency.name}"
+                                val coordinate = dependency.version?.let { version -> "$module:$version" } ?: module
+                                ":apps:batch [$configurationName] => $coordinate"
+                            }.orEmpty()
+                    }.sorted()
             val graph =
                 buildList {
-                    val apiRuntimeProjects = listOf(project(":apps:api"), project(":infrastructure:api"))
-                    val apiCoordinates = apiRuntimeProjects.associate { candidate ->
+                    val runtimeProjects =
+                        listOf(
+                            project(":apps:api"),
+                            project(":apps:batch"),
+                            project(":infrastructure:api"),
+                            project(":infrastructure:batch"),
+                        )
+                    val runtimeCoordinates = runtimeProjects.associate { candidate ->
                         candidate.path to "${candidate.group}:${candidate.name}"
                     }
-                    require(apiCoordinates.values.toSet().size == apiCoordinates.size) {
-                        "API runtime project component coordinates must be unique: $apiCoordinates"
+                    require(runtimeCoordinates.values.toSet().size == runtimeCoordinates.size) {
+                        "Application/infrastructure runtime project component coordinates must be unique: $runtimeCoordinates"
                     }
-                    add("# inspected API runtime project component coordinates")
-                    apiCoordinates.toSortedMap().forEach { (path, coordinate) -> add("$path => $coordinate") }
+                    add("# inspected application/infrastructure runtime project component coordinates")
+                    runtimeCoordinates.toSortedMap().forEach { (path, coordinate) -> add("$path => $coordinate") }
                     add(
                         "# inspected project dependency configurations: " +
                             productionConfigurations.joinToString(),
@@ -74,6 +97,11 @@ val writeProjectDependencyGraph =
                             productionConfigurations.joinToString(),
                     )
                     addAll(domainExternalEdges)
+                    add(
+                        "# inspected :apps:batch direct external dependencies (excluding Kotlin plugin stdlib): " +
+                            productionConfigurations.joinToString(),
+                    )
+                    addAll(batchExternalEdges)
                 }.joinToString(separator = "\n", postfix = "\n")
 
             dependencyGraphSnapshot.get().asFile.apply {

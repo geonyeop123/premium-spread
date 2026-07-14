@@ -9,8 +9,9 @@
 | 2. Gradle 모듈 경계/Architecture Test | COMPLETE | `8268148` | `origin/refactor/infrastructure-boundary` | unit 505 green, architecture 11 green, Batch integration은 Phase 3 retention 2건만 실패 |
 | 3. 공통 Domain/계산/시간 정책 | COMPLETE | `937e092` | `origin/refactor/infrastructure-boundary` | Domain 103/API unit 240/Batch unit 184/Redis 8/Architecture 11/API integration 96 green+1 approved disabled/Batch integration 68 green |
 | 4. 공통 Persistence/Redis Infrastructure | COMPLETE | `ccd5952` | `origin/refactor/infrastructure-boundary` | JPA 2, Redis 13, Common unit 40/integration 5, API unit 168/integration 108 green+1 approved disabled, Batch unit 196/integration 68, Architecture 12 green |
-| 5. API Facade/인증 세션 | COMPLETE | 이번 Phase commit | push 예정 | Infrastructure API 29, API unit 78/integration 116, Architecture 17, Web lint/build green, disabled 0 |
-| 6~10 | NOT_STARTED | 없음 | 없음 | Phase 5 commit/push 후 Phase 6 착수 |
+| 5. API Facade/인증 세션 | COMPLETE | `78e9239` | `origin/refactor/infrastructure-boundary` | Infrastructure API 29, API unit 78/integration 116, Architecture 17, Web lint/build green, disabled 0 |
+| 6. Batch Port/외부 Adapter | COMPLETE | 이번 Phase commit | push 예정 | Domain 109, Email 7, Monitoring 7, Infrastructure Batch 34, Batch unit 38/integration 62, Architecture 21 green |
+| 7~10 | NOT_STARTED | 없음 | 없음 | Phase 6 commit/push 후 Phase 7 착수 |
 
 ## Phase 0 실행 기록
 
@@ -183,8 +184,33 @@
   failure/error/skip 0으로 green이다. Web lint와 production build, 금지 import scan, `git diff --check`도 green이다.
 - 최종 독립 spec/code 리뷰는 보정 후 BLOCKER 0 / MAJOR 0 / MINOR 0으로 PASS했다.
 
+## Phase 6 실행 기록
+
+- Batch Application Job을 `JobLock`, `JobRunRecorder`, `OperatorAlert`, market/FX/ticker/premium/aggregation Port만
+  의존하도록 재구성하고 Scheduler는 Job 하나를 호출하는 thin interface로 이동했다. Batch 앱의 Infrastructure,
+  Redis/JDBC/WebClient/MeterRegistry compile 참조와 기술 debt allowlist는 모두 0건으로 닫았다.
+- 외부 FX/WebSocket, ingestion buffer, Redis time-series/aggregation 조합, 운영 metric/alert adapter를
+  `infrastructure:batch`로 이동했다. 공유 cache reader/writer와 JDBC repository는 `infrastructure:common`을
+  정본으로 유지하고 Batch 전용 seconds/aggregation orchestration만 batch adapter가 소유한다.
+- job 설정의 fixed-rate/cron/zone/enabled와 lock key/lease/execution timeout을 validated property로 외부화했다.
+  canonical `batch.scheduling.enabled`와 legacy `scheduling.enabled` 중 어느 하나라도 false이면 모든 Scheduler와
+  scheduling infrastructure가 비활성화되며, scheduler/aggregation zone 불일치는 startup에서 차단한다.
+- Job timeout은 virtual-thread future에 실제로 집행한다. owner-token Redis lock은 SET NX와 Lua renew/release로
+  원자화했고 lease/3마다 갱신한다. timeout 취소를 I/O가 무시해도 실제 action 종료 전 lock을 해제하지 않으며,
+  timeout 실패 metric/alert는 즉시 남기고 종료 뒤에만 release한다.
+- WebSocket generation fencing, first-message/idle watchdog, exponential reconnect, client ping, stop/start race,
+  alert hang 비차단과 Binance/Bithumb parser·timestamp·out-of-order 전체 회귀를 Infrastructure 테스트로 복원했다.
+  Application flush 경로는 `TickerFlushObserver`를 통해 기존 `ws.stale`/`ticker.flush` metric을 유지하며 dead
+  Infrastructure FlushJob은 제거했다.
+- FX timeout/retry/status, alert queue saturation, raw USDT/canonical USD pair, flat-price seconds score/retention,
+  중복 scheduler lock과 owner-token renew/release를 단위/MockWebServer/실제 Redis 통합 테스트로 고정했다.
+- 정적 검증은 Batch Application 기술 구현 참조 0건, Interfaces cache/repository/client 참조 0건,
+  `git diff --check` clean이다. 최종 독립 spec/code review는 BLOCKER 0 / MAJOR 0 / MINOR 0이다.
+- 최종 검증은 Domain 109, Email 7, Monitoring 7, Infrastructure Batch 34, Batch unit 38,
+  Batch integration 62, Architecture 21이 failure/error/skip 0으로 전부 green이다.
+
 ## 승인 및 재개 상태
 
 2026-07-14 사용자 결정: 운영/스테이징 없음, 불명확한 로컬 timestamp는 변환하지 않는 추천안 채택,
-스펙 리뷰 보정안 전체 승인. Phase 0~4 commit/push를 완료했고 Phase 5 구현·검증을 완료해 독립 리뷰 후
+스펙 리뷰 보정안 전체 승인. Phase 0~5 commit/push를 완료했고 Phase 6 구현·검증과 독립 리뷰를 완료해
 commit/push한다.

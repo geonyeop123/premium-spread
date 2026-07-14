@@ -11,9 +11,77 @@ spring:
   flyway:
     enabled: false
 
-# External API 설정
+# Scheduler trigger 설정
+batch:
+  market:
+    symbol: ${BATCH_MARKET_SYMBOL:BTC}
+    korea-exchange: ${BATCH_KOREA_EXCHANGE:BITHUMB}
+    korea-quote: ${BITHUMB_MARKET_QUOTE:KRW}
+    foreign-exchange: ${BATCH_FOREIGN_EXCHANGE:BINANCE}
+    foreign-quote: ${BINANCE_MARKET_QUOTE:USD}
+    fx-base: ${EXCHANGE_RATE_BASE:USD}
+    fx-quote: ${EXCHANGE_RATE_QUOTE:KRW}
+  scheduling:
+    enabled: ${BATCH_SCHEDULING_ENABLED:true}
+    binance-flush:
+      fixed-rate: ${BINANCE_FLUSH_FIXED_RATE:1s}
+    bithumb-flush:
+      fixed-rate: ${BITHUMB_FLUSH_FIXED_RATE:1s}
+    exchange-rate:
+      fixed-rate: ${EXCHANGE_RATE_FIXED_RATE:30m}
+      startup-delay: ${EXCHANGE_RATE_STARTUP_DELAY:5s}
+    premium:
+      fixed-rate: ${PREMIUM_FIXED_RATE:1s}
+    premium-aggregation:
+      summary-fixed-rate: ${PREMIUM_SUMMARY_FIXED_RATE:10s}
+      minute-cron: ${PREMIUM_MINUTE_CRON:0 * * * * *}
+      hour-cron: ${PREMIUM_HOUR_CRON:5 0 * * * *}
+      day-cron: ${PREMIUM_DAY_CRON:10 0 0 * * *}
+    ticker-aggregation:
+      minute-cron: ${TICKER_MINUTE_CRON:2 * * * * *}
+      hour-cron: ${TICKER_HOUR_CRON:7 0 * * * *}
+      day-cron: ${TICKER_DAY_CRON:12 0 0 * * *}
+    zone: ${BATCH_SCHEDULING_ZONE:Asia/Seoul}
+  jobs:
+    fx-ingestion: { lock-key: "${FX_JOB_LOCK_KEY:lock:fx}", lease: "${FX_JOB_LEASE:35s}", execution-timeout: "${FX_JOB_TIMEOUT:30s}" }
+    premium-realtime: { lock-key: "${PREMIUM_JOB_LOCK_KEY:lock:premium}", lease: "${PREMIUM_JOB_LEASE:5s}", execution-timeout: "${PREMIUM_JOB_TIMEOUT:3s}" }
+    premium-summary: { lock-key: "${PREMIUM_SUMMARY_LOCK_KEY:lock:aggregation:summary}", lease: "${PREMIUM_SUMMARY_LEASE:30s}", execution-timeout: "${PREMIUM_SUMMARY_TIMEOUT:20s}" }
+    premium-minute: { lock-key: "${PREMIUM_MINUTE_LOCK_KEY:lock:aggregation:minute}", lease: "${PREMIUM_MINUTE_LEASE:30s}", execution-timeout: "${PREMIUM_MINUTE_TIMEOUT:20s}" }
+    premium-hour: { lock-key: "${PREMIUM_HOUR_LOCK_KEY:lock:aggregation:hour}", lease: "${PREMIUM_HOUR_LEASE:60s}", execution-timeout: "${PREMIUM_HOUR_TIMEOUT:45s}" }
+    premium-day: { lock-key: "${PREMIUM_DAY_LOCK_KEY:lock:aggregation:day}", lease: "${PREMIUM_DAY_LEASE:120s}", execution-timeout: "${PREMIUM_DAY_TIMEOUT:90s}" }
+    ticker-minute: { lock-key: "${TICKER_MINUTE_LOCK_KEY:lock:ticker:aggregation:minute}", lease: "${TICKER_MINUTE_LEASE:30s}", execution-timeout: "${TICKER_MINUTE_TIMEOUT:20s}" }
+    ticker-hour: { lock-key: "${TICKER_HOUR_LOCK_KEY:lock:ticker:aggregation:hour}", lease: "${TICKER_HOUR_LEASE:60s}", execution-timeout: "${TICKER_HOUR_TIMEOUT:45s}" }
+    ticker-day: { lock-key: "${TICKER_DAY_LOCK_KEY:lock:ticker:aggregation:day}", lease: "${TICKER_DAY_LEASE:120s}", execution-timeout: "${TICKER_DAY_TIMEOUT:90s}" }
+    binance-flush: { lock-key: "${BINANCE_FLUSH_LOCK_KEY:lock:ticker:flush:binance}", lease: "${BINANCE_FLUSH_LEASE:5s}", execution-timeout: "${BINANCE_FLUSH_TIMEOUT:3s}" }
+    bithumb-flush: { lock-key: "${BITHUMB_FLUSH_LOCK_KEY:lock:ticker:flush:bithumb}", lease: "${BITHUMB_FLUSH_LEASE:5s}", execution-timeout: "${BITHUMB_FLUSH_TIMEOUT:3s}" }
+
+# External market stream 및 FX API 설정
+market-streams:
+  connection:
+    first-message-timeout: ${MARKET_STREAM_FIRST_MESSAGE_TIMEOUT:5s}
+    idle-timeout: ${MARKET_STREAM_IDLE_TIMEOUT:60s}
+    initial-backoff: ${MARKET_STREAM_INITIAL_BACKOFF:1s}
+    max-backoff: ${MARKET_STREAM_MAX_BACKOFF:30s}
+    watchdog-interval: ${MARKET_STREAM_WATCHDOG_INTERVAL:5s}
+  binance:
+    endpoint: ${BINANCE_WS_ENDPOINT:wss://fstream.binance.com/public/ws/btcusdt@bookTicker}
+    symbol: ${BATCH_MARKET_SYMBOL:BTC}
+    quote: ${BINANCE_STREAM_QUOTE:USDT}
+  bithumb:
+    endpoint: ${BITHUMB_WS_ENDPOINT:wss://pubwss.bithumb.com/pub/ws}
+    symbol: ${BATCH_MARKET_SYMBOL:BTC}
+    quote: ${BITHUMB_MARKET_QUOTE:KRW}
+
 exchange-rate:
+  endpoint: ${EXCHANGE_RATE_ENDPOINT:https://v6.exchangerate-api.com}
   api-key: ${EXCHANGE_RATE_API_KEY}
+  base: ${EXCHANGE_RATE_BASE:USD}
+  quote: ${EXCHANGE_RATE_QUOTE:KRW}
+  connect-timeout: ${EXCHANGE_RATE_CONNECT_TIMEOUT:2s}
+  read-timeout: ${EXCHANGE_RATE_READ_TIMEOUT:3s}
+  max-retries: ${EXCHANGE_RATE_MAX_RETRIES:3}
+  initial-backoff: ${EXCHANGE_RATE_INITIAL_BACKOFF:250ms}
+  max-backoff: ${EXCHANGE_RATE_MAX_BACKOFF:2s}
 
 aggregation:
   zone: ${AGGREGATION_ZONE:Asia/Seoul}
@@ -27,6 +95,9 @@ notification:
       port: ${MAIL_PORT:0}
       username: ${MAIL_USERNAME:}
       password: ${MAIL_PASSWORD:}
+      connect-timeout: ${MAIL_CONNECT_TIMEOUT:3s}
+      read-timeout: ${MAIL_READ_TIMEOUT:10s}
+      write-timeout: ${MAIL_WRITE_TIMEOUT:10s}
 
 # Actuator 설정
 management:
@@ -56,8 +127,9 @@ spring:
   main:
     allow-bean-definition-overriding: true
 
-scheduling:
-  enabled: false
+batch:
+  scheduling:
+    enabled: false
 
 redis:
   enabled: true

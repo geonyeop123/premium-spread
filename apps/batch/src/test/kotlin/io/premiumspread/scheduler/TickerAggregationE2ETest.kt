@@ -1,5 +1,6 @@
-package io.premiumspread.scheduler
+package io.premiumspread.interfaces.scheduling
 
+import io.premiumspread.application.job.aggregation.TickerAggregationJob
 import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationRepository
 import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.support.BatchIntegrationTestBase
@@ -17,7 +18,7 @@ import java.time.temporal.ChronoUnit
 class TickerAggregationE2ETest : BatchIntegrationTestBase() {
 
     @Autowired
-    lateinit var tickerAggregationScheduler: TickerAggregationScheduler
+    lateinit var tickerAggregationJob: TickerAggregationJob
 
     @Autowired
     lateinit var aggregationRepository: TickerAggregationRepository
@@ -73,7 +74,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             seedSecondsData("bithumb", "btc", prevMinuteStart.plusSeconds(50), "129800000")
 
             // when
-            tickerAggregationScheduler.aggregateMinute()
+            tickerAggregationJob.aggregateMinute()
 
             // then - 분 캐시 검증
             val members = redisTemplate.opsForZSet().rangeWithScores("ticker:minutes:bithumb:btc", 0, -1)
@@ -90,7 +91,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             seedSecondsData("bithumb", "btc", prevMinuteStart.plusSeconds(50), "129800000")
 
             // when
-            tickerAggregationScheduler.aggregateMinute()
+            tickerAggregationJob.aggregateMinute()
 
             // then - DB 검증
             val result = aggregationRepository.findLatestMinute("bithumb", "btc")
@@ -112,7 +113,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             // given - 소스 데이터 없음 (cleanUp에서 Redis 비워짐)
 
             // when
-            tickerAggregationScheduler.aggregateMinute()
+            tickerAggregationJob.aggregateMinute()
 
             // then - 모든 거래소/심볼 저장 없음
             assertThat(aggregationRepository.findLatestMinute("bithumb", "btc")).isNull()
@@ -129,7 +130,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             seedSecondsData("binance", "btc", prevMinuteStart.plusSeconds(50), "89300")
 
             // when
-            tickerAggregationScheduler.aggregateMinute()
+            tickerAggregationJob.aggregateMinute()
 
             // then
             assertThat(aggregationRepository.findLatestMinute("bithumb", "btc")).isNull()
@@ -154,7 +155,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             seedMinutesData("bithumb", "btc", prevHourStart.plus(50, ChronoUnit.MINUTES), "130500000", "129200000")
 
             // when
-            tickerAggregationScheduler.aggregateHour()
+            tickerAggregationJob.aggregateHour()
 
             // then
             val members = redisTemplate.opsForZSet().rangeWithScores("ticker:hours:bithumb:btc", 0, -1)
@@ -171,7 +172,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             seedMinutesData("bithumb", "btc", prevHourStart.plus(50, ChronoUnit.MINUTES), "130500000", "129200000")
 
             // when
-            tickerAggregationScheduler.aggregateHour()
+            tickerAggregationJob.aggregateHour()
 
             // then
             val result = aggregationRepository.findLatestHour("bithumb", "btc")
@@ -201,7 +202,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             seedHoursData("bithumb", "btc", prevDayStart.plus(20, ChronoUnit.HOURS), "131000000", "128500000")
 
             // when
-            tickerAggregationScheduler.aggregateDay()
+            tickerAggregationJob.aggregateDay()
 
             // then - day는 캐시 저장 없이 DB만
             val result = aggregationRepository.findLatestDay("bithumb", "btc")

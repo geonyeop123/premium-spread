@@ -257,7 +257,7 @@ infrastructure:api
   implementation -> domain, infrastructure:common, modules:redis
 
 infrastructure:batch
-  implementation -> domain, infrastructure:common, supports:email
+  implementation -> domain, infrastructure:common, modules:redis, supports:email
 
 domain
   implementation -> jakarta.persistence-api, spring-context, spring-tx, spring-data-commons(auditing only)
@@ -932,7 +932,13 @@ Infrastructure Adapter로 이동한다.
 
 - `apps/batch/client/**` -> `infrastructure:batch/exchange/**`
 - `apps/batch/infrastructure/websocket/**` -> `infrastructure:batch/websocket/**`
-- 나머지 `apps/batch/cache/**`, `repository/**` -> `infrastructure:common/**`
+- 공유 cache reader/writer와 JDBC repository는 `infrastructure:common/**`에 두고, Batch 전용
+  time-series/aggregation orchestration adapter는 `infrastructure:batch/**`에 둔다.
+  - common 소유: `FxCacheReader/Writer`, `TickerCacheReader/Writer`, `PremiumCacheReader/Writer`,
+    `PremiumAggregationCacheReader`, JPA/JDBC repository
+  - batch 소유: seconds sampling/retention, minute/hour/day aggregation과 DB-first/cache-second 조합,
+    WebSocket ingestion buffer를 구현하는 adapter. 이 구현은 이름에 `CacheService`가 남아 있어도 공유
+    CRUD adapter가 아니라 Batch job Port의 기술 구현이므로 `infrastructure:batch`에 둔다.
 - `apps/batch/scheduler/**` -> `apps/batch/interfaces/scheduling/**`
 
 ### 작업

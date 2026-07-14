@@ -145,3 +145,25 @@ substitution이 발생해 자동 설정 jar 전체가 빠졌고, 첫 증상은 D
 `infrastructure:api`에 고유 group을 부여해 runtime component identity를 분리했으며, dependency report와 실제
 116개 통합 테스트로 회귀를 검증했다. 같은 구조의 Batch 두 모듈은 Phase 6 runtimeOnly 전환 시 함께 고유 좌표로
 분리하고 Phase 9 전역 dependency gate에서 중복 component 좌표를 차단한다.
+
+## 8. Phase 6 실행 중 추가 확인사항
+
+### F-17 Future timeout과 분산 lock release는 별도 생명주기가 필요함
+
+`Future.cancel(true)`는 interrupt 요청일 뿐 실제 JDBC/Redis I/O 종료를 보장하지 않는다. timeout 직후 lock을
+해제하면 취소를 무시한 이전 action과 다음 인스턴스가 동시에 write할 수 있다. Job lock을 owner-token Redis 값으로
+원자화하고 Lua owner 비교 renew/release를 적용했으며, action completion latch가 끝날 때까지 lease를 갱신한다.
+timeout 실패 기록과 bounded alert는 즉시 남기되 lock release는 실제 종료 뒤에만 수행한다. 잘못된 owner의
+renew/release no-op와 PTTL 연장은 실제 Redis 통합 테스트로 검증한다.
+
+### F-18 이동 후 dead technical job이 운영 metric을 고립시킬 수 있음
+
+Scheduler를 Port 기반 Application Job으로 바꾸면서 기존 Infrastructure FlushJob을 함께 등록하면 실제 호출 경로와
+`ws.stale`/`ticker.flush` metric 경로가 분리되고 중복 구현이 남는다. flush 운영 신호를 Domain
+`TickerFlushObserver` Port로 승격해 Application 경로에서 기록하고, 호출되지 않는 기술 FlushJob은 제거했다.
+
+### F-19 설정 alias fallback은 application.yml 기본값과 함께 검증해야 함
+
+placeholder fallback은 canonical key가 `application.yml`에 존재하면 legacy key를 영원히 평가하지 않는다.
+`batch.scheduling.enabled`와 `scheduling.enabled`를 AND로 평가해 어느 키든 false이면 scheduling을 비활성화하고,
+canonical default=true와 legacy=false가 동시에 존재하는 실제 구성 형태를 context test로 고정했다.

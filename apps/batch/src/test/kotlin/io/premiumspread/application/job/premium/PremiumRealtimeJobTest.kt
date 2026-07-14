@@ -1,324 +1,116 @@
 package io.premiumspread.application.job.premium
 
-import io.mockk.*
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
-import io.premiumspread.application.notification.PremiumUpdatedEvent
-import io.premiumspread.cache.PremiumCacheService
-import io.premiumspread.cache.TickerCacheService
-import io.premiumspread.cache.FxCacheService
+import io.premiumspread.domain.batch.BatchMarket
+import io.premiumspread.domain.batch.BatchMarketProvider
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.domain.market.FxRateReadPort
 import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.market.TickerReadPort
+import io.premiumspread.domain.premium.PremiumRealtimeWritePort
 import io.premiumspread.domain.premium.PremiumSnapshot
+import io.premiumspread.domain.premium.PremiumThresholdEvaluator
 import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Currency
+import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.TickerSnapshot
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
-import org.springframework.context.ApplicationEventPublisher
 import java.math.BigDecimal
 import java.time.Instant
 
 class PremiumRealtimeJobTest {
-
-    private lateinit var tickerCacheService: TickerCacheService
-    private lateinit var fxCacheService: FxCacheService
-    private lateinit var premiumCacheService: PremiumCacheService
-    private lateinit var eventPublisher: ApplicationEventPublisher
+    private val tickerReader = mockk<TickerReadPort>()
+    private val fxReader = mockk<FxRateReadPort>()
+    private val writer = mockk<PremiumRealtimeWritePort>(relaxed = true)
+    private val evaluator = mockk<PremiumThresholdEvaluator>(relaxed = true)
+    private val marketProvider = mockk<BatchMarketProvider>()
+    private val executor = mockk<JobExecutor>()
     private lateinit var job: PremiumRealtimeJob
+    private val now = Instant.parse("2026-07-14T00:00:00Z")
 
     @BeforeEach
     fun setUp() {
-        tickerCacheService = mockk()
-        fxCacheService = mockk()
-        premiumCacheService = mockk(relaxed = true)
-        eventPublisher = mockk(relaxed = true)
-        job = PremiumRealtimeJob(
-            tickerCacheService = tickerCacheService,
-            fxCacheService = fxCacheService,
-            premiumCacheService = premiumCacheService,
-            eventPublisher = eventPublisher,
-        )
+        every { executor.execute(any(), any()) } answers { secondArg<() -> JobResult>().invoke() }
+        every { marketProvider.defaultMarket() } returns market()
+        job = PremiumRealtimeJob(tickerReader, fxReader, writer, evaluator, marketProvider, executor)
     }
 
-    private val now = Instant.now()
+    @Test
+    fun `필수 market snapshot이 없으면 skip한다`() {
+        every { tickerReader.findLatest(Exchange.BITHUMB, any()) } returns null
+        every { tickerReader.findLatest(Exchange.BINANCE, any()) } returns ticker(Exchange.BINANCE, "89277")
+        every { fxReader.findLatest(any(), any()) } returns fx()
 
-    private fun bithumbTicker(
-        price: String = "129555000",
-        observedAt: Instant = now,
-    ) = TickerSnapshot(
-        exchange = "bithumb",
-        symbol = "btc",
-        currency = "KRW",
+        val result = job.run()
+
+        assertThat((result as JobResult.Skipped).reason).isEqualTo("missing_data")
+        verify(exactly = 0) { writer.saveCurrent(any()) }
+    }
+
+    @Test
+    fun `가격이 0 이하면 skip한다`() {
+        every { tickerReader.findLatest(Exchange.BITHUMB, any()) } returns ticker(Exchange.BITHUMB, "0")
+        every { tickerReader.findLatest(Exchange.BINANCE, any()) } returns ticker(Exchange.BINANCE, "89277")
+        every { fxReader.findLatest(any(), any()) } returns fx()
+
+        assertThat((job.run() as JobResult.Skipped).reason).isEqualTo("invalid_price")
+    }
+
+    @Test
+    fun `계산 결과를 current seconds history에 쓰고 evaluator에 전달한다`() {
+        every { tickerReader.findLatest(Exchange.BITHUMB, any()) } returns ticker(Exchange.BITHUMB, "129555000")
+        every { tickerReader.findLatest(Exchange.BINANCE, any()) } returns ticker(Exchange.BINANCE, "89277")
+        every { fxReader.findLatest(any(), any()) } returns fx()
+        val captured = slot<PremiumSnapshot>()
+
+        assertThat(job.run()).isEqualTo(JobResult.Success)
+
+        verify { writer.saveCurrent(capture(captured)) }
+        verify { writer.saveSecond(captured.captured) }
+        verify { writer.saveHistory(captured.captured) }
+        verify { evaluator.evaluate(captured.captured) }
+        assertThat(captured.captured.pair.koreaExchange).isEqualTo(Exchange.BITHUMB)
+        assertThat(captured.captured.pair.foreignExchange).isEqualTo(Exchange.BINANCE)
+    }
+
+    @Test
+    fun `history 저장 실패는 current 계산을 실패시키지 않는다`() {
+        every { tickerReader.findLatest(Exchange.BITHUMB, any()) } returns ticker(Exchange.BITHUMB, "129555000")
+        every { tickerReader.findLatest(Exchange.BINANCE, any()) } returns ticker(Exchange.BINANCE, "89277")
+        every { fxReader.findLatest(any(), any()) } returns fx()
+        every { writer.saveHistory(any()) } throws IllegalStateException("history")
+
+        assertThat(job.run()).isEqualTo(JobResult.Success)
+        verify { evaluator.evaluate(any()) }
+    }
+
+    private fun ticker(exchange: Exchange, price: String) = TickerSnapshot(
+        exchange = exchange.name,
+        symbol = "BTC",
+        currency = if (exchange == Exchange.BITHUMB) "KRW" else "USD",
         price = BigDecimal(price),
         volume = null,
-        observedAt = observedAt,
-    )
-
-    private fun binanceTicker(
-        price: String = "89277",
-        observedAt: Instant = now,
-    ) = TickerSnapshot(
-        exchange = "binance",
-        symbol = "btc",
-        currency = "USDT",
-        price = BigDecimal(price),
-        volume = null,
-        observedAt = observedAt,
-    )
-
-    private fun premiumData() = PremiumSnapshot(
-        pair = MarketPair.default(Symbol("btc")),
-        premiumRate = BigDecimal("1.2800"),
-        koreaPrice = BigDecimal("129555000"),
-        foreignPrice = BigDecimal("89277"),
-        foreignPriceInKrw = BigDecimal("127918150"),
-        fxRate = BigDecimal("1432.6"),
         observedAt = now,
     )
 
-    private fun fxData(
-        rate: String = "1432.6",
-        observedAt: Instant = now,
-        source: Exchange = Exchange.FX_PROVIDER,
-    ) = ExchangeRateSnapshot(
-        baseCurrency = "USD",
-        quoteCurrency = "KRW",
-        rate = BigDecimal(rate),
-        observedAt = observedAt,
-        source = source,
-    )
+    private fun fx() = ExchangeRateSnapshot("USD", "KRW", BigDecimal("1432.6"), now)
 
-    @Nested
-    @DisplayName("실행")
-    inner class Run {
-
-        @Test
-        fun `빗썸 티커가 없으면 Skipped를 반환한다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns null
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat((result as JobResult.Skipped).reason).isEqualTo("missing_data")
-        }
-
-        @Test
-        fun `바이낸스 티커가 없으면 Skipped를 반환한다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns null
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat((result as JobResult.Skipped).reason).isEqualTo("missing_data")
-        }
-
-        @Test
-        fun `환율 정보가 없으면 Skipped를 반환한다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrwSnapshot() } returns null
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat((result as JobResult.Skipped).reason).isEqualTo("missing_data")
-        }
-
-        @Test
-        fun `빗썸 가격이 0이면 Skipped를 반환한다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker("0")
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat((result as JobResult.Skipped).reason).isEqualTo("invalid_price")
-        }
-
-        @Test
-        fun `바이낸스 가격이 0이면 Skipped를 반환한다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker("0")
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat((result as JobResult.Skipped).reason).isEqualTo("invalid_price")
-        }
-
-        @Test
-        fun `환율이 0이면 Skipped를 반환한다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData("0")
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat((result as JobResult.Skipped).reason).isEqualTo("invalid_price")
-        }
-
-        @Test
-        fun `캐시 저장 중 예외 발생 시 Failure를 반환한다`() {
-            // given
-            val bithumb = bithumbTicker()
-            val binance = binanceTicker()
-            val fxRate = BigDecimal("1432.6")
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
-            every { premiumCacheService.save(any()) } throws RuntimeException("redis error")
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
-        }
-
-        @Test
-        fun `성공 시 프리미엄을 계산하고 히스토리를 항상 저장한다`() {
-            // given
-            val bithumb = bithumbTicker()
-            val binance = binanceTicker()
-            val fxRate = BigDecimal("1432.6")
-            val premium = premiumData()
-
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isEqualTo(JobResult.Success)
-            verify { premiumCacheService.save(match { it.symbol.equals(premium.symbol, ignoreCase = true) }) }
-            verify { premiumCacheService.saveToSeconds(any()) }
-            verify { premiumCacheService.saveHistory(any()) }
-        }
-
-        @Test
-        fun `프리미엄 관측 시각은 두 티커와 환율 중 가장 최신 시각이다`() {
-            val koreaAt = Instant.parse("2026-05-12T00:00:01Z")
-            val foreignAt = Instant.parse("2026-05-12T00:00:02Z")
-            val fxAt = Instant.parse("2026-05-12T00:00:03Z")
-            val captured = slot<PremiumSnapshot>()
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker(observedAt = koreaAt)
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker(observedAt = foreignAt)
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(observedAt = fxAt, source = Exchange.BINANCE)
-            every { premiumCacheService.save(capture(captured)) } just Runs
-
-            val result = job.run()
-
-            assertThat(result).isEqualTo(JobResult.Success)
-            assertThat(captured.captured.observedAt).isEqualTo(fxAt)
-            assertThat(captured.captured.fxObservedAt).isEqualTo(fxAt)
-            assertThat(captured.captured.fxSource).isEqualTo(Exchange.BINANCE)
-            verify { premiumCacheService.saveToSeconds(match { it.observedAt == fxAt }) }
-            verify { premiumCacheService.saveHistory(match { it.observedAt == fxAt }) }
-        }
-
-        @Test
-        fun `히스토리 저장 실패해도 Success를 반환한다`() {
-            // given
-            val bithumb = bithumbTicker()
-            val binance = binanceTicker()
-            val fxRate = BigDecimal("1432.6")
-            val premium = premiumData()
-
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
-            every { premiumCacheService.saveHistory(any()) } throws RuntimeException("history error")
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isEqualTo(JobResult.Success)
-            verify { premiumCacheService.save(any()) }
-            verify { premiumCacheService.saveToSeconds(any()) }
-        }
-
-        @Test
-        fun `예외 발생 시 Failure를 반환한다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } throws RuntimeException("redis error")
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
-        }
-
-        @Test
-        fun `성공 시 PremiumUpdatedEvent를 publish 한다`() {
-            // given
-            val bithumb = bithumbTicker()
-            val binance = binanceTicker()
-            val fxRate = BigDecimal("1432.6")
-            val premium = premiumData()
-
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isEqualTo(JobResult.Success)
-            verify(exactly = 1) {
-                eventPublisher.publishEvent(
-                    match<PremiumUpdatedEvent> {
-                        it.symbol.equals("btc", ignoreCase = true) && it.premiumRate == BigDecimal("1.2954")
-                    },
-                )
-            }
-        }
-
-        @Test
-        fun `실패 시 PremiumUpdatedEvent를 publish 하지 않는다`() {
-            // given
-            every { tickerCacheService.getSnapshot("bithumb", "btc") } throws RuntimeException("cache error")
-
-            // when
-            val result = job.run()
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            verify(exactly = 0) { eventPublisher.publishEvent(any()) }
-        }
+    private fun market(): BatchMarket {
+        val symbol = Symbol("BTC")
+        return BatchMarket(
+            MarketPair.default(symbol),
+            Quote.coin(symbol, Currency.KRW),
+            Quote.coin(symbol, Currency.USD),
+            Currency.USD,
+            Currency.KRW,
+        )
     }
 }

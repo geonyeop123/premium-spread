@@ -14,6 +14,9 @@ class AggregationWindowPolicy(
     val zoneId: ZoneId
         get() = properties.aggregationZone.zoneId
 
+    fun between(from: Instant, to: Instant): AggregationWindow =
+        AggregationWindow(from, to, properties.aggregationZone)
+
     fun previous(now: Instant, unit: ChronoUnit): AggregationWindow {
         val zone = properties.aggregationZone
         if (unit == ChronoUnit.DAYS) {

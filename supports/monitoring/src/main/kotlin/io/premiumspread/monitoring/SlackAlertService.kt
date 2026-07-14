@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.web.client.RestTemplate
 
 /**
@@ -13,12 +14,25 @@ import org.springframework.web.client.RestTemplate
  * alert.slack.webhook-url 설정이 존재할 때 활성화된다.
  */
 class SlackAlertService(
-    private val webhookUrl: String,
+    private val properties: SlackAlertProperties,
     private val objectMapper: ObjectMapper,
 ) : AlertService {
+    init {
+        require(properties.webhookUrl.isNotBlank()) { "alert.slack.webhook-url must not be blank" }
+    }
+
+    constructor(webhookUrl: String, objectMapper: ObjectMapper) : this(
+        SlackAlertProperties(webhookUrl = webhookUrl),
+        objectMapper,
+    )
 
     private val logger = LoggerFactory.getLogger(SlackAlertService::class.java)
-    private val restTemplate = RestTemplate()
+    private val restTemplate = RestTemplate(
+        SimpleClientHttpRequestFactory().apply {
+            setConnectTimeout(properties.connectTimeout)
+            setReadTimeout(properties.readTimeout)
+        },
+    )
 
     override fun sendAlert(message: String, severity: AlertService.Severity) {
         logger.warn("[ALERT][{}] {}", severity, message)
@@ -29,9 +43,10 @@ class SlackAlertService(
                 contentType = MediaType.APPLICATION_JSON
             }
             val request = HttpEntity(payload, headers)
-            restTemplate.postForEntity(webhookUrl, request, String::class.java)
+            restTemplate.postForEntity(properties.webhookUrl, request, String::class.java)
         } catch (e: Exception) {
             logger.error("Slack 알림 전송 실패: {}", e.message, e)
+            throw e
         }
     }
 
