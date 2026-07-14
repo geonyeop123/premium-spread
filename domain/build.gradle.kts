@@ -12,4 +12,5 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.assertj:assertj-core")
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("io.mockk:mockk-jvm:1.13.3")
 }

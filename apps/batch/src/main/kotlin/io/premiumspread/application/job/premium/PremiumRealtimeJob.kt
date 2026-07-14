@@ -5,7 +5,10 @@ import io.premiumspread.application.notification.PremiumUpdatedEvent
 import io.premiumspread.cache.FxCacheService
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.cache.TickerCacheService
-import io.premiumspread.calculator.PremiumCalculator
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.premium.PremiumPolicy
+import io.premiumspread.domain.premium.PremiumSnapshot
+import io.premiumspread.domain.ticker.Symbol
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
@@ -16,7 +19,6 @@ class PremiumRealtimeJob(
     private val tickerCacheService: TickerCacheService,
     private val fxCacheService: FxCacheService,
     private val premiumCacheService: PremiumCacheService,
-    private val premiumCalculator: PremiumCalculator,
     private val eventPublisher: ApplicationEventPublisher,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -29,34 +31,47 @@ class PremiumRealtimeJob(
 
     fun run(): JobResult {
         return try {
-            val bithumbTicker = tickerCacheService.get(BITHUMB, BTC)
-            val binanceTicker = tickerCacheService.get(BINANCE, BTC)
-            val fxRate = fxCacheService.getUsdKrw()
+            val bithumbTicker = tickerCacheService.getSnapshot(BITHUMB, BTC)
+            val binanceTicker = tickerCacheService.getSnapshot(BINANCE, BTC)
+            val fxSnapshot = fxCacheService.getUsdKrwSnapshot()
 
-            if (bithumbTicker == null || binanceTicker == null || fxRate == null) {
+            if (bithumbTicker == null || binanceTicker == null || fxSnapshot == null) {
                 log.warn(
                     "Missing data for premium calculation - Bithumb: {}, Binance: {}, FX: {}",
                     bithumbTicker != null,
                     binanceTicker != null,
-                    fxRate != null,
+                    fxSnapshot != null,
                 )
                 return JobResult.Skipped("missing_data")
             }
 
-            if (bithumbTicker.price <= BigDecimal.ZERO || binanceTicker.price <= BigDecimal.ZERO || fxRate <= BigDecimal.ZERO) {
+            if (bithumbTicker.price <= BigDecimal.ZERO || binanceTicker.price <= BigDecimal.ZERO || fxSnapshot.rate <= BigDecimal.ZERO) {
                 log.warn(
                     "Invalid price detected - Bithumb: {}, Binance: {}, FX: {}",
                     bithumbTicker.price,
                     binanceTicker.price,
-                    fxRate,
+                    fxSnapshot.rate,
                 )
                 return JobResult.Skipped("invalid_price")
             }
 
-            val premium = premiumCalculator.calculate(
-                koreaTicker = bithumbTicker,
-                foreignTicker = binanceTicker,
-                fxRate = fxRate,
+            val pair = MarketPair.default(Symbol(bithumbTicker.symbol))
+
+            val calculation = PremiumPolicy.calculate(
+                koreaPrice = bithumbTicker.price,
+                foreignPriceUsd = binanceTicker.price,
+                fxRate = fxSnapshot.rate,
+            )
+            val premium = PremiumSnapshot(
+                pair = pair,
+                premiumRate = calculation.storagePremiumRate,
+                koreaPrice = bithumbTicker.price,
+                foreignPrice = binanceTicker.price,
+                foreignPriceInKrw = calculation.foreignPriceInKrw,
+                fxRate = fxSnapshot.rate,
+                fxSource = fxSnapshot.source,
+                observedAt = maxOf(bithumbTicker.observedAt, binanceTicker.observedAt, fxSnapshot.observedAt),
+                fxObservedAt = fxSnapshot.observedAt,
             )
 
             premiumCacheService.save(premium)

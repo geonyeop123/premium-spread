@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
+import java.time.Instant
 
 @Tag("integration")
 @SpringBootTest
@@ -80,7 +81,7 @@ class MemberRepositoryTest @Autowired constructor(
         @Test
         fun `삭제된 회원은 조회되지 않는다`() {
             val saved = createMember()
-            saved.delete()
+            saved.delete(Instant.parse("2026-07-14T03:00:00Z"))
             memberRepository.save(saved)
 
             val found = memberRepository.findByEmail("test@example.com")
@@ -132,7 +133,7 @@ class MemberRepositoryTest @Autowired constructor(
         @Test
         fun `삭제된 회원은 존재하지 않는 것으로 처리한다`() {
             val saved = createMember()
-            saved.delete()
+            saved.delete(Instant.parse("2026-07-14T03:00:00Z"))
             memberRepository.save(saved)
 
             val exists = memberRepository.existsByEmail("test@example.com")

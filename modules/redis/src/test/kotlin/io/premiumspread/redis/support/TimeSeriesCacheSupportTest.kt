@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -12,6 +13,8 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ZSetOperations
 import java.time.Duration
 import java.time.Instant
+import java.time.Clock
+import java.time.ZoneOffset
 
 class TimeSeriesCacheSupportTest {
 
@@ -24,7 +27,7 @@ class TimeSeriesCacheSupportTest {
         redisTemplate = mockk(relaxed = true)
         zSetOps = mockk(relaxed = true)
         every { redisTemplate.opsForZSet() } returns zSetOps
-        sut = TimeSeriesCacheSupport(redisTemplate)
+        sut = TimeSeriesCacheSupport(redisTemplate, Clock.fixed(Instant.parse("2026-05-12T00:00:00Z"), ZoneOffset.UTC))
     }
 
     @Nested
@@ -61,9 +64,7 @@ class TimeSeriesCacheSupportTest {
             sut.add(key, value, timestamp, ttl)
 
             // then
-            verify {
-                zSetOps.removeRangeByScore(key, Double.NEGATIVE_INFINITY, any())
-            }
+            verify { zSetOps.removeRangeByScore(key, Double.NEGATIVE_INFINITY, 1_778_543_700_000.0) }
         }
 
         @Test
@@ -81,9 +82,7 @@ class TimeSeriesCacheSupportTest {
             // then
             verify { redisTemplate.expire(key, ttl) }
             // retention cutoff 삭제 호출 확인
-            verify {
-                zSetOps.removeRangeByScore(key, Double.NEGATIVE_INFINITY, any())
-            }
+            verify { zSetOps.removeRangeByScore(key, Double.NEGATIVE_INFINITY, 1_778_543_700_000.0) }
         }
     }
 
@@ -92,7 +91,7 @@ class TimeSeriesCacheSupportTest {
     inner class RangeByTime {
 
         @Test
-        fun `시간 범위로 ZSet 데이터를 조회한다`() {
+        fun `시간 범위를 from inclusive to exclusive로 조회한다`() {
             // given
             val key = "test:key"
             val from = Instant.ofEpochMilli(1000L)
@@ -101,7 +100,7 @@ class TimeSeriesCacheSupportTest {
             every { tuple.value } returns "test-value"
             every { tuple.score } returns 1500.0
             every {
-                zSetOps.rangeByScoreWithScores(key, 1000.0, 2000.0)
+                zSetOps.rangeByScoreWithScores(key, 1000.0, Math.nextDown(2000.0))
             } returns setOf(tuple)
 
             // when
@@ -119,7 +118,7 @@ class TimeSeriesCacheSupportTest {
             val from = Instant.ofEpochMilli(1000L)
             val to = Instant.ofEpochMilli(2000L)
             every {
-                zSetOps.rangeByScoreWithScores(key, 1000.0, 2000.0)
+                zSetOps.rangeByScoreWithScores(key, 1000.0, Math.nextDown(2000.0))
             } returns null
 
             // when
@@ -127,6 +126,18 @@ class TimeSeriesCacheSupportTest {
 
             // then
             assertThat(result).isEmpty()
+        }
+
+        @Test
+        fun `빈 범위나 역전 범위를 거부한다`() {
+            val at = Instant.ofEpochMilli(1000L)
+
+            assertThatThrownBy { sut.rangeByTime("test:key", at, at) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("from < to")
+            assertThatThrownBy { sut.rangeByTime("test:key", at.plusMillis(1), at) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("from < to")
         }
     }
 

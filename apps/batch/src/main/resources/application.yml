@@ -15,6 +15,9 @@ spring:
 exchange-rate:
   api-key: ${EXCHANGE_RATE_API_KEY}
 
+aggregation:
+  zone: ${AGGREGATION_ZONE:Asia/Seoul}
+
 notification:
   email:
     enabled: ${NOTIFICATION_EMAIL_ENABLED:false}

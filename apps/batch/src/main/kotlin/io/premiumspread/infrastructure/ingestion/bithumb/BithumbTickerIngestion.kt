@@ -36,7 +36,7 @@ class BithumbTickerIngestion(
     data class LatestTicker(val ticker: TickerData, val receivedAt: Instant)
 
     fun onMessage(ticker: TickerData) {
-        val now = Instant.now(clock)
+        val now = clock.instant()
         val candidate = LatestTicker(ticker, now)
 
         // Atomic monotonic CAS — strict하게 오래된 메시지만 폐기. 같은 second 타임스탬프는 수용

@@ -1,5 +1,6 @@
 package io.premiumspread.infrastructure.exchangerate
 
+import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.redis.RedisKeyGenerator
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -15,6 +16,7 @@ data class CachedFxRate(
     val quoteCurrency: String,
     val rate: BigDecimal,
     val timestamp: Instant,
+    val source: Exchange = Exchange.FX_PROVIDER,
 )
 
 /**
@@ -44,13 +46,22 @@ class FxCacheReader(
         }
 
         return try {
+            val cachedBase = hash["base"] ?: return null
+            val cachedQuote = hash["quote"] ?: return null
+            if (!cachedBase.equals(baseCurrency, ignoreCase = true) ||
+                !cachedQuote.equals(quoteCurrency, ignoreCase = true)
+            ) {
+                log.warn("FX cache identity mismatch: key={}, payload={}/{}", key, cachedBase, cachedQuote)
+                return null
+            }
+
             CachedFxRate(
-                baseCurrency = hash["base"] ?: return null,
-                quoteCurrency = hash["quote"] ?: return null,
+                baseCurrency = cachedBase,
+                quoteCurrency = cachedQuote,
                 rate = hash["rate"]?.toBigDecimalOrNull() ?: return null,
                 timestamp = hash["timestamp"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) }
-                    ?: Instant.now(),
+                    ?.let { Instant.ofEpochMilli(it) } ?: return null,
+                source = hash["source"]?.let(Exchange::valueOf) ?: Exchange.FX_PROVIDER,
             ).also {
                 log.debug("FX cache hit: {} = {}", key, it.rate)
             }

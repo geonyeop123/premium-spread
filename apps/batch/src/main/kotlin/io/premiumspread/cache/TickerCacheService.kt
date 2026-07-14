@@ -2,6 +2,7 @@ package io.premiumspread.cache
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.client.TickerData
+import io.premiumspread.domain.ticker.TickerSnapshot
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
 import io.premiumspread.redis.TickerAggregationTimeUnit
@@ -14,12 +15,14 @@ import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
+import java.time.Clock
 
 @Service
 class TickerCacheService(
     private val redisTemplate: StringRedisTemplate,
     private val objectMapper: ObjectMapper,
     private val timeSeriesCache: TimeSeriesCacheSupport,
+    private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -27,6 +30,7 @@ class TickerCacheService(
      * 티커 데이터 저장
      */
     fun save(ticker: TickerData) {
+        // TODO(Phase 4): MarketPair-aware Redis v2 key로 dual-write 후 legacy key를 제거한다.
         val key = RedisKeyGenerator.tickerKey(
             exchange = ticker.exchange.lowercase(),
             symbol = ticker.symbol.lowercase(),
@@ -58,6 +62,7 @@ class TickerCacheService(
      * 티커 데이터 조회
      */
     fun get(exchange: String, symbol: String): TickerData? {
+        // TODO(Phase 4): v2 key 우선 dual-read로 전환한다. 현재 key는 API 호환을 위해 유지한다.
         val key = RedisKeyGenerator.tickerKey(
             exchange = exchange.lowercase(),
             symbol = symbol.lowercase(),
@@ -69,21 +74,32 @@ class TickerCacheService(
         }
 
         return try {
+            val storedExchange = hash["exchange"] ?: return null
+            val storedSymbol = hash["symbol"] ?: return null
+            if (!storedExchange.equals(exchange, ignoreCase = true) ||
+                !storedSymbol.equals(symbol, ignoreCase = true)
+            ) {
+                log.warn("Ticker cache identity mismatch: key={}, exchange={}, symbol={}", key, storedExchange, storedSymbol)
+                return null
+            }
+
             TickerData(
-                exchange = hash["exchange"] ?: return null,
-                symbol = hash["symbol"] ?: return null,
+                exchange = storedExchange,
+                symbol = storedSymbol,
                 currency = hash["currency"] ?: return null,
                 price = hash["price"]?.toBigDecimalOrNull() ?: return null,
                 volume = hash["volume"]?.takeIf { it.isNotBlank() }?.toBigDecimalOrNull(),
                 timestamp = hash["timestamp"]?.toLongOrNull()
-                    ?.let { java.time.Instant.ofEpochMilli(it) }
-                    ?: java.time.Instant.now(),
+                    ?.let { Instant.ofEpochMilli(it) }
+                    ?: return null,
             )
         } catch (e: Exception) {
             log.warn("Failed to parse ticker from cache: {}", key, e)
             null
         }
     }
+
+    fun getSnapshot(exchange: String, symbol: String): TickerSnapshot? = get(exchange, symbol)?.toDomainSnapshot()
 
     // ========== 초당 데이터 ZSet 저장 ==========
 
@@ -102,7 +118,7 @@ class TickerCacheService(
         redisTemplate.expire(key, RedisTtl.SECONDS_DATA)
 
         // retention: TTL 이전 데이터 정리
-        val cutoff = Instant.now().minus(RedisTtl.SECONDS_DATA).toEpochMilli().toDouble()
+        val cutoff = clock.instant().minus(RedisTtl.SECONDS_DATA).toEpochMilli().toDouble()
         redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
 
         log.debug("Saved ticker to seconds ZSet (member={}, score={}): {}", member, score, key)

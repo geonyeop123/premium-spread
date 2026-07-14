@@ -8,6 +8,7 @@ import io.premiumspread.redis.RedisTtl
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
+import java.time.Clock
 
 @Component
 class JobExecutor(
@@ -15,6 +16,7 @@ class JobExecutor(
     private val redisTemplate: StringRedisTemplate,
     private val meterRegistry: MeterRegistry,
     private val alertService: AlertService,
+    private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -73,7 +75,7 @@ class JobExecutor(
     private fun updateLastRunTime(jobName: String) {
         redisTemplate.opsForValue().set(
             RedisKeyGenerator.batchLastRunKey(jobName),
-            System.currentTimeMillis().toString(),
+            clock.millis().toString(),
             RedisTtl.BATCH_HEALTH,
         )
     }

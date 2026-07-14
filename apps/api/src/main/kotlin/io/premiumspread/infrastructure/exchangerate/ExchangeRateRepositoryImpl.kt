@@ -23,6 +23,7 @@ class ExchangeRateRepositoryImpl(
                 quoteCurrency = cached.quoteCurrency,
                 rate = cached.rate,
                 observedAt = cached.timestamp,
+                source = cached.source,
             )
         }
 

@@ -52,7 +52,7 @@ class V12MigrationSafetyIntegrationTest {
         callback: V12MigrationSafetyCallback? = null,
     ): Flyway {
         val configuration = Flyway.configure()
-            .dataSource(mysql.jdbcUrl, mysql.username, mysql.password)
+            .dataSource(jdbcUrl, mysql.username, mysql.password)
             .locations("classpath:db/migration")
             .cleanDisabled(false)
         if (target != null) configuration.target(target)
@@ -85,7 +85,10 @@ class V12MigrationSafetyIntegrationTest {
         }
     }
 
-    private fun connection() = DriverManager.getConnection(mysql.jdbcUrl, mysql.username, mysql.password)
+    private fun connection() = DriverManager.getConnection(jdbcUrl, mysql.username, mysql.password)
+
+    private val jdbcUrl: String
+        get() = mysql.jdbcUrl + if (mysql.jdbcUrl.contains('?')) "&sslMode=DISABLED" else "?sslMode=DISABLED"
 
     companion object {
         @Container

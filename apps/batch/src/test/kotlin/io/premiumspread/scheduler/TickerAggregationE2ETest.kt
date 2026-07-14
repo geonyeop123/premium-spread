@@ -1,13 +1,16 @@
 package io.premiumspread.scheduler
 
 import io.premiumspread.repository.TickerAggregationRepository
+import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.support.BatchIntegrationTestBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import java.time.Clock
 import java.time.Instant
+import java.sql.Timestamp
 import java.time.temporal.ChronoUnit
 
 @DisplayName("TickerAggregation E2E")
@@ -18,6 +21,12 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
 
     @Autowired
     lateinit var aggregationRepository: TickerAggregationRepository
+
+    @Autowired
+    lateinit var clock: Clock
+
+    @Autowired
+    lateinit var windowPolicy: AggregationWindowPolicy
 
     /**
      * ticker:seconds:{exchange}:{symbol} ZSet에 초당 데이터 seed
@@ -57,7 +66,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `초당 데이터를 집계하여 분 캐시에 저장한다`() {
             // given - 이전 분 윈도우에 데이터 seed
-            val now = Instant.now()
+            val now = clock.instant()
             val prevMinuteStart = now.minus(1, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MINUTES)
             seedSecondsData("bithumb", "btc", prevMinuteStart.plusSeconds(10), "129555000")
             seedSecondsData("bithumb", "btc", prevMinuteStart.plusSeconds(30), "130000000")
@@ -74,7 +83,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `초당 데이터를 집계하여 DB ticker_minute에 저장한다`() {
             // given
-            val now = Instant.now()
+            val now = clock.instant()
             val prevMinuteStart = now.minus(1, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MINUTES)
             seedSecondsData("bithumb", "btc", prevMinuteStart.plusSeconds(10), "129555000")
             seedSecondsData("bithumb", "btc", prevMinuteStart.plusSeconds(30), "130000000")
@@ -91,6 +100,11 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             assertThat(result.open).isEqualByComparingTo("129555000")
             assertThat(result.close).isEqualByComparingTo("129800000")
             assertThat(result.count).isEqualTo(3)
+            val storedAt = jdbcTemplate.queryForObject(
+                "SELECT minute_at FROM ticker_minute WHERE exchange = 'BITHUMB' AND symbol = 'BTC'",
+                Timestamp::class.java,
+            )
+            assertThat(storedAt!!.toInstant()).isEqualTo(prevMinuteStart)
         }
 
         @Test
@@ -108,7 +122,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `bithumb 소스 없으면 bithumb은 저장하지 않고 binance만 저장한다`() {
             // given - binance 소스만 존재
-            val now = Instant.now()
+            val now = clock.instant()
             val prevMinuteStart = now.minus(1, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MINUTES)
             seedSecondsData("binance", "btc", prevMinuteStart.plusSeconds(10), "89277")
             seedSecondsData("binance", "btc", prevMinuteStart.plusSeconds(30), "89500")
@@ -133,7 +147,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `분 데이터를 집계하여 시간 캐시에 저장한다`() {
             // given - 이전 시간 윈도우에 데이터 seed
-            val now = Instant.now()
+            val now = clock.instant()
             val prevHourStart = now.minus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.HOURS)
             seedMinutesData("bithumb", "btc", prevHourStart.plus(10, ChronoUnit.MINUTES), "130000000", "129000000")
             seedMinutesData("bithumb", "btc", prevHourStart.plus(30, ChronoUnit.MINUTES), "131000000", "129500000")
@@ -150,7 +164,7 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `분 데이터를 집계하여 DB ticker_hour에 저장한다`() {
             // given
-            val now = Instant.now()
+            val now = clock.instant()
             val prevHourStart = now.minus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.HOURS)
             seedMinutesData("bithumb", "btc", prevHourStart.plus(10, ChronoUnit.MINUTES), "130000000", "129000000")
             seedMinutesData("bithumb", "btc", prevHourStart.plus(30, ChronoUnit.MINUTES), "131000000", "129500000")
@@ -165,6 +179,11 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             assertThat(result!!.high).isEqualByComparingTo("131000000")
             assertThat(result.low).isEqualByComparingTo("129000000")
             assertThat(result.count).isEqualTo(30) // 3 entries * 10 count each
+            val storedAt = jdbcTemplate.queryForObject(
+                "SELECT hour_at FROM ticker_hour WHERE exchange = 'BITHUMB' AND symbol = 'BTC'",
+                Timestamp::class.java,
+            )
+            assertThat(storedAt!!.toInstant()).isEqualTo(prevHourStart)
         }
     }
 
@@ -175,8 +194,8 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
         @Test
         fun `시간 데이터를 집계하여 DB ticker_day에 저장한다`() {
             // given - 이전 일 윈도우에 데이터 seed
-            val now = Instant.now()
-            val prevDayStart = now.minus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.DAYS)
+            val now = clock.instant()
+            val prevDayStart = windowPolicy.previous(now, ChronoUnit.DAYS).from
             seedHoursData("bithumb", "btc", prevDayStart.plus(4, ChronoUnit.HOURS), "130000000", "129000000")
             seedHoursData("bithumb", "btc", prevDayStart.plus(12, ChronoUnit.HOURS), "132000000", "128000000")
             seedHoursData("bithumb", "btc", prevDayStart.plus(20, ChronoUnit.HOURS), "131000000", "128500000")
@@ -190,6 +209,12 @@ class TickerAggregationE2ETest : BatchIntegrationTestBase() {
             assertThat(result!!.high).isEqualByComparingTo("132000000")
             assertThat(result.low).isEqualByComparingTo("128000000")
             assertThat(result.count).isEqualTo(180) // 3 entries * 60 count each
+            val storedDay = jdbcTemplate.queryForObject(
+                "SELECT day_at FROM ticker_day WHERE exchange = 'BITHUMB' AND symbol = 'BTC'",
+                java.sql.Date::class.java,
+            )
+            assertThat(storedDay!!.toLocalDate())
+                .isEqualTo(prevDayStart.atZone(windowPolicy.zoneId).toLocalDate())
         }
     }
 }

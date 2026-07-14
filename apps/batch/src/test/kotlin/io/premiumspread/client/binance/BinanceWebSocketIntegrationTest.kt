@@ -29,6 +29,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
 import java.time.Duration
+import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -42,7 +43,7 @@ class BinanceWebSocketIntegrationTest {
     @Autowired private lateinit var redisTemplate: StringRedisTemplate
 
     private lateinit var server: MockWebServer
-    private val metrics = WebSocketMetrics(SimpleMeterRegistry())
+    private val metrics = WebSocketMetrics(SimpleMeterRegistry(), Clock.systemUTC())
     private val captured = ConcurrentLinkedQueue<String>()
     private val fakeAlertService = object : AlertService {
         override fun sendAlert(message: String, severity: AlertService.Severity) {

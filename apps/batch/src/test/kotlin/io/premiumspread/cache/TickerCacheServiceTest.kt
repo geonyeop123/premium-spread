@@ -5,6 +5,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.premiumspread.client.TickerData
+import io.premiumspread.domain.ticker.TickerSnapshot
 import io.premiumspread.redis.TickerAggregationTimeUnit
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import org.assertj.core.api.Assertions.assertThat
@@ -18,6 +19,8 @@ import org.springframework.data.redis.core.ZSetOperations
 import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
+import java.time.Clock
+import java.time.ZoneOffset
 
 class TickerCacheServiceTest {
 
@@ -34,8 +37,9 @@ class TickerCacheServiceTest {
         every { redisTemplate.opsForHash<String, String>() } returns hashOps
         every { redisTemplate.opsForZSet() } returns zSetOps
         every { redisTemplate.expire(any(), any<Duration>()) } returns true
-        val timeSeriesCache = TimeSeriesCacheSupport(redisTemplate)
-        tickerCacheService = TickerCacheService(redisTemplate, ObjectMapper(), timeSeriesCache)
+        val clock = Clock.fixed(Instant.parse("2026-05-12T00:00:00Z"), ZoneOffset.UTC)
+        val timeSeriesCache = TimeSeriesCacheSupport(redisTemplate, clock)
+        tickerCacheService = TickerCacheService(redisTemplate, ObjectMapper(), timeSeriesCache, clock)
     }
 
     private fun tuple(value: String, score: Double): ZSetOperations.TypedTuple<String> =
@@ -106,6 +110,31 @@ class TickerCacheServiceTest {
         }
 
         @Test
+        fun `티커를 Domain snapshot으로 노출한다`() {
+            every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
+                "exchange" to "BITHUMB",
+                "symbol" to "BTC",
+                "currency" to "KRW",
+                "price" to "129555000",
+                "volume" to "1234.5678",
+                "timestamp" to "1706500000000",
+            )
+
+            val result: TickerSnapshot? = tickerCacheService.getSnapshot("bithumb", "btc")
+
+            assertThat(result).isEqualTo(
+                TickerSnapshot(
+                    exchange = "BITHUMB",
+                    symbol = "BTC",
+                    currency = "KRW",
+                    price = BigDecimal("129555000"),
+                    volume = BigDecimal("1234.5678"),
+                    observedAt = Instant.ofEpochMilli(1_706_500_000_000L),
+                ),
+            )
+        }
+
+        @Test
         fun `volume이 빈 문자열이면 null로 반환한다`() {
             // given
             every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
@@ -135,6 +164,32 @@ class TickerCacheServiceTest {
         }
 
         @Test
+        fun `hash exchange가 요청 key와 다르면 손상 payload로 판단한다`() {
+            every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
+                "exchange" to "BINANCE",
+                "symbol" to "BTC",
+                "currency" to "KRW",
+                "price" to "129555000",
+                "timestamp" to "1706500000000",
+            )
+
+            assertThat(tickerCacheService.get("bithumb", "btc")).isNull()
+        }
+
+        @Test
+        fun `hash symbol이 요청 key와 다르면 손상 payload로 판단한다`() {
+            every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
+                "exchange" to "BITHUMB",
+                "symbol" to "ETH",
+                "currency" to "KRW",
+                "price" to "129555000",
+                "timestamp" to "1706500000000",
+            )
+
+            assertThat(tickerCacheService.get("bithumb", "btc")).isNull()
+        }
+
+        @Test
         fun `price 필드가 없으면 null을 반환한다`() {
             // given
             every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
@@ -146,6 +201,18 @@ class TickerCacheServiceTest {
             )
 
             // when & then
+            assertThat(tickerCacheService.get("bithumb", "btc")).isNull()
+        }
+
+        @Test
+        fun `timestamp가 없으면 현재 시각을 합성하지 않고 null을 반환한다`() {
+            every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
+                "exchange" to "BITHUMB",
+                "symbol" to "BTC",
+                "currency" to "KRW",
+                "price" to "129555000",
+            )
+
             assertThat(tickerCacheService.get("bithumb", "btc")).isNull()
         }
     }
@@ -190,7 +257,13 @@ class TickerCacheServiceTest {
 
             // when & then
             assertThat(
-                tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", Instant.now(), Instant.now()),
+                tickerCacheService.aggregateSecondsData(
+                    "bithumb",
+                    "btc",
+                    "KRW",
+                    Instant.EPOCH,
+                    Instant.EPOCH.plusMillis(1),
+                ),
             ).isNull()
         }
     }
@@ -232,7 +305,14 @@ class TickerCacheServiceTest {
 
             // when & then
             assertThat(
-                tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", Instant.now(), Instant.now()),
+                tickerCacheService.aggregateData(
+                    TickerAggregationTimeUnit.MINUTES,
+                    "bithumb",
+                    "btc",
+                    "KRW",
+                    Instant.EPOCH,
+                    Instant.EPOCH.plusMillis(1),
+                ),
             ).isNull()
         }
 
@@ -247,7 +327,14 @@ class TickerCacheServiceTest {
             )
 
             // when
-            val result = tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", Instant.now(), Instant.now())
+            val result = tickerCacheService.aggregateData(
+                TickerAggregationTimeUnit.MINUTES,
+                "bithumb",
+                "btc",
+                "KRW",
+                Instant.EPOCH,
+                Instant.EPOCH.plusMillis(1),
+            )
 
             // then - 유효한 엔트리 1개만 집계됨
             assertThat(result).isNotNull

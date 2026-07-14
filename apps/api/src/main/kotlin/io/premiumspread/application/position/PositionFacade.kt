@@ -1,12 +1,16 @@
 package io.premiumspread.application.position
 
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.position.InvalidPositionException
 import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
+import io.premiumspread.domain.premium.PremiumPolicy
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
@@ -14,6 +18,7 @@ import java.time.Instant
 class PositionFacade(
     private val positionService: PositionService,
     private val premiumService: PremiumService,
+    private val clock: Clock,
 ) {
 
     companion object {
@@ -23,12 +28,19 @@ class PositionFacade(
 
     @Transactional
     fun openAutoPosition(criteria: PositionCriteria.OpenAuto): PositionResult.Detail {
-        val snapshot = premiumService.findLatestSnapshotBySymbol(Symbol(criteria.symbol))
+        val pair = runCatching {
+            MarketPair(
+                symbol = Symbol(criteria.symbol),
+                koreaExchange = criteria.koreaExchange,
+                foreignExchange = criteria.foreignExchange,
+            )
+        }.getOrElse { throw InvalidPositionException(it.message ?: "Invalid market pair.") }
+        val snapshot = premiumService.findLatestSnapshot(pair)
             ?: throw PremiumSnapshotNotAvailableException(
                 "Premium snapshot not available for symbol: ${criteria.symbol}",
             )
 
-        val age = Duration.between(snapshot.observedAt, Instant.now())
+        val age = Duration.between(snapshot.observedAt, clock.instant())
         if (age > SNAPSHOT_MAX_AGE) {
             throw StalePremiumSnapshotException(
                 "Premium snapshot is stale (age=${age.toMillis()}ms, max=${SNAPSHOT_MAX_AGE.toMillis()}ms) for symbol: ${criteria.symbol}",
@@ -98,14 +110,15 @@ class PositionFacade(
             ?: throw PositionNotFoundException("Position not found: $positionId")
         verifyOwnership(position, memberId)
 
-        val snapshot = premiumService.findLatestSnapshotBySymbol(Symbol(position.symbol.code))
+        val snapshot = premiumService.findLatestSnapshot(position.pair)
             ?: throw PremiumNotFoundException("Premium not found for symbol: ${position.symbol.code}")
 
         val pnl = position.calculatePnl(
             currentKoreaPrice = snapshot.koreaPrice,
             currentForeignPrice = snapshot.foreignPrice,
             currentFxRate = snapshot.fxRate,
-            currentPremiumRate = snapshot.premiumRate,
+            currentPremiumRate = PremiumPolicy.normalizeEntity(snapshot.premiumRate),
+            calculatedAt = clock.instant(),
         )
         return PositionResult.Pnl.from(positionId, pnl)
     }

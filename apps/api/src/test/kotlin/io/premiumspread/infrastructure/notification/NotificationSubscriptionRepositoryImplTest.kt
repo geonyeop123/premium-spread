@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
+import java.time.Instant
 
 @Tag("integration")
 @SpringBootTest
@@ -57,10 +58,11 @@ class NotificationSubscriptionRepositoryImplTest @Autowired constructor(
     }
 
     @Test
-    fun `delete는 soft delete로 처리되어 조회되지 않는다`() {
+    fun `soft delete된 구독을 저장하면 활성 조회에서 제외된다`() {
         val member = memberRepository.save(Member.create(email = "c@c.com", encodedPassword = "x"))
         val sub = sut.save(NotificationSubscription.create(member.id, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00")))
 
+        sub.delete(Instant.parse("2026-07-14T10:00:00Z"))
         sut.delete(sub)
 
         assertThat(sut.findById(sub.id)).isNull()

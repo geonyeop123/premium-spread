@@ -402,7 +402,7 @@ class PositionControllerE2ETest @Autowired constructor(
         Position.create(
             memberId = memberId,
             symbol = Symbol(symbol),
-            koreaExchange = Exchange.UPBIT,
+            koreaExchange = Exchange.BITHUMB,
             koreaQuantity = koreaQuantity,
             koreaEntryPrice = koreaEntryPrice,
             foreignExchange = Exchange.BINANCE,
@@ -423,7 +423,7 @@ class PositionControllerE2ETest @Autowired constructor(
     ): Premium {
         val koreaTicker = tickerRepository.save(
             Ticker.create(
-                exchange = Exchange.UPBIT,
+                exchange = Exchange.BITHUMB,
                 quote = Quote.coin(Symbol(symbol), Currency.KRW),
                 price = koreaPrice,
                 observedAt = observedAt,

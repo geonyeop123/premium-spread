@@ -11,7 +11,6 @@ import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
 import java.math.BigDecimal
 import java.time.Instant
-import java.time.ZonedDateTime
 
 @Suppress("UNCHECKED_CAST")
 fun <T : BaseEntity> T.withId(id: Long): T {
@@ -19,7 +18,7 @@ fun <T : BaseEntity> T.withId(id: Long): T {
     idField.isAccessible = true
     idField.set(this, id)
 
-    val now = ZonedDateTime.now()
+    val now = Instant.parse("2024-01-01T00:00:00Z")
     val createdAtField = BaseEntity::class.java.getDeclaredField("createdAt")
     createdAtField.isAccessible = true
     createdAtField.set(this, now)
@@ -34,12 +33,13 @@ fun <T : BaseEntity> T.withId(id: Long): T {
 object TickerFixtures {
     fun koreaTicker(
         symbol: String = "BTC",
+        exchange: Exchange = Exchange.UPBIT,
         price: BigDecimal = BigDecimal("129555000"),
         observedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
         id: Long = 1L,
     ): Ticker {
         return Ticker.create(
-            exchange = Exchange.UPBIT,
+            exchange = exchange,
             quote = Quote.coin(Symbol(symbol), Currency.KRW),
             price = price,
             observedAt = observedAt,
@@ -127,7 +127,11 @@ object PremiumFixtures {
         fxTickerId: Long = 3L,
         id: Long = 1L,
     ): Premium {
-        val koreaTicker = TickerFixtures.koreaTicker(symbol = symbol, id = koreaTickerId)
+        val koreaTicker = TickerFixtures.koreaTicker(
+            symbol = symbol,
+            exchange = Exchange.BITHUMB,
+            id = koreaTickerId,
+        )
         val foreignTicker = TickerFixtures.foreignTicker(symbol = symbol, id = foreignTickerId)
         val fxTicker = TickerFixtures.fxTicker(id = fxTickerId)
         return Premium.create(koreaTicker, foreignTicker, fxTicker).withId(id)

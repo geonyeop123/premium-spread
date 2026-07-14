@@ -68,7 +68,7 @@ class WebSocketConnectionManager(
             // 핸드셰이크 성공 시점에 lastMessageAt 초기화 + watchdog 시작.
             // handshake-success/zero-message 케이스(연결만 되고 프레임 0건)에서도 idle 추적이 가능하도록
             // 첫 메시지를 기다리지 않고 즉시 시작한다 (Codex spec review ISSUE-2).
-            val handshakeAt = System.currentTimeMillis()
+            val handshakeAt = metrics.currentEpochMilli()
             lastMessageAt.set(handshakeAt)
             startWatchdog(myGeneration)
 
@@ -105,7 +105,7 @@ class WebSocketConnectionManager(
 
             val receive: Mono<Void> = session.receive()
                 .doOnNext { frame ->
-                    val nowMs = System.currentTimeMillis()
+                    val nowMs = metrics.currentEpochMilli()
                     // watchdog는 WebSocket 프레임 단위 idle 감지를 담당한다 (TCP-level zombie 회복).
                     // 거래소별 ticker 데이터 stream의 staleness는 *FlushJob의 STALE_THRESHOLD(10s)가 별도로 감지.
                     // 두 레이어가 직교하여 다른 종류의 outage(완전 침묵 vs ticker-only 침묵)를 각각 커버한다.
@@ -179,7 +179,7 @@ class WebSocketConnectionManager(
                 if (ownerGeneration != connectionGeneration.get()) return@doOnNext  // stale callback (ISSUE-1)
                 val last = lastMessageAt.get()
                 if (last <= 0L) return@doOnNext // not yet primed (shouldn't happen since handshake sets it)
-                val idle = System.currentTimeMillis() - last
+                val idle = metrics.currentEpochMilli() - last
                 if (idle > idleMs) {
                     log.warn(
                         "WebSocket idle {}ms exceeds threshold {}ms — forcing reconnect",

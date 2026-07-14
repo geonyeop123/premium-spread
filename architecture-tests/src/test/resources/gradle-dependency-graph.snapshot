@@ -19,6 +19,7 @@
 :infrastructure:batch [implementation] -> :domain
 :infrastructure:batch [implementation] -> :infrastructure:common
 :infrastructure:common [implementation] -> :domain
+:modules:jpa [implementation] -> :domain
 # inspected :domain direct external dependencies (excluding Kotlin plugin stdlib): api, compileOnly, compileOnlyApi, implementation, runtimeOnly
 :domain [api] => jakarta.persistence:jakarta.persistence-api
 :domain [implementation] => org.springframework.data:spring-data-commons

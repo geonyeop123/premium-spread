@@ -4,9 +4,9 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.sql.Timestamp
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
  * Ticker 집계 데이터
@@ -26,12 +26,13 @@ data class TickerAggregation(
 @Repository
 class TickerAggregationRepository(
     private val jdbcTemplate: JdbcTemplate,
+    private val clock: Clock,
 ) {
 
     /**
      * 분 집계 저장
      */
-    fun saveMinute(exchange: String, symbol: String, minuteAt: LocalDateTime, agg: TickerAggregation) {
+    fun saveMinute(exchange: String, symbol: String, minuteAt: Instant, agg: TickerAggregation) {
         jdbcTemplate.update(
             """
             INSERT INTO ticker_minute
@@ -45,21 +46,21 @@ class TickerAggregationRepository(
             exchange.uppercase(),
             symbol.uppercase(),
             agg.currency,
-            Timestamp.valueOf(minuteAt),
+            Timestamp.from(minuteAt),
             agg.high,
             agg.low,
             agg.open,
             agg.close,
             agg.avg,
             agg.count,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 
     /**
      * 시간 집계 저장
      */
-    fun saveHour(exchange: String, symbol: String, hourAt: LocalDateTime, agg: TickerAggregation) {
+    fun saveHour(exchange: String, symbol: String, hourAt: Instant, agg: TickerAggregation) {
         jdbcTemplate.update(
             """
             INSERT INTO ticker_hour
@@ -73,14 +74,14 @@ class TickerAggregationRepository(
             exchange.uppercase(),
             symbol.uppercase(),
             agg.currency,
-            Timestamp.valueOf(hourAt),
+            Timestamp.from(hourAt),
             agg.high,
             agg.low,
             agg.open,
             agg.close,
             agg.avg,
             agg.count,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 
@@ -108,7 +109,7 @@ class TickerAggregationRepository(
             agg.close,
             agg.avg,
             agg.count,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 

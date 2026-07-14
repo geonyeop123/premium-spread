@@ -1,5 +1,7 @@
 package io.premiumspread.application.premium
 
+import io.premiumspread.config.AggregationProperties
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumCommand
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.premium.PremiumSnapshot
@@ -16,6 +18,7 @@ import java.time.Instant
 class PremiumFacade(
     private val tickerService: TickerService,
     private val premiumService: PremiumService,
+    private val aggregationProperties: AggregationProperties,
 ) {
 
     @Transactional
@@ -23,7 +26,7 @@ class PremiumFacade(
         val symbol = Symbol(criteria.symbol)
 
         val koreaTicker = tickerService.findLatest(
-            exchange = Exchange.UPBIT,
+            exchange = Exchange.BITHUMB,
             quote = Quote.coin(symbol, Currency.KRW),
         ) ?: throw TickerNotFoundException("Korea ticker not found for symbol: ${criteria.symbol}")
 
@@ -65,7 +68,13 @@ class PremiumFacade(
 
     @Transactional(readOnly = true)
     fun findAggregation(symbol: String, interval: String, from: Instant, to: Instant): List<PremiumResult.Aggregation> {
-        return premiumService.findAggregation(Symbol(symbol), interval, from, to)
+        return premiumService.findAggregation(
+            pair = MarketPair.default(Symbol(symbol)),
+            interval = interval,
+            from = from,
+            to = to,
+            zone = aggregationProperties.aggregationZone,
+        )
             .map { PremiumResult.Aggregation.from(it) }
     }
 }

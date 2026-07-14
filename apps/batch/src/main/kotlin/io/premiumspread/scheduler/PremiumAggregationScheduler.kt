@@ -4,6 +4,7 @@ import io.premiumspread.application.common.JobConfig
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.application.job.aggregation.AggregationJob
+import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.redis.AggregationTimeUnit
 import io.premiumspread.repository.PremiumAggregation
@@ -11,9 +12,7 @@ import io.premiumspread.repository.PremiumAggregationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
+import java.time.Clock
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
@@ -22,6 +21,8 @@ class PremiumAggregationScheduler(
     private val premiumCacheService: PremiumCacheService,
     private val aggregationRepository: PremiumAggregationRepository,
     private val jobExecutor: JobExecutor,
+    private val clock: Clock,
+    private val windowPolicy: AggregationWindowPolicy,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -39,39 +40,43 @@ class PremiumAggregationScheduler(
         reader = { from, to -> premiumCacheService.aggregateSecondsData(BTC, from, to) },
         writer = { agg, from, _ ->
             premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, BTC, from, agg)
-            val minuteAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault())
-            aggregationRepository.saveMinute(BTC, minuteAt, agg)
-            log.info("Aggregated minute data: {} at {} (high={}, low={}, count={})", BTC, minuteAt, agg.high, agg.low, agg.count)
+            aggregationRepository.saveMinute(BTC, from, agg)
+            log.info("Aggregated minute data: {} at {} (high={}, low={}, count={})", BTC, from, agg.high, agg.low, agg.count)
         },
         unit = ChronoUnit.MINUTES,
+        clock = clock,
+        windowPolicy = windowPolicy,
     )
 
     private val hourJob = AggregationJob<PremiumAggregation>(
         reader = { from, to -> premiumCacheService.aggregateData(AggregationTimeUnit.MINUTES, BTC, from, to) },
         writer = { agg, from, _ ->
             premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, BTC, from, agg)
-            val hourAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault())
-            aggregationRepository.saveHour(BTC, hourAt, agg)
-            log.info("Aggregated hour data: {} at {} (high={}, low={}, count={})", BTC, hourAt, agg.high, agg.low, agg.count)
+            aggregationRepository.saveHour(BTC, from, agg)
+            log.info("Aggregated hour data: {} at {} (high={}, low={}, count={})", BTC, from, agg.high, agg.low, agg.count)
         },
         unit = ChronoUnit.HOURS,
+        clock = clock,
+        windowPolicy = windowPolicy,
     )
 
     private val dayJob = AggregationJob<PremiumAggregation>(
         reader = { from, to -> premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, BTC, from, to) },
         writer = { agg, from, _ ->
             premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, BTC, from, agg)
-            val dayAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault()).toLocalDate()
+            val dayAt = from.atZone(windowPolicy.zoneId).toLocalDate()
             aggregationRepository.saveDay(BTC, dayAt, agg)
             log.info("Aggregated day data: {} at {} (high={}, low={}, count={})", BTC, dayAt, agg.high, agg.low, agg.count)
         },
         unit = ChronoUnit.DAYS,
+        clock = clock,
+        windowPolicy = windowPolicy,
     )
 
     @Scheduled(fixedRate = 10_000)
     fun updateSummaryCache() {
         jobExecutor.execute(SUMMARY_CONFIG) {
-            val now = Instant.now()
+            val now = clock.instant()
 
             runCatching {
                 premiumCacheService.calculateSummaryFromSeconds(BTC, now.minus(1, ChronoUnit.MINUTES), now)
@@ -108,7 +113,7 @@ class PremiumAggregationScheduler(
         jobExecutor.execute(HOUR_CONFIG) { hourJob.run() }
     }
 
-    @Scheduled(cron = "10 0 0 * * *")
+    @Scheduled(cron = "10 0 0 * * *", zone = "\${aggregation.zone:Asia/Seoul}")
     fun aggregateDay() {
         jobExecutor.execute(DAY_CONFIG) { dayJob.run() }
     }

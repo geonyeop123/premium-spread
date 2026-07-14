@@ -6,8 +6,14 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.Clock
+import java.time.ZoneOffset
 
 /**
  * `saveToSecondsWithScore` 통합 검증.
@@ -16,10 +22,20 @@ import java.time.Instant
  *   되는지 검증 (Phase 3 flat-price 회귀 방지).
  */
 @DisplayName("TickerCacheService — saveToSecondsWithScore")
+@Import(TickerCacheServiceScoreTest.FixedClockConfig::class)
 class TickerCacheServiceScoreTest : BatchIntegrationTestBase() {
+
+    @TestConfiguration
+    class FixedClockConfig {
+        @Bean
+        @Primary
+        fun fixedClock(): Clock = Clock.fixed(Instant.parse("2026-05-12T00:00:10Z"), ZoneOffset.UTC)
+    }
 
     @Autowired
     lateinit var tickerCacheService: TickerCacheService
+
+    private val fixedNow = Instant.parse("2026-05-12T00:00:10Z")
 
     @Test
     fun `saveToSecondsWithScore는 ticker timestamp가 아닌 명시 score를 ZSet에 저장한다`() {
@@ -71,4 +87,40 @@ class TickerCacheServiceScoreTest : BatchIntegrationTestBase() {
             assertThat(p).isEqualByComparingTo(price)
         }
     }
+
+    @Test
+    fun `retention 경계보다 오래된 데이터는 다음 저장 시 제거된다`() {
+        val ticker = tickerAt(fixedNow.minusSeconds(301))
+        tickerCacheService.saveToSecondsWithScore(ticker, ticker.timestamp)
+        tickerCacheService.saveToSecondsWithScore(tickerAt(fixedNow), fixedNow)
+
+        val results = tickerCacheService.getSecondsData(
+            "BITHUMB",
+            "BTC",
+            fixedNow.minusSeconds(600),
+            fixedNow.plusMillis(1),
+        )
+
+        assertThat(results.map { it.first }).containsExactly(fixedNow)
+    }
+
+    @Test
+    fun `retention 경계 시각은 inclusive 정리 정책에 따라 제거된다`() {
+        val boundary = fixedNow.minusSeconds(300)
+        tickerCacheService.saveToSecondsWithScore(tickerAt(boundary), boundary)
+        tickerCacheService.saveToSecondsWithScore(tickerAt(fixedNow), fixedNow)
+
+        val results = tickerCacheService.getSecondsData("BITHUMB", "BTC", boundary, fixedNow.plusMillis(1))
+
+        assertThat(results.map { it.first }).containsExactly(fixedNow)
+    }
+
+    private fun tickerAt(timestamp: Instant) = TickerData(
+        exchange = "BITHUMB",
+        symbol = "BTC",
+        currency = "KRW",
+        price = BigDecimal("100000000"),
+        volume = null,
+        timestamp = timestamp,
+    )
 }

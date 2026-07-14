@@ -6,6 +6,7 @@ plugins {
 
 dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation(project(":domain"))
 
     // jpa
     api("org.springframework.boot:spring-boot-starter-data-jpa")

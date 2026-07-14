@@ -6,6 +6,9 @@ import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.PremiumFixtures
 import io.premiumspread.TickerFixtures
+import io.premiumspread.config.AggregationProperties
+import io.premiumspread.domain.aggregation.AggregationZone
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumAggregationSnapshot
 import io.premiumspread.domain.premium.PremiumCommand
 import io.premiumspread.domain.premium.PremiumService
@@ -34,7 +37,7 @@ class PremiumFacadeTest {
     fun setUp() {
         tickerService = mockk()
         premiumService = mockk()
-        facade = PremiumFacade(tickerService, premiumService)
+        facade = PremiumFacade(tickerService, premiumService, AggregationProperties("UTC"))
     }
 
     @Nested
@@ -42,12 +45,16 @@ class PremiumFacadeTest {
 
         @Test
         fun `프리미엄을 계산하고 저장한다`() {
-            val koreaTicker = TickerFixtures.koreaTicker(symbol = "BTC", price = BigDecimal("129555000"))
+            val koreaTicker = TickerFixtures.koreaTicker(
+                symbol = "BTC",
+                exchange = Exchange.BITHUMB,
+                price = BigDecimal("129555000"),
+            )
             val foreignTicker = TickerFixtures.foreignTicker(symbol = "BTC", price = BigDecimal("89277"))
             val fxTicker = TickerFixtures.fxTicker(price = BigDecimal("1432.6"))
 
             every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.BITHUMB, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns koreaTicker
 
             every {
@@ -76,7 +83,7 @@ class PremiumFacadeTest {
         @Test
         fun `한국 티커가 없으면 예외를 던진다`() {
             every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.BITHUMB, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns null
 
             assertThatThrownBy {
@@ -87,10 +94,10 @@ class PremiumFacadeTest {
 
         @Test
         fun `해외 티커가 없으면 예외를 던진다`() {
-            val koreaTicker = TickerFixtures.koreaTicker()
+            val koreaTicker = TickerFixtures.koreaTicker(exchange = Exchange.BITHUMB)
 
             every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.BITHUMB, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns koreaTicker
 
             every {
@@ -105,11 +112,11 @@ class PremiumFacadeTest {
 
         @Test
         fun `환율 티커가 없으면 예외를 던진다`() {
-            val koreaTicker = TickerFixtures.koreaTicker()
+            val koreaTicker = TickerFixtures.koreaTicker(exchange = Exchange.BITHUMB)
             val foreignTicker = TickerFixtures.foreignTicker()
 
             every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
+                tickerService.findLatest(Exchange.BITHUMB, Quote.coin(Symbol("BTC"), Currency.KRW))
             } returns koreaTicker
 
             every {
@@ -251,7 +258,13 @@ class PremiumFacadeTest {
             )
 
             every {
-                premiumService.findAggregation(Symbol("BTC"), "1h", from, to)
+                premiumService.findAggregation(
+                    MarketPair.default(Symbol("BTC")),
+                    "1h",
+                    from,
+                    to,
+                    AggregationZone.of("UTC"),
+                )
             } returns snapshots
 
             val result = facade.findAggregation("BTC", "1h", from, to)
@@ -269,7 +282,13 @@ class PremiumFacadeTest {
             val to = Instant.parse("2024-01-02T00:00:00Z")
 
             every {
-                premiumService.findAggregation(Symbol("BTC"), "1m", from, to)
+                premiumService.findAggregation(
+                    MarketPair.default(Symbol("BTC")),
+                    "1m",
+                    from,
+                    to,
+                    AggregationZone.of("UTC"),
+                )
             } returns emptyList()
 
             val result = facade.findAggregation("BTC", "1m", from, to)

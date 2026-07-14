@@ -6,11 +6,25 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.Clock
+import java.time.ZoneOffset
 
 @DisplayName("ExchangeRateRepository")
+@Import(ExchangeRateRepositoryTest.FixedClockConfig::class)
 class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
+
+    @TestConfiguration
+    class FixedClockConfig {
+        @Bean
+        @Primary
+        fun fixedClock(): Clock = Clock.fixed(Instant.parse("2026-05-12T00:00:10Z"), ZoneOffset.UTC)
+    }
 
     @Autowired
     lateinit var repository: ExchangeRateRepository
@@ -34,6 +48,23 @@ class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
             assertThat(result.quoteCurrency).isEqualTo("KRW")
             assertThat(result.rate).isEqualByComparingTo("1432.60")
             assertThat(result.observedAt).isEqualTo(fixedObservedAt)
+        }
+
+        @Test
+        fun `UTC 세션에서 observedAt과 Clock 기반 createdAt을 손실 없이 저장한다`() {
+            repository.save("USD", "KRW", BigDecimal("1432.60"), fixedObservedAt)
+
+            val observedEpoch = jdbcTemplate.queryForObject(
+                "SELECT UNIX_TIMESTAMP(observed_at) FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
+                Long::class.java,
+            )
+            val createdEpoch = jdbcTemplate.queryForObject(
+                "SELECT UNIX_TIMESTAMP(created_at) FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
+                Long::class.java,
+            )
+
+            assertThat(observedEpoch).isEqualTo(fixedObservedAt.epochSecond)
+            assertThat(createdEpoch).isEqualTo(Instant.parse("2026-05-12T00:00:10Z").epochSecond)
         }
 
         @Test

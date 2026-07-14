@@ -4,10 +4,12 @@ import io.premiumspread.domain.notification.NotificationSubscriptionCommand
 import io.premiumspread.domain.notification.NotificationSubscriptionNotFoundException
 import io.premiumspread.domain.notification.NotificationSubscriptionService
 import org.springframework.stereotype.Service
+import java.time.Clock
 
 @Service
 class NotificationSubscriptionFacade(
     private val service: NotificationSubscriptionService,
+    private val clock: Clock,
 ) {
 
     fun create(criteria: NotificationSubscriptionCriteria.Create): NotificationSubscriptionResult.Detail {
@@ -45,6 +47,6 @@ class NotificationSubscriptionFacade(
     }
 
     fun delete(id: Long, memberId: Long) {
-        service.delete(id, memberId)
+        service.delete(id, memberId, clock.instant())
     }
 }

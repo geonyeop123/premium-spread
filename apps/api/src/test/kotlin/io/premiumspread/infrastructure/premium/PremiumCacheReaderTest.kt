@@ -3,6 +3,9 @@ package io.premiumspread.infrastructure.premium
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -41,6 +44,13 @@ class PremiumCacheReaderTest {
         "observed_at" to "1704067200000",
     )
 
+    private fun metadata() = mapOf(
+        "korea_exchange" to "UPBIT",
+        "foreign_exchange" to "BINANCE",
+        "fx_source" to "FX_PROVIDER",
+        "fx_observed_at" to "1704067140000",
+    )
+
     private fun tuple(value: String, score: Double): ZSetOperations.TypedTuple<String> =
         mockk<ZSetOperations.TypedTuple<String>>().also {
             every { it.value } returns value
@@ -64,6 +74,27 @@ class PremiumCacheReaderTest {
             assertThat(result.foreignPrice).isEqualByComparingTo("89277")
             assertThat(result.foreignPriceInKrw).isEqualByComparingTo("127916893.66")
             assertThat(result.fxRate).isEqualByComparingTo("1432.6")
+            assertThat(result.pair).isEqualTo(MarketPair.default(Symbol("BTC")))
+            assertThat(result.fxSource).isEqualTo(Exchange.FX_PROVIDER)
+            assertThat(result.fxObservedAt).isEqualTo(result.observedAt)
+        }
+
+        @Test
+        fun `신규 metadata가 모두 있으면 pair와 FX 관측정보를 정확히 보존한다`() {
+            every { hashOps.entries("premium:btc") } returns hashEntry() + metadata()
+
+            val result = premiumCacheReader.get("btc")!!
+
+            assertThat(result.pair).isEqualTo(MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE))
+            assertThat(result.fxSource).isEqualTo(Exchange.FX_PROVIDER)
+            assertThat(result.fxObservedAt).isEqualTo(Instant.ofEpochMilli(1_704_067_140_000L))
+        }
+
+        @Test
+        fun `신규 metadata가 일부만 있으면 legacy fallback 대신 손상된 캐시로 처리한다`() {
+            every { hashOps.entries("premium:btc") } returns hashEntry() + ("korea_exchange" to "UPBIT")
+
+            assertThat(premiumCacheReader.get("btc")).isNull()
         }
 
         @Test
@@ -90,12 +121,27 @@ class PremiumCacheReaderTest {
         }
 
         @Test
+        fun `observed_at이 없으면 손상된 캐시로 보고 null을 반환한다`() {
+            val hash = hashEntry().toMutableMap().also { it.remove("observed_at") }
+            every { hashOps.entries("premium:btc") } returns hash
+
+            assertThat(premiumCacheReader.get("btc")).isNull()
+        }
+
+        @Test
         fun `대소문자 구분 없이 key를 소문자로 생성한다`() {
             every { hashOps.entries("premium:btc") } returns hashEntry()
 
             premiumCacheReader.get("BTC")
 
             verify { hashOps.entries("premium:btc") }
+        }
+
+        @Test
+        fun `요청 symbol과 payload symbol이 다르면 null을 반환한다`() {
+            every { hashOps.entries("premium:btc") } returns hashEntry() + ("symbol" to "ETH")
+
+            assertThat(premiumCacheReader.get("btc")).isNull()
         }
     }
 
@@ -170,6 +216,17 @@ class PremiumCacheReaderTest {
 
             assertThat(result).hasSize(1)
             assertThat(result[0].premiumRate).isEqualByComparingTo("1.28")
+        }
+
+        @Test
+        fun `score가 없는 히스토리 엔트리는 현재 시각을 합성하지 않고 스킵한다`() {
+            every {
+                zSetOps.reverseRangeWithScores("premium:btc:history", 0, 99)
+            } returns linkedSetOf(tuple("1.28:129555000:89277", Double.NaN).also {
+                every { it.score } returns null
+            })
+
+            assertThat(premiumCacheReader.getHistory("btc")).isEmpty()
         }
 
         @Test

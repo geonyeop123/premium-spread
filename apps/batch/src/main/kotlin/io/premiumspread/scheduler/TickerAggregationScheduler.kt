@@ -4,6 +4,7 @@ import io.premiumspread.application.common.JobConfig
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.application.job.aggregation.AggregationJob
+import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.redis.TickerAggregationTimeUnit
 import io.premiumspread.repository.TickerAggregation
@@ -11,8 +12,7 @@ import io.premiumspread.repository.TickerAggregationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
-import java.time.LocalDateTime
-import java.time.ZoneId
+import java.time.Clock
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
@@ -21,6 +21,8 @@ class TickerAggregationScheduler(
     private val tickerCacheService: TickerCacheService,
     private val aggregationRepository: TickerAggregationRepository,
     private val jobExecutor: JobExecutor,
+    private val clock: Clock,
+    private val windowPolicy: AggregationWindowPolicy,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -58,44 +60,46 @@ class TickerAggregationScheduler(
         reader = { from, to -> tickerCacheService.aggregateSecondsData(exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
             tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, exchange, symbol, from, agg)
-            val minuteAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault())
-            aggregationRepository.saveMinute(exchange, symbol, minuteAt, agg)
+            aggregationRepository.saveMinute(exchange, symbol, from, agg)
             log.info(
                 "Aggregated ticker minute data: {}:{} at {} (high={}, low={}, count={})",
                 exchange,
                 symbol,
-                minuteAt,
+                from,
                 agg.high,
                 agg.low,
                 agg.count,
             )
         },
         unit = ChronoUnit.MINUTES,
+        clock = clock,
+        windowPolicy = windowPolicy,
     )
 
     private fun hourJobFor(exchange: String, symbol: String, currency: String) = AggregationJob<TickerAggregation>(
         reader = { from, to -> tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
             tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, exchange, symbol, from, agg)
-            val hourAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault())
-            aggregationRepository.saveHour(exchange, symbol, hourAt, agg)
+            aggregationRepository.saveHour(exchange, symbol, from, agg)
             log.info(
                 "Aggregated ticker hour data: {}:{} at {} (high={}, low={}, count={})",
                 exchange,
                 symbol,
-                hourAt,
+                from,
                 agg.high,
                 agg.low,
                 agg.count,
             )
         },
         unit = ChronoUnit.HOURS,
+        clock = clock,
+        windowPolicy = windowPolicy,
     )
 
     private fun dayJobFor(exchange: String, symbol: String, currency: String) = AggregationJob<TickerAggregation>(
         reader = { from, to -> tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
-            val dayAt = LocalDateTime.ofInstant(from, ZoneId.systemDefault()).toLocalDate()
+            val dayAt = from.atZone(windowPolicy.zoneId).toLocalDate()
             aggregationRepository.saveDay(exchange, symbol, dayAt, agg)
             log.info(
                 "Aggregated ticker day data: {}:{} at {} (high={}, low={}, count={})",
@@ -108,6 +112,8 @@ class TickerAggregationScheduler(
             )
         },
         unit = ChronoUnit.DAYS,
+        clock = clock,
+        windowPolicy = windowPolicy,
     )
 
     @Scheduled(cron = "2 * * * * *")
@@ -120,7 +126,7 @@ class TickerAggregationScheduler(
         jobExecutor.execute(HOUR_CONFIG) { runForAllTargets { e, s, c -> hourJobFor(e, s, c) } }
     }
 
-    @Scheduled(cron = "12 0 0 * * *")
+    @Scheduled(cron = "12 0 0 * * *", zone = "\${aggregation.zone:Asia/Seoul}")
     fun aggregateDay() {
         jobExecutor.execute(DAY_CONFIG) { runForAllTargets { e, s, c -> dayJobFor(e, s, c) } }
     }

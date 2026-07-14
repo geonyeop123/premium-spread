@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -56,12 +57,57 @@ class PremiumAggregationCacheReaderTest {
         }
 
         @Test
+        fun `FX rate가 없는 writer payload의 trailing blank를 null로 읽는다`() {
+            val from = Instant.parse("2026-03-03T10:00:00Z")
+            val to = Instant.parse("2026-03-03T10:05:00Z")
+            val score = Instant.parse("2026-03-03T10:01:00Z").toEpochMilli().toDouble()
+            every { zSetOps.rangeByScoreWithScores(any(), any(), any()) } returns setOf(
+                DefaultTypedTuple("1.50:1.00:1.20:1.30:1.25:10:", score),
+            )
+
+            val result = cacheReader.findByInterval("btc", "1m", from, to)
+
+            assertThat(result).hasSize(1)
+            assertThat(result!![0].fxRate).isNull()
+        }
+
+        @Test
+        fun `조회 범위는 to 경계를 제외하는 반개구간이다`() {
+            val from = Instant.parse("2026-03-03T10:00:00Z")
+            val to = Instant.parse("2026-03-03T10:05:00Z")
+            every { zSetOps.rangeByScoreWithScores(any(), any(), any()) } returns emptySet()
+
+            cacheReader.findByInterval("btc", "1m", from, to)
+
+            verify {
+                zSetOps.rangeByScoreWithScores(
+                    "premium:minutes:btc",
+                    from.toEpochMilli().toDouble(),
+                    Math.nextDown(to.toEpochMilli().toDouble()),
+                )
+            }
+        }
+
+        @Test
+        fun `from과 to가 같거나 역전되면 조회를 거부한다`() {
+            val boundary = Instant.parse("2026-03-03T10:00:00Z")
+
+            assertThatThrownBy { cacheReader.findByInterval("btc", "1m", boundary, boundary) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+            assertThatThrownBy {
+                cacheReader.findByInterval("btc", "1m", boundary.plusSeconds(1), boundary)
+            }.isInstanceOf(IllegalArgumentException::class.java)
+        }
+
+        @Test
         fun `캐시가 비어있으면 null 반환`() {
             // given
             every { zSetOps.rangeByScoreWithScores(any(), any(), any()) } returns emptySet()
+            val from = Instant.parse("2026-03-03T10:00:00Z")
+            val to = Instant.parse("2026-03-03T10:01:00Z")
 
             // when
-            val result = cacheReader.findByInterval("btc", "1m", Instant.now(), Instant.now())
+            val result = cacheReader.findByInterval("btc", "1m", from, to)
 
             // then
             assertThat(result).isNull()
@@ -71,16 +117,18 @@ class PremiumAggregationCacheReaderTest {
         fun `캐시가 null이면 null 반환`() {
             // given
             every { zSetOps.rangeByScoreWithScores(any(), any(), any()) } returns null
+            val from = Instant.parse("2026-03-03T10:00:00Z")
+            val to = Instant.parse("2026-03-03T10:01:00Z")
 
             // when
-            val result = cacheReader.findByInterval("btc", "1m", Instant.now(), Instant.now())
+            val result = cacheReader.findByInterval("btc", "1m", from, to)
 
             // then
             assertThat(result).isNull()
         }
 
         @Test
-        fun `잘못된 형식의 entry는 skip`() {
+        fun `일부 entry가 손상되면 부분 응답 대신 cache miss로 처리한다`() {
             // given
             val score = Instant.now().toEpochMilli().toDouble()
             every { zSetOps.rangeByScoreWithScores(any(), any(), any()) } returns setOf(
@@ -92,13 +140,16 @@ class PremiumAggregationCacheReaderTest {
             val result = cacheReader.findByInterval("btc", "1h", Instant.now().minusSeconds(3600), Instant.now())
 
             // then
-            assertThat(result).hasSize(1)
+            assertThat(result).isNull()
         }
 
         @Test
         fun `지원하지 않는 interval이면 null 반환`() {
+            val from = Instant.parse("2026-03-03T10:00:00Z")
+            val to = Instant.parse("2026-03-03T10:01:00Z")
+
             // when
-            val result = cacheReader.findByInterval("btc", "5m", Instant.now(), Instant.now())
+            val result = cacheReader.findByInterval("btc", "5m", from, to)
 
             // then
             assertThat(result).isNull()

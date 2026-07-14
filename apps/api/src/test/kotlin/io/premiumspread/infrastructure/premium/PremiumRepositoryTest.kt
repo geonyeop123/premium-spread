@@ -2,6 +2,7 @@ package io.premiumspread.infrastructure.premium
 
 import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.premium.PremiumRepository
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Quote
@@ -10,6 +11,7 @@ import io.premiumspread.domain.ticker.Ticker
 import io.premiumspread.domain.ticker.TickerRepository
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
+import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.utils.DatabaseCleanUp
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
 import java.time.Instant
@@ -32,11 +35,13 @@ class PremiumRepositoryTest @Autowired constructor(
     private val premiumRepository: PremiumRepository,
     private val tickerRepository: TickerRepository,
     private val databaseCleanUp: DatabaseCleanUp,
+    private val redisTemplate: StringRedisTemplate,
 ) {
 
     @BeforeEach
     fun setUp() {
         databaseCleanUp.truncateAllTables()
+        redisTemplate.delete(RedisKeyGenerator.premiumKey("btc"))
     }
 
     private fun createTickersAndPremium(
@@ -45,10 +50,11 @@ class PremiumRepositoryTest @Autowired constructor(
         foreignPrice: BigDecimal = BigDecimal("89277"),
         fxRate: BigDecimal = BigDecimal("1432.6"),
         observedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
+        koreaExchange: Exchange = Exchange.BITHUMB,
     ): Premium {
         val koreaTicker = tickerRepository.save(
             Ticker.create(
-                exchange = Exchange.UPBIT,
+                exchange = koreaExchange,
                 quote = Quote.coin(Symbol(symbol), Currency.KRW),
                 price = koreaPrice,
                 observedAt = observedAt,
@@ -122,6 +128,66 @@ class PremiumRepositoryTest @Autowired constructor(
     @DisplayName("findLatestBySymbol")
     inner class FindLatestBySymbol {
         @Test
+        fun `Batch legacy hash metadata를 API가 동일 pair와 UTC Instant로 읽는다`() {
+            val key = RedisKeyGenerator.premiumKey("btc")
+            redisTemplate.opsForHash<String, String>().putAll(
+                key,
+                mapOf(
+                    "symbol" to "BTC",
+                    "rate" to "1.2350",
+                    "korea_price" to "101000",
+                    "foreign_price" to "100",
+                    "foreign_price_krw" to "100000",
+                    "fx_rate" to "1000",
+                    "observed_at" to "1704067200123",
+                    "korea_exchange" to "UPBIT",
+                    "foreign_exchange" to "BINANCE",
+                    "fx_source" to "FX_PROVIDER",
+                    "fx_observed_at" to "1704067140123",
+                ),
+            )
+            val pair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+
+            val snapshot = premiumRepository.findLatestSnapshotByPair(pair)!!
+
+            assertThat(snapshot.pair).isEqualTo(pair)
+            assertThat(snapshot.observedAt).isEqualTo(Instant.ofEpochMilli(1_704_067_200_123L))
+            assertThat(snapshot.fxObservedAt).isEqualTo(Instant.ofEpochMilli(1_704_067_140_123L))
+            assertThat(snapshot.premiumRate).isEqualByComparingTo("1.2350")
+        }
+
+        @Test
+        fun `동일 BTC의 BITHUMB와 UPBIT premium은 latest snapshot history가 pair별로 분리된다`() {
+            val bithumb = premiumRepository.save(
+                createTickersAndPremium(
+                    koreaExchange = Exchange.BITHUMB,
+                    koreaPrice = BigDecimal("101000"),
+                    observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+            val upbit = premiumRepository.save(
+                createTickersAndPremium(
+                    koreaExchange = Exchange.UPBIT,
+                    koreaPrice = BigDecimal("102000"),
+                    observedAt = Instant.parse("2024-01-01T00:01:00Z"),
+                ),
+            )
+            val bithumbPair = MarketPair(Symbol("BTC"), Exchange.BITHUMB, Exchange.BINANCE)
+            val upbitPair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+            val from = Instant.parse("2024-01-01T00:00:00Z")
+            val to = Instant.parse("2024-01-01T00:02:00Z")
+
+            assertThat(premiumRepository.findLatestByPair(bithumbPair)!!.id).isEqualTo(bithumb.id)
+            assertThat(premiumRepository.findLatestByPair(upbitPair)!!.id).isEqualTo(upbit.id)
+            assertThat(premiumRepository.findLatestSnapshotByPair(bithumbPair)!!.pair).isEqualTo(bithumbPair)
+            assertThat(premiumRepository.findLatestSnapshotByPair(upbitPair)!!.pair).isEqualTo(upbitPair)
+            assertThat(premiumRepository.findAllByPair(bithumbPair, from, to).map { it.id })
+                .containsExactly(bithumb.id)
+            assertThat(premiumRepository.findAllByPair(upbitPair, from, to).map { it.id })
+                .containsExactly(upbit.id)
+        }
+
+        @Test
         fun `should return latest premium by observedAt`() {
             // given
             premiumRepository.save(
@@ -138,7 +204,7 @@ class PremiumRepositoryTest @Autowired constructor(
             )
 
             // when
-            val found = premiumRepository.findLatestBySymbol(Symbol("BTC"))
+            val found = premiumRepository.findLatestByPair(MarketPair.default(Symbol("BTC")))
 
             // then
             assertThat(found).isNotNull
@@ -152,7 +218,7 @@ class PremiumRepositoryTest @Autowired constructor(
             premiumRepository.save(createTickersAndPremium(symbol = "BTC"))
 
             // when
-            val found = premiumRepository.findLatestBySymbol(Symbol("ETH"))
+            val found = premiumRepository.findLatestByPair(MarketPair.default(Symbol("ETH")))
 
             // then
             assertThat(found).isNull()
@@ -175,7 +241,7 @@ class PremiumRepositoryTest @Autowired constructor(
             )
 
             // when
-            val found = premiumRepository.findLatestBySymbol(Symbol("ETH"))
+            val found = premiumRepository.findLatestByPair(MarketPair.default(Symbol("ETH")))
 
             // then
             assertThat(found).isNotNull
@@ -210,8 +276,8 @@ class PremiumRepositoryTest @Autowired constructor(
             )
 
             // when
-            val found = premiumRepository.findAllBySymbolAndPeriod(
-                symbol = Symbol("BTC"),
+            val found = premiumRepository.findAllByPair(
+                pair = MarketPair.default(Symbol("BTC")),
                 from = Instant.parse("2024-01-01T00:00:00Z"),
                 to = Instant.parse("2024-01-02T00:00:00Z"),
             )
@@ -232,8 +298,8 @@ class PremiumRepositoryTest @Autowired constructor(
             )
 
             // when
-            val found = premiumRepository.findAllBySymbolAndPeriod(
-                symbol = Symbol("BTC"),
+            val found = premiumRepository.findAllByPair(
+                pair = MarketPair.default(Symbol("BTC")),
                 from = Instant.parse("2024-02-01T00:00:00Z"),
                 to = Instant.parse("2024-02-28T00:00:00Z"),
             )
@@ -259,8 +325,8 @@ class PremiumRepositoryTest @Autowired constructor(
             )
 
             // when
-            val found = premiumRepository.findAllBySymbolAndPeriod(
-                symbol = Symbol("BTC"),
+            val found = premiumRepository.findAllByPair(
+                pair = MarketPair.default(Symbol("BTC")),
                 from = Instant.parse("2024-01-01T00:00:00Z"),
                 to = Instant.parse("2024-01-31T00:00:00Z"),
             )
@@ -293,8 +359,8 @@ class PremiumRepositoryTest @Autowired constructor(
             )
 
             // when
-            val found = premiumRepository.findAllBySymbolAndPeriod(
-                symbol = Symbol("BTC"),
+            val found = premiumRepository.findAllByPair(
+                pair = MarketPair.default(Symbol("BTC")),
                 from = Instant.parse("2024-01-01T00:00:00Z"),
                 to = Instant.parse("2024-01-31T00:00:00Z"),
             )

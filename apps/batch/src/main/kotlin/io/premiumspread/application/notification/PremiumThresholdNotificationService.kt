@@ -1,6 +1,7 @@
 package io.premiumspread.application.notification
 
 import io.premiumspread.cache.NotificationCooldownStore
+import io.premiumspread.config.AggregationProperties
 import io.premiumspread.email.EmailDeliveryException
 import io.premiumspread.email.EmailMessage
 import io.premiumspread.email.EmailSender
@@ -10,7 +11,7 @@ import io.premiumspread.repository.ThresholdDirectionView
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
-import java.time.LocalDateTime
+import java.time.Clock
 
 @Service
 @ConditionalOnProperty(
@@ -22,6 +23,8 @@ class PremiumThresholdNotificationService(
     private val readRepository: ActiveSubscriptionReadRepository,
     private val cooldownStore: NotificationCooldownStore,
     private val emailSender: EmailSender,
+    private val clock: Clock,
+    private val aggregationProperties: AggregationProperties,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -60,7 +63,7 @@ class PremiumThresholdNotificationService(
             심볼: ${sub.symbol.uppercase()}
             조건: $directionText
             현재 프리미엄: ${event.premiumRate}%
-            발생 시각: ${LocalDateTime.now()}
+            발생 시각: ${clock.instant().atZone(aggregationProperties.aggregationZone.zoneId)}
 
             --
             premium-spread

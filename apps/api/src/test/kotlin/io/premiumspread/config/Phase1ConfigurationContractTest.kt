@@ -15,6 +15,22 @@ class Phase1ConfigurationContractTest {
     }
 
     @Test
+    fun `공통 JDBC와 Hibernate 시간대는 UTC로 고정한다`() {
+        val yaml = ClassPathResource("jpa.yml").inputStream.bufferedReader().use { it.readText() }
+
+        assertThat(yaml).contains("jdbc.time_zone: UTC")
+        assertThat(yaml).contains("connectionTimeZone=UTC")
+        assertThat(yaml).contains("forceConnectionTimeZoneToSession=true")
+    }
+
+    @Test
+    fun `API와 Batch는 동일한 aggregation zone 환경변수 계약을 사용한다`() {
+        val yaml = ClassPathResource("application.yml").inputStream.bufferedReader().use { it.readText() }
+
+        assertThat(yaml).contains("zone: \${AGGREGATION_ZONE:Asia/Seoul}")
+    }
+
+    @Test
     fun `prd에서는 API 문서와 상세 health 정보를 공개하지 않는다`() {
         val yaml = ClassPathResource("application-prd.yml").inputStream.bufferedReader().use { it.readText() }
 

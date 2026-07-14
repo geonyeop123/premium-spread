@@ -4,6 +4,7 @@ import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.premium.PremiumAggregationSnapshot
 import io.premiumspread.domain.premium.PremiumRepository
 import io.premiumspread.domain.premium.PremiumSnapshot
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.ticker.Symbol
 import org.slf4j.LoggerFactory
 import org.springframework.data.repository.findByIdOrNull
@@ -28,41 +29,75 @@ class PremiumRepositoryImpl(
         return premiumJpaRepository.findByIdOrNull(id)
     }
 
-    override fun findLatestBySymbol(symbol: Symbol): Premium? {
-        return premiumJpaRepository.findLatestBySymbol(symbol.code)
-    }
+    override fun findLatestByPair(pair: MarketPair): Premium? = premiumJpaRepository.findLatestByPair(
+        symbol = pair.symbol.code,
+        koreaExchange = pair.koreaExchange,
+        foreignExchange = pair.foreignExchange,
+    )
 
-    override fun findLatestSnapshotBySymbol(symbol: Symbol): PremiumSnapshot? {
+    override fun findLatestSnapshotByPair(pair: MarketPair): PremiumSnapshot? {
+        val symbol = pair.symbol
         val cached = premiumCacheReader.get(symbol.code)
-        if (cached != null) {
+        if (cached != null && pair == cached.pair) {
             log.debug("Premium snapshot cache hit: {}", symbol.code)
             return PremiumSnapshot(
-                symbol = cached.symbol,
+                pair = cached.pair,
                 premiumRate = cached.premiumRate,
                 koreaPrice = cached.koreaPrice,
                 foreignPrice = cached.foreignPrice,
                 foreignPriceInKrw = cached.foreignPriceInKrw,
                 fxRate = cached.fxRate,
                 observedAt = cached.observedAt,
+                fxSource = cached.fxSource,
+                fxObservedAt = cached.fxObservedAt,
             )
         }
 
-        log.debug("Premium snapshot cache miss, falling back to DB JOIN query: {}", symbol.code)
-        return premiumJpaRepository.findLatestSnapshotBySymbol(symbol.code)
+        log.debug("Premium snapshot cache miss, falling back to pair DB JOIN query: {}", pair)
+        return premiumJpaRepository.findLatestSnapshotByPair(
+            symbol = symbol.code,
+            koreaExchange = pair.koreaExchange,
+            foreignExchange = pair.foreignExchange,
+        )?.toDomain()
     }
 
-    override fun findAllBySymbolAndPeriod(symbol: Symbol, from: Instant, to: Instant): List<Premium> {
-        return premiumJpaRepository.findAllBySymbolAndPeriod(symbol.code, from, to)
-    }
+    override fun findAllByPair(pair: MarketPair, from: Instant, to: Instant): List<Premium> =
+        premiumJpaRepository.findAllByPairAndPeriod(
+            symbol = pair.symbol.code,
+            koreaExchange = pair.koreaExchange,
+            foreignExchange = pair.foreignExchange,
+            from = from,
+            to = to,
+        )
 
-    override fun findAggregation(symbol: Symbol, interval: String, from: Instant, to: Instant): List<PremiumAggregationSnapshot> {
+    override fun findAggregationByPair(
+        pair: MarketPair,
+        interval: String,
+        from: Instant,
+        to: Instant,
+    ): List<PremiumAggregationSnapshot> {
+        if (pair != MarketPair.default(pair.symbol)) return emptyList()
+        val symbol = pair.symbol
         val cached = premiumAggregationCacheReader.findByInterval(symbol.code, interval, from, to)
-        if (cached != null) {
-            log.debug("Aggregation cache hit: {} {} ({} entries)", symbol.code, interval, cached.size)
-            return cached
+        val persisted = premiumAggregationQueryRepository.findByInterval(symbol.code, interval, from, to)
+        if (cached == null) {
+            log.debug("Aggregation cache miss, using DB: {} {}", symbol.code, interval)
+            return persisted
         }
 
-        log.debug("Aggregation cache miss, falling back to DB: {} {}", symbol.code, interval)
-        return premiumAggregationQueryRepository.findByInterval(symbol.code, interval, from, to)
+        // 현재 Redis payload에는 범위가 완전히 적재됐음을 증명하는 coverage marker가 없다.
+        // eviction/rebuild 중의 부분 cache가 DB의 과거 bucket을 가리지 않도록 병합하되,
+        // 같은 시각의 bucket은 영속 데이터(DB)를 정본으로 삼는다.
+        log.debug(
+            "Aggregation cache/DB merge: {} {} (cache={}, DB={})",
+            symbol.code,
+            interval,
+            cached.size,
+            persisted.size,
+        )
+        return (cached + persisted)
+            .associateBy(PremiumAggregationSnapshot::observedAt)
+            .values
+            .sortedBy(PremiumAggregationSnapshot::observedAt)
     }
 }

@@ -16,8 +16,10 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
+import java.sql.Timestamp
 import java.time.Instant
 import java.time.LocalDateTime
+import java.util.TimeZone
 
 @Tag("integration")
 @SpringBootTest
@@ -42,6 +44,14 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
         )
     }
 
+    private fun insertMinute(symbol: String, minuteAt: Instant) {
+        jdbcTemplate.update(
+            "INSERT INTO premium_minute (symbol, minute_at, high, low, open, close, avg, count) VALUES (?, ?, 2.50, 1.00, 1.50, 2.00, 1.75, 60)",
+            symbol,
+            Timestamp.from(minuteAt),
+        )
+    }
+
     private fun insertHour(symbol: String, hourAt: LocalDateTime, high: BigDecimal, low: BigDecimal, open: BigDecimal, close: BigDecimal, avg: BigDecimal, count: Int) {
         jdbcTemplate.update(
             "INSERT INTO premium_hour (symbol, hour_at, high, low, open, close, avg, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -59,6 +69,22 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
     @Nested
     @DisplayName("1m 인터벌 (premium_minute)")
     inner class MinuteInterval {
+
+        @Test
+        fun `Batch UTC Instant write를 JVM timezone과 무관하게 같은 Instant로 읽는다`() {
+            val originalTimeZone = TimeZone.getDefault()
+            val expected = Instant.parse("2024-01-01T06:00:00Z")
+            try {
+                TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Honolulu"))
+                insertMinute("BTC", expected)
+
+                val result = repository.findByInterval("BTC", "1m", expected, expected.plusSeconds(60))
+
+                assertThat(result.single().observedAt).isEqualTo(expected)
+            } finally {
+                TimeZone.setDefault(originalTimeZone)
+            }
+        }
 
         @Test
         fun `분 단위 집계 데이터를 조회한다`() {
@@ -145,6 +171,24 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             assertThat(result).hasSize(2)
             assertThat(result[0].count).isEqualTo(1440)
             assertThat(result[1].count).isEqualTo(1380)
+            assertThat(result[0].observedAt).isEqualTo(Instant.parse("2023-12-31T15:00:00Z"))
+            assertThat(result[1].observedAt).isEqualTo(Instant.parse("2024-01-01T15:00:00Z"))
+        }
+
+        @Test
+        fun `Asia Seoul business date 경계로 조회한다`() {
+            insertDay("BTC", "2024-01-01", BigDecimal("2.50"), BigDecimal("1.00"), BigDecimal("1.50"), BigDecimal("2.00"), BigDecimal("1.75"), 1440)
+            insertDay("BTC", "2024-01-02", BigDecimal("3.00"), BigDecimal("1.50"), BigDecimal("2.00"), BigDecimal("2.50"), BigDecimal("2.25"), 1380)
+
+            val result = repository.findByInterval(
+                "BTC",
+                "1d",
+                Instant.parse("2023-12-31T15:00:00Z"),
+                Instant.parse("2024-01-01T15:00:00Z"),
+            )
+
+            assertThat(result).singleElement().extracting("observedAt")
+                .isEqualTo(Instant.parse("2023-12-31T15:00:00Z"))
         }
     }
 

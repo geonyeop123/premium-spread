@@ -3,9 +3,14 @@ package io.premiumspread.cache
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.premium.PremiumSnapshot
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.redis.AggregationTimeUnit
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -16,6 +21,8 @@ import org.springframework.data.redis.core.ZSetOperations
 import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
+import java.time.Clock
+import java.time.ZoneOffset
 
 class PremiumCacheServiceTest {
 
@@ -32,8 +39,9 @@ class PremiumCacheServiceTest {
         every { redisTemplate.opsForHash<String, String>() } returns hashOps
         every { redisTemplate.opsForZSet() } returns zSetOps
         every { redisTemplate.expire(any(), any<Duration>()) } returns true
-        val timeSeriesCache = TimeSeriesCacheSupport(redisTemplate)
-        premiumCacheService = PremiumCacheService(redisTemplate, timeSeriesCache)
+        val clock = Clock.fixed(Instant.parse("2026-05-12T00:00:00Z"), ZoneOffset.UTC)
+        val timeSeriesCache = TimeSeriesCacheSupport(redisTemplate, clock)
+        premiumCacheService = PremiumCacheService(redisTemplate, timeSeriesCache, clock)
     }
 
     private fun tuple(value: String, score: Double): ZSetOperations.TypedTuple<String> =
@@ -50,13 +58,31 @@ class PremiumCacheServiceTest {
         fxRate: String = "1432.60",
         epochMilli: Long = 1_706_500_000_000L,
     ) = PremiumCacheData(
-        symbol = "BTC",
         premiumRate = BigDecimal(rate),
         koreaPrice = BigDecimal(koreaPrice),
         foreignPrice = BigDecimal(foreignPrice),
         foreignPriceInKrw = BigDecimal(foreignPriceKrw),
         fxRate = BigDecimal(fxRate),
         observedAt = Instant.ofEpochMilli(epochMilli),
+        pair = MarketPair.default(Symbol("BTC")),
+    )
+
+    private fun premiumSnapshot(
+        symbol: String = "BTC",
+        koreaExchange: Exchange = Exchange.BITHUMB,
+        foreignExchange: Exchange = Exchange.BINANCE,
+        observedAt: Instant = Instant.ofEpochMilli(1_706_500_000_000L),
+        fxObservedAt: Instant = Instant.ofEpochMilli(1_706_499_999_000L),
+    ) = PremiumSnapshot(
+        pair = MarketPair(Symbol(symbol), koreaExchange, foreignExchange),
+        premiumRate = BigDecimal("1.50"),
+        koreaPrice = BigDecimal("129555000"),
+        foreignPrice = BigDecimal("89277.10"),
+        foreignPriceInKrw = BigDecimal("127894943.46"),
+        fxRate = BigDecimal("1432.60"),
+        observedAt = observedAt,
+        fxSource = Exchange.FX_PROVIDER,
+        fxObservedAt = fxObservedAt,
     )
 
     @Nested
@@ -66,7 +92,7 @@ class PremiumCacheServiceTest {
         @Test
         fun `프리미엄 데이터를 해시로 저장하고 TTL을 설정한다`() {
             // given
-            val premium = premiumCacheData()
+            val premium = premiumSnapshot()
 
             // when
             premiumCacheService.save(premium)
@@ -80,7 +106,11 @@ class PremiumCacheServiceTest {
                             hash["rate"] == "1.50" &&
                             hash["korea_price"] == "129555000" &&
                             hash["foreign_price"] == "89277.10" &&
-                            hash["fx_rate"] == "1432.60"
+                            hash["fx_rate"] == "1432.60" &&
+                            hash["korea_exchange"] == "BITHUMB" &&
+                            hash["foreign_exchange"] == "BINANCE" &&
+                            hash["fx_source"] == "FX_PROVIDER" &&
+                            hash["fx_observed_at"] == "1706499999000"
                     },
                 )
             }
@@ -109,6 +139,116 @@ class PremiumCacheServiceTest {
             assertThat(result.premiumRate).isEqualByComparingTo("1.50")
             assertThat(result.koreaPrice).isEqualByComparingTo("129555000")
             assertThat(result.fxRate).isEqualByComparingTo("1432.60")
+            assertThat(result.pair).isEqualTo(MarketPair.default(Symbol("BTC")))
+            assertThat(result.fxSource).isEqualTo(Exchange.FX_PROVIDER)
+            assertThat(result.fxObservedAt).isEqualTo(result.observedAt)
+        }
+
+        @Test
+        fun `메타데이터가 모두 있으면 pair와 FX 원본 정보를 복원한다`() {
+            every { hashOps.entries("premium:btc") } returns mapOf(
+                "symbol" to "BTC",
+                "rate" to "1.50",
+                "korea_price" to "129555000",
+                "foreign_price" to "89277.10",
+                "foreign_price_krw" to "127894943.46",
+                "fx_rate" to "1432.60",
+                "observed_at" to "1706500000000",
+                "korea_exchange" to "UPBIT",
+                "foreign_exchange" to "BINANCE",
+                "fx_source" to "FX_PROVIDER",
+                "fx_observed_at" to "1706499999000",
+            )
+
+            val result = premiumCacheService.get("btc")
+
+            assertThat(result).isNotNull
+            assertThat(result!!.pair).isEqualTo(MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE))
+            assertThat(result.fxSource).isEqualTo(Exchange.FX_PROVIDER)
+            assertThat(result.fxObservedAt).isEqualTo(Instant.ofEpochMilli(1_706_499_999_000L))
+        }
+
+        @Test
+        fun `메타데이터가 일부만 있으면 손상 payload로 판단한다`() {
+            every { hashOps.entries("premium:btc") } returns mapOf(
+                "symbol" to "BTC",
+                "rate" to "1.50",
+                "korea_price" to "129555000",
+                "foreign_price" to "89277.10",
+                "foreign_price_krw" to "127894943.46",
+                "fx_rate" to "1432.60",
+                "observed_at" to "1706500000000",
+                "korea_exchange" to "BITHUMB",
+            )
+
+            assertThat(premiumCacheService.get("btc")).isNull()
+        }
+
+        @Test
+        fun `메타데이터 enum이 유효하지 않으면 손상 payload로 판단한다`() {
+            every { hashOps.entries("premium:btc") } returns mapOf(
+                "symbol" to "BTC",
+                "rate" to "1.50",
+                "korea_price" to "129555000",
+                "foreign_price" to "89277.10",
+                "foreign_price_krw" to "127894943.46",
+                "fx_rate" to "1432.60",
+                "observed_at" to "1706500000000",
+                "korea_exchange" to "INVALID",
+                "foreign_exchange" to "BINANCE",
+                "fx_source" to "FX_PROVIDER",
+                "fx_observed_at" to "1706499999000",
+            )
+
+            assertThat(premiumCacheService.get("btc")).isNull()
+        }
+
+        @Test
+        fun `legacy writer는 default pair가 아니면 거부한다`() {
+            val premium = premiumSnapshot(koreaExchange = Exchange.UPBIT)
+
+            assertThatThrownBy { premiumCacheService.save(premium) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("default MarketPair")
+
+            verify(exactly = 0) { hashOps.putAll(any(), any()) }
+        }
+
+        @Test
+        fun `legacy history writer는 default pair가 아니면 거부한다`() {
+            val premium = premiumSnapshot(koreaExchange = Exchange.UPBIT)
+
+            assertThatThrownBy { premiumCacheService.saveHistory(premium) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("default MarketPair")
+
+            verify(exactly = 0) { zSetOps.add(any(), any(), any()) }
+        }
+
+        @Test
+        fun `legacy seconds writer는 default pair가 아니면 거부한다`() {
+            val premium = premiumSnapshot(koreaExchange = Exchange.UPBIT)
+
+            assertThatThrownBy { premiumCacheService.saveToSeconds(premium) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("default MarketPair")
+
+            verify(exactly = 0) { zSetOps.add(any(), any(), any()) }
+        }
+
+        @Test
+        fun `요청 symbol과 저장된 symbol이 다르면 손상 payload로 판단한다`() {
+            every { hashOps.entries("premium:btc") } returns mapOf(
+                "symbol" to "ETH",
+                "rate" to "1.50",
+                "korea_price" to "129555000",
+                "foreign_price" to "89277.10",
+                "foreign_price_krw" to "127894943.46",
+                "fx_rate" to "1432.60",
+                "observed_at" to "1706500000000",
+            )
+
+            assertThat(premiumCacheService.get("btc")).isNull()
         }
 
         @Test
@@ -134,6 +274,20 @@ class PremiumCacheServiceTest {
             )
 
             // when & then
+            assertThat(premiumCacheService.get("btc")).isNull()
+        }
+
+        @Test
+        fun `observed_at이 없으면 현재 시각을 합성하지 않고 null을 반환한다`() {
+            every { hashOps.entries("premium:btc") } returns mapOf(
+                "symbol" to "BTC",
+                "rate" to "1.50",
+                "korea_price" to "129555000",
+                "foreign_price" to "89277.10",
+                "foreign_price_krw" to "127894943.46",
+                "fx_rate" to "1432.60",
+            )
+
             assertThat(premiumCacheService.get("btc")).isNull()
         }
     }
@@ -176,7 +330,7 @@ class PremiumCacheServiceTest {
 
             // when & then
             assertThat(
-                premiumCacheService.aggregateSecondsData("btc", Instant.now(), Instant.now()),
+                premiumCacheService.aggregateSecondsData("btc", Instant.EPOCH, Instant.EPOCH.plusMillis(1)),
             ).isNull()
         }
     }
@@ -216,7 +370,7 @@ class PremiumCacheServiceTest {
 
             // when & then
             assertThat(
-                premiumCacheService.calculateSummaryFromSeconds("btc", Instant.now(), Instant.now()),
+                premiumCacheService.calculateSummaryFromSeconds("btc", Instant.EPOCH, Instant.EPOCH.plusMillis(1)),
             ).isNull()
         }
     }
@@ -257,7 +411,12 @@ class PremiumCacheServiceTest {
 
             // when & then
             assertThat(
-                premiumCacheService.calculateSummary(AggregationTimeUnit.MINUTES, "btc", Instant.now(), Instant.now()),
+                premiumCacheService.calculateSummary(
+                    AggregationTimeUnit.MINUTES,
+                    "btc",
+                    Instant.EPOCH,
+                    Instant.EPOCH.plusMillis(1),
+                ),
             ).isNull()
         }
     }

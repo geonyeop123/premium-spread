@@ -15,7 +15,7 @@ datasource:
   mysql-jpa:
     main:
       driver-class-name: com.mysql.cj.jdbc.Driver
-      jdbc-url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/premiumspread
+      jdbc-url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/premiumspread?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
       username: ${MYSQL_USER}
       password: "${MYSQL_PWD}"
       pool-name: mysql-main-pool
@@ -42,7 +42,7 @@ spring:
 datasource:
   mysql-jpa:
     main:
-      jdbc-url: jdbc:mysql://localhost:3306/premiumspread
+      jdbc-url: jdbc:mysql://localhost:3306/premiumspread?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
       username: application
       password: application
 
@@ -71,7 +71,7 @@ spring:
 datasource:
   mysql-jpa:
     main:
-      jdbc-url: jdbc:mysql://localhost:3306/premiumspread
+      jdbc-url: jdbc:mysql://localhost:3306/premiumspread?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
       username: application
       password: application
 
@@ -81,7 +81,7 @@ spring.config.activate.on-profile: qa
 datasource:
   mysql-jpa:
     main:
-      jdbc-url: jdbc:mysql://localhost:3306/premiumspread
+      jdbc-url: jdbc:mysql://localhost:3306/premiumspread?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
       username: application
       password: application
 

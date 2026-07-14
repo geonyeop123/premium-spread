@@ -10,14 +10,13 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import java.time.Clock
 import java.time.Duration
-import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 바이낸스 WebSocket(@bookTicker)으로 받은 최신 ticker를 1초 주기로 ZSet에 flush 한다.
  *
  * - Hash는 [BinanceTickerIngestion]이 메시지 수신 시점에 이미 갱신 → 본 job은 ZSet만 갱신.
- * - score는 flush 시점(`Instant.now(clock)`)을 사용 — exchange timestamp가 변하지 않아도 distinct score 보장.
+ * - score는 flush 시점(`clock.instant()`)을 사용 — exchange timestamp가 변하지 않아도 distinct score 보장.
  * - 마지막 메시지가 10초 이상 지난 경우 stale 처리하고 skip.
  * - flush 실패 5회 연속 발생 시 critical alert.
  */
@@ -36,7 +35,7 @@ class BinanceFlushJob(
 
     fun run() {
         val latest = ingestion.latest() ?: return
-        val now = Instant.now(clock)
+        val now = clock.instant()
         val age = Duration.between(latest.receivedAt, now)
         if (age > STALE_THRESHOLD) {
             metrics.recordStale(EXCHANGE)

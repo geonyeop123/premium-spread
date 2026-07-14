@@ -4,6 +4,8 @@ import io.mockk.*
 import io.premiumspread.application.common.JobConfig
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
+import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
+import io.premiumspread.config.AggregationProperties
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.redis.AggregationTimeUnit
 import io.premiumspread.repository.PremiumAggregation
@@ -14,8 +16,11 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.springframework.scheduling.annotation.Scheduled
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.Clock
+import java.time.ZoneOffset
 
 class PremiumAggregationSchedulerTest {
 
@@ -23,6 +28,8 @@ class PremiumAggregationSchedulerTest {
     private lateinit var aggregationRepository: PremiumAggregationRepository
     private lateinit var jobExecutor: JobExecutor
     private lateinit var scheduler: PremiumAggregationScheduler
+    private val clock = Clock.fixed(Instant.parse("2026-05-12T12:34:56Z"), ZoneOffset.UTC)
+    private val windowPolicy = AggregationWindowPolicy(AggregationProperties())
 
     @BeforeEach
     fun setUp() {
@@ -34,6 +41,8 @@ class PremiumAggregationSchedulerTest {
             premiumCacheService = premiumCacheService,
             aggregationRepository = aggregationRepository,
             jobExecutor = jobExecutor,
+            clock = clock,
+            windowPolicy = windowPolicy,
         )
     }
 
@@ -87,7 +96,8 @@ class PremiumAggregationSchedulerTest {
             // then
             verify(exactly = 1) { premiumCacheService.aggregateSecondsData("btc", any(), any()) }
             verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, "btc", any(), agg) }
-            verify(exactly = 1) { aggregationRepository.saveMinute("btc", any(), agg) }
+            val expectedFrom = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.MINUTES).from
+            verify(exactly = 1) { aggregationRepository.saveMinute("btc", expectedFrom, agg) }
         }
     }
 
@@ -123,7 +133,8 @@ class PremiumAggregationSchedulerTest {
             // then
             verify(exactly = 1) { premiumCacheService.aggregateData(AggregationTimeUnit.MINUTES, "btc", any(), any()) }
             verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, "btc", any(), agg) }
-            verify(exactly = 1) { aggregationRepository.saveHour("btc", any(), agg) }
+            val expectedFrom = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.HOURS).from
+            verify(exactly = 1) { aggregationRepository.saveHour("btc", expectedFrom, agg) }
         }
     }
 
@@ -159,7 +170,10 @@ class PremiumAggregationSchedulerTest {
             // then
             verify(exactly = 1) { premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, "btc", any(), any()) }
             verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, "btc", any(), agg) }
-            verify(exactly = 1) { aggregationRepository.saveDay("btc", any(), agg) }
+            val window = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.DAYS)
+            verify(exactly = 1) {
+                aggregationRepository.saveDay("btc", window.from.atZone(windowPolicy.zoneId).toLocalDate(), agg)
+            }
         }
 
         @Test
@@ -173,6 +187,15 @@ class PremiumAggregationSchedulerTest {
 
             // then
             assertThat(configSlot.captured.jobName).isEqualTo("aggregation:day")
+        }
+
+        @Test
+        fun `day schedule은 aggregation zone 설정을 명시한다`() {
+            val scheduled = PremiumAggregationScheduler::class.java
+                .getDeclaredMethod("aggregateDay")
+                .getAnnotation(Scheduled::class.java)
+
+            assertThat(scheduled.zone).isEqualTo("\${aggregation.zone:Asia/Seoul}")
         }
     }
 

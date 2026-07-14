@@ -3,6 +3,7 @@ package io.premiumspread.infrastructure.exchangerate
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.premiumspread.domain.ticker.Exchange
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -36,6 +37,7 @@ class ExchangeRateRepositoryImplTest {
                 quoteCurrency = "KRW",
                 rate = BigDecimal("1432.6"),
                 timestamp = Instant.parse("2024-01-01T00:00:00Z"),
+                source = Exchange.UPBIT,
             )
             every { fxCacheReader.get("usd", "krw") } returns cached
 
@@ -45,6 +47,7 @@ class ExchangeRateRepositoryImplTest {
             assertThat(result!!.baseCurrency).isEqualTo("USD")
             assertThat(result.quoteCurrency).isEqualTo("KRW")
             assertThat(result.rate).isEqualByComparingTo(BigDecimal("1432.6"))
+            assertThat(result.source).isEqualTo(Exchange.UPBIT)
             verify(exactly = 0) { exchangeRateQueryRepository.findLatest(any(), any()) }
         }
 

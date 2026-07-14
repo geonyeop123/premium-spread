@@ -4,10 +4,12 @@ import io.premiumspread.cache.PremiumCacheData
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.Timestamp
+import java.time.Clock
 
 @Repository
 class PremiumSnapshotRepository(
     private val jdbcTemplate: JdbcTemplate,
+    private val clock: Clock,
 ) {
 
     fun save(premium: PremiumCacheData) {
@@ -24,7 +26,7 @@ class PremiumSnapshotRepository(
             premium.foreignPriceInKrw,
             premium.fxRate,
             Timestamp.from(premium.observedAt),
-            Timestamp.from(java.time.Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 }

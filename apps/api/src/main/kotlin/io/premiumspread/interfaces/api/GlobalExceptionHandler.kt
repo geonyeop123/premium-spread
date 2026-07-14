@@ -21,10 +21,13 @@ import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.server.ResponseStatusException
+import java.time.Clock
 import java.time.Instant
 
 @RestControllerAdvice
-class GlobalExceptionHandler {
+class GlobalExceptionHandler(
+    private val clock: Clock = Clock.systemUTC(),
+) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -32,7 +35,7 @@ class GlobalExceptionHandler {
     fun handleDuplicateEmail(ex: DuplicateEmailException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
-            .body(ErrorResponse(code = "DUPLICATE_EMAIL", message = ERROR_MESSAGES["DUPLICATE_EMAIL"]!!))
+            .body(error("DUPLICATE_EMAIL"))
     }
 
     @ExceptionHandler(DomainException::class)
@@ -46,28 +49,28 @@ class GlobalExceptionHandler {
         }
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
-            .body(ErrorResponse(code = errorCode, message = ERROR_MESSAGES[errorCode] ?: "요청을 처리할 수 없습니다."))
+            .body(error(errorCode, ERROR_MESSAGES[errorCode] ?: "요청을 처리할 수 없습니다."))
     }
 
     @ExceptionHandler(TickerNotFoundException::class)
     fun handleTickerNotFound(ex: TickerNotFoundException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(code = "TICKER_NOT_FOUND", message = ERROR_MESSAGES["TICKER_NOT_FOUND"]!!))
+            .body(error("TICKER_NOT_FOUND"))
     }
 
     @ExceptionHandler(PositionNotFoundException::class)
     fun handlePositionNotFound(ex: PositionNotFoundException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(code = "POSITION_NOT_FOUND", message = ERROR_MESSAGES["POSITION_NOT_FOUND"]!!))
+            .body(error("POSITION_NOT_FOUND"))
     }
 
     @ExceptionHandler(PremiumNotFoundException::class)
     fun handlePremiumNotFound(ex: PremiumNotFoundException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(code = "PREMIUM_NOT_FOUND", message = ERROR_MESSAGES["PREMIUM_NOT_FOUND"]!!))
+            .body(error("PREMIUM_NOT_FOUND"))
     }
 
     @ExceptionHandler(PremiumSnapshotNotAvailableException::class)
@@ -75,10 +78,7 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
             .body(
-                ErrorResponse(
-                    code = "PREMIUM_SNAPSHOT_NOT_AVAILABLE",
-                    message = ERROR_MESSAGES["PREMIUM_SNAPSHOT_NOT_AVAILABLE"]!!,
-                ),
+                error("PREMIUM_SNAPSHOT_NOT_AVAILABLE"),
             )
     }
 
@@ -87,10 +87,7 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
             .body(
-                ErrorResponse(
-                    code = "STALE_PREMIUM_SNAPSHOT",
-                    message = ERROR_MESSAGES["STALE_PREMIUM_SNAPSHOT"]!!,
-                ),
+                error("STALE_PREMIUM_SNAPSHOT"),
             )
     }
 
@@ -101,10 +98,7 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
             .body(
-                ErrorResponse(
-                    code = "NOTIFICATION_SUBSCRIPTION_NOT_FOUND",
-                    message = ERROR_MESSAGES["NOTIFICATION_SUBSCRIPTION_NOT_FOUND"]!!,
-                ),
+                error("NOTIFICATION_SUBSCRIPTION_NOT_FOUND"),
             )
     }
 
@@ -112,28 +106,28 @@ class GlobalExceptionHandler {
     fun handleIllegalArgument(ex: IllegalArgumentException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
-            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+            .body(error("INVALID_ARGUMENT"))
     }
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
-            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+            .body(error("INVALID_ARGUMENT"))
     }
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
-            .body(ErrorResponse(code = "INVALID_ARGUMENT", message = ERROR_MESSAGES["INVALID_ARGUMENT"]!!))
+            .body(error("INVALID_ARGUMENT"))
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
     fun handleMethodNotSupported(ex: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(HttpStatus.METHOD_NOT_ALLOWED)
-            .body(ErrorResponse(code = "METHOD_NOT_ALLOWED", message = ERROR_MESSAGES["METHOD_NOT_ALLOWED"]!!))
+            .body(error("METHOD_NOT_ALLOWED"))
     }
 
     @ExceptionHandler(ResponseStatusException::class)
@@ -142,7 +136,7 @@ class GlobalExceptionHandler {
         val code = if (status == HttpStatus.UNAUTHORIZED) "UNAUTHORIZED" else "INVALID_ARGUMENT"
         return ResponseEntity
             .status(status)
-            .body(ErrorResponse(code = code, message = ERROR_MESSAGES[code] ?: ex.reason.orEmpty()))
+            .body(error(code, ERROR_MESSAGES[code] ?: ex.reason.orEmpty()))
     }
 
     @ExceptionHandler(Exception::class)
@@ -150,8 +144,11 @@ class GlobalExceptionHandler {
         log.error("예상치 못한 오류 발생", ex)
         return ResponseEntity
             .status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(ErrorResponse(code = "INTERNAL_ERROR", message = ERROR_MESSAGES["INTERNAL_ERROR"]!!))
+            .body(error("INTERNAL_ERROR"))
     }
+
+    private fun error(code: String, message: String = ERROR_MESSAGES.getValue(code)): ErrorResponse =
+        ErrorResponse(code = code, message = message, timestamp = clock.instant())
 
     companion object {
         val ERROR_MESSAGES = mapOf(
@@ -178,5 +175,5 @@ class GlobalExceptionHandler {
 data class ErrorResponse(
     val code: String,
     val message: String,
-    val timestamp: Instant = Instant.now(),
+    val timestamp: Instant,
 )

@@ -84,7 +84,7 @@ class PremiumControllerTest {
         fun `최신 프리미엄을 조회한다`() {
             val snapshot = PremiumSnapshot(
                 symbol = "BTC",
-                premiumRate = BigDecimal("1.30"),
+                premiumRate = BigDecimal("1.2350"),
                 koreaPrice = BigDecimal("50000000"),
                 foreignPrice = BigDecimal("40000"),
                 foreignPriceInKrw = BigDecimal("49350000"),
@@ -98,7 +98,7 @@ class PremiumControllerTest {
                 .andExpect {
                     status { isOk() }
                     jsonPath("$.symbol") { value("BTC") }
-                    jsonPath("$.premiumRate") { value(1.30) }
+                    jsonPath("$.premiumRate") { value(1.24) }
                     jsonPath("$.koreaPrice") { value(50000000) }
                     jsonPath("$.foreignPrice") { value(40000) }
                     jsonPath("$.source") { doesNotExist() }

@@ -16,11 +16,8 @@ io.premiumspread.application.job.fx.FxIngestionJob -> io.premiumspread.repositor
 io.premiumspread.application.job.fx.FxIngestionJob$run$fxRate$1 -> io.premiumspread.client.FxRateData
 io.premiumspread.application.job.fx.FxIngestionJob$run$fxRate$1 -> io.premiumspread.client.exchangerate.ExchangeRateClient
 io.premiumspread.application.job.premium.PremiumRealtimeJob -> io.premiumspread.cache.FxCacheService
-io.premiumspread.application.job.premium.PremiumRealtimeJob -> io.premiumspread.cache.PremiumCacheData
 io.premiumspread.application.job.premium.PremiumRealtimeJob -> io.premiumspread.cache.PremiumCacheService
 io.premiumspread.application.job.premium.PremiumRealtimeJob -> io.premiumspread.cache.TickerCacheService
-io.premiumspread.application.job.premium.PremiumRealtimeJob -> io.premiumspread.calculator.PremiumCalculator
-io.premiumspread.application.job.premium.PremiumRealtimeJob -> io.premiumspread.client.TickerData
 io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.cache.NotificationCooldownStore
 io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.email.EmailDeliveryException
 io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.email.EmailMessage

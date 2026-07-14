@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.config.TestConfig
 import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.premium.PremiumRepository
+import io.premiumspread.domain.premium.PremiumPolicy
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Quote
@@ -28,7 +29,6 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.Instant
 
 @Tag("integration")
@@ -59,7 +59,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         observedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
     ): Ticker = tickerRepository.save(
         Ticker.create(
-            exchange = Exchange.UPBIT,
+            exchange = Exchange.BITHUMB,
             quote = Quote.coin(Symbol(symbol), Currency.KRW),
             price = price,
             observedAt = observedAt,
@@ -116,12 +116,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         saveForeignTicker(price = foreignPrice)
         saveFxTicker(price = fxRate)
 
-        // 예상 premiumRate 계산: (koreaPrice / (foreignPrice * fxRate) - 1) * 100
-        val foreignPriceInKrw = foreignPrice.multiply(fxRate)
-        val expectedRate = koreaPrice.subtract(foreignPriceInKrw)
-            .divide(foreignPriceInKrw, 10, RoundingMode.HALF_UP)
-            .multiply(BigDecimal("100"))
-            .setScale(2, RoundingMode.HALF_UP)
+        val expectedRate = PremiumPolicy.calculate(koreaPrice, foreignPrice, fxRate).entityPremiumRate
 
         // when & then
         mockMvc.post("/api/v1/premiums/calculate/BTC").andExpect {
@@ -177,12 +172,12 @@ class PremiumControllerE2ETest @Autowired constructor(
     // -- findLatestSnapshot (캐시 우선 → DB fallback) --
 
     @Test
-    fun `캐시 hit - Redis 데이터 반환`() {
+    fun `캐시 hit - 4자리 Redis rate를 API 표시 2자리로 정규화한다`() {
         // given: Redis에 premium:btc 해시 저장 (DB에는 데이터 없음)
         val key = RedisKeyGenerator.premiumKey("btc")
         val cacheData = mapOf(
             "symbol" to "BTC",
-            "rate" to "1.28",
+            "rate" to "1.2350",
             "korea_price" to "129555000",
             "foreign_price" to "89277",
             "foreign_price_krw" to "127884000.2",
@@ -195,7 +190,7 @@ class PremiumControllerE2ETest @Autowired constructor(
         mockMvc.get("/api/v1/premiums/current/BTC").andExpect {
             status { isOk() }
             jsonPath("$.symbol") { value("BTC") }
-            jsonPath("$.premiumRate") { value(1.28) }
+            jsonPath("$.premiumRate") { value(1.24) }
             jsonPath("$.koreaPrice") { value(129555000) }
         }
     }

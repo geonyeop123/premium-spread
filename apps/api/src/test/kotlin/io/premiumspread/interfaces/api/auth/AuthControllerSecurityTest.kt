@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import java.time.Clock
 import java.util.Date
 
 @WebMvcTest(controllers = [AuthController::class, AuthSecurityProbeController::class])
@@ -165,6 +166,7 @@ class AuthControllerSecurityTest {
             issuer = "premium-spread",
             audience = "premium-spread-api",
             clockSkewSeconds = 0L,
+            clock = Clock.systemUTC(),
         )
 
         private fun expiredRefreshToken(): String {

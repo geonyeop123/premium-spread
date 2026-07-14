@@ -1,13 +1,14 @@
 package io.premiumspread.infrastructure.websocket
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import java.time.Clock
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class WebSocketMetricsTest {
 
     private val registry = SimpleMeterRegistry()
-    private val metrics = WebSocketMetrics(registry)
+    private val metrics = WebSocketMetrics(registry, Clock.systemUTC())
 
     @Test
     fun `setConnectionState 1로 설정하면 Gauge가 1을 반환한다`() {

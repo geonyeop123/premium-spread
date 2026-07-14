@@ -115,6 +115,29 @@ class TickerRepositoryImplTest {
         }
 
         @Test
+        fun `Binance의 DB fallback은 USD ticker를 조회한다`() {
+            every { tickerCacheReader.get("binance", "btc") } returns null
+            every { tickerAggregationQueryRepository.findLatestMinute("binance", "btc") } returns null
+            val ticker = io.premiumspread.domain.ticker.Ticker.create(
+                exchange = Exchange.BINANCE,
+                quote = io.premiumspread.domain.ticker.Quote.coin(
+                    io.premiumspread.domain.ticker.Symbol("BTC"),
+                    Currency.USD,
+                ),
+                price = BigDecimal("89277"),
+                observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            )
+            every {
+                tickerJpaRepository.findLatest(Exchange.BINANCE, "BTC", Currency.USD)
+            } returns ticker
+
+            val result = repository.findLatestSnapshotByExchangeAndSymbol("binance", "btc")
+
+            assertThat(result!!.currency).isEqualTo("USD")
+            assertThat(result.price).isEqualByComparingTo("89277")
+        }
+
+        @Test
         fun `모든 소스에서 조회 실패하면 null을 반환한다`() {
             every { tickerCacheReader.get("bithumb", "btc") } returns null
             every { tickerAggregationQueryRepository.findLatestMinute("bithumb", "btc") } returns null

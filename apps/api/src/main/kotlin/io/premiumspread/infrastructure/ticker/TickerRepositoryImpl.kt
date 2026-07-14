@@ -2,6 +2,7 @@ package io.premiumspread.infrastructure.ticker
 
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.ExchangeRegion
 import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
@@ -78,7 +79,7 @@ class TickerRepositoryImpl(
         return tickerJpaRepository.findLatest(
             exchange = exchangeEnum,
             baseCode = symbol.uppercase(),
-            currency = Currency.KRW,
+            currency = if (exchangeEnum.region == ExchangeRegion.KOREA) Currency.KRW else Currency.USD,
         )?.let { ticker ->
             TickerSnapshot(
                 exchange = ticker.exchange.name,

@@ -7,6 +7,7 @@ import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.util.Date
 import javax.crypto.SecretKey
 
@@ -18,6 +19,7 @@ class JwtTokenProvider(
     @Value("\${jwt.issuer}") private val issuer: String,
     @Value("\${jwt.audience}") private val audience: String,
     @Value("\${jwt.clock-skew-seconds}") private val clockSkewSeconds: Long,
+    private val clock: Clock,
 ) {
 
     init {
@@ -59,7 +61,7 @@ class JwtTokenProvider(
     }
 
     private fun generateToken(memberId: Long, email: String, expiryMs: Long, tokenType: String): String {
-        val now = Date()
+        val now = Date.from(clock.instant())
         val expiry = Date(now.time + expiryMs)
 
         return Jwts.builder()
@@ -79,6 +81,7 @@ class JwtTokenProvider(
             .verifyWith(secretKey)
             .requireIssuer(issuer)
             .requireAudience(audience)
+            .clock { Date.from(clock.instant()) }
             .clockSkewSeconds(clockSkewSeconds)
             .build()
             .parseSignedClaims(token)

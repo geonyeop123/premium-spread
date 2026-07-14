@@ -11,6 +11,7 @@ import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
+import java.time.Clock
 import java.util.Date
 
 class JwtAuthenticationFilterTest {
@@ -27,6 +28,7 @@ class JwtAuthenticationFilterTest {
             issuer = "premium-spread",
             audience = "premium-spread-api",
             clockSkewSeconds = 30L,
+            clock = Clock.systemUTC(),
         )
         filter = JwtAuthenticationFilter(jwtTokenProvider)
         SecurityContextHolder.clearContext()

@@ -3,12 +3,15 @@ package io.premiumspread.application.job.premium
 import io.mockk.*
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.application.notification.PremiumUpdatedEvent
-import io.premiumspread.cache.PremiumCacheData
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.cache.FxCacheService
-import io.premiumspread.calculator.PremiumCalculator
-import io.premiumspread.client.TickerData
+import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.premium.PremiumSnapshot
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.domain.ticker.TickerSnapshot
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -23,7 +26,6 @@ class PremiumRealtimeJobTest {
     private lateinit var tickerCacheService: TickerCacheService
     private lateinit var fxCacheService: FxCacheService
     private lateinit var premiumCacheService: PremiumCacheService
-    private lateinit var premiumCalculator: PremiumCalculator
     private lateinit var eventPublisher: ApplicationEventPublisher
     private lateinit var job: PremiumRealtimeJob
 
@@ -32,45 +34,61 @@ class PremiumRealtimeJobTest {
         tickerCacheService = mockk()
         fxCacheService = mockk()
         premiumCacheService = mockk(relaxed = true)
-        premiumCalculator = mockk()
         eventPublisher = mockk(relaxed = true)
         job = PremiumRealtimeJob(
             tickerCacheService = tickerCacheService,
             fxCacheService = fxCacheService,
             premiumCacheService = premiumCacheService,
-            premiumCalculator = premiumCalculator,
             eventPublisher = eventPublisher,
         )
     }
 
     private val now = Instant.now()
 
-    private fun bithumbTicker(price: String = "129555000") = TickerData(
+    private fun bithumbTicker(
+        price: String = "129555000",
+        observedAt: Instant = now,
+    ) = TickerSnapshot(
         exchange = "bithumb",
         symbol = "btc",
         currency = "KRW",
         price = BigDecimal(price),
         volume = null,
-        timestamp = now,
+        observedAt = observedAt,
     )
 
-    private fun binanceTicker(price: String = "89277") = TickerData(
+    private fun binanceTicker(
+        price: String = "89277",
+        observedAt: Instant = now,
+    ) = TickerSnapshot(
         exchange = "binance",
         symbol = "btc",
         currency = "USDT",
         price = BigDecimal(price),
         volume = null,
-        timestamp = now,
+        observedAt = observedAt,
     )
 
-    private fun premiumData() = PremiumCacheData(
-        symbol = "btc",
+    private fun premiumData() = PremiumSnapshot(
+        pair = MarketPair.default(Symbol("btc")),
         premiumRate = BigDecimal("1.2800"),
         koreaPrice = BigDecimal("129555000"),
         foreignPrice = BigDecimal("89277"),
         foreignPriceInKrw = BigDecimal("127918150"),
         fxRate = BigDecimal("1432.6"),
         observedAt = now,
+    )
+
+    private fun fxData(
+        rate: String = "1432.6",
+        observedAt: Instant = now,
+        source: Exchange = Exchange.FX_PROVIDER,
+    ) = ExchangeRateSnapshot(
+        baseCurrency = "USD",
+        quoteCurrency = "KRW",
+        rate = BigDecimal(rate),
+        observedAt = observedAt,
+        source = source,
     )
 
     @Nested
@@ -80,9 +98,9 @@ class PremiumRealtimeJobTest {
         @Test
         fun `빗썸 티커가 없으면 Skipped를 반환한다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } returns null
-            every { tickerCacheService.get("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrw() } returns BigDecimal("1432.6")
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns null
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
 
             // when
             val result = job.run()
@@ -95,9 +113,9 @@ class PremiumRealtimeJobTest {
         @Test
         fun `바이낸스 티커가 없으면 Skipped를 반환한다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.get("binance", "btc") } returns null
-            every { fxCacheService.getUsdKrw() } returns BigDecimal("1432.6")
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns null
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
 
             // when
             val result = job.run()
@@ -110,9 +128,9 @@ class PremiumRealtimeJobTest {
         @Test
         fun `환율 정보가 없으면 Skipped를 반환한다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.get("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrw() } returns null
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
+            every { fxCacheService.getUsdKrwSnapshot() } returns null
 
             // when
             val result = job.run()
@@ -125,9 +143,9 @@ class PremiumRealtimeJobTest {
         @Test
         fun `빗썸 가격이 0이면 Skipped를 반환한다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumbTicker("0")
-            every { tickerCacheService.get("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrw() } returns BigDecimal("1432.6")
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker("0")
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
 
             // when
             val result = job.run()
@@ -140,9 +158,9 @@ class PremiumRealtimeJobTest {
         @Test
         fun `바이낸스 가격이 0이면 Skipped를 반환한다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.get("binance", "btc") } returns binanceTicker("0")
-            every { fxCacheService.getUsdKrw() } returns BigDecimal("1432.6")
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker("0")
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData()
 
             // when
             val result = job.run()
@@ -155,9 +173,9 @@ class PremiumRealtimeJobTest {
         @Test
         fun `환율이 0이면 Skipped를 반환한다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumbTicker()
-            every { tickerCacheService.get("binance", "btc") } returns binanceTicker()
-            every { fxCacheService.getUsdKrw() } returns BigDecimal.ZERO
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker()
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker()
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData("0")
 
             // when
             val result = job.run()
@@ -173,13 +191,10 @@ class PremiumRealtimeJobTest {
             val bithumb = bithumbTicker()
             val binance = binanceTicker()
             val fxRate = BigDecimal("1432.6")
-            val premium = premiumData()
-
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.get("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrw() } returns fxRate
-            every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
-            every { premiumCacheService.save(premium) } throws RuntimeException("redis error")
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
+            every { premiumCacheService.save(any()) } throws RuntimeException("redis error")
 
             // when
             val result = job.run()
@@ -197,19 +212,39 @@ class PremiumRealtimeJobTest {
             val fxRate = BigDecimal("1432.6")
             val premium = premiumData()
 
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.get("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrw() } returns fxRate
-            every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
 
             // when
             val result = job.run()
 
             // then
             assertThat(result).isEqualTo(JobResult.Success)
-            verify { premiumCacheService.save(premium) }
-            verify { premiumCacheService.saveToSeconds(premium) }
-            verify { premiumCacheService.saveHistory(premium) }
+            verify { premiumCacheService.save(match { it.symbol.equals(premium.symbol, ignoreCase = true) }) }
+            verify { premiumCacheService.saveToSeconds(any()) }
+            verify { premiumCacheService.saveHistory(any()) }
+        }
+
+        @Test
+        fun `프리미엄 관측 시각은 두 티커와 환율 중 가장 최신 시각이다`() {
+            val koreaAt = Instant.parse("2026-05-12T00:00:01Z")
+            val foreignAt = Instant.parse("2026-05-12T00:00:02Z")
+            val fxAt = Instant.parse("2026-05-12T00:00:03Z")
+            val captured = slot<PremiumSnapshot>()
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumbTicker(observedAt = koreaAt)
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binanceTicker(observedAt = foreignAt)
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(observedAt = fxAt, source = Exchange.BINANCE)
+            every { premiumCacheService.save(capture(captured)) } just Runs
+
+            val result = job.run()
+
+            assertThat(result).isEqualTo(JobResult.Success)
+            assertThat(captured.captured.observedAt).isEqualTo(fxAt)
+            assertThat(captured.captured.fxObservedAt).isEqualTo(fxAt)
+            assertThat(captured.captured.fxSource).isEqualTo(Exchange.BINANCE)
+            verify { premiumCacheService.saveToSeconds(match { it.observedAt == fxAt }) }
+            verify { premiumCacheService.saveHistory(match { it.observedAt == fxAt }) }
         }
 
         @Test
@@ -220,10 +255,9 @@ class PremiumRealtimeJobTest {
             val fxRate = BigDecimal("1432.6")
             val premium = premiumData()
 
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.get("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrw() } returns fxRate
-            every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
             every { premiumCacheService.saveHistory(any()) } throws RuntimeException("history error")
 
             // when
@@ -231,14 +265,14 @@ class PremiumRealtimeJobTest {
 
             // then
             assertThat(result).isEqualTo(JobResult.Success)
-            verify { premiumCacheService.save(premium) }
-            verify { premiumCacheService.saveToSeconds(premium) }
+            verify { premiumCacheService.save(any()) }
+            verify { premiumCacheService.saveToSeconds(any()) }
         }
 
         @Test
         fun `예외 발생 시 Failure를 반환한다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } throws RuntimeException("redis error")
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } throws RuntimeException("redis error")
 
             // when
             val result = job.run()
@@ -256,10 +290,9 @@ class PremiumRealtimeJobTest {
             val fxRate = BigDecimal("1432.6")
             val premium = premiumData()
 
-            every { tickerCacheService.get("bithumb", "btc") } returns bithumb
-            every { tickerCacheService.get("binance", "btc") } returns binance
-            every { fxCacheService.getUsdKrw() } returns fxRate
-            every { premiumCalculator.calculate(bithumb, binance, fxRate) } returns premium
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } returns bithumb
+            every { tickerCacheService.getSnapshot("binance", "btc") } returns binance
+            every { fxCacheService.getUsdKrwSnapshot() } returns fxData(fxRate.toPlainString())
 
             // when
             val result = job.run()
@@ -269,7 +302,7 @@ class PremiumRealtimeJobTest {
             verify(exactly = 1) {
                 eventPublisher.publishEvent(
                     match<PremiumUpdatedEvent> {
-                        it.symbol == "btc" && it.premiumRate == BigDecimal("1.2800")
+                        it.symbol.equals("btc", ignoreCase = true) && it.premiumRate == BigDecimal("1.2954")
                     },
                 )
             }
@@ -278,7 +311,7 @@ class PremiumRealtimeJobTest {
         @Test
         fun `실패 시 PremiumUpdatedEvent를 publish 하지 않는다`() {
             // given
-            every { tickerCacheService.get("bithumb", "btc") } throws RuntimeException("cache error")
+            every { tickerCacheService.getSnapshot("bithumb", "btc") } throws RuntimeException("cache error")
 
             // when
             val result = job.run()

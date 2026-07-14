@@ -46,15 +46,23 @@ class TickerCacheReader(
         }
 
         return try {
+            val cachedExchange = hash["exchange"] ?: return null
+            val cachedSymbol = hash["symbol"] ?: return null
+            if (!cachedExchange.equals(exchange, ignoreCase = true) ||
+                !cachedSymbol.equals(symbol, ignoreCase = true)
+            ) {
+                log.warn("Ticker cache identity mismatch: key={}, payload={}:{}", key, cachedExchange, cachedSymbol)
+                return null
+            }
+
             CachedTicker(
-                exchange = hash["exchange"] ?: return null,
-                symbol = hash["symbol"] ?: return null,
+                exchange = cachedExchange,
+                symbol = cachedSymbol,
                 currency = hash["currency"] ?: return null,
                 price = hash["price"]?.toBigDecimalOrNull() ?: return null,
                 volume = hash["volume"]?.takeIf { it.isNotBlank() }?.toBigDecimalOrNull(),
                 timestamp = hash["timestamp"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) }
-                    ?: Instant.now(),
+                    ?.let { Instant.ofEpochMilli(it) } ?: return null,
             ).also {
                 log.debug("Ticker cache hit: {} = {}", key, it.price)
             }

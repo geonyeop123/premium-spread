@@ -7,6 +7,9 @@ import org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.Date
 
 class JwtTokenProviderTest {
@@ -22,6 +25,7 @@ class JwtTokenProviderTest {
             issuer = TEST_ISSUER,
             audience = TEST_AUDIENCE,
             clockSkewSeconds = 30L,
+            clock = FIXED_CLOCK,
         )
     }
 
@@ -39,6 +43,7 @@ class JwtTokenProviderTest {
             assertThat(valid.email).isEqualTo("test@example.com")
             assertThat(valid.memberId).isEqualTo(1L)
             assertThat(valid.tokenType).isEqualTo(JwtTokenProvider.TOKEN_TYPE_ACCESS)
+            assertThat(valid.claims.issuedAt).isEqualTo(Date.from(FIXED_NOW))
         }
     }
 
@@ -88,6 +93,7 @@ class JwtTokenProviderTest {
                 issuer = TEST_ISSUER,
                 audience = TEST_AUDIENCE,
                 clockSkewSeconds = 30L,
+                clock = FIXED_CLOCK,
             )
             val token = otherProvider.generateAccessToken(1L, "test@example.com")
 
@@ -192,10 +198,11 @@ class JwtTokenProviderTest {
         issuer = issuer,
         audience = audience,
         clockSkewSeconds = clockSkewSeconds,
+        clock = FIXED_CLOCK,
     )
 
     private fun signedToken(expirationOffsetMs: Long): String {
-        val now = Date()
+        val now = Date.from(FIXED_NOW)
         return Jwts.builder()
             .issuer(TEST_ISSUER)
             .subject("test@example.com")
@@ -211,5 +218,7 @@ class JwtTokenProviderTest {
     companion object {
         private const val TEST_ISSUER = "premium-spread"
         private const val TEST_AUDIENCE = "premium-spread-api"
+        private val FIXED_NOW: Instant = Instant.parse("2026-07-14T03:00:00Z")
+        private val FIXED_CLOCK: Clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC)
     }
 }

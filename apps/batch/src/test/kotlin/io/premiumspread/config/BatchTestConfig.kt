@@ -30,6 +30,7 @@ class BatchTestConfig {
 
     @Bean
     fun batchSchemaInitializer(jdbcTemplate: JdbcTemplate) = InitializingBean {
+        jdbcTemplate.execute("SET time_zone = '+00:00'")
         val sql = ClassPathResource("batch-schema.sql").inputStream.bufferedReader().readText()
         sql.split(";")
             .map { it.trim() }

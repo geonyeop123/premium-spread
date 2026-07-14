@@ -56,7 +56,7 @@ class ExchangeRateClient(
                     ?: throw ExchangeRateApiException("No conversion rate in response"),
                 timestamp = response.timeLastUpdateUnix
                     ?.let { Instant.ofEpochSecond(it) }
-                    ?: Instant.now(),
+                    ?: throw ExchangeRateApiException("No observation timestamp in response"),
             ).also {
                 log.debug("Fetched exchange rate: {}/{} = {}", baseCurrency, quoteCurrency, it.rate)
                 meterRegistry.counter("fx.fetch.success", "provider", PROVIDER).increment()

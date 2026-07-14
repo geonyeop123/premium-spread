@@ -7,8 +7,9 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.math.BigDecimal
+import java.sql.Timestamp
+import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 @DisplayName("PremiumAggregationRepository")
 class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
@@ -16,8 +17,8 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
     @Autowired
     lateinit var repository: PremiumAggregationRepository
 
-    private val minuteAt = LocalDateTime.of(2024, 1, 29, 12, 0, 0)
-    private val hourAt = LocalDateTime.of(2024, 1, 29, 12, 0, 0)
+    private val minuteAt = Instant.parse("2024-01-29T12:00:00Z")
+    private val hourAt = Instant.parse("2024-01-29T12:00:00Z")
     private val dayAt = LocalDate.of(2024, 1, 29)
 
     private fun agg(
@@ -54,6 +55,11 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
             assertThat(result.open).isEqualByComparingTo("1.50")
             assertThat(result.close).isEqualByComparingTo("2.00")
             assertThat(result.count).isEqualTo(10)
+            val storedAt = jdbcTemplate.queryForObject(
+                "SELECT minute_at FROM premium_minute WHERE symbol = 'BTC'",
+                Timestamp::class.java,
+            )
+            assertThat(storedAt!!.toInstant()).isEqualTo(minuteAt)
         }
 
         @Test
@@ -79,7 +85,7 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         fun `여러 분 데이터 중 가장 최근 minute_at의 데이터를 반환한다`() {
             // given
             repository.saveMinute("btc", minuteAt, agg(high = "2.00"))
-            repository.saveMinute("btc", minuteAt.plusMinutes(1), agg(high = "3.00"))
+            repository.saveMinute("btc", minuteAt.plusSeconds(60), agg(high = "3.00"))
 
             // when
             val result = repository.findLatestMinute("btc")
@@ -108,6 +114,11 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("3.00")
             assertThat(result.count).isEqualTo(60)
+            val storedAt = jdbcTemplate.queryForObject(
+                "SELECT hour_at FROM premium_hour WHERE symbol = 'BTC'",
+                Timestamp::class.java,
+            )
+            assertThat(storedAt!!.toInstant()).isEqualTo(hourAt)
         }
 
         @Test

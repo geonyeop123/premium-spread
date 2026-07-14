@@ -8,6 +8,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
+import java.util.concurrent.TimeUnit
 
 @ConfigurationProperties(prefix = "warmup")
 data class WarmupProperties(
@@ -48,7 +49,7 @@ class CacheWarmupService(
         }
 
         log.info("Cache warmup started")
-        val startTime = System.currentTimeMillis()
+        val startNanos = System.nanoTime()
         var successCount = 0
         var failCount = 0
 
@@ -78,7 +79,7 @@ class CacheWarmupService(
             }
         }
 
-        val elapsed = System.currentTimeMillis() - startTime
+        val elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
         log.info("Cache warmup completed in {}ms (success={}, fail={})", elapsed, successCount, failCount)
     }
 }

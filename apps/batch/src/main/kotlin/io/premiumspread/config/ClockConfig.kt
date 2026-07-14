@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Configuration
 import java.time.Clock
 
 /**
- * `Clock` 빈 — `Instant.now(clock)` 사용처(WebSocket ingestion 등)에서 테스트 제어 가능.
+ * 모든 시간 의존 로직이 공유하는 UTC `Clock` 빈.
  */
 @Configuration
 class ClockConfig {

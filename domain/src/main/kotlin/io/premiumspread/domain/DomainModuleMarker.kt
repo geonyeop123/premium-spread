@@ -1,4 +1,4 @@
 package io.premiumspread.domain
 
-/** Identifies the independently buildable domain module to architecture tests. */
+/** Marker used by configuration and architecture tests to identify the Domain module. */
 object DomainModuleMarker

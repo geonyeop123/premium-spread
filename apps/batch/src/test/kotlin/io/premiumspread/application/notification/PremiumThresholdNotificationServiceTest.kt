@@ -2,8 +2,11 @@ package io.premiumspread.application.notification
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.cache.NotificationCooldownStore
+import io.premiumspread.config.AggregationProperties
+import io.premiumspread.email.EmailMessage
 import io.premiumspread.email.EmailDeliveryException
 import io.premiumspread.email.EmailSender
 import io.premiumspread.repository.ActiveSubscriptionReadRepository
@@ -12,13 +15,23 @@ import io.premiumspread.repository.ThresholdDirectionView
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 class PremiumThresholdNotificationServiceTest {
 
     private val readRepo = mockk<ActiveSubscriptionReadRepository>(relaxed = true)
     private val cooldownStore = mockk<NotificationCooldownStore>(relaxed = true)
     private val emailSender = mockk<EmailSender>(relaxed = true)
-    private val sut = PremiumThresholdNotificationService(readRepo, cooldownStore, emailSender)
+    private val clock = Clock.fixed(Instant.parse("2026-05-12T00:00:00Z"), ZoneOffset.UTC)
+    private val sut = PremiumThresholdNotificationService(
+        readRepo,
+        cooldownStore,
+        emailSender,
+        clock,
+        AggregationProperties(zone = "Asia/Seoul"),
+    )
 
     private fun view(
         id: Long,
@@ -80,6 +93,19 @@ class PremiumThresholdNotificationServiceTest {
         verify(exactly = 1) { cooldownStore.tryAcquireCooldown(1L) }
         verify(exactly = 1) { emailSender.send(any()) }
         verify(exactly = 0) { cooldownStore.release(any()) }
+    }
+
+    @Test
+    fun `알림 발생 시각은 business aggregation zone과 offset을 포함한다`() {
+        val v = view(1L, ThresholdDirectionView.ABOVE, "5.00")
+        val message = slot<EmailMessage>()
+        every { readRepo.findActiveBySymbol("BTC") } returns listOf(v)
+        every { cooldownStore.tryAcquireCooldown(1L) } returns true
+        every { emailSender.send(capture(message)) } returns Unit
+
+        sut.process(PremiumUpdatedEvent("BTC", BigDecimal("5.20")))
+
+        assertThat(message.captured.text).contains("발생 시각: 2026-05-12T09:00+09:00[Asia/Seoul]")
     }
 
     @Test

@@ -6,6 +6,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
+import java.time.Clock
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -13,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference
 @Component
 class WebSocketMetrics(
     private val registry: MeterRegistry,
+    private val clock: Clock,
 ) {
     private val connectionStates = ConcurrentHashMap<String, AtomicReference<Double>>()
     private val lastMessageMs = ConcurrentHashMap<String, AtomicLong>()
@@ -67,7 +69,7 @@ class WebSocketMetrics(
     fun onMessageReceivedAt(exchange: String, epochMs: Long) {
         val ref = lastMessageMs.computeIfAbsent(exchange) {
             val initial = AtomicLong(epochMs)
-            Gauge.builder("ws.last.message.age", initial) { (System.currentTimeMillis() - it.get()) / 1000.0 }
+            Gauge.builder("ws.last.message.age", initial) { (clock.millis() - it.get()) / 1000.0 }
                 .tag("exchange", exchange)
                 .description("Seconds since last received WebSocket message")
                 .register(registry)
@@ -75,4 +77,6 @@ class WebSocketMetrics(
         }
         ref.set(epochMs)
     }
+
+    fun currentEpochMilli(): Long = clock.millis()
 }

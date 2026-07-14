@@ -11,14 +11,18 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.http.HttpStatus
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 class GlobalExceptionHandlerTest {
 
     private lateinit var handler: GlobalExceptionHandler
+    private val fixedNow = Instant.parse("2026-07-14T03:00:00Z")
 
     @BeforeEach
     fun setUp() {
-        handler = GlobalExceptionHandler()
+        handler = GlobalExceptionHandler(Clock.fixed(fixedNow, ZoneOffset.UTC))
     }
 
     @Nested
@@ -32,6 +36,7 @@ class GlobalExceptionHandlerTest {
             assertThat(response.body!!.code).isEqualTo("DUPLICATE_EMAIL")
             assertThat(response.body!!.message).isEqualTo("이미 사용 중인 이메일입니다.")
             assertThat(response.body!!.message).doesNotContain("test@example.com")
+            assertThat(response.body!!.timestamp).isEqualTo(fixedNow)
         }
     }
 

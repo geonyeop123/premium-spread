@@ -71,7 +71,7 @@ class PremiumResponse private constructor() {
         companion object {
             fun from(snapshot: PremiumSnapshot): Current = Current(
                 symbol = snapshot.symbol,
-                premiumRate = snapshot.premiumRate,
+                premiumRate = snapshot.apiDisplayPremiumRate,
                 koreaPrice = snapshot.koreaPrice,
                 foreignPrice = snapshot.foreignPrice,
                 foreignPriceInKrw = snapshot.foreignPriceInKrw,

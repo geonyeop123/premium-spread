@@ -89,7 +89,7 @@ class BithumbWebSocketClient(
                 ?: return recordParseError("invalid price: ${content.closePrice}")
             val symbol = content.symbol.substringBefore("_")
             val currency = content.symbol.substringAfter("_", "KRW")
-            // exchange timestamp 파싱 실패 시 메시지 폐기 (synthetic Instant.now() 사용 금지 — stale/replay 검출 정확성 보존)
+            // exchange timestamp 파싱 실패 시 메시지 폐기 (현재 시각 합성 금지 — stale/replay 검출 정확성 보존)
             val timestamp = parseTimestamp(content.date, content.time)
                 ?: return recordParseError("missing or malformed date/time: ${content.date} ${content.time}")
 

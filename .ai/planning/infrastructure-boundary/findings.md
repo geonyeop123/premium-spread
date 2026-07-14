@@ -93,3 +93,20 @@ SHA를 기록하거나 별도 progress commit을 허용해야 한다.
 
 F-03의 fixture drift는 Phase 2, retention은 Phase 3, Web lint는 Phase 5, quality/security 도구와
 npm audit은 Phase 9에서 완료 조건으로 해소한다.
+
+## 5. Phase 3 실행 중 추가 확인사항
+
+### F-11 aggregation cache는 현재 coverage를 증명할 수 없음
+
+기존 Redis ZSET에는 요청 기간 전체가 적재됐음을 나타내는 coverage marker가 없다. parse 가능한 row가 하나라도
+있다는 이유로 cache hit를 확정하면 eviction/rebuild 중 DB의 과거 bucket이 누락된다. Phase 3에서는 cache와
+DB를 `observedAt`으로 병합하고 동일 bucket은 DB를 정본으로 삼아 정확성을 우선했다. 향후 DB 조회를 생략하는
+최적화가 필요하면 versioned payload에 authoritative range/watermark를 추가하고 adapter integration test로
+완전성을 증명해야 한다.
+
+### F-12 MySQL Testcontainers TLS 인증서 시각 의존
+
+Docker VM/WSL/JVM 시각 보정 직후 MySQL 컨테이너가 생성한 self-signed certificate의 `notBefore`가 JVM 현재시각보다
+앞서 전체 context가 연쇄 실패할 수 있었다. 테스트와 local production URL은 원래 TLS를 사용하지 않는 정책이므로
+공통 fixture와 별도 V12 safety container URL에 `sslMode=DISABLED`를 명시했다. 외부 DB TLS 검증은 이 fixture와
+분리된 환경별 smoke/CI 책임으로 유지한다.

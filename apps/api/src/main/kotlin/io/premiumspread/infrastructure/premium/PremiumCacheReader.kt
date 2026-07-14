@@ -1,5 +1,8 @@
 package io.premiumspread.infrastructure.premium
 
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.redis.RedisKeyGenerator
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -18,6 +21,9 @@ data class CachedPremium(
     val foreignPriceInKrw: BigDecimal,
     val fxRate: BigDecimal,
     val observedAt: Instant,
+    val pair: MarketPair = MarketPair.default(Symbol(symbol)),
+    val fxSource: Exchange = Exchange.FX_PROVIDER,
+    val fxObservedAt: Instant = observedAt,
 )
 
 /**
@@ -54,16 +60,49 @@ class PremiumCacheReader(
         }
 
         return try {
+            val cachedSymbol = hash["symbol"] ?: return null
+            if (!cachedSymbol.equals(symbol, ignoreCase = true)) {
+                log.warn("Premium cache identity mismatch: key={}, payload={}", key, cachedSymbol)
+                return null
+            }
+            val observedAt = hash["observed_at"]?.toLongOrNull()
+                ?.let { Instant.ofEpochMilli(it) } ?: return null
+            val metadataKeys = listOf("korea_exchange", "foreign_exchange", "fx_source", "fx_observed_at")
+            val metadataCount = metadataKeys.count(hash::containsKey)
+            if (metadataCount != 0 && metadataCount != metadataKeys.size) return null
+
+            val pair = if (metadataCount == 0) {
+                MarketPair.default(Symbol(cachedSymbol))
+            } else {
+                MarketPair(
+                    symbol = Symbol(cachedSymbol),
+                    koreaExchange = Exchange.valueOf(hash.getValue("korea_exchange")),
+                    foreignExchange = Exchange.valueOf(hash.getValue("foreign_exchange")),
+                )
+            }
+            val fxSource = if (metadataCount == 0) {
+                Exchange.FX_PROVIDER
+            } else {
+                Exchange.valueOf(hash.getValue("fx_source"))
+            }
+            val fxObservedAt = if (metadataCount == 0) {
+                observedAt
+            } else {
+                hash.getValue("fx_observed_at").toLongOrNull()
+                    ?.let { Instant.ofEpochMilli(it) } ?: return null
+            }
+
             CachedPremium(
-                symbol = hash["symbol"] ?: return null,
+                symbol = cachedSymbol,
                 premiumRate = hash["rate"]?.toBigDecimalOrNull() ?: return null,
                 koreaPrice = hash["korea_price"]?.toBigDecimalOrNull() ?: return null,
                 foreignPrice = hash["foreign_price"]?.toBigDecimalOrNull() ?: return null,
                 foreignPriceInKrw = hash["foreign_price_krw"]?.toBigDecimalOrNull() ?: return null,
                 fxRate = hash["fx_rate"]?.toBigDecimalOrNull() ?: return null,
-                observedAt = hash["observed_at"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) }
-                    ?: Instant.now(),
+                observedAt = observedAt,
+                pair = pair,
+                fxSource = fxSource,
+                fxObservedAt = fxObservedAt,
             ).also {
                 log.debug("Premium cache hit: {} = {}%", key, it.premiumRate)
             }
@@ -99,7 +138,7 @@ class PremiumCacheReader(
                     koreaPrice = parts[1].toBigDecimalOrNull() ?: return@mapNotNull null,
                     foreignPrice = parts[2].toBigDecimalOrNull() ?: return@mapNotNull null,
                     timestamp = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) }
-                        ?: Instant.now(),
+                        ?: return@mapNotNull null,
                 )
             } catch (e: Exception) {
                 log.warn("Failed to parse premium history entry", e)

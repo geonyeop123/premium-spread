@@ -3,6 +3,7 @@ package io.premiumspread.infrastructure.exchangerate
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.premiumspread.domain.ticker.Exchange
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -37,6 +38,7 @@ class FxCacheReaderTest {
                 "quote" to "KRW",
                 "rate" to "1432.60",
                 "timestamp" to "1704067200000",
+                "source" to "FX_PROVIDER",
             )
 
             val result = fxCacheReader.get("usd", "krw")
@@ -45,6 +47,45 @@ class FxCacheReaderTest {
             assertThat(result!!.baseCurrency).isEqualTo("USD")
             assertThat(result.quoteCurrency).isEqualTo("KRW")
             assertThat(result.rate).isEqualByComparingTo("1432.60")
+            assertThat(result.source).isEqualTo(Exchange.FX_PROVIDER)
+        }
+
+        @Test
+        fun `legacy payload에 source가 없으면 기본 provider로 호환한다`() {
+            every { hashOps.entries("fx:usd:krw") } returns mapOf(
+                "base" to "USD",
+                "quote" to "KRW",
+                "rate" to "1432.60",
+                "timestamp" to "1704067200000",
+            )
+
+            assertThat(fxCacheReader.get("usd", "krw")!!.source).isEqualTo(Exchange.FX_PROVIDER)
+        }
+
+        @Test
+        fun `알 수 없는 source면 손상된 캐시로 보고 null을 반환한다`() {
+            every { hashOps.entries("fx:usd:krw") } returns mapOf(
+                "base" to "USD",
+                "quote" to "KRW",
+                "rate" to "1432.60",
+                "timestamp" to "1704067200000",
+                "source" to "UNKNOWN",
+            )
+
+            assertThat(fxCacheReader.get("usd", "krw")).isNull()
+        }
+
+        @Test
+        fun `요청 통화쌍과 payload 통화쌍이 다르면 null을 반환한다`() {
+            every { hashOps.entries("fx:usd:krw") } returns mapOf(
+                "base" to "EUR",
+                "quote" to "KRW",
+                "rate" to "1600.00",
+                "timestamp" to "1704067200000",
+                "source" to "FX_PROVIDER",
+            )
+
+            assertThat(fxCacheReader.get("usd", "krw")).isNull()
         }
 
         @Test
@@ -84,7 +125,7 @@ class FxCacheReaderTest {
         }
 
         @Test
-        fun `timestamp가 없으면 현재 시각으로 대체하여 반환한다`() {
+        fun `timestamp가 없으면 손상된 캐시로 보고 null을 반환한다`() {
             every { hashOps.entries("fx:usd:krw") } returns mapOf(
                 "base" to "USD",
                 "quote" to "KRW",
@@ -93,8 +134,7 @@ class FxCacheReaderTest {
 
             val result = fxCacheReader.get("usd", "krw")
 
-            assertThat(result).isNotNull
-            assertThat(result!!.rate).isEqualByComparingTo("1432.60")
+            assertThat(result).isNull()
         }
 
         @Test

@@ -6,8 +6,14 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import java.time.Clock
+import java.time.ZoneOffset
+import io.premiumspread.config.AggregationProperties
 
 class AggregationJobTest {
+
+    private val clock = Clock.fixed(Instant.parse("2026-05-12T12:34:56Z"), ZoneOffset.UTC)
+    private val windowPolicy = AggregationWindowPolicy(AggregationProperties())
 
     @Nested
     @DisplayName("실행")
@@ -20,6 +26,8 @@ class AggregationJobTest {
             val job = AggregationJob(
                 reader = { _, _ -> "some-data" },
                 writer = { _, _, _ -> writerCalled = true },
+                clock = clock,
+                windowPolicy = windowPolicy,
             )
 
             // when
@@ -36,6 +44,8 @@ class AggregationJobTest {
             val job = AggregationJob(
                 reader = { _, _ -> null },
                 writer = { _, _, _ -> },
+                clock = clock,
+                windowPolicy = windowPolicy,
             )
 
             // when
@@ -52,6 +62,8 @@ class AggregationJobTest {
             val job = AggregationJob(
                 reader = { _, _ -> throw RuntimeException("read error") },
                 writer = { _, _, _ -> },
+                clock = clock,
+                windowPolicy = windowPolicy,
             )
 
             // when
@@ -68,6 +80,8 @@ class AggregationJobTest {
             val job = AggregationJob(
                 reader = { _, _ -> "data" },
                 writer = { _, _, _ -> throw RuntimeException("write error") },
+                clock = clock,
+                windowPolicy = windowPolicy,
             )
 
             // when
@@ -90,6 +104,8 @@ class AggregationJobTest {
                     null
                 },
                 writer = { _, _, _ -> },
+                clock = clock,
+                windowPolicy = windowPolicy,
             )
 
             // when
@@ -110,6 +126,8 @@ class AggregationJobTest {
                 writer = { data, _, _ ->
                     capturedData = data
                 },
+                clock = clock,
+                windowPolicy = windowPolicy,
             )
 
             // when

@@ -1,6 +1,10 @@
 package io.premiumspread.cache
 
 import io.premiumspread.redis.AggregationTimeUnit
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.premium.PremiumSnapshot
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
@@ -12,31 +16,54 @@ import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
+import java.time.Clock
 
 /**
  * 프리미엄 캐시 데이터
  */
 data class PremiumCacheData(
-    val symbol: String,
     val premiumRate: BigDecimal,
     val koreaPrice: BigDecimal,
     val foreignPrice: BigDecimal,
     val foreignPriceInKrw: BigDecimal,
     val fxRate: BigDecimal,
     val observedAt: Instant,
-)
+    val pair: MarketPair,
+    val fxSource: Exchange = Exchange.FX_PROVIDER,
+    val fxObservedAt: Instant = observedAt,
+) {
+    val symbol: String
+        get() = pair.symbol.code
+
+    companion object {
+        fun from(snapshot: PremiumSnapshot): PremiumCacheData = PremiumCacheData(
+            premiumRate = snapshot.premiumRate,
+            koreaPrice = snapshot.koreaPrice,
+            foreignPrice = snapshot.foreignPrice,
+            foreignPriceInKrw = snapshot.foreignPriceInKrw,
+            fxRate = snapshot.fxRate,
+            observedAt = snapshot.observedAt,
+            pair = snapshot.pair,
+            fxSource = snapshot.fxSource,
+            fxObservedAt = snapshot.fxObservedAt,
+        )
+    }
+}
 
 @Service
 class PremiumCacheService(
     private val redisTemplate: StringRedisTemplate,
     private val timeSeriesCache: TimeSeriesCacheSupport,
+    private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
      * 프리미엄 데이터 저장
      */
-    fun save(premium: PremiumCacheData) {
+    fun save(snapshot: PremiumSnapshot) {
+        val premium = snapshot.toLegacyCacheData()
+        // TODO(Phase 4): premium.pair canonical key 기반 v2 dual-write로 전환한다.
         val key = RedisKeyGenerator.premiumKey(premium.symbol.lowercase())
 
         val hash = mapOf(
@@ -47,6 +74,10 @@ class PremiumCacheService(
             "foreign_price_krw" to premium.foreignPriceInKrw.toPlainString(),
             "fx_rate" to premium.fxRate.toPlainString(),
             "observed_at" to premium.observedAt.toEpochMilli().toString(),
+            "korea_exchange" to premium.pair.koreaExchange.name,
+            "foreign_exchange" to premium.pair.foreignExchange.name,
+            "fx_source" to premium.fxSource.name,
+            "fx_observed_at" to premium.fxObservedAt.toEpochMilli().toString(),
         )
 
         redisTemplate.opsForHash<String, String>().putAll(key, hash)
@@ -58,7 +89,8 @@ class PremiumCacheService(
     /**
      * 프리미엄 히스토리 저장 (Sorted Set)
      */
-    fun saveHistory(premium: PremiumCacheData) {
+    fun saveHistory(snapshot: PremiumSnapshot) {
+        val premium = snapshot.toLegacyCacheData()
         val key = RedisKeyGenerator.premiumHistoryKey(premium.symbol.lowercase())
         val value = "${premium.premiumRate}:${premium.koreaPrice}:${premium.foreignPrice}"
 
@@ -69,6 +101,7 @@ class PremiumCacheService(
      * 프리미엄 데이터 조회
      */
     fun get(symbol: String): PremiumCacheData? {
+        // TODO(Phase 4): MarketPair를 입력받는 v2 read를 우선하고 이 legacy read를 fallback으로 제한한다.
         val key = RedisKeyGenerator.premiumKey(symbol.lowercase())
 
         val hash = redisTemplate.opsForHash<String, String>().entries(key)
@@ -77,16 +110,25 @@ class PremiumCacheService(
         }
 
         return try {
+            val storedSymbol = hash["symbol"] ?: return null
+            if (!storedSymbol.equals(symbol, ignoreCase = true)) {
+                log.warn("Premium cache identity mismatch: key={}, symbol={}", key, storedSymbol)
+                return null
+            }
+            val observedAt = hash["observed_at"]?.toLongOrNull()
+                ?.let { Instant.ofEpochMilli(it) }
+                ?: return null
+            val metadata = parseMetadata(hash, storedSymbol, observedAt) ?: return null
             PremiumCacheData(
-                symbol = hash["symbol"] ?: return null,
                 premiumRate = hash["rate"]?.toBigDecimalOrNull() ?: return null,
                 koreaPrice = hash["korea_price"]?.toBigDecimalOrNull() ?: return null,
                 foreignPrice = hash["foreign_price"]?.toBigDecimalOrNull() ?: return null,
                 foreignPriceInKrw = hash["foreign_price_krw"]?.toBigDecimalOrNull() ?: return null,
                 fxRate = hash["fx_rate"]?.toBigDecimalOrNull() ?: return null,
-                observedAt = hash["observed_at"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) }
-                    ?: Instant.now(),
+                observedAt = observedAt,
+                pair = metadata.pair,
+                fxSource = metadata.fxSource,
+                fxObservedAt = metadata.fxObservedAt,
             )
         } catch (e: Exception) {
             log.warn("Failed to parse premium from cache: {}", key, e)
@@ -99,7 +141,8 @@ class PremiumCacheService(
     /**
      * 초당 데이터 ZSet에 저장 (DB INSERT 대체)
      */
-    fun saveToSeconds(premium: PremiumCacheData) {
+    fun saveToSeconds(snapshot: PremiumSnapshot) {
+        val premium = snapshot.toLegacyCacheData()
         val key = RedisKeyGenerator.premiumSecondsKey(premium.symbol.lowercase())
         val value = "${premium.premiumRate}:${premium.koreaPrice}:${premium.foreignPrice}:${premium.fxRate}"
 
@@ -249,7 +292,7 @@ class PremiumCacheService(
                 currentTimestamp = hash["current_ts"]?.toLongOrNull()
                     ?.let { Instant.ofEpochMilli(it) } ?: return null,
                 updatedAt = hash["updated_at"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) } ?: Instant.now(),
+                    ?.let { Instant.ofEpochMilli(it) } ?: return null,
             )
         } catch (e: Exception) {
             log.warn("Failed to parse summary from cache: {}", key, e)
@@ -272,7 +315,7 @@ class PremiumCacheService(
             low = rates.minOf { it },
             current = current,
             currentTimestamp = currentTs,
-            updatedAt = Instant.now(),
+            updatedAt = clock.instant(),
         )
     }
 
@@ -295,7 +338,7 @@ class PremiumCacheService(
             low = data.minOf { it.second.low },
             current = lastAgg.close,
             currentTimestamp = data.last().first,
-            updatedAt = Instant.now(),
+            updatedAt = clock.instant(),
         )
     }
 
@@ -348,6 +391,57 @@ class PremiumCacheService(
                 .divide(totalCount.toBigDecimal(), 4, RoundingMode.HALF_UP),
             count = totalCount,
             fxRate = aggs.last().fxRate,
+        )
+    }
+
+    private fun PremiumSnapshot.toLegacyCacheData(): PremiumCacheData {
+        val defaultPair = MarketPair.default(pair.symbol)
+        require(pair == defaultPair) {
+            "Legacy premium cache writer only supports the default MarketPair until Phase 4: $pair"
+        }
+        return PremiumCacheData.from(this)
+    }
+
+    private fun parseMetadata(
+        hash: Map<String, String>,
+        symbol: String,
+        observedAt: Instant,
+    ): PremiumMetadata? {
+        val presentKeys = PREMIUM_METADATA_KEYS.filter(hash::containsKey)
+        if (presentKeys.isEmpty()) {
+            return PremiumMetadata(
+                pair = MarketPair.default(Symbol(symbol)),
+                fxSource = Exchange.FX_PROVIDER,
+                fxObservedAt = observedAt,
+            )
+        }
+        if (presentKeys.size != PREMIUM_METADATA_KEYS.size) return null
+
+        return PremiumMetadata(
+            pair = MarketPair(
+                symbol = Symbol(symbol),
+                koreaExchange = Exchange.valueOf(hash.getValue("korea_exchange")),
+                foreignExchange = Exchange.valueOf(hash.getValue("foreign_exchange")),
+            ),
+            fxSource = Exchange.valueOf(hash.getValue("fx_source")),
+            fxObservedAt = hash.getValue("fx_observed_at").toLongOrNull()
+                ?.let(Instant::ofEpochMilli)
+                ?: return null,
+        )
+    }
+
+    private data class PremiumMetadata(
+        val pair: MarketPair,
+        val fxSource: Exchange,
+        val fxObservedAt: Instant,
+    )
+
+    private companion object {
+        val PREMIUM_METADATA_KEYS = setOf(
+            "korea_exchange",
+            "foreign_exchange",
+            "fx_source",
+            "fx_observed_at",
         )
     }
 }

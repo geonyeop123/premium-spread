@@ -20,7 +20,6 @@ class NotificationSubscriptionRepositoryImpl(
         jpaRepository.findAllByMemberIdAndDeletedAtIsNull(memberId)
 
     override fun delete(subscription: NotificationSubscription) {
-        subscription.delete()
         jpaRepository.save(subscription)
     }
 }

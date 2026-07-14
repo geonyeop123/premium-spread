@@ -42,6 +42,7 @@ dependencies {
 
     // WebFlux (External API 호출용)
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // Coroutines (비동기 처리)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:${project.properties["kotlinCoroutinesVersion"]}")

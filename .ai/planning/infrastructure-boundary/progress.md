@@ -6,8 +6,9 @@
 |---|---|---|---|---|
 | 0. 기준선/운영 데이터 점검 | COMPLETE | `cc7030e` | `origin/refactor/infrastructure-boundary` | unit 443 green, Batch integration 64개 중 25개 known failures 승인 |
 | 1. 긴급 운영 안전장치 | COMPLETE | `e1f1487` | `origin/refactor/infrastructure-boundary` | unit 473 green, API integration 91개 중 90 green/1 approved disabled |
-| 2. Gradle 모듈 경계/Architecture Test | COMPLETE | 이번 Phase commit | `origin/refactor/infrastructure-boundary` | unit 505 green, architecture 11 green, Batch integration은 Phase 3 retention 2건만 실패 |
-| 3~10 | NOT_STARTED | 없음 | 없음 | Phase 3 공통 Domain 추출 대기 |
+| 2. Gradle 모듈 경계/Architecture Test | COMPLETE | `8268148` | `origin/refactor/infrastructure-boundary` | unit 505 green, architecture 11 green, Batch integration은 Phase 3 retention 2건만 실패 |
+| 3. 공통 Domain/계산/시간 정책 | COMPLETE | 이번 Phase commit | `origin/refactor/infrastructure-boundary` | Domain 103/API unit 240/Batch unit 184/Redis 8/Architecture 11/API integration 96 green+1 approved disabled/Batch integration 68 green |
+| 4~10 | NOT_STARTED | 없음 | 없음 | Phase 4 착수 대기 |
 
 ## Phase 0 실행 기록
 
@@ -72,7 +73,38 @@
 - 스펙 리뷰와 코드 리뷰에서 발견한 edge 단위 allowlist, source inline 우회, forbidden 기술군 누락, Domain 외부
   의존 누락, Docker dual-JAR 문제를 모두 수정했고 최종 리뷰는 BLOCKER/MAJOR/MINOR 없이 PASS했다.
 
+## Phase 3 실행 기록
+
+- API 내부 Domain 53개 main source와 관련 테스트를 독립 `domain` 모듈로 이동하고, 앱의 기존 Domain source는
+  0개로 만들었다. `BaseEntity`도 Domain common으로 이동해 `Instant`, Clock 기반 JPA auditing,
+  명시적 `delete(now)`와 proxy-safe 영속 identity equality를 적용했다.
+- Entity data class를 일반 class로 바꾸고 `Symbol`, `Quote`, `MarketPair` value contract를 정리했다.
+  `MarketPair`는 symbol + 한국/해외 거래소를 canonical identity로 사용하며 기존 API는
+  BITHUMB/BINANCE default pair로 호환한다.
+- API와 Batch의 Premium 계산을 단일 `PremiumPolicy`로 통합하고 계산/저장/entity/display scale을 분리했다.
+  Batch의 `PremiumCalculator`와 복제 equivalence test는 제거하고 양 앱이 Domain policy를 직접 검증한다.
+- Premium/Ticker/FX snapshot과 Port에 pair, FX source/observedAt을 보존한다. Redis payload는 요청 key와
+  payload identity를 검증하며 legacy metadata 전체 부재만 default로 허용하고 부분/손상 payload는 miss 처리한다.
+- Redis aggregation 범위를 `[from,to)`로 통일하고, 손상 row가 섞이면 부분 결과 대신 cache miss로 처리한다.
+  coverage marker가 없는 부분 cache는 DB와 `observedAt` 기준 병합하고 동일 bucket은 DB를 정본으로 삼아
+  eviction/rebuild 중 차트가 잘리지 않게 했다. nullable FX trailing-blank writer payload도 `null`로 복원한다.
+- API/Batch의 직접 현재시각 사용을 Clock 또는 명시적 Instant로 교체했다. minute/hour JDBC는 UTC
+  `Instant`/`Timestamp`, day는 configured business zone의 `LocalDate`로 통일하고 cron zone과 bounded metric을
+  같은 `aggregation.zone`에서 파생한다.
+- `TickerCacheService` retention을 저장 데이터의 score/명시적 기준시각으로 수정해 Phase 0의 2개 회귀를
+  해소했고 Batch integration 68개 전체가 성공했다.
+- MySQL connector/session/Hibernate timezone을 UTC로 고정하고 JVM timezone 독립 `DATETIME(6)` round-trip을
+  검증했다. Testcontainers MySQL은 로컬 production 정책과 동일하게 TLS를 끄도록 `sslMode=DISABLED`를
+  명시해 Docker/WSL 시각 보정 중 생성 인증서의 `NotYetValid` 비결정 실패를 제거했다.
+- 최종 검증 결과: Domain 103, API unit 240, Batch unit 184, Redis 8, Architecture 11, Batch integration 68은
+  전부 green이다. API integration은 97개 중 96개 green이고 기존 승인된 JWT blacklist 1개만 disabled다.
+- Domain forbidden import, 앱/Domain direct `now`/system default scan, API legacy Domain source, dependency graph
+  snapshot, `git diff --check`가 모두 clean이다. Architecture/spec/code 리뷰 최종 판정은 각각
+  BLOCKER 0 / MAJOR 0 / MINOR 0이다.
+- D-14는 contract-ready 상태다. 실제 pair-aware Redis v2 write/legacy dual-read와 production DB pair
+  column/backfill/unique migration은 계획 소유권에 따라 Phase 4에서 최종 완료한다.
+
 ## 승인 및 재개 상태
 
 2026-07-14 사용자 결정: 운영/스테이징 없음, 불명확한 로컬 timestamp는 변환하지 않는 추천안 채택,
-스펙 리뷰 보정안 전체 승인. Phase 0~1 commit/push를 완료했고 Phase 2 검증·리뷰를 완료해 commit/push한다.
+스펙 리뷰 보정안 전체 승인. Phase 0~2 commit/push를 완료했고 Phase 3 검증·리뷰를 완료해 commit/push한다.

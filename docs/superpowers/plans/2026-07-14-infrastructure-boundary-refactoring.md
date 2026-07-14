@@ -738,7 +738,11 @@ push:   git push origin refactor/infrastructure-boundary
 
 ### Phase 완료 조건
 
-- **A-01, A-04, D-01~D-06, D-14, O-01~O-04** 충족
+- **A-01, A-04, D-01~D-06, O-01~O-04** 충족
+- **D-14 contract ready**: canonical `MarketPair`, pair 기준 Port/snapshot/payload 식별 규칙과 default pair
+  mapping을 완성한다. 실제 Redis v2 write/legacy dual-read cutover와 production DB pair column/backfill/unique
+  migration은 migration·cache adapter owner인 Phase 4에서 수행한 뒤 D-14를 최종 완료한다. Phase 3에서
+  운영 schema/key cutover를 중복 구현하거나 test fixture만 변경하고 D-14 완료로 표시하지 않는다.
 
 ---
 
@@ -1408,7 +1412,7 @@ git diff --check origin/dev...HEAD
 | 0 | 기준선, V12 상태, timestamp audit, coverage baseline |
 | 1 | S-01~03, S-11~12, D-11~13, N-10 |
 | 2 | Gradle 물리 경계, Architecture test 기반 |
-| 3 | A-01/A-04, D-01~06/D-14, O-01~04 |
+| 3 | A-01/A-04, D-01~06, D-14 contract ready, O-01~04 |
 | 4 | A-12, D-07~14 |
 | 5 | A-02/A-05/A-07/A-09, S-01~10 |
 | 6 | A-03/A-06/A-08/A-10/A-11, O-06 |

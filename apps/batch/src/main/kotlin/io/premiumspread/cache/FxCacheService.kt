@@ -1,6 +1,8 @@
 package io.premiumspread.cache
 
 import io.premiumspread.client.FxRateData
+import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
 import org.slf4j.LoggerFactory
@@ -29,6 +31,7 @@ class FxCacheService(
             "quote" to fxRate.quoteCurrency,
             "rate" to fxRate.rate.toPlainString(),
             "timestamp" to fxRate.timestamp.toEpochMilli().toString(),
+            "source" to fxRate.source.name,
         )
 
         redisTemplate.opsForHash<String, String>().putAll(key, hash)
@@ -52,13 +55,23 @@ class FxCacheService(
         }
 
         return try {
+            val storedBase = hash["base"] ?: return null
+            val storedQuote = hash["quote"] ?: return null
+            if (!storedBase.equals(baseCurrency, ignoreCase = true) ||
+                !storedQuote.equals(quoteCurrency, ignoreCase = true)
+            ) {
+                log.warn("FX cache identity mismatch: key={}, base={}, quote={}", key, storedBase, storedQuote)
+                return null
+            }
+
             FxRateData(
-                baseCurrency = hash["base"] ?: return null,
-                quoteCurrency = hash["quote"] ?: return null,
+                baseCurrency = storedBase,
+                quoteCurrency = storedQuote,
                 rate = hash["rate"]?.toBigDecimalOrNull() ?: return null,
                 timestamp = hash["timestamp"]?.toLongOrNull()
                     ?.let { Instant.ofEpochMilli(it) }
-                    ?: Instant.now(),
+                    ?: return null,
+                source = hash["source"]?.let(Exchange::valueOf) ?: Exchange.FX_PROVIDER,
             )
         } catch (e: Exception) {
             log.warn("Failed to parse FX rate from cache: {}", key, e)
@@ -72,4 +85,8 @@ class FxCacheService(
     fun getUsdKrw(): BigDecimal? {
         return get("usd", "krw")?.rate
     }
+
+    fun getUsdKrwData(): FxRateData? = get("usd", "krw")
+
+    fun getUsdKrwSnapshot(): ExchangeRateSnapshot? = get("usd", "krw")?.toDomainSnapshot()
 }

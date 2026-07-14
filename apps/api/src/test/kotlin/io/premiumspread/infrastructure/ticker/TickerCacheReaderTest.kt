@@ -108,6 +108,18 @@ class TickerCacheReaderTest {
         }
 
         @Test
+        fun `timestamp가 없으면 손상된 캐시로 보고 null을 반환한다`() {
+            every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
+                "exchange" to "BITHUMB",
+                "symbol" to "BTC",
+                "currency" to "KRW",
+                "price" to "129555000",
+            )
+
+            assertThat(tickerCacheReader.get("bithumb", "btc")).isNull()
+        }
+
+        @Test
         fun `대소문자 구분 없이 key를 소문자로 생성한다`() {
             every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
                 "exchange" to "BITHUMB",
@@ -120,6 +132,32 @@ class TickerCacheReaderTest {
             tickerCacheReader.get("BITHUMB", "BTC")
 
             verify { hashOps.entries("ticker:bithumb:btc") }
+        }
+
+        @Test
+        fun `요청 exchange와 payload exchange가 다르면 null을 반환한다`() {
+            every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
+                "exchange" to "BINANCE",
+                "symbol" to "BTC",
+                "currency" to "USD",
+                "price" to "89277",
+                "timestamp" to "1704067200000",
+            )
+
+            assertThat(tickerCacheReader.get("bithumb", "btc")).isNull()
+        }
+
+        @Test
+        fun `요청 symbol과 payload symbol이 다르면 null을 반환한다`() {
+            every { hashOps.entries("ticker:bithumb:btc") } returns mapOf(
+                "exchange" to "BITHUMB",
+                "symbol" to "ETH",
+                "currency" to "KRW",
+                "price" to "5000000",
+                "timestamp" to "1704067200000",
+            )
+
+            assertThat(tickerCacheReader.get("bithumb", "btc")).isNull()
         }
     }
 

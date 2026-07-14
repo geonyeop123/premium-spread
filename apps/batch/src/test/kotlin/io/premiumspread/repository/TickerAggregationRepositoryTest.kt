@@ -7,8 +7,9 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.math.BigDecimal
+import java.sql.Timestamp
+import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 @DisplayName("TickerAggregationRepository")
 class TickerAggregationRepositoryTest : BatchIntegrationTestBase() {
@@ -16,8 +17,8 @@ class TickerAggregationRepositoryTest : BatchIntegrationTestBase() {
     @Autowired
     lateinit var repository: TickerAggregationRepository
 
-    private val minuteAt = LocalDateTime.of(2024, 1, 29, 12, 0, 0)
-    private val hourAt = LocalDateTime.of(2024, 1, 29, 12, 0, 0)
+    private val minuteAt = Instant.parse("2024-01-29T12:00:00Z")
+    private val hourAt = Instant.parse("2024-01-29T12:00:00Z")
     private val dayAt = LocalDate.of(2024, 1, 29)
 
     private fun agg(
@@ -59,6 +60,11 @@ class TickerAggregationRepositoryTest : BatchIntegrationTestBase() {
             assertThat(result.high).isEqualByComparingTo("130000000")
             assertThat(result.low).isEqualByComparingTo("129000000")
             assertThat(result.count).isEqualTo(10)
+            val storedAt = jdbcTemplate.queryForObject(
+                "SELECT minute_at FROM ticker_minute WHERE exchange = 'BITHUMB' AND symbol = 'BTC'",
+                Timestamp::class.java,
+            )
+            assertThat(storedAt!!.toInstant()).isEqualTo(minuteAt)
         }
 
         @Test
@@ -99,7 +105,7 @@ class TickerAggregationRepositoryTest : BatchIntegrationTestBase() {
         fun `여러 분 데이터 중 가장 최근 minute_at의 데이터를 반환한다`() {
             // given
             repository.saveMinute("bithumb", "btc", minuteAt, agg(high = "130000000"))
-            repository.saveMinute("bithumb", "btc", minuteAt.plusMinutes(1), agg(high = "131000000"))
+            repository.saveMinute("bithumb", "btc", minuteAt.plusSeconds(60), agg(high = "131000000"))
 
             // when
             val result = repository.findLatestMinute("bithumb", "btc")
@@ -139,6 +145,11 @@ class TickerAggregationRepositoryTest : BatchIntegrationTestBase() {
             val result = repository.findLatestHour("bithumb", "btc")
             assertThat(result).isNotNull
             assertThat(result!!.count).isEqualTo(60)
+            val storedAt = jdbcTemplate.queryForObject(
+                "SELECT hour_at FROM ticker_hour WHERE exchange = 'BITHUMB' AND symbol = 'BTC'",
+                Timestamp::class.java,
+            )
+            assertThat(storedAt!!.toInstant()).isEqualTo(hourAt)
         }
 
         @Test

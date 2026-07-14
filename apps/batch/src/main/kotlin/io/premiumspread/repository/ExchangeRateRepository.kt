@@ -5,10 +5,12 @@ import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Instant
+import java.time.Clock
 
 @Repository
 class ExchangeRateRepository(
     private val jdbcTemplate: JdbcTemplate,
+    private val clock: Clock,
 ) {
 
     /**
@@ -27,7 +29,7 @@ class ExchangeRateRepository(
             quoteCurrency.uppercase(),
             rate,
             Timestamp.from(observedAt),
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 

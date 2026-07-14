@@ -4,6 +4,8 @@ import io.mockk.*
 import io.premiumspread.application.common.JobConfig
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
+import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
+import io.premiumspread.config.AggregationProperties
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.redis.TickerAggregationTimeUnit
 import io.premiumspread.repository.TickerAggregation
@@ -13,7 +15,11 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.springframework.scheduling.annotation.Scheduled
 import java.math.BigDecimal
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 class TickerAggregationSchedulerTest {
 
@@ -21,6 +27,8 @@ class TickerAggregationSchedulerTest {
     private lateinit var aggregationRepository: TickerAggregationRepository
     private lateinit var jobExecutor: JobExecutor
     private lateinit var scheduler: TickerAggregationScheduler
+    private val clock = Clock.fixed(Instant.parse("2026-05-12T12:34:56Z"), ZoneOffset.UTC)
+    private val windowPolicy = AggregationWindowPolicy(AggregationProperties())
 
     @BeforeEach
     fun setUp() {
@@ -32,6 +40,8 @@ class TickerAggregationSchedulerTest {
             tickerCacheService = tickerCacheService,
             aggregationRepository = aggregationRepository,
             jobExecutor = jobExecutor,
+            clock = clock,
+            windowPolicy = windowPolicy,
         )
     }
 
@@ -83,8 +93,9 @@ class TickerAggregationSchedulerTest {
             verify(exactly = 1) { tickerCacheService.aggregateSecondsData("binance", "btc", "USD", any(), any()) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", any(), bithumbAgg) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, "binance", "btc", any(), binanceAgg) }
-            verify(exactly = 1) { aggregationRepository.saveMinute("bithumb", "btc", any(), bithumbAgg) }
-            verify(exactly = 1) { aggregationRepository.saveMinute("binance", "btc", any(), binanceAgg) }
+            val expectedFrom = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.MINUTES).from
+            verify(exactly = 1) { aggregationRepository.saveMinute("bithumb", "btc", expectedFrom, bithumbAgg) }
+            verify(exactly = 1) { aggregationRepository.saveMinute("binance", "btc", expectedFrom, binanceAgg) }
         }
     }
 
@@ -124,14 +135,24 @@ class TickerAggregationSchedulerTest {
             verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "binance", "btc", "USD", any(), any()) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", any(), bithumbAgg) }
             verify(exactly = 1) { tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, "binance", "btc", any(), binanceAgg) }
-            verify(exactly = 1) { aggregationRepository.saveHour("bithumb", "btc", any(), bithumbAgg) }
-            verify(exactly = 1) { aggregationRepository.saveHour("binance", "btc", any(), binanceAgg) }
+            val expectedFrom = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.HOURS).from
+            verify(exactly = 1) { aggregationRepository.saveHour("bithumb", "btc", expectedFrom, bithumbAgg) }
+            verify(exactly = 1) { aggregationRepository.saveHour("binance", "btc", expectedFrom, binanceAgg) }
         }
     }
 
     @Nested
     @DisplayName("aggregateDay")
     inner class AggregateDay {
+
+        @Test
+        fun `day schedule은 aggregation zone 설정을 명시한다`() {
+            val scheduled = TickerAggregationScheduler::class.java
+                .getDeclaredMethod("aggregateDay")
+                .getAnnotation(Scheduled::class.java)
+
+            assertThat(scheduled.zone).isEqualTo("\${aggregation.zone:Asia/Seoul}")
+        }
 
         @Test
         fun `호출 시 jobExecutor execute를 호출한다`() {
@@ -163,8 +184,10 @@ class TickerAggregationSchedulerTest {
             // then
             verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", "KRW", any(), any()) }
             verify(exactly = 1) { tickerCacheService.aggregateData(TickerAggregationTimeUnit.HOURS, "binance", "btc", "USD", any(), any()) }
-            verify(exactly = 1) { aggregationRepository.saveDay("bithumb", "btc", any(), bithumbAgg) }
-            verify(exactly = 1) { aggregationRepository.saveDay("binance", "btc", any(), binanceAgg) }
+            val window = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.DAYS)
+            val expectedDay = window.from.atZone(windowPolicy.zoneId).toLocalDate()
+            verify(exactly = 1) { aggregationRepository.saveDay("bithumb", "btc", expectedDay, bithumbAgg) }
+            verify(exactly = 1) { aggregationRepository.saveDay("binance", "btc", expectedDay, binanceAgg) }
         }
 
         @Test

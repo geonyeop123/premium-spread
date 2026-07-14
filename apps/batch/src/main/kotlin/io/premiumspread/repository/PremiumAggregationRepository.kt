@@ -4,9 +4,9 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.sql.Timestamp
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
  * 프리미엄 집계 데이터
@@ -25,12 +25,13 @@ data class PremiumAggregation(
 @Repository
 class PremiumAggregationRepository(
     private val jdbcTemplate: JdbcTemplate,
+    private val clock: Clock,
 ) {
 
     /**
      * 분 집계 저장
      */
-    fun saveMinute(symbol: String, minuteAt: LocalDateTime, agg: PremiumAggregation) {
+    fun saveMinute(symbol: String, minuteAt: Instant, agg: PremiumAggregation) {
         jdbcTemplate.update(
             """
             INSERT INTO premium_minute
@@ -42,7 +43,7 @@ class PremiumAggregationRepository(
             fx_rate = VALUES(fx_rate)
             """.trimIndent(),
             symbol.uppercase(),
-            Timestamp.valueOf(minuteAt),
+            Timestamp.from(minuteAt),
             agg.high,
             agg.low,
             agg.open,
@@ -50,14 +51,14 @@ class PremiumAggregationRepository(
             agg.avg,
             agg.count,
             agg.fxRate,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 
     /**
      * 시간 집계 저장
      */
-    fun saveHour(symbol: String, hourAt: LocalDateTime, agg: PremiumAggregation) {
+    fun saveHour(symbol: String, hourAt: Instant, agg: PremiumAggregation) {
         jdbcTemplate.update(
             """
             INSERT INTO premium_hour
@@ -69,7 +70,7 @@ class PremiumAggregationRepository(
             fx_rate = VALUES(fx_rate)
             """.trimIndent(),
             symbol.uppercase(),
-            Timestamp.valueOf(hourAt),
+            Timestamp.from(hourAt),
             agg.high,
             agg.low,
             agg.open,
@@ -77,7 +78,7 @@ class PremiumAggregationRepository(
             agg.avg,
             agg.count,
             agg.fxRate,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 
@@ -104,7 +105,7 @@ class PremiumAggregationRepository(
             agg.avg,
             agg.count,
             agg.fxRate,
-            Timestamp.from(Instant.now()),
+            Timestamp.from(clock.instant()),
         )
     }
 

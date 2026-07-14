@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClient
 import java.time.Duration
+import java.time.Clock
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -20,7 +21,7 @@ class WebSocketConnectionManagerTest {
 
     private lateinit var server: MockWebServer
     private val registry = SimpleMeterRegistry()
-    private val metrics = WebSocketMetrics(registry)
+    private val metrics = WebSocketMetrics(registry, Clock.systemUTC())
     private val client = ReactorNettyWebSocketClient()
     private var manager: WebSocketConnectionManager? = null
     private val capturedAlerts = ConcurrentLinkedQueue<String>()

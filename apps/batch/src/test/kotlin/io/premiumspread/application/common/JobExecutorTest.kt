@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
+import java.time.Clock
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -33,7 +34,7 @@ class JobExecutorTest {
         every { redisTemplate.opsForValue() } returns valueOps
         meterRegistry = SimpleMeterRegistry()
         alertService = mockk(relaxed = true)
-        jobExecutor = JobExecutor(lockManager, redisTemplate, meterRegistry, alertService)
+        jobExecutor = JobExecutor(lockManager, redisTemplate, meterRegistry, alertService, Clock.systemUTC())
     }
 
     private fun jobConfig(

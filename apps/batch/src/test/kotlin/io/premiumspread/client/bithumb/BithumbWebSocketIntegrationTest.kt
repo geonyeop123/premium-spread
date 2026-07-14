@@ -37,7 +37,7 @@ class BithumbWebSocketIntegrationTest : BatchIntegrationTestBase() {
     private lateinit var tickerCacheService: TickerCacheService
 
     private lateinit var server: MockWebServer
-    private val metrics = WebSocketMetrics(SimpleMeterRegistry())
+    private val metrics = WebSocketMetrics(SimpleMeterRegistry(), Clock.systemUTC())
     private val alerts = ConcurrentLinkedQueue<String>()
     private val fakeAlertService = object : AlertService {
         override fun sendAlert(message: String, severity: AlertService.Severity) {

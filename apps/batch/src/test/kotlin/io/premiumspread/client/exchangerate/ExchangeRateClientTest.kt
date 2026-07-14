@@ -119,6 +119,7 @@ class ExchangeRateClientTest {
                             ExchangeRateResponse(
                                 result = "success",
                                 conversionRate = BigDecimal("1432.60"),
+                                timeLastUpdateUnix = 1706486401L,
                             ),
                         ),
                     )
@@ -143,6 +144,7 @@ class ExchangeRateClientTest {
                             ExchangeRateResponse(
                                 result = "success",
                                 conversionRate = BigDecimal("1432.60"),
+                                timeLastUpdateUnix = 1706486401L,
                             ),
                         ),
                     )
