@@ -1,0 +1,95 @@
+# Infrastructure Boundary Refactoring Findings
+
+> 갱신: 2026-07-14 KST
+> 최초 스펙 리뷰 판정: BLOCKER 7, MAJOR 8, MINOR 1
+> 현재 상태: 권고 보정안과 사용자 결정을 실행 계획에 반영함
+
+## 1. 기준선 known failures
+
+### F-01 운영/스테이징 V12 상태 미확인
+
+저장소에는 예제 env만 있고 운영/스테이징 read-only DB 조회 경로가 없다. 환경별 V12 success/checksum,
+position row count, timestamp sample이 없으므로 계획이 요구하는 세 상태 중 하나로 분류할 수 없다.
+
+### F-02 기존 DATETIME 의미 판별 불가
+
+로컬 MySQL은 UTC이지만 코드/설정은 `Asia/Seoul`, system default, JDBC timezone을 혼용했다.
+외부 이벤트와 대조할 근거가 없어 기존 row를 UTC/KST 어느 쪽으로 변환할지 결정할 수 없다.
+
+### F-03 Batch integration 실제 회귀
+
+`TickerCacheService.saveToSecondsWithScore()`와 `TimeSeriesCacheSupport`가 직접 현재 시각을 사용해
+과거 score fixture를 저장 즉시 retention 삭제한다. Clock/명시적 기준시각으로 재설계하기 전에는
+Phase 0 test gate가 green이 아니다.
+
+Docker API를 보정해 전체 64개를 재실행한 결과 25개가 실패했다. 이 중 2개는 위 retention 회귀이고,
+나머지 23개는 `batch-schema.sql`에 Repository SQL이 요구하는 ticker `currency`, premium `fx_rate`가
+없는 fixture drift다. Repository 16개와 그 하위 aggregation E2E 7개가 같은 원인으로 실패한다.
+
+### F-04 필수 Gradle artifact 부재
+
+오프라인 cache에 JaCoCo ant 0.8.13, ktlint engine 1.0.1, detekt, OWASP Dependency-Check가 없다.
+작업 규칙상 신규 Gradle 다운로드는 허용되지 않으므로 외부 cache bootstrap 또는 plan의 local/CI
+검증 책임 분리가 필요하다.
+
+## 2. Plan 내부 BLOCKER와 권고 보정
+
+### F-05 V12 preflight 실행 순서
+
+일반 Spring startup bean은 Flyway 이후 실행될 수 있어 V12 `TRUNCATE`를 막지 못한다.
+배포 전 외부 preflight를 필수화하고, 수동 기동에는 Flyway callback/별도 migration runner 및
+`PENDING_EMPTY` 일회성 승인 플래그가 필요하다. `PENDING_WITH_DATA`는 backup/변환/복원과 V12 이력
+처리 절차가 구체화되기 전 실행할 수 없다.
+
+### F-06 interfaces import 규칙 모순
+
+interfaces의 Domain import 0건과 Domain typed exception handler는 동시에 만족할 수 없다.
+권고안은 Facade가 Domain exception을 Application error로 변환하고 interfaces는 Application error만
+매핑하는 것이다.
+
+### F-07 Refresh rotation 동시성 모순
+
+동시 A refresh에서 첫 요청이 A→B로 성공한 뒤 두 번째 요청이 A reuse로 B까지 revoke하면 성공한
+응답의 B가 즉시 무효가 된다. 권고안은 `familyId + generation + previousHash + rotatedAt`을 저장하고,
+같은 family의 짧은 동시성 window에서는 loser만 401로 거부하되 현재 B는 유지하며, window 이후
+reuse만 family revoke하는 것이다. 다른 login family의 구 token은 현재 family를 revoke하지 않는다.
+
+### F-08 Refresh infrastructure 의존 누락
+
+`infrastructure:api`의 `RedisRefreshSessionStore`가 컴파일되려면 `modules:redis` 직접 implementation
+또는 동등한 adapter 이동이 필요하다. 권고안은 `infrastructure:api -> modules:redis` 직접 의존이다.
+
+### F-09 최종 push/CI 순환
+
+push 전 해당 최종 SHA의 CI green을 요구할 수 없다. 후보 SHA push → CI green → 결과 문서 commit/push
+→ docs-only 최종 SHA CI green → 완료 판정으로 순서를 바꿔야 한다. GitHub required checks/environment
+protection은 저장소 외부 설정 증거로 관리한다.
+
+### F-10 Progress SHA 자기참조
+
+commit 후 같은 commit의 SHA를 문서에 넣는 것은 불가능하다. 다음 Phase의 첫 commit에서 이전 Phase
+SHA를 기록하거나 별도 progress commit을 허용해야 한다.
+
+## 3. 추가 MAJOR
+
+- Domain JPA entity 이동 시 `kotlin("plugin.jpa")`와 proxy 정책을 명시해야 한다.
+- `supports:logging` runtimeOnly 전환 전에 `WebMvcConfig`의 직접 import를 auto-configuration으로 옮겨야 한다.
+- 전 모듈 bytecode를 실제로 읽는 독립 `architecture-tests` 모듈과 0-class guard가 필요하다.
+- NotificationSubscription/event key에 canonical MarketPair와 normalized threshold/revision이 필요하다.
+- notification stale threshold는 queue/DB margin을 포함한 hard deadline으로 검증해야 한다.
+- SENT PII scrub/dedupe 보존 기간과 offline redrive audit 정책이 필요하다.
+- JDBC session timezone UTC 강제와 실제 Instant round-trip integration test가 필요하다.
+- Kotlin 2.1 호환/coverage 보정 작업과 실행 가능한 toolchain/테스트 추가 Phase가 필요하다.
+
+## 4. 사용자 결정 및 처리
+
+2026-07-14에 다음을 승인받았다.
+
+1. 운영/스테이징은 존재하지 않으므로 `NOT_DEPLOYED`로 분류한다.
+2. 의미가 불명확한 로컬 DATETIME은 자동 변환하지 않는다. 기존 volume을 보존하고 UTC 정책 적용 후 새
+   non-production volume/fixture로 재생성한다.
+3. F-05~F-10과 추가 MAJOR 권고를 계획에 반영한다.
+4. 로컬 offline artifact가 없는 quality 검증은 다운로드가 허용된 격리 CI runner의 SHA 귀속 결과로 판정한다.
+
+F-03의 fixture drift는 Phase 2, retention은 Phase 3, Web lint는 Phase 5, quality/security 도구와
+npm audit은 Phase 9에서 완료 조건으로 해소한다.
