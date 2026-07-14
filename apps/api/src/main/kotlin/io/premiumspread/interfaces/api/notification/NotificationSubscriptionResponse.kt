@@ -11,6 +11,8 @@ class NotificationSubscriptionResponse private constructor() {
         val direction: String,
         val threshold: BigDecimal,
         val status: String,
+        val koreaExchange: String,
+        val foreignExchange: String,
     ) {
         companion object {
             fun from(result: NotificationSubscriptionResult.Detail): Detail = Detail(
@@ -19,6 +21,8 @@ class NotificationSubscriptionResponse private constructor() {
                 direction = result.direction,
                 threshold = result.threshold,
                 status = result.status,
+                koreaExchange = result.koreaExchange,
+                foreignExchange = result.foreignExchange,
             )
         }
     }

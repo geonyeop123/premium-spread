@@ -35,3 +35,4 @@
 :apps:batch [implementation] => org.jetbrains.kotlin:kotlin-reflect
 :apps:batch [implementation] => org.springframework.boot:spring-boot-starter
 :apps:batch [implementation] => org.springframework.boot:spring-boot-starter-validation
+:apps:batch [implementation] => org.springframework:spring-tx

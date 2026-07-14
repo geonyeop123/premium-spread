@@ -6,6 +6,8 @@ import io.premiumspread.domain.batch.BatchMarketProvider
 import io.premiumspread.domain.market.LatestMarketTickReadPort
 import io.premiumspread.domain.market.TickerFlushObserver
 import io.premiumspread.domain.job.OperatorAlert
+import io.premiumspread.domain.notification.NotificationDeliveryPort
+import io.premiumspread.domain.notification.NotificationSender
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumThresholdEvaluator
 import io.premiumspread.domain.ticker.Currency
@@ -13,11 +15,12 @@ import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.email.EmailAutoConfiguration
+import io.premiumspread.email.EmailSender
+import io.premiumspread.email.SmtpConnectionProperties
 import io.premiumspread.infrastructure.batch.alert.BoundedOperatorAlertAdapter
 import io.premiumspread.infrastructure.batch.alert.OperatorAlertExecutorProperties
 import io.premiumspread.infrastructure.batch.cache.FxCacheService
 import io.premiumspread.infrastructure.batch.cache.FxRateReadAdapter
-import io.premiumspread.infrastructure.batch.cache.NotificationCooldownStore
 import io.premiumspread.infrastructure.batch.cache.PremiumAggregateAdapter
 import io.premiumspread.infrastructure.batch.cache.PremiumCacheService
 import io.premiumspread.infrastructure.batch.cache.TickerAggregateAdapter
@@ -34,10 +37,10 @@ import io.premiumspread.infrastructure.batch.ingestion.binance.BinanceTickerInge
 import io.premiumspread.infrastructure.batch.ingestion.bithumb.BithumbTickerIngestion
 import io.premiumspread.infrastructure.batch.job.RedisJobRunRecorderAdapter
 import io.premiumspread.infrastructure.batch.job.RedisJobLockAdapter
-import io.premiumspread.infrastructure.batch.notification.LegacyNotificationProperties
-import io.premiumspread.infrastructure.batch.notification.LegacyPremiumThresholdEvaluatorAdapter
-import io.premiumspread.infrastructure.batch.notification.PremiumThresholdNotificationListener
-import io.premiumspread.infrastructure.batch.notification.PremiumThresholdNotificationService
+import io.premiumspread.infrastructure.batch.notification.DurableEmailNotificationSender
+import io.premiumspread.infrastructure.batch.notification.NotificationDeliveryMetrics
+import io.premiumspread.infrastructure.batch.notification.NotificationDeliveryStartupValidator
+import io.premiumspread.infrastructure.batch.notification.ObservedNotificationDeliveryPort
 import io.premiumspread.infrastructure.batch.observability.AggregationZoneMetricProperties
 import io.premiumspread.infrastructure.batch.observability.AggregationZoneMetrics
 import io.premiumspread.infrastructure.batch.websocket.WebSocketMetrics
@@ -45,6 +48,7 @@ import io.premiumspread.infrastructure.batch.websocket.WebSocketTickerFlushObser
 import io.premiumspread.infrastructure.batch.websocket.WebSocketStreamProperties
 import io.premiumspread.infrastructure.common.CommonInfrastructureAutoConfiguration
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.notification.JdbcNotificationDeliveryRepository
 import io.premiumspread.monitoring.AlertService
 import io.premiumspread.monitoring.MonitoringAutoConfiguration
 import jakarta.validation.constraints.NotBlank
@@ -58,6 +62,9 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Profile
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.annotation.Primary
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.validation.annotation.Validated
 
@@ -78,6 +85,7 @@ import org.springframework.validation.annotation.Validated
     BatchExchangeAdapterConfiguration::class,
     BatchJobSupportConfiguration::class,
     BatchNotificationAdapterConfiguration::class,
+    BatchNotificationDisabledConfiguration::class,
     BatchStreamingAdapterConfiguration::class,
     BatchTestStreamingFallbackConfiguration::class,
 )
@@ -156,7 +164,6 @@ data class BatchMarketProperties(
 @ConditionalOnBean(StringRedisTemplate::class)
 @Import(
     FxCacheService::class,
-    NotificationCooldownStore::class,
     PremiumAggregateAdapter::class,
     PremiumCacheService::class,
     TickerAggregateAdapter::class,
@@ -179,15 +186,40 @@ class BatchExchangeAdapterConfiguration
 class BatchJobSupportConfiguration
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(LegacyNotificationProperties::class)
-@Import(PremiumThresholdNotificationListener::class, PremiumThresholdNotificationService::class)
+@ConditionalOnProperty(prefix = "notification.email", name = ["enabled"], havingValue = "true")
+@ConditionalOnBean(JdbcNotificationDeliveryRepository::class, EmailSender::class)
 class BatchNotificationAdapterConfiguration {
     @Bean
-    @ConditionalOnProperty(prefix = "notification.email", name = ["enabled"], havingValue = "true")
-    fun legacyPremiumThresholdEvaluator(
-        service: PremiumThresholdNotificationService,
-    ): PremiumThresholdEvaluator = LegacyPremiumThresholdEvaluatorAdapter(service)
+    fun notificationDeliveryMetrics(
+        meterRegistry: ObjectProvider<MeterRegistry>,
+    ): NotificationDeliveryMetrics = NotificationDeliveryMetrics(meterRegistry.getIfAvailable())
 
+    @Bean
+    @Primary
+    fun notificationDeliveryPort(
+        repository: JdbcNotificationDeliveryRepository,
+        metrics: NotificationDeliveryMetrics,
+    ): NotificationDeliveryPort = ObservedNotificationDeliveryPort(repository, metrics)
+
+    @Bean
+    @ConditionalOnMissingBean(NotificationSender::class)
+    fun notificationSender(emailSender: EmailSender): NotificationSender =
+        DurableEmailNotificationSender(emailSender)
+
+    @Bean
+    fun notificationDeliveryStartupValidator(
+        smtp: SmtpConnectionProperties,
+        @Value("\${notification.delivery.hard-send-deadline:30s}") hardSendDeadline: java.time.Duration,
+    ): NotificationDeliveryStartupValidator = NotificationDeliveryStartupValidator(smtp, hardSendDeadline)
+
+    @Bean
+    @ConditionalOnMissingBean(PremiumThresholdEvaluator::class)
+    fun noOpPremiumThresholdEvaluator(): PremiumThresholdEvaluator = PremiumThresholdEvaluator { }
+}
+
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(prefix = "notification.email", name = ["enabled"], havingValue = "false", matchIfMissing = true)
+class BatchNotificationDisabledConfiguration {
     @Bean
     @ConditionalOnMissingBean(PremiumThresholdEvaluator::class)
     fun noOpPremiumThresholdEvaluator(): PremiumThresholdEvaluator = PremiumThresholdEvaluator { }

@@ -18,7 +18,7 @@ class ActiveSubscriptionReadRepositoryTest : BatchIntegrationTestBase() {
         )
         val memberId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long::class.java)!!
         jdbcTemplate.update(
-            "INSERT INTO notification_subscription (member_id, symbol, direction, threshold, status, created_at, updated_at) VALUES (?, 'BTC', 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6))",
+            "INSERT INTO notification_subscription (member_id, symbol, korea_exchange, foreign_exchange, revision, lock_version, direction, threshold, status, created_at, updated_at) VALUES (?, 'BTC', 'BITHUMB', 'BINANCE', 1, 0, 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6))",
             memberId,
         )
 
@@ -36,7 +36,7 @@ class ActiveSubscriptionReadRepositoryTest : BatchIntegrationTestBase() {
         )
         val memberId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long::class.java)!!
         jdbcTemplate.update(
-            "INSERT INTO notification_subscription (member_id, symbol, direction, threshold, status, created_at, updated_at) VALUES (?, 'BTC', 'ABOVE', 5.0, 'INACTIVE', NOW(6), NOW(6))",
+            "INSERT INTO notification_subscription (member_id, symbol, korea_exchange, foreign_exchange, revision, lock_version, direction, threshold, status, created_at, updated_at) VALUES (?, 'BTC', 'BITHUMB', 'BINANCE', 1, 0, 'ABOVE', 5.0, 'INACTIVE', NOW(6), NOW(6))",
             memberId,
         )
 
@@ -50,7 +50,7 @@ class ActiveSubscriptionReadRepositoryTest : BatchIntegrationTestBase() {
         )
         val memberId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long::class.java)!!
         jdbcTemplate.update(
-            "INSERT INTO notification_subscription (member_id, symbol, direction, threshold, status, created_at, updated_at) VALUES (?, 'ETH', 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6))",
+            "INSERT INTO notification_subscription (member_id, symbol, korea_exchange, foreign_exchange, revision, lock_version, direction, threshold, status, created_at, updated_at) VALUES (?, 'ETH', 'BITHUMB', 'BINANCE', 1, 0, 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6))",
             memberId,
         )
 
@@ -64,7 +64,7 @@ class ActiveSubscriptionReadRepositoryTest : BatchIntegrationTestBase() {
         )
         val deletedSubscriptionMemberId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long::class.java)!!
         jdbcTemplate.update(
-            "INSERT INTO notification_subscription (member_id, symbol, direction, threshold, status, created_at, updated_at, deleted_at) VALUES (?, 'BTC', 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6), NOW(6))",
+            "INSERT INTO notification_subscription (member_id, symbol, korea_exchange, foreign_exchange, revision, lock_version, direction, threshold, status, created_at, updated_at, deleted_at) VALUES (?, 'BTC', 'BITHUMB', 'BINANCE', 1, 0, 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6), NOW(6))",
             deletedSubscriptionMemberId,
         )
         jdbcTemplate.update(
@@ -72,7 +72,7 @@ class ActiveSubscriptionReadRepositoryTest : BatchIntegrationTestBase() {
         )
         val deletedMemberId = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long::class.java)!!
         jdbcTemplate.update(
-            "INSERT INTO notification_subscription (member_id, symbol, direction, threshold, status, created_at, updated_at) VALUES (?, 'BTC', 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6))",
+            "INSERT INTO notification_subscription (member_id, symbol, korea_exchange, foreign_exchange, revision, lock_version, direction, threshold, status, created_at, updated_at) VALUES (?, 'BTC', 'BITHUMB', 'BINANCE', 1, 0, 'ABOVE', 5.0, 'ACTIVE', NOW(6), NOW(6))",
             deletedMemberId,
         )
 

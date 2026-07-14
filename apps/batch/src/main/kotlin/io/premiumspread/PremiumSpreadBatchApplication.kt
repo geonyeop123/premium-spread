@@ -16,7 +16,11 @@ import org.springframework.context.annotation.FilterType
     exclude = [MailSenderAutoConfiguration::class],
     excludeName = ["org.redisson.spring.starter.RedissonAutoConfigurationV2"],
 )
-@EnableConfigurationProperties(AggregationProperties::class, BatchSchedulingProperties::class, BatchJobProperties::class)
+@EnableConfigurationProperties(
+    AggregationProperties::class,
+    BatchSchedulingProperties::class,
+    BatchJobProperties::class,
+)
 @ComponentScan(
     excludeFilters = [
         ComponentScan.Filter(

@@ -1,6 +1,6 @@
 # Infrastructure Boundary Refactoring Progress
 
-> 갱신: 2026-07-14 KST
+> 갱신: 2026-07-15 KST
 
 | Phase | 상태 | Commit | Push | 검증 |
 |---|---|---|---|---|
@@ -10,8 +10,9 @@
 | 3. 공통 Domain/계산/시간 정책 | COMPLETE | `937e092` | `origin/refactor/infrastructure-boundary` | Domain 103/API unit 240/Batch unit 184/Redis 8/Architecture 11/API integration 96 green+1 approved disabled/Batch integration 68 green |
 | 4. 공통 Persistence/Redis Infrastructure | COMPLETE | `ccd5952` | `origin/refactor/infrastructure-boundary` | JPA 2, Redis 13, Common unit 40/integration 5, API unit 168/integration 108 green+1 approved disabled, Batch unit 196/integration 68, Architecture 12 green |
 | 5. API Facade/인증 세션 | COMPLETE | `78e9239` | `origin/refactor/infrastructure-boundary` | Infrastructure API 29, API unit 78/integration 116, Architecture 17, Web lint/build green, disabled 0 |
-| 6. Batch Port/외부 Adapter | COMPLETE | 이번 Phase commit | push 예정 | Domain 109, Email 7, Monitoring 7, Infrastructure Batch 34, Batch unit 38/integration 62, Architecture 21 green |
-| 7~10 | NOT_STARTED | 없음 | 없음 | Phase 6 commit/push 후 Phase 7 착수 |
+| 6. Batch Port/외부 Adapter | COMPLETE | `193cf35` | `origin/refactor/infrastructure-boundary` | Domain 109, Email 7, Monitoring 7, Infrastructure Batch 34, Batch unit 38/integration 62, Architecture 21 green |
+| 7. Durable Notification Delivery | COMPLETE | `feat: 사용자 알림 전달을 내구성 큐로 전환` | push 예정 | Domain 114, Email 12, Common unit 40/integration 14, Infrastructure Batch 36, API unit 83/integration 117, Batch unit 52/integration 69, Architecture 21 green |
+| 8~10 | NOT_STARTED | 없음 | 없음 | Phase 7 commit/push 후 Phase 8 착수 |
 
 ## Phase 0 실행 기록
 
@@ -212,5 +213,27 @@
 ## 승인 및 재개 상태
 
 2026-07-14 사용자 결정: 운영/스테이징 없음, 불명확한 로컬 timestamp는 변환하지 않는 추천안 채택,
-스펙 리뷰 보정안 전체 승인. Phase 0~5 commit/push를 완료했고 Phase 6 구현·검증과 독립 리뷰를 완료해
+스펙 리뷰 보정안 전체 승인. Phase 0~6 commit/push를 완료했고 Phase 7 구현·검증과 독립 리뷰를 완료해
 commit/push한다.
+
+## Phase 7 실행 기록
+
+- Spring in-memory event/`@Async`/Redis cooldown 전달을 MySQL `notification_delivery` 큐로 교체하고,
+  threshold 평가와 enqueue를 같은 transaction으로 묶었다. event key v2는 subscription ID/revision,
+  canonical MarketPair, normalized direction/threshold, cooldown duration/window start를 포함한다.
+- MySQL 8 `FOR UPDATE SKIP LOCKED`, row별 UUID claim token, `lockedBy + claimToken` fencing, stale recovery,
+  retry/backoff/max-attempt/FAILED/redrive audit를 구현했다. concurrent enqueue/claim, rollback, stale owner,
+  V13→V14 migration/backfill과 subscription optimistic lock을 실제 MySQL 통합 테스트로 검증했다.
+- SMTP 전에 claim을 commit하고 stable delivery UUID를 MIME `Message-ID`로 사용한다. deadline interrupt를
+  무시하는 SMTP는 실제 종료까지 concurrency permit을 점유해 다음 row를 PROCESSING으로 고립시키지 않는다.
+  SMTP 성공 후 mark 실패 시 중복 가능성은 at-least-once runbook에 명시했다.
+- API create/update/result에 MarketPair를 연결하되 기존 요청은 BITHUMB/BINANCE 기본값으로 호환한다.
+  잘못된 enum/거래소 지역 조합은 안정된 422 Domain error로 변환한다.
+- SENT PII는 30일 뒤 bounded 반복 drain으로 scrub하고 event/dedupe/audit은 보존한다. 이메일 전송을 꺼도
+  retention transaction/job은 계속 동작하며 FAILED PII는 redrive/acknowledge 전 보존한다.
+- delivery lifecycle metric은 bounded outcome tag만 사용하고 모든 상태 변화는 transaction after-commit에
+  기록한다. worker ID는 DB `locked_by VARCHAR(100)` 한계를 넘지 않게 고정했다.
+- 기존 event/async/cooldown, Batch Application 기술 구현 참조, legacy worker, `@Disabled` scan은 모두 0건이고
+  `verifyMigrations`, `git diff --check`가 성공했다. 최종 spec/code review는 BLOCKER 0 / MAJOR 0 / MINOR 0이다.
+- 최종 검증은 Domain 114, Email 12, Common unit 40/integration 14, Infrastructure Batch 36,
+  API unit 83/integration 117, Batch unit 52/integration 69, Architecture 21이 failure/error/skip 0으로 전부 green이다.

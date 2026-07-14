@@ -18,6 +18,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
 import java.security.Principal
@@ -40,6 +41,32 @@ class NotificationSubscriptionControllerTest {
         }.andExpect {
             status { isCreated() }
             jsonPath("$.direction") { value("ABOVE") }
+            jsonPath("$.koreaExchange") { value("BITHUMB") }
+            jsonPath("$.foreignExchange") { value("BINANCE") }
+        }
+    }
+
+    @Test
+    fun `create는 명시한 거래소 쌍을 Criteria와 응답에 보존한다`() {
+        val criteria = NotificationSubscriptionCriteria.Create(
+            1L,
+            "BTC",
+            "ABOVE",
+            BigDecimal("5"),
+            "UPBIT",
+            "BINANCE",
+        )
+        every { facade.create(criteria) } returns detail("UPBIT", "BINANCE")
+
+        mockMvc.post("/api/v1/notifications/subscriptions") {
+            principal = this@NotificationSubscriptionControllerTest.principal
+            contentType = MediaType.APPLICATION_JSON
+            content =
+                """{"symbol":"BTC","direction":"ABOVE","threshold":5,"koreaExchange":"UPBIT","foreignExchange":"BINANCE"}"""
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.koreaExchange") { value("UPBIT") }
+            jsonPath("$.foreignExchange") { value("BINANCE") }
         }
     }
 
@@ -72,6 +99,29 @@ class NotificationSubscriptionControllerTest {
     }
 
     @Test
+    fun `update는 거래소 쌍을 Criteria에 전달한다`() {
+        val criteria = NotificationSubscriptionCriteria.Update(
+            10L,
+            1L,
+            null,
+            null,
+            null,
+            "UPBIT",
+            "BINANCE",
+        )
+        every { facade.update(criteria) } returns detail("UPBIT", "BINANCE")
+
+        mockMvc.patch("/api/v1/notifications/subscriptions/10") {
+            principal = this@NotificationSubscriptionControllerTest.principal
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"koreaExchange":"UPBIT","foreignExchange":"BINANCE"}"""
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.koreaExchange") { value("UPBIT") }
+        }
+    }
+
+    @Test
     fun `delete는 Criteria를 전달하고 기존 204를 유지한다`() {
         justRun { facade.delete(NotificationSubscriptionCriteria.Delete(10L, 1L)) }
         mockMvc.delete("/api/v1/notifications/subscriptions/10") {
@@ -79,7 +129,10 @@ class NotificationSubscriptionControllerTest {
         }.andExpect { status { isNoContent() } }
     }
 
-    private fun detail() = NotificationSubscriptionResult.Detail(
-        10L, 1L, "BTC", "ABOVE", BigDecimal("5"), "ACTIVE",
+    private fun detail(
+        koreaExchange: String = "BITHUMB",
+        foreignExchange: String = "BINANCE",
+    ) = NotificationSubscriptionResult.Detail(
+        10L, 1L, "BTC", "ABOVE", BigDecimal("5"), "ACTIVE", koreaExchange, foreignExchange,
     )
 }

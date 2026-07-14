@@ -28,6 +28,10 @@
 | PATCH | `/api/v1/notifications/subscriptions/{id}` | 200 | subscription detail |
 | DELETE | `/api/v1/notifications/subscriptions/{id}` | 204 | empty |
 
+알림 구독의 create/update/detail은 `koreaExchange`와 `foreignExchange`를 canonical pair로 보존한다. 기존 create
+요청이 두 필드를 생략하면 BITHUMB/BINANCE를 사용하며, update에서는 두 필드를 함께 제공해야 한다. enum 또는
+거래소 지역 조합이 잘못되면 422 Domain error를 반환한다.
+
 오류 envelope는 `{code,message}`다. Phase 5 계약은 transport 400/405, 인증 401, 미발견 404, 충돌 409,
 semantic 422, 미분류 500을 구분한다. 실행 명령은 `bash gradlew :apps:api:integrationTest --rerun-tasks
 --offline --no-daemon`이며 116 tests, failure/error/skip 0이다. Controller 선언과 `apps/api/src/test`의

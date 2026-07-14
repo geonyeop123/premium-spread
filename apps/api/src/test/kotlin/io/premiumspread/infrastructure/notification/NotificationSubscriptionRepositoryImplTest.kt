@@ -7,6 +7,9 @@ import io.premiumspread.domain.member.MemberRepository
 import io.premiumspread.domain.notification.NotificationSubscription
 import io.premiumspread.domain.notification.SubscriptionStatus
 import io.premiumspread.domain.notification.ThresholdDirection
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
@@ -45,6 +48,18 @@ class NotificationSubscriptionRepositoryImplTest @Autowired constructor(
 
         assertThat(found).isNotNull
         assertThat(found?.symbol).isEqualTo("BTC")
+    }
+
+    @Test
+    fun `기본값이 아닌 canonical MarketPair를 저장하고 조회한다`() {
+        val member = memberRepository.save(Member.create(email = "pair@a.com", encodedPassword = "x"))
+        val pair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+
+        val saved = sut.save(
+            NotificationSubscription.create(member.id, pair, ThresholdDirection.ABOVE, BigDecimal("5.00")),
+        )
+
+        assertThat(sut.findById(saved.id)?.marketPair).isEqualTo(pair)
     }
 
     @Test

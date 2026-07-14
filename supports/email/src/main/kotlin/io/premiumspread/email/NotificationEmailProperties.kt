@@ -36,6 +36,23 @@ data class SmtpConnectionProperties(
         require(readTimeout.isPositive()) { "SMTP readTimeout must be positive" }
         require(writeTimeout.isPositive()) { "SMTP writeTimeout must be positive" }
     }
+
+    /**
+     * JavaMail operation timeout이 durable delivery worker의 전체 발송 deadline을 넘지 않도록 검증한다.
+     * 전체 deadline의 강제는 SMTP 호출을 소유한 worker가 담당한다.
+     */
+    fun requireWithin(hardSendDeadline: Duration) {
+        require(hardSendDeadline.isPositive()) { "notification delivery hardSendDeadline must be positive" }
+        require(connectTimeout <= hardSendDeadline) {
+            "SMTP connectTimeout must not exceed notification delivery hardSendDeadline"
+        }
+        require(readTimeout <= hardSendDeadline) {
+            "SMTP readTimeout must not exceed notification delivery hardSendDeadline"
+        }
+        require(writeTimeout <= hardSendDeadline) {
+            "SMTP writeTimeout must not exceed notification delivery hardSendDeadline"
+        }
+    }
 }
 
 private fun Duration.isPositive() = !isZero && !isNegative

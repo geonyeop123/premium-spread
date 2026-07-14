@@ -18,15 +18,15 @@ import java.sql.SQLException
 class PremiumPairMigrationIntegrationTest {
 
     @Test
-    fun `빈 DB는 V13까지 순서대로 migration 된다`() {
+    fun `빈 DB는 V14까지 순서대로 migration 된다`() {
         val flyway = flyway()
         flyway.clean()
 
         val result = flyway.migrate()
 
         assertThat(result.success).isTrue()
-        assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(13)
-        assertThat(appliedVersions()).containsAll((1..13).map(Int::toString))
+        assertThat(result.migrationsExecuted).isGreaterThanOrEqualTo(14)
+        assertThat(appliedVersions()).containsAll((1..14).map(Int::toString))
         assertPairColumnsAndIndexes()
     }
 

@@ -98,6 +98,21 @@ notification:
       connect-timeout: ${MAIL_CONNECT_TIMEOUT:3s}
       read-timeout: ${MAIL_READ_TIMEOUT:10s}
       write-timeout: ${MAIL_WRITE_TIMEOUT:10s}
+  delivery:
+    poll-interval: ${NOTIFICATION_DELIVERY_POLL_INTERVAL:5s}
+    batch-size: ${NOTIFICATION_DELIVERY_BATCH_SIZE:10}
+    concurrency: ${NOTIFICATION_DELIVERY_CONCURRENCY:2}
+    hard-send-deadline: ${NOTIFICATION_DELIVERY_HARD_SEND_DEADLINE:30s}
+    db-queue-safety-margin: ${NOTIFICATION_DELIVERY_DB_SAFETY_MARGIN:30s}
+    stale-threshold: ${NOTIFICATION_DELIVERY_STALE_THRESHOLD:5m}
+    max-attempts: ${NOTIFICATION_DELIVERY_MAX_ATTEMPTS:5}
+    retry-delays: ${NOTIFICATION_DELIVERY_RETRY_DELAYS:1m,5m,30m,2h}
+    retry-jitter-ratio: ${NOTIFICATION_DELIVERY_RETRY_JITTER_RATIO:0.1}
+    cooldown-window: ${NOTIFICATION_DELIVERY_COOLDOWN_WINDOW:1h}
+    scrub-retention: ${NOTIFICATION_DELIVERY_SCRUB_RETENTION:30d}
+    scrub-interval: ${NOTIFICATION_DELIVERY_SCRUB_INTERVAL:1h}
+    scrub-batch-size: ${NOTIFICATION_DELIVERY_SCRUB_BATCH_SIZE:100}
+    scrub-max-batches-per-run: ${NOTIFICATION_DELIVERY_SCRUB_MAX_BATCHES_PER_RUN:100}
 
 # Actuator 설정
 management:

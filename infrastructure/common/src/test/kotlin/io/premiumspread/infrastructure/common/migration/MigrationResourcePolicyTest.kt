@@ -10,18 +10,18 @@ class MigrationResourcePolicyTest {
     private val resolver = PathMatchingResourcePatternResolver()
 
     @Test
-    fun `migration version은 중복되지 않고 V13 forward migration을 포함한다`() {
+    fun `migration version은 중복되지 않고 V14 durable notification migration을 포함한다`() {
         val migrations = migrations()
         val versions = migrations.map { migration -> migration.version }
 
         assertThat(versions).doesNotHaveDuplicates()
-        assertThat(versions).contains(13)
+        assertThat(versions).contains(13, 14)
     }
 
     @Test
-    fun `이미 적용된 V1부터 V12 migration은 checksum을 변경하지 않는다`() {
+    fun `이미 적용된 V1부터 V13 migration은 checksum을 변경하지 않는다`() {
         val actual = migrations()
-            .filter { migration -> migration.version <= 12 }
+            .filter { migration -> migration.version <= 13 }
             .associate { migration -> migration.fileName to sha256(migration.content) }
 
         assertThat(actual).containsExactlyInAnyOrderEntriesOf(IMMUTABLE_MIGRATION_SHA256)
@@ -108,6 +108,8 @@ class MigrationResourcePolicyTest {
             "V10__add_fx_rate_to_premium_aggregation_tables.sql" to "3ddb42a5a20574ca3d0c82539be7521f3b049dd7c71c959db5fe436a12db54fd",
             "V11__create_notification_subscription.sql" to "a91a508bdabf94c5689ba4b47b28aa00f8c34cf6da3f51bfe2ea35c184ce05ca",
             V12_FILE_NAME to "197a5b1b082bdfb5855cd32dfdf3eaefb88e23e8b0aeb60e97db63b0fe766922",
+            "V13__add_market_pair_to_premium_tables.sql" to
+                "abfd68893f5584220b2b9698ff97a0a99a580e2f25522732c0b80a54a6433400",
         )
     }
 }

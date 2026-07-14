@@ -17,6 +17,7 @@ import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.Exch
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionReadRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.notification.JdbcNotificationDeliveryRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationQueryRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationQueryRepository
@@ -65,6 +66,7 @@ class CommonInfrastructureAutoConfiguration
     JdbcExchangeRateRepositoryAdapter::class,
     JdbcExchangeRateWriteRepository::class,
     ActiveSubscriptionReadRepository::class,
+    JdbcNotificationDeliveryRepository::class,
     PremiumAggregationQueryRepository::class,
     PremiumAggregationRepository::class,
     TickerAggregationQueryRepository::class,

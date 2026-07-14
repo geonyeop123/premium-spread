@@ -3,6 +3,7 @@ package io.premiumspread.infrastructure.common
 import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheReader
 import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheWriter
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
+import io.premiumspread.infrastructure.common.persistence.jdbc.notification.JdbcNotificationDeliveryRepository
 import io.premiumspread.config.jpa.JpaAuditingAutoConfiguration
 import io.premiumspread.config.jpa.JpaFoundationAutoConfiguration
 import io.premiumspread.redis.RedisFoundationAutoConfiguration
@@ -87,6 +88,7 @@ class CommonInfrastructureAutoConfigurationTest {
             .run { context ->
                 assertThat(context).hasSingleBean(CommonJdbcConfiguration::class.java)
                 assertThat(context).hasSingleBean(JdbcExchangeRateRepositoryAdapter::class.java)
+                assertThat(context).hasSingleBean(JdbcNotificationDeliveryRepository::class.java)
                 assertThat(context).doesNotHaveBean(CommonJpaConfiguration::class.java)
                 assertThat(context).doesNotHaveBean(CommonCacheConfiguration::class.java)
             }

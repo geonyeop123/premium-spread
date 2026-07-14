@@ -1,5 +1,7 @@
 package io.premiumspread.domain.notification
 
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Symbol
 import java.time.Instant
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -13,7 +15,11 @@ class NotificationSubscriptionService(
     fun create(command: NotificationSubscriptionCommand.Create): NotificationSubscription {
         val sub = NotificationSubscription.create(
             memberId = command.memberId,
-            symbol = command.symbol,
+            pair = MarketPair(
+                symbol = Symbol(command.symbol),
+                koreaExchange = command.koreaExchange,
+                foreignExchange = command.foreignExchange,
+            ),
             direction = command.direction,
             threshold = command.threshold,
         )
@@ -38,6 +44,9 @@ class NotificationSubscriptionService(
         command.status?.let { sub.changeStatus(it) }
         command.direction?.let { sub.changeDirection(it) }
         command.threshold?.let { sub.changeThreshold(it) }
+        if (command.koreaExchange != null && command.foreignExchange != null) {
+            sub.changeMarketPair(MarketPair(Symbol(sub.symbol), command.koreaExchange, command.foreignExchange))
+        }
 
         return repository.save(sub)
     }

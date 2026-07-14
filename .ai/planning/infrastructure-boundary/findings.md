@@ -167,3 +167,24 @@ Scheduler를 Port 기반 Application Job으로 바꾸면서 기존 Infrastructur
 placeholder fallback은 canonical key가 `application.yml`에 존재하면 legacy key를 영원히 평가하지 않는다.
 `batch.scheduling.enabled`와 `scheduling.enabled`를 AND로 평가해 어느 키든 false이면 scheduling을 비활성화하고,
 canonical default=true와 legacy=false가 동시에 존재하는 실제 구성 형태를 context test로 고정했다.
+
+## 9. Phase 7 실행 중 추가 확인사항
+
+### F-20 interrupt는 SMTP 종료가 아니라 실행 용량 보존과 fencing으로 다뤄야 함
+
+JavaMail 호출은 thread interrupt를 즉시 따르지 않을 수 있고 connect/read/write timeout의 합도 실제 전체 실행시간
+상한은 아니다. deadline에는 interrupt를 요청하되 작업이 실제 끝날 때까지 concurrency permit을 반환하지 않고,
+가용 permit 수만큼만 DB row를 claim한다. 늦은 SMTP 결과는 claim token fencing으로 현재 owner 상태를 변경하지
+못하게 하며, at-least-once 중복 가능성을 runbook에 기록했다.
+
+### F-21 전송 비활성화와 PII retention 생명주기는 분리해야 함
+
+`notification.email.enabled=false`가 기존 SENT row의 개인정보 보존기간 집행까지 멈추면 30일 계약을 지킬 수 없다.
+enqueue/poller/SMTP bean은 비활성화하되 retention properties/REQUIRES_NEW transaction/job은 항상 구성하고,
+전역 Batch scheduling만 scheduler의 최종 on/off 기준으로 사용한다.
+
+### F-22 DB 식별자 길이와 metric commit 시점도 fencing 계약의 일부임
+
+hostname+UUID worker ID가 `locked_by`보다 길면 strict mode claim 실패 또는 truncate 후 모든 guarded update 실패가
+발생한다. worker ID를 100자로 제한하고 경계 테스트를 추가했다. 또한 lifecycle metric은 JDBC update 직후가 아니라
+transaction after-commit에만 증가시켜 rollback된 상태를 운영 신호로 남기지 않는다.

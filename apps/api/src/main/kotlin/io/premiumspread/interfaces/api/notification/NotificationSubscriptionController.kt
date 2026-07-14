@@ -32,6 +32,8 @@ class NotificationSubscriptionController(
                 symbol = request.symbol,
                 direction = request.direction,
                 threshold = request.threshold,
+                koreaExchange = request.koreaExchange,
+                foreignExchange = request.foreignExchange,
             ),
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(NotificationSubscriptionResponse.Detail.from(result))
@@ -65,6 +67,8 @@ class NotificationSubscriptionController(
                 status = request.status,
                 direction = request.direction,
                 threshold = request.threshold,
+                koreaExchange = request.koreaExchange,
+                foreignExchange = request.foreignExchange,
             ),
         )
         return ResponseEntity.ok(NotificationSubscriptionResponse.Detail.from(result))
