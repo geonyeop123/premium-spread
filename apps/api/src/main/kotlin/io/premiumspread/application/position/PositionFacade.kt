@@ -125,12 +125,12 @@ class PositionFacade(
 
     @Transactional(readOnly = true)
     fun getSummary(memberId: Long): PositionResult.Summary {
-        val openCount = positionService.findAllOpenByMemberId(memberId).size
-        val closedCount = positionService.findAllClosedByMemberId(memberId).size
+        val openCount = positionService.countOpenByMemberId(memberId)
+        val closedCount = positionService.countClosedByMemberId(memberId)
         return PositionResult.Summary(
-            totalPositions = openCount + closedCount,
-            openPositions = openCount,
-            closedPositions = closedCount,
+            totalPositions = Math.toIntExact(openCount + closedCount),
+            openPositions = Math.toIntExact(openCount),
+            closedPositions = Math.toIntExact(closedCount),
         )
     }
 

@@ -9,9 +9,9 @@ import io.premiumspread.config.AggregationProperties
 import io.premiumspread.email.EmailMessage
 import io.premiumspread.email.EmailDeliveryException
 import io.premiumspread.email.EmailSender
-import io.premiumspread.repository.ActiveSubscriptionReadRepository
-import io.premiumspread.repository.ActiveSubscriptionView
-import io.premiumspread.repository.ThresholdDirectionView
+import io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionReadRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionView
+import io.premiumspread.infrastructure.common.persistence.jdbc.notification.ThresholdDirectionView
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal

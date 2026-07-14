@@ -7,48 +7,67 @@ package io.premiumspread.redis
  */
 object RedisKeyGenerator {
 
+    private fun canonical(value: String): String = value.trim().lowercase()
+
     // Ticker 키
     fun tickerKey(exchange: String, symbol: String): String =
-        "ticker:$exchange:$symbol"
+        "ticker:${canonical(exchange)}:${canonical(symbol)}"
 
     // FX 키
     fun fxKey(base: String, quote: String): String =
-        "fx:$base:$quote"
+        "fx:${canonical(base)}:${canonical(quote)}"
 
     // Premium 키
     fun premiumKey(symbol: String): String =
-        "premium:$symbol"
+        "premium:${canonical(symbol)}"
 
     fun premiumHistoryKey(symbol: String): String =
-        "premium:$symbol:history"
+        "premium:${canonical(symbol)}:history"
+
+    /** Pair-aware premium v2 key. Legacy symbol-only keys remain read-only during cutover. */
+    fun premiumV2Key(koreaExchange: String, foreignExchange: String, symbol: String): String =
+        "premium:${canonical(koreaExchange)}:${canonical(foreignExchange)}:${canonical(symbol)}"
+
+    fun premiumV2HistoryKey(koreaExchange: String, foreignExchange: String, symbol: String): String =
+        "${premiumV2Key(koreaExchange, foreignExchange, symbol)}:history"
+
+    fun premiumV2SecondsKey(koreaExchange: String, foreignExchange: String, symbol: String): String =
+        "${premiumV2Key(koreaExchange, foreignExchange, symbol)}:seconds"
+
+    fun premiumV2AggregationKey(
+        koreaExchange: String,
+        foreignExchange: String,
+        symbol: String,
+        timeUnit: String,
+    ): String = "${premiumV2Key(koreaExchange, foreignExchange, symbol)}:${canonical(timeUnit)}"
+
+    fun premiumV2SummaryKey(
+        koreaExchange: String,
+        foreignExchange: String,
+        symbol: String,
+        interval: String,
+    ): String = "${premiumV2Key(koreaExchange, foreignExchange, symbol)}:summary:${canonical(interval)}"
 
     // 초당 데이터 키 (ZSet)
     fun tickerSecondsKey(exchange: String, symbol: String): String =
         "ticker:seconds:$exchange:$symbol"
 
     fun premiumSecondsKey(symbol: String): String =
-        "premium:seconds:$symbol"
+        "premium:seconds:${canonical(symbol)}"
 
     // 집계 데이터 키 (ZSet)
     fun premiumMinutesKey(symbol: String): String =
-        "premium:minutes:$symbol"
+        "premium:minutes:${canonical(symbol)}"
 
     fun premiumHoursKey(symbol: String): String =
-        "premium:hours:$symbol"
+        "premium:hours:${canonical(symbol)}"
 
     fun premiumDaysKey(symbol: String): String =
-        "premium:days:$symbol"
+        "premium:days:${canonical(symbol)}"
 
     // 서머리 캐시 키 (Hash)
     fun summaryKey(interval: String, symbol: String): String =
-        "summary:$interval:$symbol"
-
-    // Position 키
-    fun positionOpenExistsKey(): String =
-        "position:open:exists"
-
-    fun positionOpenCountKey(): String =
-        "position:open:count"
+        "summary:${canonical(interval)}:${canonical(symbol)}"
 
     // Lock 키
     fun lockFxKey(): String =

@@ -4,6 +4,7 @@ import org.redisson.api.RLock
 import org.redisson.api.RedissonClient
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.stereotype.Component
 import java.util.concurrent.TimeUnit
 
@@ -14,6 +15,7 @@ import java.util.concurrent.TimeUnit
  */
 @Component
 @ConditionalOnProperty(name = ["redis.enabled"], havingValue = "true", matchIfMissing = true)
+@ConditionalOnMissingBean(DistributedLockManager::class)
 class DistributedLockManager(
     private val redissonClient: RedissonClient,
 ) {

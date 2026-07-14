@@ -1,6 +1,8 @@
 package io.premiumspread.scheduler
 
-import io.premiumspread.repository.PremiumAggregationRepository
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
 import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.support.BatchIntegrationTestBase
 import org.assertj.core.api.Assertions.assertThat
@@ -16,6 +18,8 @@ import java.time.temporal.ChronoUnit
 @DisplayName("PremiumAggregation E2E")
 class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
 
+    private val pair = MarketPair.default(Symbol("BTC"))
+
     @Autowired
     lateinit var premiumAggregationScheduler: PremiumAggregationScheduler
 
@@ -29,31 +33,31 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
     lateinit var windowPolicy: AggregationWindowPolicy
 
     /**
-     * premium:seconds:btc ZSet에 초당 데이터 seed
+     * pair-aware v2 seconds ZSet에 초당 데이터 seed
      * value format: "rate:koreaPrice:foreignPrice:fxRate"
      */
     private fun seedSecondsData(timestamp: Instant, rate: String) {
-        val key = "premium:seconds:btc"
+        val key = "premium:bithumb:binance:btc:seconds"
         val value = "$rate:129555000:89277.10:1432.60"
         redisTemplate.opsForZSet().add(key, value, timestamp.toEpochMilli().toDouble())
     }
 
     /**
-     * premium:minutes:btc ZSet에 분 집계 데이터 seed
+     * pair-aware v2 minutes ZSet에 분 집계 데이터 seed
      * value format: "high:low:open:close:avg:count"
      */
     private fun seedMinutesData(timestamp: Instant, high: String, low: String) {
-        val key = "premium:minutes:btc"
+        val key = "premium:bithumb:binance:btc:minutes"
         val value = "$high:$low:$low:$high:${(high.toBigDecimal() + low.toBigDecimal()) / 2.toBigDecimal()}:10"
         redisTemplate.opsForZSet().add(key, value, timestamp.toEpochMilli().toDouble())
     }
 
     /**
-     * premium:hours:btc ZSet에 시간 집계 데이터 seed
+     * pair-aware v2 hours ZSet에 시간 집계 데이터 seed
      * value format: "high:low:open:close:avg:count"
      */
     private fun seedHoursData(timestamp: Instant, high: String, low: String) {
-        val key = "premium:hours:btc"
+        val key = "premium:bithumb:binance:btc:hours"
         val value = "$high:$low:$low:$high:${(high.toBigDecimal() + low.toBigDecimal()) / 2.toBigDecimal()}:60"
         redisTemplate.opsForZSet().add(key, value, timestamp.toEpochMilli().toDouble())
     }
@@ -75,7 +79,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.aggregateMinute()
 
             // then - 분 캐시 검증
-            val members = redisTemplate.opsForZSet().rangeWithScores("premium:minutes:btc", 0, -1)
+            val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:minutes", 0, -1)
             assertThat(members).isNotEmpty
         }
 
@@ -92,7 +96,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.aggregateMinute()
 
             // then - DB 검증
-            val result = aggregationRepository.findLatestMinute("btc")
+            val result = aggregationRepository.findLatestMinute(pair)
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("2.00")
             assertThat(result.low).isEqualByComparingTo("1.50")
@@ -114,8 +118,8 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.aggregateMinute()
 
             // then
-            assertThat(aggregationRepository.findLatestMinute("btc")).isNull()
-            assertThat(redisTemplate.opsForZSet().size("premium:minutes:btc")).isEqualTo(0)
+            assertThat(aggregationRepository.findLatestMinute(pair)).isNull()
+            assertThat(redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:minutes")).isEqualTo(0)
         }
     }
 
@@ -136,7 +140,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.aggregateHour()
 
             // then
-            val members = redisTemplate.opsForZSet().rangeWithScores("premium:hours:btc", 0, -1)
+            val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:hours", 0, -1)
             assertThat(members).isNotEmpty
         }
 
@@ -153,7 +157,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.aggregateHour()
 
             // then
-            val result = aggregationRepository.findLatestHour("btc")
+            val result = aggregationRepository.findLatestHour(pair)
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("3.00")
             assertThat(result.low).isEqualByComparingTo("1.50")
@@ -173,7 +177,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.aggregateHour()
 
             // then
-            assertThat(aggregationRepository.findLatestHour("btc")).isNull()
+            assertThat(aggregationRepository.findLatestHour(pair)).isNull()
         }
     }
 
@@ -194,7 +198,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.aggregateDay()
 
             // then - DB 검증
-            val result = aggregationRepository.findLatestDay("btc")
+            val result = aggregationRepository.findLatestDay(pair)
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("3.50")
             assertThat(result.low).isEqualByComparingTo("1.00")
@@ -207,7 +211,7 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
                 .isEqualTo(prevDayStart.atZone(windowPolicy.zoneId).toLocalDate())
 
             // then - Redis 검증
-            val entries = redisTemplate.opsForZSet().rangeWithScores("premium:days:btc", 0, -1)
+            val entries = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:days", 0, -1)
             assertThat(entries).isNotEmpty
         }
     }
@@ -224,10 +228,10 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.updateSummaryCache()
 
             // then - 4개 구간 모두 키 없음
-            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:1m:btc")).isEmpty()
-            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:10m:btc")).isEmpty()
-            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:1h:btc")).isEmpty()
-            assertThat(redisTemplate.opsForHash<String, String>().entries("summary:1d:btc")).isEmpty()
+            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1m")).isEmpty()
+            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:10m")).isEmpty()
+            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1h")).isEmpty()
+            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1d")).isEmpty()
         }
 
         @Test
@@ -251,21 +255,21 @@ class PremiumAggregationE2ETest : BatchIntegrationTestBase() {
             premiumAggregationScheduler.updateSummaryCache()
 
             // then - 1m summary
-            val summary1m = redisTemplate.opsForHash<String, String>().entries("summary:1m:btc")
+            val summary1m = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1m")
             assertThat(summary1m).isNotEmpty
             assertThat(summary1m["high"]).isNotNull()
             assertThat(summary1m["low"]).isNotNull()
 
             // then - 10m summary
-            val summary10m = redisTemplate.opsForHash<String, String>().entries("summary:10m:btc")
+            val summary10m = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:10m")
             assertThat(summary10m).isNotEmpty
 
             // then - 1h summary
-            val summary1h = redisTemplate.opsForHash<String, String>().entries("summary:1h:btc")
+            val summary1h = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1h")
             assertThat(summary1h).isNotEmpty
 
             // then - 1d summary
-            val summary1d = redisTemplate.opsForHash<String, String>().entries("summary:1d:btc")
+            val summary1d = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc:summary:1d")
             assertThat(summary1d).isNotEmpty
         }
     }

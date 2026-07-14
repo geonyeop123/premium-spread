@@ -118,6 +118,15 @@ class PositionRepositoryTest @Autowired constructor(
             // then
             assertThat(found).isNull()
         }
+
+        @Test
+        fun `soft-deleted position은 ID로 조회되지 않는다`() {
+            val saved = positionRepository.save(createPosition())
+            saved.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
+            positionRepository.save(saved)
+
+            assertThat(positionRepository.findById(saved.id)).isNull()
+        }
     }
 
     @Nested
@@ -190,6 +199,34 @@ class PositionRepositoryTest @Autowired constructor(
             assertThat(found[0].id).isEqualTo(p3.id)
             assertThat(found[1].id).isEqualTo(p2.id)
             assertThat(found[2].id).isEqualTo(p1.id)
+        }
+
+        @Test
+        fun `status와 member 목록은 soft-deleted position을 제외한다`() {
+            val active = positionRepository.save(createPosition(symbol = "BTC"))
+            val deleted = positionRepository.save(createPosition(symbol = "ETH"))
+            deleted.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
+            positionRepository.save(deleted)
+
+            val byStatus = positionRepository.findAllByStatus(PositionStatus.OPEN)
+            val byMember = positionRepository.findAllByMemberIdAndStatus(memberId, PositionStatus.OPEN)
+
+            assertThat(byStatus.map(Position::id)).containsExactly(active.id)
+            assertThat(byMember.map(Position::id)).containsExactly(active.id)
+        }
+    }
+
+    @Nested
+    inner class CountByMemberIdAndStatus {
+
+        @Test
+        fun `soft-deleted row를 제외하고 상태별 count를 반환한다`() {
+            positionRepository.save(createPosition("BTC"))
+            val deleted = positionRepository.save(createPosition("ETH"))
+            deleted.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
+            positionRepository.save(deleted)
+
+            assertThat(positionRepository.countByMemberIdAndStatus(memberId, PositionStatus.OPEN)).isEqualTo(1)
         }
     }
 }

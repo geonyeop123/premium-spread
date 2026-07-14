@@ -92,6 +92,8 @@ CREATE TABLE IF NOT EXISTS ticker_day (
 CREATE TABLE IF NOT EXISTS premium_minute (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     symbol VARCHAR(10) NOT NULL,
+    korea_exchange VARCHAR(50) NOT NULL,
+    foreign_exchange VARCHAR(50) NOT NULL,
     minute_at DATETIME NOT NULL,
     high DECIMAL(10,4) NOT NULL,
     low DECIMAL(10,4) NOT NULL,
@@ -101,13 +103,15 @@ CREATE TABLE IF NOT EXISTS premium_minute (
     count INT NOT NULL,
     fx_rate DECIMAL(10,4) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_symbol_minute (symbol, minute_at),
+    UNIQUE KEY uk_pair_symbol_minute (korea_exchange, foreign_exchange, symbol, minute_at),
     INDEX idx_minute_at (minute_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS premium_hour (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     symbol VARCHAR(10) NOT NULL,
+    korea_exchange VARCHAR(50) NOT NULL,
+    foreign_exchange VARCHAR(50) NOT NULL,
     hour_at DATETIME NOT NULL,
     high DECIMAL(10,4) NOT NULL,
     low DECIMAL(10,4) NOT NULL,
@@ -117,13 +121,15 @@ CREATE TABLE IF NOT EXISTS premium_hour (
     count INT NOT NULL,
     fx_rate DECIMAL(10,4) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_symbol_hour (symbol, hour_at),
+    UNIQUE KEY uk_pair_symbol_hour (korea_exchange, foreign_exchange, symbol, hour_at),
     INDEX idx_hour_at (hour_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS premium_day (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     symbol VARCHAR(10) NOT NULL,
+    korea_exchange VARCHAR(50) NOT NULL,
+    foreign_exchange VARCHAR(50) NOT NULL,
     day_at DATE NOT NULL,
     high DECIMAL(10,4) NOT NULL,
     low DECIMAL(10,4) NOT NULL,
@@ -133,6 +139,6 @@ CREATE TABLE IF NOT EXISTS premium_day (
     count INT NOT NULL,
     fx_rate DECIMAL(10,4) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_symbol_day (symbol, day_at),
+    UNIQUE KEY uk_pair_symbol_day (korea_exchange, foreign_exchange, symbol, day_at),
     INDEX idx_day_at (day_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

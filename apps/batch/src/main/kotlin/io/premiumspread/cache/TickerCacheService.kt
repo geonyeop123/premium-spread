@@ -1,14 +1,17 @@
 package io.premiumspread.cache
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.client.TickerData
 import io.premiumspread.domain.ticker.TickerSnapshot
-import io.premiumspread.redis.RedisKeyGenerator
+import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheReader
+import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheWriter
+import io.premiumspread.infrastructure.common.cache.CacheReadMetrics
+import io.premiumspread.infrastructure.common.cache.CacheReadOutcome
 import io.premiumspread.redis.RedisTtl
 import io.premiumspread.redis.TickerAggregationTimeUnit
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
-import io.premiumspread.repository.TickerAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregation
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple
 import org.springframework.stereotype.Service
@@ -20,9 +23,11 @@ import java.time.Clock
 @Service
 class TickerCacheService(
     private val redisTemplate: StringRedisTemplate,
-    private val objectMapper: ObjectMapper,
     private val timeSeriesCache: TimeSeriesCacheSupport,
     private val clock: Clock,
+    private val cacheReader: TickerCacheReader,
+    private val cacheWriter: TickerCacheWriter,
+    private val metrics: CacheReadMetrics,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -30,25 +35,7 @@ class TickerCacheService(
      * 티커 데이터 저장
      */
     fun save(ticker: TickerData) {
-        // TODO(Phase 4): MarketPair-aware Redis v2 key로 dual-write 후 legacy key를 제거한다.
-        val key = RedisKeyGenerator.tickerKey(
-            exchange = ticker.exchange.lowercase(),
-            symbol = ticker.symbol.lowercase(),
-        )
-
-        val hash = mapOf(
-            "exchange" to ticker.exchange,
-            "symbol" to ticker.symbol,
-            "currency" to ticker.currency,
-            "price" to ticker.price.toPlainString(),
-            "volume" to (ticker.volume?.toPlainString() ?: ""),
-            "timestamp" to ticker.timestamp.toEpochMilli().toString(),
-        )
-
-        redisTemplate.opsForHash<String, String>().putAll(key, hash)
-        redisTemplate.expire(key, RedisTtl.TICKER)
-
-        log.debug("Saved ticker to cache: {} = {}", key, ticker.price)
+        cacheWriter.save(ticker.toDomainSnapshot())
     }
 
     /**
@@ -62,41 +49,8 @@ class TickerCacheService(
      * 티커 데이터 조회
      */
     fun get(exchange: String, symbol: String): TickerData? {
-        // TODO(Phase 4): v2 key 우선 dual-read로 전환한다. 현재 key는 API 호환을 위해 유지한다.
-        val key = RedisKeyGenerator.tickerKey(
-            exchange = exchange.lowercase(),
-            symbol = symbol.lowercase(),
-        )
-
-        val hash = redisTemplate.opsForHash<String, String>().entries(key)
-        if (hash.isEmpty()) {
-            return null
-        }
-
-        return try {
-            val storedExchange = hash["exchange"] ?: return null
-            val storedSymbol = hash["symbol"] ?: return null
-            if (!storedExchange.equals(exchange, ignoreCase = true) ||
-                !storedSymbol.equals(symbol, ignoreCase = true)
-            ) {
-                log.warn("Ticker cache identity mismatch: key={}, exchange={}, symbol={}", key, storedExchange, storedSymbol)
-                return null
-            }
-
-            TickerData(
-                exchange = storedExchange,
-                symbol = storedSymbol,
-                currency = hash["currency"] ?: return null,
-                price = hash["price"]?.toBigDecimalOrNull() ?: return null,
-                volume = hash["volume"]?.takeIf { it.isNotBlank() }?.toBigDecimalOrNull(),
-                timestamp = hash["timestamp"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) }
-                    ?: return null,
-            )
-        } catch (e: Exception) {
-            log.warn("Failed to parse ticker from cache: {}", key, e)
-            null
-        }
+        val cached = cacheReader.get(exchange, symbol) ?: return null
+        return TickerData(cached.exchange, cached.symbol, cached.currency, cached.price, cached.volume, cached.timestamp)
     }
 
     fun getSnapshot(exchange: String, symbol: String): TickerSnapshot? = get(exchange, symbol)?.toDomainSnapshot()
@@ -140,15 +94,20 @@ class TickerCacheService(
      */
     fun getSecondsData(exchange: String, symbol: String, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> {
         val key = TickerAggregationTimeUnit.SECONDS.keyFor(exchange, symbol)
-        val entries = timeSeriesCache.rangeByTime(key, from, to)
-
-        return entries.mapNotNull { entry ->
-            val member = entry.value ?: return@mapNotNull null
+        val entries = readTimeSeries(key, SECONDS_CACHE_NAME, from, to) ?: return emptyList()
+        if (entries.isEmpty()) {
+            metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.MISS)
+            return emptyList()
+        }
+        val parsed = entries.map { entry ->
+            val member = entry.value ?: return corruptSeconds(key)
             val priceStr = if (":" in member) member.substringAfter(":") else member
-            val price = priceStr.toBigDecimalOrNull() ?: return@mapNotNull null
-            val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return@mapNotNull null
+            val price = priceStr.toBigDecimalOrNull() ?: return corruptSeconds(key)
+            val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return corruptSeconds(key)
             timestamp to price
         }
+        metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.HIT)
+        return parsed
     }
 
     // ========== 집계 데이터 저장/조회 ==========
@@ -183,9 +142,16 @@ class TickerCacheService(
         to: Instant,
     ): List<Pair<Instant, TickerAggregation>> {
         val key = timeUnit.keyFor(exchange, symbol)
-        val entries = timeSeriesCache.rangeByTime(key, from, to)
-
-        return entries.mapNotNull { entry -> parseAggregation(exchange, symbol, currency, entry) }
+        val entries = readTimeSeries(key, AGGREGATION_CACHE_NAME, from, to) ?: return emptyList()
+        if (entries.isEmpty()) {
+            metrics.record(AGGREGATION_CACHE_NAME, CacheReadOutcome.MISS)
+            return emptyList()
+        }
+        val parsed = entries.map { entry ->
+            parseAggregation(exchange, symbol, currency, entry) ?: return corruptAggregation(key)
+        }
+        metrics.record(AGGREGATION_CACHE_NAME, CacheReadOutcome.HIT)
+        return parsed
     }
 
     private fun parseAggregation(
@@ -208,6 +174,31 @@ class TickerCacheService(
             avg = parts[4].toBigDecimalOrNull() ?: return null,
             count = parts[5].toIntOrNull() ?: return null,
         )
+    }
+
+    private fun readTimeSeries(
+        key: String,
+        cacheName: String,
+        from: Instant,
+        to: Instant,
+    ): List<TypedTuple<String>>? = try {
+        timeSeriesCache.rangeByTime(key, from, to)
+    } catch (exception: DataAccessException) {
+        log.warn("Ticker time-series cache read failed: {}", key, exception)
+        metrics.record(cacheName, CacheReadOutcome.ERROR)
+        null
+    }
+
+    private fun corruptSeconds(key: String): List<Pair<Instant, BigDecimal>> {
+        log.warn("Corrupt ticker seconds cache entry: {}", key)
+        metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.CORRUPT)
+        return emptyList()
+    }
+
+    private fun corruptAggregation(key: String): List<Pair<Instant, TickerAggregation>> {
+        log.warn("Corrupt ticker aggregation cache entry: {}", key)
+        metrics.record(AGGREGATION_CACHE_NAME, CacheReadOutcome.CORRUPT)
+        return emptyList()
     }
 
     // ========== 집계 유틸리티 ==========
@@ -264,5 +255,10 @@ class TickerCacheService(
                 .divide(totalCount.toBigDecimal(), 4, RoundingMode.HALF_UP),
             count = totalCount,
         )
+    }
+
+    private companion object {
+        const val SECONDS_CACHE_NAME = "ticker_seconds"
+        const val AGGREGATION_CACHE_NAME = "ticker_aggregation"
     }
 }

@@ -1,24 +1,23 @@
 # inspected project dependency configurations: api, compileOnly, compileOnlyApi, implementation, runtimeOnly
 :apps:api [implementation] -> :domain
-:apps:api [implementation] -> :modules:jpa
-:apps:api [implementation] -> :modules:redis
 :apps:api [runtimeOnly] -> :infrastructure:api
 :apps:api [runtimeOnly] -> :infrastructure:common
 :apps:api [runtimeOnly] -> :supports:logging
 :apps:api [runtimeOnly] -> :supports:monitoring
 :apps:batch [implementation] -> :domain
-:apps:batch [implementation] -> :modules:jpa
+:apps:batch [implementation] -> :infrastructure:common
 :apps:batch [implementation] -> :modules:redis
 :apps:batch [implementation] -> :supports:email
 :apps:batch [implementation] -> :supports:monitoring
 :apps:batch [runtimeOnly] -> :infrastructure:batch
-:apps:batch [runtimeOnly] -> :infrastructure:common
 :apps:batch [runtimeOnly] -> :supports:logging
 :infrastructure:api [implementation] -> :domain
 :infrastructure:api [implementation] -> :infrastructure:common
 :infrastructure:batch [implementation] -> :domain
 :infrastructure:batch [implementation] -> :infrastructure:common
 :infrastructure:common [implementation] -> :domain
+:infrastructure:common [implementation] -> :modules:jpa
+:infrastructure:common [implementation] -> :modules:redis
 :modules:jpa [implementation] -> :domain
 # inspected :domain direct external dependencies (excluding Kotlin plugin stdlib): api, compileOnly, compileOnlyApi, implementation, runtimeOnly
 :domain [api] => jakarta.persistence:jakarta.persistence-api

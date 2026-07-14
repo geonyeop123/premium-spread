@@ -13,6 +13,7 @@ spring:
 
 datasource:
   mysql-jpa:
+    enabled: true
     main:
       driver-class-name: com.mysql.cj.jdbc.Driver
       jdbc-url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/premiumspread?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true

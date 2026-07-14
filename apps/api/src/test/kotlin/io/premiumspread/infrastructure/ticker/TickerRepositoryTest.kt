@@ -93,6 +93,22 @@ class TickerRepositoryTest @Autowired constructor(
             // then
             assertThat(found).isNull()
         }
+
+        @Test
+        fun `soft-deleted ticker는 ID로 조회되지 않는다`() {
+            val saved = tickerRepository.save(
+                Ticker.create(
+                    exchange = Exchange.UPBIT,
+                    quote = Quote.coin(Symbol("BTC"), Currency.KRW),
+                    price = BigDecimal("129555000"),
+                    observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+            saved.delete(Instant.parse("2026-07-14T03:00:00Z"))
+            tickerRepository.save(saved)
+
+            assertThat(tickerRepository.findById(saved.id)).isNull()
+        }
     }
 
     @Nested
@@ -181,6 +197,35 @@ class TickerRepositoryTest @Autowired constructor(
             // then
             assertThat(found).isNotNull
             assertThat(found!!.quote.baseCode).isEqualTo("BTC")
+        }
+
+        @Test
+        fun `soft-deleted 최신 ticker는 제외하고 직전 active ticker를 반환한다`() {
+            val active = tickerRepository.save(
+                Ticker.create(
+                    exchange = Exchange.UPBIT,
+                    quote = Quote.coin(Symbol("BTC"), Currency.KRW),
+                    price = BigDecimal("120000000"),
+                    observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+            val deleted = tickerRepository.save(
+                Ticker.create(
+                    exchange = Exchange.UPBIT,
+                    quote = Quote.coin(Symbol("BTC"), Currency.KRW),
+                    price = BigDecimal("130000000"),
+                    observedAt = Instant.parse("2024-01-02T00:00:00Z"),
+                ),
+            )
+            deleted.delete(Instant.parse("2026-07-14T03:00:00Z"))
+            tickerRepository.save(deleted)
+
+            val found = tickerRepository.findLatest(
+                exchange = Exchange.UPBIT,
+                quote = Quote.coin(Symbol("BTC"), Currency.KRW),
+            )
+
+            assertThat(found?.id).isEqualTo(active.id)
         }
     }
 
@@ -288,6 +333,32 @@ class TickerRepositoryTest @Autowired constructor(
             assertThat(found[0].observedAt).isEqualTo(Instant.parse("2024-01-03T00:00:00Z"))
             assertThat(found[1].observedAt).isEqualTo(Instant.parse("2024-01-02T00:00:00Z"))
             assertThat(found[2].observedAt).isEqualTo(Instant.parse("2024-01-01T00:00:00Z"))
+        }
+
+        @Test
+        fun `exchange와 symbol 목록은 soft-deleted ticker를 제외한다`() {
+            val active = tickerRepository.save(
+                Ticker.create(
+                    exchange = Exchange.UPBIT,
+                    quote = Quote.coin(Symbol("BTC"), Currency.KRW),
+                    price = BigDecimal("120000000"),
+                    observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+                ),
+            )
+            val deleted = tickerRepository.save(
+                Ticker.create(
+                    exchange = Exchange.UPBIT,
+                    quote = Quote.coin(Symbol("BTC"), Currency.KRW),
+                    price = BigDecimal("130000000"),
+                    observedAt = Instant.parse("2024-01-02T00:00:00Z"),
+                ),
+            )
+            deleted.delete(Instant.parse("2026-07-14T03:00:00Z"))
+            tickerRepository.save(deleted)
+
+            val found = tickerRepository.findAllByExchangeAndSymbol(Exchange.UPBIT, Symbol("BTC"))
+
+            assertThat(found.map(Ticker::id)).containsExactly(active.id)
         }
     }
 }

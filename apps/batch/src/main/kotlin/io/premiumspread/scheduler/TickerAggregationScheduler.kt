@@ -7,8 +7,8 @@ import io.premiumspread.application.job.aggregation.AggregationJob
 import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.redis.TickerAggregationTimeUnit
-import io.premiumspread.repository.TickerAggregation
-import io.premiumspread.repository.TickerAggregationRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -59,8 +59,8 @@ class TickerAggregationScheduler(
     private fun minuteJobFor(exchange: String, symbol: String, currency: String) = AggregationJob<TickerAggregation>(
         reader = { from, to -> tickerCacheService.aggregateSecondsData(exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
-            tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, exchange, symbol, from, agg)
             aggregationRepository.saveMinute(exchange, symbol, from, agg)
+            tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, exchange, symbol, from, agg)
             log.info(
                 "Aggregated ticker minute data: {}:{} at {} (high={}, low={}, count={})",
                 exchange,
@@ -79,8 +79,8 @@ class TickerAggregationScheduler(
     private fun hourJobFor(exchange: String, symbol: String, currency: String) = AggregationJob<TickerAggregation>(
         reader = { from, to -> tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, exchange, symbol, currency, from, to) },
         writer = { agg, from, _ ->
-            tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, exchange, symbol, from, agg)
             aggregationRepository.saveHour(exchange, symbol, from, agg)
+            tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, exchange, symbol, from, agg)
             log.info(
                 "Aggregated ticker hour data: {}:{} at {} (high={}, low={}, count={})",
                 exchange,

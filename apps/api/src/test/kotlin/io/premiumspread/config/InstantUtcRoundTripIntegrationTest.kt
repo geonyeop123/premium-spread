@@ -3,7 +3,7 @@ package io.premiumspread.config
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.domain.member.Member
-import io.premiumspread.infrastructure.member.MemberJpaRepository
+import io.premiumspread.infrastructure.common.persistence.jpa.member.SpringDataMemberRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Tag
@@ -32,7 +32,7 @@ import java.time.ZoneOffset
 )
 class InstantUtcRoundTripIntegrationTest @Autowired constructor(
     private val jdbcTemplate: JdbcTemplate,
-    private val memberJpaRepository: MemberJpaRepository,
+    private val memberJpaRepository: SpringDataMemberRepository,
 ) {
     @AfterEach
     fun cleanUp() {

@@ -8,8 +8,8 @@ import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.config.AggregationProperties
 import io.premiumspread.cache.TickerCacheService
 import io.premiumspread.redis.TickerAggregationTimeUnit
-import io.premiumspread.repository.TickerAggregation
-import io.premiumspread.repository.TickerAggregationRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -97,6 +97,20 @@ class TickerAggregationSchedulerTest {
             verify(exactly = 1) { aggregationRepository.saveMinute("bithumb", "btc", expectedFrom, bithumbAgg) }
             verify(exactly = 1) { aggregationRepository.saveMinute("binance", "btc", expectedFrom, binanceAgg) }
         }
+
+        @Test
+        fun `minute DB 저장 실패 시 cache를 기록하지 않는다`() {
+            val agg = tickerAgg("bithumb", "btc")
+            every { tickerCacheService.aggregateSecondsData("bithumb", "btc", "KRW", any(), any()) } returns agg
+            every { aggregationRepository.saveMinute("bithumb", "btc", any(), agg) } throws RuntimeException("db failure")
+            every { jobExecutor.execute(any(), any()) } answers { secondArg<() -> JobResult>().invoke() }
+
+            scheduler.aggregateMinute()
+
+            verify(exactly = 0) {
+                tickerCacheService.saveAggregation(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", any(), any())
+            }
+        }
     }
 
     @Nested
@@ -138,6 +152,22 @@ class TickerAggregationSchedulerTest {
             val expectedFrom = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.HOURS).from
             verify(exactly = 1) { aggregationRepository.saveHour("bithumb", "btc", expectedFrom, bithumbAgg) }
             verify(exactly = 1) { aggregationRepository.saveHour("binance", "btc", expectedFrom, binanceAgg) }
+        }
+
+        @Test
+        fun `hour DB 저장 실패 시 cache를 기록하지 않는다`() {
+            val agg = tickerAgg("bithumb", "btc")
+            every {
+                tickerCacheService.aggregateData(TickerAggregationTimeUnit.MINUTES, "bithumb", "btc", "KRW", any(), any())
+            } returns agg
+            every { aggregationRepository.saveHour("bithumb", "btc", any(), agg) } throws RuntimeException("db failure")
+            every { jobExecutor.execute(any(), any()) } answers { secondArg<() -> JobResult>().invoke() }
+
+            scheduler.aggregateHour()
+
+            verify(exactly = 0) {
+                tickerCacheService.saveAggregation(TickerAggregationTimeUnit.HOURS, "bithumb", "btc", any(), any())
+            }
         }
     }
 

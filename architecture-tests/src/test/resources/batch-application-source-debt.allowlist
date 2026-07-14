@@ -6,7 +6,7 @@ application/common/JobExecutor.kt -> io.premiumspread.redis.RedisTtl
 application/common/JobExecutor.kt -> org.springframework.data.redis.core.StringRedisTemplate
 application/job/fx/FxIngestionJob.kt -> io.premiumspread.cache.FxCacheService
 application/job/fx/FxIngestionJob.kt -> io.premiumspread.client.exchangerate.ExchangeRateClient
-application/job/fx/FxIngestionJob.kt -> io.premiumspread.repository.ExchangeRateRepository
+application/job/fx/FxIngestionJob.kt -> io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
 application/job/premium/PremiumRealtimeJob.kt -> io.premiumspread.cache.FxCacheService
 application/job/premium/PremiumRealtimeJob.kt -> io.premiumspread.cache.PremiumCacheService
 application/job/premium/PremiumRealtimeJob.kt -> io.premiumspread.cache.TickerCacheService
@@ -14,6 +14,6 @@ application/notification/PremiumThresholdNotificationService.kt -> io.premiumspr
 application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.email.EmailDeliveryException
 application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.email.EmailMessage
 application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.email.EmailSender
-application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.repository.ActiveSubscriptionReadRepository
-application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.repository.ActiveSubscriptionView
-application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.repository.ThresholdDirectionView
+application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionReadRepository
+application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionView
+application/notification/PremiumThresholdNotificationService.kt -> io.premiumspread.infrastructure.common.persistence.jdbc.notification.ThresholdDirectionView

@@ -1,11 +1,14 @@
 package io.premiumspread.cache
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.premiumspread.client.TickerData
 import io.premiumspread.domain.ticker.TickerSnapshot
+import io.premiumspread.infrastructure.common.cache.AfterCommitCacheExecutor
+import io.premiumspread.infrastructure.common.cache.CacheReadMetrics
+import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheReader
+import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheWriter
 import io.premiumspread.redis.TickerAggregationTimeUnit
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import org.assertj.core.api.Assertions.assertThat
@@ -39,7 +42,14 @@ class TickerCacheServiceTest {
         every { redisTemplate.expire(any(), any<Duration>()) } returns true
         val clock = Clock.fixed(Instant.parse("2026-05-12T00:00:00Z"), ZoneOffset.UTC)
         val timeSeriesCache = TimeSeriesCacheSupport(redisTemplate, clock)
-        tickerCacheService = TickerCacheService(redisTemplate, ObjectMapper(), timeSeriesCache, clock)
+        tickerCacheService = TickerCacheService(
+            redisTemplate,
+            timeSeriesCache,
+            clock,
+            TickerCacheReader(redisTemplate, CacheReadMetrics { _, _ -> }),
+            TickerCacheWriter(redisTemplate, AfterCommitCacheExecutor()),
+            CacheReadMetrics { _, _ -> },
+        )
     }
 
     private fun tuple(value: String, score: Double): ZSetOperations.TypedTuple<String> =
@@ -266,6 +276,26 @@ class TickerCacheServiceTest {
                 ),
             ).isNull()
         }
+
+        @Test
+        fun `seconds row 하나라도 손상되면 부분 집계하지 않는다`() {
+            every {
+                zSetOps.rangeByScoreWithScores("ticker:seconds:bithumb:btc", any(), any())
+            } returns linkedSetOf(
+                tuple("1706500000000:129555000", 10_000.0),
+                tuple("corrupt", 20_000.0),
+            )
+
+            assertThat(
+                tickerCacheService.aggregateSecondsData(
+                    "bithumb",
+                    "btc",
+                    "KRW",
+                    Instant.EPOCH,
+                    Instant.EPOCH.plusSeconds(60),
+                ),
+            ).isNull()
+        }
     }
 
     @Nested
@@ -317,7 +347,7 @@ class TickerCacheServiceTest {
         }
 
         @Test
-        fun `value 포맷이 잘못된 엔트리는 건너뛴다`() {
+        fun `value 포맷이 잘못된 엔트리가 있으면 부분 집계하지 않는다`() {
             // given
             every {
                 zSetOps.rangeByScoreWithScores("ticker:minutes:bithumb:btc", any(), any())
@@ -336,9 +366,7 @@ class TickerCacheServiceTest {
                 Instant.EPOCH.plusMillis(1),
             )
 
-            // then - 유효한 엔트리 1개만 집계됨
-            assertThat(result).isNotNull
-            assertThat(result!!.count).isEqualTo(10)
+            assertThat(result).isNull()
         }
     }
 }

@@ -1,5 +1,6 @@
 package io.premiumspread.infrastructure.notification
 
+import io.premiumspread.infrastructure.common.persistence.jpa.notification.JpaNotificationSubscriptionRepositoryAdapter
 import io.premiumspread.config.TestConfig
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
@@ -25,7 +26,7 @@ import java.time.Instant
 @ActiveProfiles("test")
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, TestConfig::class)
 class NotificationSubscriptionRepositoryImplTest @Autowired constructor(
-    private val sut: NotificationSubscriptionRepositoryImpl,
+    private val sut: JpaNotificationSubscriptionRepositoryAdapter,
     private val memberRepository: MemberRepository,
     private val databaseCleanUp: DatabaseCleanUp,
 ) {
@@ -58,15 +59,25 @@ class NotificationSubscriptionRepositoryImplTest @Autowired constructor(
     }
 
     @Test
-    fun `soft delete된 구독을 저장하면 활성 조회에서 제외된다`() {
+    fun `soft delete된 구독을 저장하면 member 목록에서 제외된다`() {
         val member = memberRepository.save(Member.create(email = "c@c.com", encodedPassword = "x"))
         val sub = sut.save(NotificationSubscription.create(member.id, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00")))
 
         sub.delete(Instant.parse("2026-07-14T10:00:00Z"))
         sut.delete(sub)
 
-        assertThat(sut.findById(sub.id)).isNull()
         assertThat(sut.findAllByMemberId(member.id)).isEmpty()
+    }
+
+    @Test
+    fun `soft delete된 구독은 ID로 조회되지 않는다`() {
+        val member = memberRepository.save(Member.create(email = "deleted-id@a.com", encodedPassword = "x"))
+        val sub = sut.save(NotificationSubscription.create(member.id, "BTC", ThresholdDirection.ABOVE, BigDecimal("5.00")))
+
+        sub.delete(Instant.parse("2026-07-14T10:00:00Z"))
+        sut.delete(sub)
+
+        assertThat(sut.findById(sub.id)).isNull()
     }
 
     @Test

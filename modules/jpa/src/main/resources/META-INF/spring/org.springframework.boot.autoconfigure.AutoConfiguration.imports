@@ -1,0 +1,2 @@
+io.premiumspread.config.jpa.JpaFoundationAutoConfiguration
+io.premiumspread.config.jpa.JpaAuditingAutoConfiguration

@@ -7,8 +7,10 @@ import io.premiumspread.application.job.aggregation.AggregationJob
 import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.redis.AggregationTimeUnit
-import io.premiumspread.repository.PremiumAggregation
-import io.premiumspread.repository.PremiumAggregationRepository
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -36,11 +38,13 @@ class PremiumAggregationScheduler(
         private val SUMMARY_CONFIG = JobConfig("aggregation:summary", "$LOCK_AGGREGATION:summary", 30, TimeUnit.SECONDS)
     }
 
+    private val pair = MarketPair.default(Symbol(BTC))
+
     private val minuteJob = AggregationJob<PremiumAggregation>(
         reader = { from, to -> premiumCacheService.aggregateSecondsData(BTC, from, to) },
         writer = { agg, from, _ ->
-            premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, BTC, from, agg)
-            aggregationRepository.saveMinute(BTC, from, agg)
+            aggregationRepository.saveMinute(pair, from, agg)
+            premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, pair, from, agg)
             log.info("Aggregated minute data: {} at {} (high={}, low={}, count={})", BTC, from, agg.high, agg.low, agg.count)
         },
         unit = ChronoUnit.MINUTES,
@@ -51,8 +55,8 @@ class PremiumAggregationScheduler(
     private val hourJob = AggregationJob<PremiumAggregation>(
         reader = { from, to -> premiumCacheService.aggregateData(AggregationTimeUnit.MINUTES, BTC, from, to) },
         writer = { agg, from, _ ->
-            premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, BTC, from, agg)
-            aggregationRepository.saveHour(BTC, from, agg)
+            aggregationRepository.saveHour(pair, from, agg)
+            premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, pair, from, agg)
             log.info("Aggregated hour data: {} at {} (high={}, low={}, count={})", BTC, from, agg.high, agg.low, agg.count)
         },
         unit = ChronoUnit.HOURS,
@@ -63,9 +67,9 @@ class PremiumAggregationScheduler(
     private val dayJob = AggregationJob<PremiumAggregation>(
         reader = { from, to -> premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, BTC, from, to) },
         writer = { agg, from, _ ->
-            premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, BTC, from, agg)
             val dayAt = from.atZone(windowPolicy.zoneId).toLocalDate()
-            aggregationRepository.saveDay(BTC, dayAt, agg)
+            aggregationRepository.saveDay(pair, dayAt, agg)
+            premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, pair, from, agg)
             log.info("Aggregated day data: {} at {} (high={}, low={}, count={})", BTC, dayAt, agg.high, agg.low, agg.count)
         },
         unit = ChronoUnit.DAYS,

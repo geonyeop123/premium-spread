@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple
 import org.springframework.stereotype.Component
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import java.time.Duration
 import java.time.Clock
 import java.time.Instant
@@ -15,6 +16,7 @@ import java.time.Instant
  * 동일 score 중복 방지를 위해 add 전 동일 score 삭제 후 삽입
  */
 @Component
+@ConditionalOnMissingBean(TimeSeriesCacheSupport::class)
 class TimeSeriesCacheSupport(
     private val redisTemplate: StringRedisTemplate,
     private val clock: Clock,

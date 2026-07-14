@@ -51,4 +51,10 @@ class PositionService(
     fun findAllClosedByMemberId(memberId: Long): List<Position> {
         return positionRepository.findAllClosedByMemberId(memberId)
     }
+
+    @Transactional(readOnly = true)
+    fun countOpenByMemberId(memberId: Long): Long = positionRepository.countOpenByMemberId(memberId)
+
+    @Transactional(readOnly = true)
+    fun countClosedByMemberId(memberId: Long): Long = positionRepository.countClosedByMemberId(memberId)
 }

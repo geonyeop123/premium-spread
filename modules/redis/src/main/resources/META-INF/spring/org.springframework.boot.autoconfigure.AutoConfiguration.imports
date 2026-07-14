@@ -1,0 +1,2 @@
+io.premiumspread.redis.RedisFoundationAutoConfiguration
+io.premiumspread.redis.RedisTimeSeriesAutoConfiguration

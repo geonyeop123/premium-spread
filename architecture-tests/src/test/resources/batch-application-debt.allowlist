@@ -12,7 +12,7 @@ io.premiumspread.application.common.JobExecutor -> org.springframework.data.redi
 io.premiumspread.application.job.fx.FxIngestionJob -> io.premiumspread.cache.FxCacheService
 io.premiumspread.application.job.fx.FxIngestionJob -> io.premiumspread.client.FxRateData
 io.premiumspread.application.job.fx.FxIngestionJob -> io.premiumspread.client.exchangerate.ExchangeRateClient
-io.premiumspread.application.job.fx.FxIngestionJob -> io.premiumspread.repository.ExchangeRateRepository
+io.premiumspread.application.job.fx.FxIngestionJob -> io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
 io.premiumspread.application.job.fx.FxIngestionJob$run$fxRate$1 -> io.premiumspread.client.FxRateData
 io.premiumspread.application.job.fx.FxIngestionJob$run$fxRate$1 -> io.premiumspread.client.exchangerate.ExchangeRateClient
 io.premiumspread.application.job.premium.PremiumRealtimeJob -> io.premiumspread.cache.FxCacheService
@@ -22,7 +22,7 @@ io.premiumspread.application.notification.PremiumThresholdNotificationService ->
 io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.email.EmailDeliveryException
 io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.email.EmailMessage
 io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.email.EmailSender
-io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.repository.ActiveSubscriptionReadRepository
-io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.repository.ActiveSubscriptionView
-io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.repository.ThresholdDirectionView
-io.premiumspread.application.notification.PremiumThresholdNotificationService$WhenMappings -> io.premiumspread.repository.ThresholdDirectionView
+io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionReadRepository
+io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionView
+io.premiumspread.application.notification.PremiumThresholdNotificationService -> io.premiumspread.infrastructure.common.persistence.jdbc.notification.ThresholdDirectionView
+io.premiumspread.application.notification.PremiumThresholdNotificationService$WhenMappings -> io.premiumspread.infrastructure.common.persistence.jdbc.notification.ThresholdDirectionView

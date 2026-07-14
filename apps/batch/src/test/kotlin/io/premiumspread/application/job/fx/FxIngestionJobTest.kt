@@ -2,15 +2,13 @@ package io.premiumspread.application.job.fx
 
 import io.mockk.coEvery
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.runs
 import io.mockk.verify
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.cache.FxCacheService
 import io.premiumspread.client.FxRateData
 import io.premiumspread.client.exchangerate.ExchangeRateClient
-import io.premiumspread.repository.ExchangeRateRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -23,7 +21,7 @@ class FxIngestionJobTest {
 
     private lateinit var exchangeRateClient: ExchangeRateClient
     private lateinit var fxCacheService: FxCacheService
-    private lateinit var exchangeRateRepository: ExchangeRateRepository
+    private lateinit var exchangeRateRepository: JdbcExchangeRateWriteRepository
     private lateinit var job: FxIngestionJob
 
     @BeforeEach
@@ -88,7 +86,7 @@ class FxIngestionJobTest {
         }
 
         @Test
-        fun `캐시 저장 예외 시 Failure를 반환한다`() {
+        fun `캐시 저장 예외 시 Failure를 반환하지만 DB 저장은 먼저 완료한다`() {
             // given
             val fxRate = fxRate()
             coEvery { exchangeRateClient.getUsdKrwRate() } returns fxRate
@@ -100,15 +98,14 @@ class FxIngestionJobTest {
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
             assertThat((result as JobResult.Failure).exception.message).isEqualTo("redis error")
-            verify(exactly = 0) { exchangeRateRepository.save(any(), any(), any(), any()) }
+            verify(exactly = 1) { exchangeRateRepository.save(any(), any(), any(), any()) }
         }
 
         @Test
-        fun `DB 저장 예외 시 Failure를 반환하고 캐시는 저장된 상태다`() {
+        fun `DB 저장 예외 시 Failure를 반환하고 cache는 쓰지 않는다`() {
             // given
             val fxRate = fxRate()
             coEvery { exchangeRateClient.getUsdKrwRate() } returns fxRate
-            every { fxCacheService.save(fxRate) } just runs
             every {
                 exchangeRateRepository.save(any(), any(), any(), any())
             } throws RuntimeException("db error")
@@ -118,7 +115,7 @@ class FxIngestionJobTest {
 
             // then
             assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            verify(exactly = 1) { fxCacheService.save(fxRate) }
+            verify(exactly = 0) { fxCacheService.save(fxRate) }
         }
     }
 }

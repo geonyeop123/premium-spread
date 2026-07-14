@@ -122,17 +122,27 @@ class PremiumRepositoryTest @Autowired constructor(
             // then
             assertThat(found).isNull()
         }
+
+        @Test
+        fun `soft-deleted premium은 ID로 조회되지 않는다`() {
+            val saved = premiumRepository.save(createTickersAndPremium())
+            saved.delete(Instant.parse("2026-07-14T03:00:00Z"))
+            premiumRepository.save(saved)
+
+            assertThat(premiumRepository.findById(saved.id)).isNull()
+        }
     }
 
     @Nested
     @DisplayName("findLatestBySymbol")
     inner class FindLatestBySymbol {
         @Test
-        fun `Batch legacy hash metadata를 API가 동일 pair와 UTC Instant로 읽는다`() {
-            val key = RedisKeyGenerator.premiumKey("btc")
+        fun `Batch v2 hash metadata를 API가 동일 pair와 UTC Instant로 읽는다`() {
+            val key = RedisKeyGenerator.premiumV2Key("UPBIT", "BINANCE", "btc")
             redisTemplate.opsForHash<String, String>().putAll(
                 key,
                 mapOf(
+                    "schema_version" to "2",
                     "symbol" to "BTC",
                     "rate" to "1.2350",
                     "korea_price" to "101000",
@@ -248,13 +258,33 @@ class PremiumRepositoryTest @Autowired constructor(
             assertThat(found!!.id).isEqualTo(ethPremium.id)
             assertThat(found.symbol.code).isEqualTo("ETH")
         }
+
+        @Test
+        fun `latest와 snapshot 조회는 soft-deleted premium을 제외한다`() {
+            val pair = MarketPair.default(Symbol("BTC"))
+            redisTemplate.delete(RedisKeyGenerator.premiumV2Key("BITHUMB", "BINANCE", "BTC"))
+            val active = premiumRepository.save(
+                createTickersAndPremium(observedAt = Instant.parse("2024-01-01T00:00:00Z")),
+            )
+            val deleted = premiumRepository.save(
+                createTickersAndPremium(observedAt = Instant.parse("2024-01-02T00:00:00Z")),
+            )
+            deleted.delete(Instant.parse("2026-07-14T03:00:00Z"))
+            premiumRepository.save(deleted)
+
+            val latest = premiumRepository.findLatestByPair(pair)
+            val snapshot = premiumRepository.findLatestSnapshotByPair(pair)
+
+            assertThat(latest?.id).isEqualTo(active.id)
+            assertThat(snapshot?.observedAt).isEqualTo(active.observedAt)
+        }
     }
 
     @Nested
     @DisplayName("findAllBySymbolAndPeriod")
     inner class FindAllBySymbolAndPeriod {
         @Test
-        fun `should return premiums within period`() {
+        fun `기간 조회는 from inclusive to exclusive를 적용한다`() {
             // given
             val p1 = premiumRepository.save(
                 createTickersAndPremium(
@@ -262,7 +292,7 @@ class PremiumRepositoryTest @Autowired constructor(
                     observedAt = Instant.parse("2024-01-01T00:00:00Z"),
                 ),
             )
-            val p2 = premiumRepository.save(
+            premiumRepository.save(
                 createTickersAndPremium(
                     symbol = "BTC",
                     observedAt = Instant.parse("2024-01-02T00:00:00Z"),
@@ -283,8 +313,8 @@ class PremiumRepositoryTest @Autowired constructor(
             )
 
             // then
-            assertThat(found).hasSize(2)
-            assertThat(found.map { it.id }).containsExactly(p1.id, p2.id)
+            assertThat(found).hasSize(1)
+            assertThat(found.map { it.id }).containsExactly(p1.id)
         }
 
         @Test
@@ -370,6 +400,26 @@ class PremiumRepositoryTest @Autowired constructor(
             assertThat(found[0].observedAt).isEqualTo(Instant.parse("2024-01-01T00:00:00Z"))
             assertThat(found[1].observedAt).isEqualTo(Instant.parse("2024-01-02T00:00:00Z"))
             assertThat(found[2].observedAt).isEqualTo(Instant.parse("2024-01-03T00:00:00Z"))
+        }
+
+        @Test
+        fun `pair 기간 조회는 soft-deleted premium을 제외한다`() {
+            val active = premiumRepository.save(
+                createTickersAndPremium(observedAt = Instant.parse("2024-01-01T00:00:00Z")),
+            )
+            val deleted = premiumRepository.save(
+                createTickersAndPremium(observedAt = Instant.parse("2024-01-02T00:00:00Z")),
+            )
+            deleted.delete(Instant.parse("2026-07-14T03:00:00Z"))
+            premiumRepository.save(deleted)
+
+            val found = premiumRepository.findAllByPair(
+                pair = MarketPair.default(Symbol("BTC")),
+                from = Instant.parse("2024-01-01T00:00:00Z"),
+                to = Instant.parse("2024-01-03T00:00:00Z"),
+            )
+
+            assertThat(found.map(Premium::id)).containsExactly(active.id)
         }
     }
 }

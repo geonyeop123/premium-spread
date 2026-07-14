@@ -1,1 +1,2 @@
 io.premiumspread.infrastructure.common.CommonInfrastructureAutoConfiguration
+io.premiumspread.infrastructure.common.migration.V12MigrationSafetyAutoConfiguration

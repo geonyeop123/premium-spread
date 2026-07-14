@@ -7,8 +7,9 @@
 | 0. 기준선/운영 데이터 점검 | COMPLETE | `cc7030e` | `origin/refactor/infrastructure-boundary` | unit 443 green, Batch integration 64개 중 25개 known failures 승인 |
 | 1. 긴급 운영 안전장치 | COMPLETE | `e1f1487` | `origin/refactor/infrastructure-boundary` | unit 473 green, API integration 91개 중 90 green/1 approved disabled |
 | 2. Gradle 모듈 경계/Architecture Test | COMPLETE | `8268148` | `origin/refactor/infrastructure-boundary` | unit 505 green, architecture 11 green, Batch integration은 Phase 3 retention 2건만 실패 |
-| 3. 공통 Domain/계산/시간 정책 | COMPLETE | 이번 Phase commit | `origin/refactor/infrastructure-boundary` | Domain 103/API unit 240/Batch unit 184/Redis 8/Architecture 11/API integration 96 green+1 approved disabled/Batch integration 68 green |
-| 4~10 | NOT_STARTED | 없음 | 없음 | Phase 4 착수 대기 |
+| 3. 공통 Domain/계산/시간 정책 | COMPLETE | `937e092` | `origin/refactor/infrastructure-boundary` | Domain 103/API unit 240/Batch unit 184/Redis 8/Architecture 11/API integration 96 green+1 approved disabled/Batch integration 68 green |
+| 4. 공통 Persistence/Redis Infrastructure | COMPLETE | 이번 Phase commit | push 예정 | JPA 2, Redis 13, Common unit 40/integration 5, API unit 168/integration 108 green+1 approved disabled, Batch unit 196/integration 68, Architecture 12 green |
+| 5~10 | NOT_STARTED | 없음 | 없음 | Phase 4 commit/push 후 Phase 5 착수 |
 
 ## Phase 0 실행 기록
 
@@ -104,7 +105,58 @@
 - D-14는 contract-ready 상태다. 실제 pair-aware Redis v2 write/legacy dual-read와 production DB pair
   column/backfill/unique migration은 계획 소유권에 따라 Phase 4에서 최종 완료한다.
 
+## Phase 4 실행 기록
+
+- API의 JPA/JDBC adapter, Batch의 공유 repository, 양 앱의 Ticker/FX/Premium cache reader·writer를
+  `infrastructure:common` persistence/cache package로 통합했다. Spring Data repository와 Domain adapter 이름을
+  분리하고 marker 기반 Entity/Repository scan과 명시적 adapter import로 auto-configuration 범위를 고정했다.
+- API main의 `modules:jpa`, `modules:redis`, Flyway 직접 의존을 제거하고 common이 JPA/Redis foundation과
+  migration resource를 소유한다. 의존 그래프 snapshot과 아키텍처 exact debt allowlist를 새 경계로 갱신했다.
+- V1~V12 migration byte를 common으로 이동하고 V12 checksum/immutable allowlist를 유지했다. V13에서
+  premium snapshot/minute/hour/day에 pair 컬럼을 추가하고 BITHUMB/BINANCE backfill, NOT NULL,
+  pair-aware index/unique를 적용했다. 빈 DB→V13과 V12 현재 schema→V13 통합 테스트, 번호 충돌/
+  destructive SQL gate, API Flyway enabled/Batch disabled 소유권 테스트가 통과했다.
+- Premium Redis는 `premium:{korea}:{foreign}:{symbol}` v2 key와 `schema_version=2`로 전환했다.
+  write는 v2로만 수행하고 default pair만 legacy main/history/seconds/aggregation/summary를 dual-read하며, legacy hit은 5초
+  cutover TTL로 축소한다. non-default pair는 legacy symbol-only key로 fallback하지 않고 손상 payload는
+  현재시각을 합성하지 않은 채 miss/corrupt/legacy-hit bounded metric으로 기록한다. Redis 장애는 error로 기록한 뒤
+  DB fallback을 허용하고, ZSet row 하나라도 손상되면 부분 집계 대신 전체 cache miss로 처리한다.
+- `AfterCommitCacheExecutor`를 도입하고 실제 MySQL transaction + Redis Testcontainers 통합 테스트로
+  rollback 시 DB/Redis 모두 미변경, commit 후에만 Redis 기록을 검증했다. Batch FX/집계는
+  DB-first/cache-second로 통일하고 DB 실패 시 cache 미호출 회귀 테스트를 추가했다.
+- active-only ID/list/exists, Position summary count query, 알려진 email unique만 Domain conflict로 변환,
+  알 수 없는 DB 오류 rethrow, premium 범위 `[from,to)`, pair 별 집계 격리를 repository contract로 고정했다.
+- JPA/Redis/common은 Boot auto-configuration imports와 조건부 JDBC/JPA/cache 구성을 사용한다. datasource와
+  Redis 활성 플래그, 사용자 bean backoff, third-party Redisson auto-configuration 제외를 context test로 고정해
+  Redis-only 및 Redis-disabled 소비자가 불필요한 DataSource/Redisson을 생성하지 않게 했다.
+- 최종 검증은 JPA 2, Redis 13, Common unit 40/integration 5, API unit 168, Batch unit 196,
+  Architecture 12, Batch integration 68이 전부 green이다. API integration은 109개 중 108개 green이고 기존 승인된
+  JWT blacklist 1개만 disabled다. `verifyMigrations`, `git diff --check`도 green이다.
+- 최종 독립 spec/code/auto-configuration 리뷰는 모두 BLOCKER 0 / MAJOR 0 / MINOR 0이다.
+- Phase 4 계획의 임시 예외로 Batch main에 아래 기술 adapter 파일과 common concrete adapter 직접 edge가
+  exact allowlist로 남아 있다. 이 debt는 Phase 6 commit `refactor: 배치 포트 경계와 외부 어댑터 분리`에서
+  Port로 전환하고 `apps:batch -> infrastructure:common/modules:redis` compile edge와 함께 제거한다.
+
+### Phase 6 제거 allowlist
+
+- `application/common/JobExecutor.kt`
+- `application/job/fx/FxIngestionJob.kt`
+- `application/notification/PremiumThresholdNotificationService.kt`
+- `cache/FxCacheService.kt`
+- `cache/NotificationCooldownStore.kt`
+- `cache/PremiumCacheService.kt`
+- `cache/TickerCacheService.kt`
+- `infrastructure/ingestion/binance/BinanceFlushJob.kt`
+- `infrastructure/ingestion/bithumb/BithumbFlushJob.kt`
+- `scheduler/ExchangeRateScheduler.kt`
+- `scheduler/PremiumAggregationScheduler.kt`
+- `scheduler/PremiumScheduler.kt`
+- `scheduler/TickerAggregationScheduler.kt`
+- 위 목록은 `architecture-tests/src/test/resources/batch-phase6-technical-adapter-files.allowlist`와 exact
+  일치하며, common concrete adapter와 modules Redis 직접 import가 추가되면 Architecture Test가 실패한다.
+
 ## 승인 및 재개 상태
 
 2026-07-14 사용자 결정: 운영/스테이징 없음, 불명확한 로컬 timestamp는 변환하지 않는 추천안 채택,
-스펙 리뷰 보정안 전체 승인. Phase 0~2 commit/push를 완료했고 Phase 3 검증·리뷰를 완료해 commit/push한다.
+스펙 리뷰 보정안 전체 승인. Phase 0~3 commit/push를 완료했고 Phase 4 구현·검증 및 독립 리뷰를 완료해
+commit/push한다.

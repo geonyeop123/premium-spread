@@ -8,8 +8,10 @@ import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.config.AggregationProperties
 import io.premiumspread.cache.PremiumCacheService
 import io.premiumspread.redis.AggregationTimeUnit
-import io.premiumspread.repository.PremiumAggregation
-import io.premiumspread.repository.PremiumAggregationRepository
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.BeforeEach
@@ -30,6 +32,7 @@ class PremiumAggregationSchedulerTest {
     private lateinit var scheduler: PremiumAggregationScheduler
     private val clock = Clock.fixed(Instant.parse("2026-05-12T12:34:56Z"), ZoneOffset.UTC)
     private val windowPolicy = AggregationWindowPolicy(AggregationProperties())
+    private val pair = MarketPair.default(Symbol("BTC"))
 
     @BeforeEach
     fun setUp() {
@@ -95,9 +98,21 @@ class PremiumAggregationSchedulerTest {
 
             // then
             verify(exactly = 1) { premiumCacheService.aggregateSecondsData("btc", any(), any()) }
-            verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, "btc", any(), agg) }
+            verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, pair, any(), agg) }
             val expectedFrom = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.MINUTES).from
-            verify(exactly = 1) { aggregationRepository.saveMinute("btc", expectedFrom, agg) }
+            verify(exactly = 1) { aggregationRepository.saveMinute(pair, expectedFrom, agg) }
+        }
+
+        @Test
+        fun `minute DB 저장 실패 시 cache를 기록하지 않는다`() {
+            val agg = aggregation()
+            every { premiumCacheService.aggregateSecondsData("btc", any(), any()) } returns agg
+            every { aggregationRepository.saveMinute(any(), any(), any()) } throws RuntimeException("db failure")
+            every { jobExecutor.execute(any(), any()) } answers { secondArg<() -> JobResult>().invoke() }
+
+            scheduler.aggregateMinute()
+
+            verify(exactly = 0) { premiumCacheService.saveAggregation(AggregationTimeUnit.MINUTES, pair, any(), any()) }
         }
     }
 
@@ -132,9 +147,21 @@ class PremiumAggregationSchedulerTest {
 
             // then
             verify(exactly = 1) { premiumCacheService.aggregateData(AggregationTimeUnit.MINUTES, "btc", any(), any()) }
-            verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, "btc", any(), agg) }
+            verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, pair, any(), agg) }
             val expectedFrom = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.HOURS).from
-            verify(exactly = 1) { aggregationRepository.saveHour("btc", expectedFrom, agg) }
+            verify(exactly = 1) { aggregationRepository.saveHour(pair, expectedFrom, agg) }
+        }
+
+        @Test
+        fun `hour DB 저장 실패 시 cache를 기록하지 않는다`() {
+            val agg = aggregation()
+            every { premiumCacheService.aggregateData(AggregationTimeUnit.MINUTES, "btc", any(), any()) } returns agg
+            every { aggregationRepository.saveHour(any(), any(), any()) } throws RuntimeException("db failure")
+            every { jobExecutor.execute(any(), any()) } answers { secondArg<() -> JobResult>().invoke() }
+
+            scheduler.aggregateHour()
+
+            verify(exactly = 0) { premiumCacheService.saveAggregation(AggregationTimeUnit.HOURS, pair, any(), any()) }
         }
     }
 
@@ -169,10 +196,31 @@ class PremiumAggregationSchedulerTest {
 
             // then
             verify(exactly = 1) { premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, "btc", any(), any()) }
-            verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, "btc", any(), agg) }
+            verify(exactly = 1) { premiumCacheService.saveAggregation(AggregationTimeUnit.DAYS, pair, any(), agg) }
             val window = windowPolicy.previous(clock.instant(), java.time.temporal.ChronoUnit.DAYS)
             verify(exactly = 1) {
-                aggregationRepository.saveDay("btc", window.from.atZone(windowPolicy.zoneId).toLocalDate(), agg)
+                aggregationRepository.saveDay(pair, window.from.atZone(windowPolicy.zoneId).toLocalDate(), agg)
+            }
+        }
+
+        @Test
+        fun `DB 저장 실패 시 commit되지 않은 집계를 cache에 기록하지 않는다`() {
+            val agg = aggregation()
+            every { premiumCacheService.aggregateData(AggregationTimeUnit.HOURS, "btc", any(), any()) } returns agg
+            every { aggregationRepository.saveDay(any(), any(), any()) } throws RuntimeException("db failure")
+            every { jobExecutor.execute(any(), any()) } answers {
+                secondArg<() -> JobResult>().invoke()
+            }
+
+            scheduler.aggregateDay()
+
+            verify(exactly = 0) {
+                premiumCacheService.saveAggregation(
+                    AggregationTimeUnit.DAYS,
+                    any<io.premiumspread.domain.market.MarketPair>(),
+                    any<java.time.Instant>(),
+                    any<io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregation>(),
+                )
             }
         }
 

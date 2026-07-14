@@ -1,5 +1,6 @@
 package io.premiumspread.repository
 
+import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
 import io.premiumspread.support.BatchIntegrationTestBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
@@ -27,7 +28,7 @@ class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
     }
 
     @Autowired
-    lateinit var repository: ExchangeRateRepository
+    lateinit var repository: JdbcExchangeRateWriteRepository
 
     private val fixedObservedAt = Instant.ofEpochSecond(1_706_486_401L)
     private val laterObservedAt = Instant.ofEpochSecond(1_706_490_001L)
@@ -42,12 +43,22 @@ class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
             repository.save("USD", "KRW", BigDecimal("1432.60"), fixedObservedAt)
 
             // then
-            val result = repository.findLatest("USD", "KRW")
-            assertThat(result).isNotNull
-            assertThat(result!!.baseCurrency).isEqualTo("USD")
-            assertThat(result.quoteCurrency).isEqualTo("KRW")
-            assertThat(result.rate).isEqualByComparingTo("1432.60")
-            assertThat(result.observedAt).isEqualTo(fixedObservedAt)
+            val row = requireNotNull(
+                jdbcTemplate.queryForObject(
+                    "SELECT base_currency, quote_currency, rate, observed_at FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
+                ) { resultSet, _ ->
+                    listOf(
+                        resultSet.getString("base_currency"),
+                        resultSet.getString("quote_currency"),
+                        resultSet.getBigDecimal("rate"),
+                        resultSet.getTimestamp("observed_at").toInstant(),
+                    )
+                },
+            )
+            assertThat(row[0]).isEqualTo("USD")
+            assertThat(row[1]).isEqualTo("KRW")
+            assertThat(row[2] as BigDecimal).isEqualByComparingTo("1432.60")
+            assertThat(row[3]).isEqualTo(fixedObservedAt)
         }
 
         @Test
@@ -76,8 +87,11 @@ class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
             repository.save("USD", "KRW", BigDecimal("1450.00"), fixedObservedAt)
 
             // then - 갱신된 rate 반환
-            val result = repository.findLatest("USD", "KRW")
-            assertThat(result!!.rate).isEqualByComparingTo("1450.00")
+            val rate = jdbcTemplate.queryForObject(
+                "SELECT rate FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
+                BigDecimal::class.java,
+            )
+            assertThat(rate).isEqualByComparingTo("1450.00")
             val count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
                 Int::class.java,
@@ -112,38 +126,4 @@ class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
         }
     }
 
-    @Nested
-    @DisplayName("findLatest")
-    inner class FindLatest {
-
-        @Test
-        fun `데이터가 없으면 null을 반환한다`() {
-            assertThat(repository.findLatest("USD", "KRW")).isNull()
-        }
-
-        @Test
-        fun `여러 레코드 중 observed_at이 가장 늦은 것을 반환한다`() {
-            // given
-            repository.save("USD", "KRW", BigDecimal("1432.60"), fixedObservedAt)
-            repository.save("USD", "KRW", BigDecimal("1450.00"), laterObservedAt)
-
-            // when
-            val result = repository.findLatest("USD", "KRW")
-
-            // then
-            assertThat(result!!.rate).isEqualByComparingTo("1450.00")
-        }
-
-        @Test
-        fun `다른 통화쌍은 반환하지 않는다`() {
-            // given
-            repository.save("USD", "KRW", BigDecimal("1432.60"), fixedObservedAt)
-
-            // when
-            val result = repository.findLatest("EUR", "KRW")
-
-            // then
-            assertThat(result).isNull()
-        }
-    }
 }

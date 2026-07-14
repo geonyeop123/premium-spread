@@ -82,6 +82,46 @@ class ArchitectureBoundaryTest {
     }
 
     @Test
+    fun `batch Phase 6 technical adapter files are an exact manifest`() {
+        val sourceRootValue = System.getProperty("architecture.source.apps.batch")
+        check(!sourceRootValue.isNullOrBlank()) { "Missing system property: architecture.source.apps.batch" }
+
+        val sourceRoot = Path.of(sourceRootValue)
+        val currentTechnicalAdapterFiles = sortedSetOf<String>()
+        Files.walk(sourceRoot).use { sourcePaths ->
+            sourcePaths
+                .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+                .sorted()
+                .forEach { path ->
+                    val importsTechnicalAdapter = Files.readString(path)
+                        .lineSequence()
+                        .map(String::trim)
+                        .filter { line -> line.startsWith("import ") }
+                        .map { line -> line.removePrefix("import ").substringBefore(" as ") }
+                        .any { importedType ->
+                            importedType in BATCH_PHASE6_EXACT_TECHNICAL_TYPES ||
+                                BATCH_PHASE6_TECHNICAL_PREFIXES.any(importedType::startsWith)
+                        }
+                    if (importsTechnicalAdapter) {
+                        currentTechnicalAdapterFiles += sourceRoot
+                            .relativize(path)
+                            .toString()
+                            .replace('\\', '/')
+                            .removePrefix("io/premiumspread/")
+                    }
+                }
+        }
+
+        assertEquals(
+            expected = BATCH_PHASE6_TECHNICAL_ADAPTER_FILES,
+            actual = currentTechnicalAdapterFiles,
+            message =
+                "Phase 6 temporary adapter manifest is exact: remove migrated files from the manifest and " +
+                    "reject every new direct persistence/cache/modules-redis import",
+        )
+    }
+
+    @Test
     fun `domain source has no forbidden technical dependency including inlined constants`() {
         assertExactSourceDebt(
             sourceRootProperty = "architecture.source.domain",
@@ -331,6 +371,24 @@ class ArchitectureBoundaryTest {
 
         val BATCH_APPLICATION_DEBT = loadDebtAllowlist("batch-application-debt.allowlist")
         val BATCH_APPLICATION_SOURCE_DEBT = loadDebtAllowlist("batch-application-source-debt.allowlist")
+        val BATCH_PHASE6_TECHNICAL_ADAPTER_FILES =
+            loadDebtAllowlist("batch-phase6-technical-adapter-files.allowlist")
+
+        val BATCH_PHASE6_EXACT_TECHNICAL_TYPES =
+            setOf(
+                "jakarta.persistence.EntityManager",
+                "javax.persistence.EntityManager",
+                "org.springframework.data.redis.core.RedisTemplate",
+                "org.springframework.data.redis.core.StringRedisTemplate",
+                "org.springframework.jdbc.core.JdbcTemplate",
+            )
+
+        val BATCH_PHASE6_TECHNICAL_PREFIXES =
+            setOf(
+                "io.premiumspread.infrastructure.common.cache.",
+                "io.premiumspread.infrastructure.common.persistence.",
+                "io.premiumspread.redis.",
+            )
 
         fun loadDebtAllowlist(resourceName: String): Set<String> {
             val resource =

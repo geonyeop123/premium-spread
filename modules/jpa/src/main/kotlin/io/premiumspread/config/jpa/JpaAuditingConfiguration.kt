@@ -16,5 +16,6 @@ class JpaAuditingConfiguration {
     fun clock(): Clock = Clock.systemUTC()
 
     @Bean("auditingDateTimeProvider")
+    @ConditionalOnMissingBean(name = ["auditingDateTimeProvider"])
     fun auditingDateTimeProvider(clock: Clock): DateTimeProvider = ClockDateTimeProvider(clock)
 }

@@ -5,11 +5,18 @@ import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheReader
+import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheWriter
+import io.premiumspread.infrastructure.common.cache.premium.PremiumAggregationCacheReader
+import io.premiumspread.infrastructure.common.cache.CacheReadMetrics
+import io.premiumspread.infrastructure.common.cache.CacheReadOutcome
+import io.premiumspread.infrastructure.common.cache.shortenTtl
 import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
-import io.premiumspread.repository.PremiumAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregation
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple
 import org.springframework.stereotype.Service
@@ -55,6 +62,10 @@ class PremiumCacheService(
     private val redisTemplate: StringRedisTemplate,
     private val timeSeriesCache: TimeSeriesCacheSupport,
     private val clock: Clock,
+    private val cacheReader: PremiumCacheReader,
+    private val cacheWriter: PremiumCacheWriter,
+    private val aggregationCacheReader: PremiumAggregationCacheReader,
+    private val metrics: CacheReadMetrics,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -62,78 +73,36 @@ class PremiumCacheService(
      * 프리미엄 데이터 저장
      */
     fun save(snapshot: PremiumSnapshot) {
-        val premium = snapshot.toLegacyCacheData()
-        // TODO(Phase 4): premium.pair canonical key 기반 v2 dual-write로 전환한다.
-        val key = RedisKeyGenerator.premiumKey(premium.symbol.lowercase())
-
-        val hash = mapOf(
-            "symbol" to premium.symbol,
-            "rate" to premium.premiumRate.toPlainString(),
-            "korea_price" to premium.koreaPrice.toPlainString(),
-            "foreign_price" to premium.foreignPrice.toPlainString(),
-            "foreign_price_krw" to premium.foreignPriceInKrw.toPlainString(),
-            "fx_rate" to premium.fxRate.toPlainString(),
-            "observed_at" to premium.observedAt.toEpochMilli().toString(),
-            "korea_exchange" to premium.pair.koreaExchange.name,
-            "foreign_exchange" to premium.pair.foreignExchange.name,
-            "fx_source" to premium.fxSource.name,
-            "fx_observed_at" to premium.fxObservedAt.toEpochMilli().toString(),
-        )
-
-        redisTemplate.opsForHash<String, String>().putAll(key, hash)
-        redisTemplate.expire(key, RedisTtl.PREMIUM)
-
-        log.debug("Saved premium to cache: {} = {}%", key, premium.premiumRate)
+        cacheWriter.save(snapshot)
     }
 
     /**
      * 프리미엄 히스토리 저장 (Sorted Set)
      */
     fun saveHistory(snapshot: PremiumSnapshot) {
-        val premium = snapshot.toLegacyCacheData()
-        val key = RedisKeyGenerator.premiumHistoryKey(premium.symbol.lowercase())
-        val value = "${premium.premiumRate}:${premium.koreaPrice}:${premium.foreignPrice}"
-
-        timeSeriesCache.add(key, value, premium.observedAt, RedisTtl.PREMIUM_HISTORY)
+        cacheWriter.saveHistory(snapshot)
     }
 
     /**
      * 프리미엄 데이터 조회
      */
     fun get(symbol: String): PremiumCacheData? {
-        // TODO(Phase 4): MarketPair를 입력받는 v2 read를 우선하고 이 legacy read를 fallback으로 제한한다.
-        val key = RedisKeyGenerator.premiumKey(symbol.lowercase())
+        return get(MarketPair.default(Symbol(symbol)))
+    }
 
-        val hash = redisTemplate.opsForHash<String, String>().entries(key)
-        if (hash.isEmpty()) {
-            return null
-        }
-
-        return try {
-            val storedSymbol = hash["symbol"] ?: return null
-            if (!storedSymbol.equals(symbol, ignoreCase = true)) {
-                log.warn("Premium cache identity mismatch: key={}, symbol={}", key, storedSymbol)
-                return null
-            }
-            val observedAt = hash["observed_at"]?.toLongOrNull()
-                ?.let { Instant.ofEpochMilli(it) }
-                ?: return null
-            val metadata = parseMetadata(hash, storedSymbol, observedAt) ?: return null
-            PremiumCacheData(
-                premiumRate = hash["rate"]?.toBigDecimalOrNull() ?: return null,
-                koreaPrice = hash["korea_price"]?.toBigDecimalOrNull() ?: return null,
-                foreignPrice = hash["foreign_price"]?.toBigDecimalOrNull() ?: return null,
-                foreignPriceInKrw = hash["foreign_price_krw"]?.toBigDecimalOrNull() ?: return null,
-                fxRate = hash["fx_rate"]?.toBigDecimalOrNull() ?: return null,
-                observedAt = observedAt,
-                pair = metadata.pair,
-                fxSource = metadata.fxSource,
-                fxObservedAt = metadata.fxObservedAt,
-            )
-        } catch (e: Exception) {
-            log.warn("Failed to parse premium from cache: {}", key, e)
-            null
-        }
+    fun get(pair: MarketPair): PremiumCacheData? {
+        val cached = cacheReader.get(pair) ?: return null
+        return PremiumCacheData(
+            cached.premiumRate,
+            cached.koreaPrice,
+            cached.foreignPrice,
+            cached.foreignPriceInKrw,
+            cached.fxRate,
+            cached.observedAt,
+            cached.pair,
+            cached.fxSource,
+            cached.fxObservedAt,
+        )
     }
 
     // ========== 초당 데이터 ZSet 저장 ==========
@@ -142,13 +111,13 @@ class PremiumCacheService(
      * 초당 데이터 ZSet에 저장 (DB INSERT 대체)
      */
     fun saveToSeconds(snapshot: PremiumSnapshot) {
-        val premium = snapshot.toLegacyCacheData()
-        val key = RedisKeyGenerator.premiumSecondsKey(premium.symbol.lowercase())
-        val value = "${premium.premiumRate}:${premium.koreaPrice}:${premium.foreignPrice}:${premium.fxRate}"
+        val pair = snapshot.pair
+        val key = RedisKeyGenerator.premiumV2SecondsKey(pair.koreaExchange.name, pair.foreignExchange.name, pair.symbol.code)
+        val value = "${snapshot.premiumRate}:${snapshot.koreaPrice}:${snapshot.foreignPrice}:${snapshot.fxRate}"
 
-        timeSeriesCache.add(key, value, premium.observedAt, RedisTtl.SECONDS_DATA)
+        timeSeriesCache.add(key, value, snapshot.observedAt, RedisTtl.SECONDS_DATA)
 
-        log.debug("Saved premium to seconds ZSet: {} = {}%", key, premium.premiumRate)
+        log.debug("Saved premium to seconds ZSet: {} = {}%", key, snapshot.premiumRate)
     }
 
     /**
@@ -161,20 +130,37 @@ class PremiumCacheService(
     )
 
     fun getSecondsData(symbol: String, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> {
-        return getSecondsDataFull(symbol, from, to).map { it.timestamp to it.rate }
+        return getSecondsData(MarketPair.default(Symbol(symbol)), from, to)
     }
 
-    fun getSecondsDataFull(symbol: String, from: Instant, to: Instant): List<SecondsEntry> {
-        val key = RedisKeyGenerator.premiumSecondsKey(symbol.lowercase())
-        val entries = timeSeriesCache.rangeByTime(key, from, to)
+    fun getSecondsData(pair: MarketPair, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> =
+        getSecondsDataFull(pair, from, to).map { it.timestamp to it.rate }
 
-        return entries.mapNotNull { entry ->
-            val parts = entry.value?.split(":") ?: return@mapNotNull null
-            val rate = parts.getOrNull(0)?.toBigDecimalOrNull() ?: return@mapNotNull null
-            val fxRate = parts.getOrNull(3)?.toBigDecimalOrNull()
-            val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return@mapNotNull null
-            SecondsEntry(timestamp, rate, fxRate)
+    fun getSecondsDataFull(symbol: String, from: Instant, to: Instant): List<SecondsEntry> =
+        getSecondsDataFull(MarketPair.default(Symbol(symbol)), from, to)
+
+    fun getSecondsDataFull(pair: MarketPair, from: Instant, to: Instant): List<SecondsEntry> {
+        val v2Key = RedisKeyGenerator.premiumV2SecondsKey(
+            pair.koreaExchange.name,
+            pair.foreignExchange.name,
+            pair.symbol.code,
+        )
+        val v2Entries = readTimeSeries(v2Key, SECONDS_CACHE_NAME, from, to) ?: return emptyList()
+        if (v2Entries.isNotEmpty()) {
+            return parseSeconds(v2Key, v2Entries)?.also {
+                metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.HIT)
+            } ?: emptyList()
         }
+
+        metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.MISS)
+        if (pair != MarketPair.default(pair.symbol)) return emptyList()
+        val legacyKey = RedisKeyGenerator.premiumSecondsKey(pair.symbol.code)
+        val legacyEntries = readTimeSeries(legacyKey, SECONDS_CACHE_NAME, from, to) ?: return emptyList()
+        if (legacyEntries.isEmpty()) return emptyList()
+        redisTemplate.shortenTtl(legacyKey, RedisTtl.PREMIUM_LEGACY_READ_WINDOW)
+        return parseSeconds(legacyKey, legacyEntries)?.also {
+            metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.LEGACY_HIT)
+        } ?: emptyList()
     }
 
     // ========== 통합 집계 데이터 저장/조회 ==========
@@ -187,14 +173,26 @@ class PremiumCacheService(
         symbol: String,
         timestamp: Instant,
         agg: PremiumAggregation,
+    ) = saveAggregation(timeUnit, MarketPair.default(Symbol(symbol)), timestamp, agg)
+
+    fun saveAggregation(
+        timeUnit: AggregationTimeUnit,
+        pair: MarketPair,
+        timestamp: Instant,
+        agg: PremiumAggregation,
     ) {
-        val key = timeUnit.keyFor(symbol)
+        val key = RedisKeyGenerator.premiumV2AggregationKey(
+            pair.koreaExchange.name,
+            pair.foreignExchange.name,
+            pair.symbol.code,
+            timeUnit.name,
+        )
         val fxPart = agg.fxRate?.toPlainString() ?: ""
         val value = "${agg.high}:${agg.low}:${agg.open}:${agg.close}:${agg.avg}:${agg.count}:${fxPart}"
 
         timeSeriesCache.add(key, value, timestamp, timeUnit.ttl)
 
-        log.debug("Saved aggregation to {}: {} at {}", timeUnit, symbol, timestamp)
+        log.debug("Saved aggregation to {}: {} at {}", timeUnit, pair, timestamp)
     }
 
     /**
@@ -205,33 +203,35 @@ class PremiumCacheService(
         symbol: String,
         from: Instant,
         to: Instant,
+    ): List<Pair<Instant, PremiumAggregation>> =
+        getAggregationData(timeUnit, MarketPair.default(Symbol(symbol)), from, to)
+
+    fun getAggregationData(
+        timeUnit: AggregationTimeUnit,
+        pair: MarketPair,
+        from: Instant,
+        to: Instant,
     ): List<Pair<Instant, PremiumAggregation>> {
-        val key = timeUnit.keyFor(symbol)
-        val entries = timeSeriesCache.rangeByTime(key, from, to)
-
-        return entries.mapNotNull { entry -> parseAggregation(symbol, entry) }
-    }
-
-    /**
-     * ZSet entry를 PremiumAggregation으로 파싱
-     */
-    private fun parseAggregation(
-        symbol: String,
-        entry: TypedTuple<String>,
-    ): Pair<Instant, PremiumAggregation>? {
-        val parts = entry.value?.split(":") ?: return null
-        if (parts.size < 6) return null
-        val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return null
-        return timestamp to PremiumAggregation(
-            symbol = symbol,
-            high = parts[0].toBigDecimalOrNull() ?: return null,
-            low = parts[1].toBigDecimalOrNull() ?: return null,
-            open = parts[2].toBigDecimalOrNull() ?: return null,
-            close = parts[3].toBigDecimalOrNull() ?: return null,
-            avg = parts[4].toBigDecimalOrNull() ?: return null,
-            count = parts[5].toIntOrNull() ?: return null,
-            fxRate = parts.getOrNull(6)?.toBigDecimalOrNull(),
-        )
+        val interval = when (timeUnit) {
+            AggregationTimeUnit.MINUTES -> "1m"
+            AggregationTimeUnit.HOURS -> "1h"
+            AggregationTimeUnit.DAYS -> "1d"
+            AggregationTimeUnit.SECONDS -> return emptyList()
+        }
+        return aggregationCacheReader.findByInterval(pair, interval, from, to)
+            ?.map { snapshot ->
+                snapshot.observedAt to PremiumAggregation(
+                    symbol = snapshot.pair.symbol.code,
+                    high = snapshot.high,
+                    low = snapshot.low,
+                    open = snapshot.open,
+                    close = snapshot.close,
+                    avg = snapshot.avg,
+                    count = snapshot.count,
+                    fxRate = snapshot.fxRate,
+                )
+            }
+            ?: emptyList()
     }
 
     // ========== 서머리 캐시 ==========
@@ -251,7 +251,16 @@ class PremiumCacheService(
      * 서머리 캐시 저장
      */
     fun saveSummary(interval: String, symbol: String, summary: PremiumSummary) {
-        val key = RedisKeyGenerator.summaryKey(interval, symbol.lowercase())
+        saveSummary(interval, MarketPair.default(Symbol(symbol)), summary)
+    }
+
+    fun saveSummary(interval: String, pair: MarketPair, summary: PremiumSummary) {
+        val key = RedisKeyGenerator.premiumV2SummaryKey(
+            pair.koreaExchange.name,
+            pair.foreignExchange.name,
+            pair.symbol.code,
+            interval,
+        )
 
         val hash = mapOf(
             "high" to summary.high.toPlainString(),
@@ -279,25 +288,90 @@ class PremiumCacheService(
      * 서머리 캐시 조회
      */
     fun getSummary(interval: String, symbol: String): PremiumSummary? {
-        val key = RedisKeyGenerator.summaryKey(interval, symbol.lowercase())
+        return getSummary(interval, MarketPair.default(Symbol(symbol)))
+    }
 
-        val hash = redisTemplate.opsForHash<String, String>().entries(key)
-        if (hash.isEmpty()) return null
+    fun getSummary(interval: String, pair: MarketPair): PremiumSummary? {
+        val v2Key = RedisKeyGenerator.premiumV2SummaryKey(
+            pair.koreaExchange.name,
+            pair.foreignExchange.name,
+            pair.symbol.code,
+            interval,
+        )
 
-        return try {
-            PremiumSummary(
-                high = hash["high"]?.toBigDecimalOrNull() ?: return null,
-                low = hash["low"]?.toBigDecimalOrNull() ?: return null,
-                current = hash["current"]?.toBigDecimalOrNull() ?: return null,
-                currentTimestamp = hash["current_ts"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) } ?: return null,
-                updatedAt = hash["updated_at"]?.toLongOrNull()
-                    ?.let { Instant.ofEpochMilli(it) } ?: return null,
-            )
-        } catch (e: Exception) {
-            log.warn("Failed to parse summary from cache: {}", key, e)
-            null
+        val v2Hash = readSummaryHash(v2Key) ?: return null
+        if (v2Hash.isNotEmpty()) return parseSummary(v2Key, v2Hash, CacheReadOutcome.HIT)
+
+        metrics.record(SUMMARY_CACHE_NAME, CacheReadOutcome.MISS)
+        if (pair != MarketPair.default(pair.symbol)) return null
+        val legacyKey = RedisKeyGenerator.summaryKey(interval, pair.symbol.code)
+        val legacyHash = readSummaryHash(legacyKey) ?: return null
+        if (legacyHash.isEmpty()) return null
+        redisTemplate.shortenTtl(legacyKey, RedisTtl.PREMIUM_LEGACY_READ_WINDOW)
+        return parseSummary(legacyKey, legacyHash, CacheReadOutcome.LEGACY_HIT)
+    }
+
+    private fun readTimeSeries(
+        key: String,
+        cacheName: String,
+        from: Instant,
+        to: Instant,
+    ): List<TypedTuple<String>>? = try {
+        timeSeriesCache.rangeByTime(key, from, to)
+    } catch (exception: DataAccessException) {
+        log.warn("Premium time-series cache read failed: {}", key, exception)
+        metrics.record(cacheName, CacheReadOutcome.ERROR)
+        null
+    }
+
+    private fun parseSeconds(key: String, entries: List<TypedTuple<String>>): List<SecondsEntry>? {
+        val parsed = entries.map { entry ->
+            val parts = entry.value?.split(":") ?: return corruptSeconds(key)
+            if (parts.size != 4 || parts.any { it.toBigDecimalOrNull() == null }) return corruptSeconds(key)
+            val rate = parts[0].toBigDecimal()
+            val fxRate = parts[3].toBigDecimal()
+            val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return corruptSeconds(key)
+            SecondsEntry(timestamp, rate, fxRate)
         }
+        return parsed
+    }
+
+    private fun corruptSeconds(key: String): List<SecondsEntry>? {
+        log.warn("Corrupt premium seconds cache entry: {}", key)
+        metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.CORRUPT)
+        return null
+    }
+
+    private fun readSummaryHash(key: String): Map<String, String>? = try {
+        redisTemplate.opsForHash<String, String>().entries(key)
+    } catch (exception: DataAccessException) {
+        log.warn("Premium summary cache read failed: {}", key, exception)
+        metrics.record(SUMMARY_CACHE_NAME, CacheReadOutcome.ERROR)
+        null
+    }
+
+    private fun parseSummary(
+        key: String,
+        hash: Map<String, String>,
+        success: CacheReadOutcome,
+    ): PremiumSummary? {
+        val summary = PremiumSummary(
+            high = hash["high"]?.toBigDecimalOrNull() ?: return corruptSummary(key),
+            low = hash["low"]?.toBigDecimalOrNull() ?: return corruptSummary(key),
+            current = hash["current"]?.toBigDecimalOrNull() ?: return corruptSummary(key),
+            currentTimestamp = hash["current_ts"]?.toLongOrNull()?.let(Instant::ofEpochMilli)
+                ?: return corruptSummary(key),
+            updatedAt = hash["updated_at"]?.toLongOrNull()?.let(Instant::ofEpochMilli)
+                ?: return corruptSummary(key),
+        )
+        metrics.record(SUMMARY_CACHE_NAME, success)
+        return summary
+    }
+
+    private fun corruptSummary(key: String): PremiumSummary? {
+        log.warn("Corrupt premium summary cache payload: {}", key)
+        metrics.record(SUMMARY_CACHE_NAME, CacheReadOutcome.CORRUPT)
+        return null
     }
 
     /**
@@ -394,54 +468,9 @@ class PremiumCacheService(
         )
     }
 
-    private fun PremiumSnapshot.toLegacyCacheData(): PremiumCacheData {
-        val defaultPair = MarketPair.default(pair.symbol)
-        require(pair == defaultPair) {
-            "Legacy premium cache writer only supports the default MarketPair until Phase 4: $pair"
-        }
-        return PremiumCacheData.from(this)
-    }
-
-    private fun parseMetadata(
-        hash: Map<String, String>,
-        symbol: String,
-        observedAt: Instant,
-    ): PremiumMetadata? {
-        val presentKeys = PREMIUM_METADATA_KEYS.filter(hash::containsKey)
-        if (presentKeys.isEmpty()) {
-            return PremiumMetadata(
-                pair = MarketPair.default(Symbol(symbol)),
-                fxSource = Exchange.FX_PROVIDER,
-                fxObservedAt = observedAt,
-            )
-        }
-        if (presentKeys.size != PREMIUM_METADATA_KEYS.size) return null
-
-        return PremiumMetadata(
-            pair = MarketPair(
-                symbol = Symbol(symbol),
-                koreaExchange = Exchange.valueOf(hash.getValue("korea_exchange")),
-                foreignExchange = Exchange.valueOf(hash.getValue("foreign_exchange")),
-            ),
-            fxSource = Exchange.valueOf(hash.getValue("fx_source")),
-            fxObservedAt = hash.getValue("fx_observed_at").toLongOrNull()
-                ?.let(Instant::ofEpochMilli)
-                ?: return null,
-        )
-    }
-
-    private data class PremiumMetadata(
-        val pair: MarketPair,
-        val fxSource: Exchange,
-        val fxObservedAt: Instant,
-    )
-
     private companion object {
-        val PREMIUM_METADATA_KEYS = setOf(
-            "korea_exchange",
-            "foreign_exchange",
-            "fx_source",
-            "fx_observed_at",
-        )
+        const val SECONDS_CACHE_NAME = "premium_seconds"
+        const val SUMMARY_CACHE_NAME = "premium_summary"
     }
+
 }

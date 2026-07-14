@@ -5,12 +5,13 @@ import org.redisson.api.RedissonClient
 import org.redisson.config.Config
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.autoconfigure.data.redis.RedisConnectionDetails
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
-@Configuration
+@Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = ["redis.enabled"], havingValue = "true", matchIfMissing = true)
 class RedissonConfig(
     @Value("\${spring.data.redis.host:localhost}")
@@ -22,8 +23,8 @@ class RedissonConfig(
     @Autowired(required = false)
     private val redisConnectionDetails: RedisConnectionDetails?,
 ) {
-
     @Bean
+    @ConditionalOnMissingBean(RedissonClient::class)
     fun redissonClient(): RedissonClient {
         val actualHost = redisConnectionDetails?.standalone?.host ?: host
         val actualPort = redisConnectionDetails?.standalone?.port ?: port

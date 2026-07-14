@@ -60,7 +60,7 @@ scheduling:
   enabled: false
 
 redis:
-  enabled: false
+  enabled: true
 
 exchange-rate:
   api-key: test-dummy-key

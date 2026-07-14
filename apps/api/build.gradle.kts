@@ -25,12 +25,6 @@ dependencies {
     runtimeOnly(project(":infrastructure:common"))
     runtimeOnly(project(":infrastructure:api"))
 
-    // modules
-    // TODO(Phase 4): Remove after JPA adapters, entity scanning, and migrations move to infrastructure:common.
-    implementation(project(":modules:jpa"))
-    // TODO(Phase 4): Remove after API cache adapters move to infrastructure:common and consume Redis transitively.
-    implementation(project(":modules:redis"))
-
     // supports
     runtimeOnly(project(":supports:logging"))
     runtimeOnly(project(":supports:monitoring"))
@@ -38,14 +32,11 @@ dependencies {
     // Kotlin / Spring
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework:spring-tx")
 
     // serialization
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
-
-    // flyway
-    implementation("org.flywaydb:flyway-core")
-    implementation("org.flywaydb:flyway-mysql")
 
     // security
     implementation("org.springframework.boot:spring-boot-starter-security")
@@ -74,6 +65,9 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:mysql")
+    testImplementation(project(":infrastructure:common"))
+    testImplementation(project(":modules:jpa"))
+    testImplementation(project(":modules:redis"))
 
     // test-fixtures
     testImplementation(testFixtures(project(":modules:jpa")))

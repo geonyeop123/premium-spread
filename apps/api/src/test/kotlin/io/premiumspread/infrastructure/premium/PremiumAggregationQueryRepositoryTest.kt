@@ -1,5 +1,9 @@
 package io.premiumspread.infrastructure.premium
 
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationQueryRepository
 import io.premiumspread.config.TestConfig
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
@@ -30,6 +34,8 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
     private val jdbcTemplate: JdbcTemplate,
 ) {
 
+    private val pair = MarketPair.default(Symbol("BTC"))
+
     @BeforeEach
     fun setUp() {
         jdbcTemplate.execute("TRUNCATE TABLE premium_minute")
@@ -39,14 +45,14 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
 
     private fun insertMinute(symbol: String, minuteAt: LocalDateTime, high: BigDecimal, low: BigDecimal, open: BigDecimal, close: BigDecimal, avg: BigDecimal, count: Int) {
         jdbcTemplate.update(
-            "INSERT INTO premium_minute (symbol, minute_at, high, low, open, close, avg, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO premium_minute (korea_exchange, foreign_exchange, symbol, minute_at, high, low, open, close, avg, count) VALUES ('BITHUMB', 'BINANCE', ?, ?, ?, ?, ?, ?, ?, ?)",
             symbol, minuteAt, high, low, open, close, avg, count,
         )
     }
 
     private fun insertMinute(symbol: String, minuteAt: Instant) {
         jdbcTemplate.update(
-            "INSERT INTO premium_minute (symbol, minute_at, high, low, open, close, avg, count) VALUES (?, ?, 2.50, 1.00, 1.50, 2.00, 1.75, 60)",
+            "INSERT INTO premium_minute (korea_exchange, foreign_exchange, symbol, minute_at, high, low, open, close, avg, count) VALUES ('BITHUMB', 'BINANCE', ?, ?, 2.50, 1.00, 1.50, 2.00, 1.75, 60)",
             symbol,
             Timestamp.from(minuteAt),
         )
@@ -54,14 +60,14 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
 
     private fun insertHour(symbol: String, hourAt: LocalDateTime, high: BigDecimal, low: BigDecimal, open: BigDecimal, close: BigDecimal, avg: BigDecimal, count: Int) {
         jdbcTemplate.update(
-            "INSERT INTO premium_hour (symbol, hour_at, high, low, open, close, avg, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO premium_hour (korea_exchange, foreign_exchange, symbol, hour_at, high, low, open, close, avg, count) VALUES ('BITHUMB', 'BINANCE', ?, ?, ?, ?, ?, ?, ?, ?)",
             symbol, hourAt, high, low, open, close, avg, count,
         )
     }
 
     private fun insertDay(symbol: String, dayAt: String, high: BigDecimal, low: BigDecimal, open: BigDecimal, close: BigDecimal, avg: BigDecimal, count: Int) {
         jdbcTemplate.update(
-            "INSERT INTO premium_day (symbol, day_at, high, low, open, close, avg, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO premium_day (korea_exchange, foreign_exchange, symbol, day_at, high, low, open, close, avg, count) VALUES ('BITHUMB', 'BINANCE', ?, ?, ?, ?, ?, ?, ?, ?)",
             symbol, dayAt, high, low, open, close, avg, count,
         )
     }
@@ -78,7 +84,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
                 TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Honolulu"))
                 insertMinute("BTC", expected)
 
-                val result = repository.findByInterval("BTC", "1m", expected, expected.plusSeconds(60))
+                val result = repository.findByInterval(pair, "1m", expected, expected.plusSeconds(60))
 
                 assertThat(result.single().observedAt).isEqualTo(expected)
             } finally {
@@ -100,7 +106,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val from = Instant.parse("2024-01-01T06:00:00Z")
             val to = Instant.parse("2024-01-01T06:02:00Z")
 
-            val result = repository.findByInterval("BTC", "1m", from, to)
+            val result = repository.findByInterval(pair, "1m", from, to)
 
             // then - 06:00, 06:01 두 건
             assertThat(result).hasSize(2)
@@ -119,10 +125,33 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val from = Instant.parse("2024-01-01T10:00:00Z")
             val to = Instant.parse("2024-01-01T11:00:00Z")
 
-            val result = repository.findByInterval("BTC", "1m", from, to)
+            val result = repository.findByInterval(pair, "1m", from, to)
 
             // then
             assertThat(result).isEmpty()
+        }
+
+        @Test
+        fun `같은 symbol과 시간의 다른 거래소 pair 집계는 조회하지 않는다`() {
+            val observedAt = Instant.parse("2024-01-01T06:00:00Z")
+            insertMinute("BTC", observedAt)
+            jdbcTemplate.update(
+                "INSERT INTO premium_minute (korea_exchange, foreign_exchange, symbol, minute_at, high, low, open, close, avg, count) VALUES ('UPBIT', 'BINANCE', 'BTC', ?, 9.00, 8.00, 8.00, 9.00, 8.50, 10)",
+                Timestamp.from(observedAt),
+            )
+
+            val defaultResult = repository.findByInterval(pair, "1m", observedAt, observedAt.plusSeconds(60))
+            val upbitPair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+            val upbitResult = repository.findByInterval(
+                upbitPair,
+                "1m",
+                observedAt,
+                observedAt.plusSeconds(60),
+            )
+
+            assertThat(defaultResult.single().high).isEqualByComparingTo("2.50")
+            assertThat(upbitResult.single().high).isEqualByComparingTo("9.00")
+            assertThat(upbitResult.single().pair).isEqualTo(upbitPair)
         }
     }
 
@@ -142,7 +171,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val from = Instant.parse("2024-01-01T06:00:00Z")
             val to = Instant.parse("2024-01-01T08:00:00Z")
 
-            val result = repository.findByInterval("BTC", "1h", from, to)
+            val result = repository.findByInterval(pair, "1h", from, to)
 
             // then
             assertThat(result).hasSize(2)
@@ -165,7 +194,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val from = Instant.parse("2024-01-01T00:00:00Z")
             val to = Instant.parse("2024-01-03T00:00:00Z")
 
-            val result = repository.findByInterval("BTC", "1d", from, to)
+            val result = repository.findByInterval(pair, "1d", from, to)
 
             // then
             assertThat(result).hasSize(2)
@@ -181,7 +210,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             insertDay("BTC", "2024-01-02", BigDecimal("3.00"), BigDecimal("1.50"), BigDecimal("2.00"), BigDecimal("2.50"), BigDecimal("2.25"), 1380)
 
             val result = repository.findByInterval(
-                "BTC",
+                pair,
                 "1d",
                 Instant.parse("2023-12-31T15:00:00Z"),
                 Instant.parse("2024-01-01T15:00:00Z"),
@@ -206,7 +235,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val from = Instant.parse("2024-01-01T06:00:00Z")
             val to = Instant.parse("2024-01-01T07:00:00Z")
 
-            val result = repository.findByInterval("btc", "1m", from, to)
+            val result = repository.findByInterval(pair, "1m", from, to)
 
             // then
             assertThat(result).hasSize(1)
@@ -223,7 +252,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val from = Instant.parse("2024-01-01T06:00:00Z")
             val to = Instant.parse("2024-01-01T07:00:00Z")
 
-            val result = repository.findByInterval("ETH", "1m", from, to)
+            val result = repository.findByInterval(MarketPair.default(Symbol("ETH")), "1m", from, to)
 
             // then
             assertThat(result).isEmpty()
@@ -240,7 +269,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val to = Instant.parse("2024-01-02T00:00:00Z")
 
             assertThatThrownBy {
-                repository.findByInterval("BTC", "5m", from, to)
+                repository.findByInterval(pair, "5m", from, to)
             }.hasRootCauseInstanceOf(IllegalArgumentException::class.java)
                 .rootCause()
                 .hasMessageContaining("Invalid interval: 5m")
@@ -265,7 +294,7 @@ class PremiumAggregationQueryRepositoryTest @Autowired constructor(
             val from = Instant.parse("2024-01-01T06:00:00Z")
             val to = Instant.parse("2024-01-01T06:03:00Z")
 
-            val result = repository.findByInterval("BTC", "1m", from, to)
+            val result = repository.findByInterval(pair, "1m", from, to)
 
             // then - 시간순 정렬
             assertThat(result).hasSize(3)

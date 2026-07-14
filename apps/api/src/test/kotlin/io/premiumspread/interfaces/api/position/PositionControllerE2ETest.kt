@@ -15,7 +15,6 @@ import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.ticker.Ticker
 import io.premiumspread.domain.ticker.TickerRepository
-import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
@@ -76,7 +75,7 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `AUTO 포지션 오픈 성공 - 최신 스냅샷으로 DB 저장과 Redis 캐시 갱신`() {
+    fun `AUTO 포지션 오픈 성공 - 최신 스냅샷으로 DB 저장`() {
         val accessToken = login()
         val observedAt = Instant.now()
         savePremiumWithTickers(observedAt = observedAt)
@@ -96,11 +95,6 @@ class PositionControllerE2ETest @Autowired constructor(
             jsonPath("$.entryFxRate") { value(1432.6) }
             jsonPath("$.status") { value("OPEN") }
         }
-
-        val exists = redisTemplate.opsForValue().get(RedisKeyGenerator.positionOpenExistsKey())
-        val count = redisTemplate.opsForValue().get(RedisKeyGenerator.positionOpenCountKey())
-        assertThat(exists).isEqualTo("true")
-        assertThat(count).isEqualTo("1")
     }
 
     @Test
@@ -148,7 +142,7 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `MANUAL 포지션 오픈 성공 - 입력값으로 DB 저장과 Redis 캐시 갱신`() {
+    fun `MANUAL 포지션 오픈 성공 - 입력값으로 DB 저장`() {
         val accessToken = login()
 
         mockMvc.post("/api/v1/positions/manual") {
@@ -166,11 +160,6 @@ class PositionControllerE2ETest @Autowired constructor(
             jsonPath("$.entryFxRate") { value(1521.6) }
             jsonPath("$.status") { value("OPEN") }
         }
-
-        val exists = redisTemplate.opsForValue().get(RedisKeyGenerator.positionOpenExistsKey())
-        val count = redisTemplate.opsForValue().get(RedisKeyGenerator.positionOpenCountKey())
-        assertThat(exists).isEqualTo("true")
-        assertThat(count).isEqualTo("1")
     }
 
     @Test
@@ -346,11 +335,9 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `포지션 청산 성공 - DB CLOSED 상태 + Redis 캐시 갱신`() {
+    fun `포지션 청산 성공 - DB CLOSED 상태 저장`() {
         val position = createPosition()
         val accessToken = login()
-        redisTemplate.opsForValue().set(RedisKeyGenerator.positionOpenExistsKey(), "true")
-        redisTemplate.opsForValue().set(RedisKeyGenerator.positionOpenCountKey(), "1")
 
         mockMvc.post("/api/v1/positions/${position.id}/close") {
             header("Authorization", "Bearer $accessToken")
@@ -362,11 +349,6 @@ class PositionControllerE2ETest @Autowired constructor(
 
         val updated = positionRepository.findById(position.id)
         assertThat(updated?.status).isEqualTo(PositionStatus.CLOSED)
-
-        val exists = redisTemplate.opsForValue().get(RedisKeyGenerator.positionOpenExistsKey())
-        val count = redisTemplate.opsForValue().get(RedisKeyGenerator.positionOpenCountKey())
-        assertThat(exists).isEqualTo("false")
-        assertThat(count).isEqualTo("0")
     }
 
     @Test

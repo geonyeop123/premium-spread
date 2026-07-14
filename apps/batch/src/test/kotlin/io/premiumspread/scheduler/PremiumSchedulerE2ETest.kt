@@ -74,7 +74,7 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
             premiumScheduler.calculatePremium()
 
             // then
-            val hash = redisTemplate.opsForHash<String, String>().entries("premium:btc")
+            val hash = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc")
             assertThat(hash).isNotEmpty
             assertThat(hash["symbol"]).isEqualTo("BTC")
             assertThat(BigDecimal(hash["korea_price"])).isEqualByComparingTo(BigDecimal("129555000"))
@@ -90,10 +90,10 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
             premiumScheduler.calculatePremium()
 
             // then
-            val zsetSize = redisTemplate.opsForZSet().size("premium:seconds:btc")
+            val zsetSize = redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:seconds")
             assertThat(zsetSize).isGreaterThanOrEqualTo(1)
 
-            val members = redisTemplate.opsForZSet().rangeWithScores("premium:seconds:btc", 0, -1)
+            val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:seconds", 0, -1)
             assertThat(members).isNotEmpty
             // value format: "rate:koreaPrice:foreignPrice:fxRate"
             val entry = members!!.first()
@@ -108,10 +108,10 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
             premiumScheduler.calculatePremium()
 
             // then
-            val zsetSize = redisTemplate.opsForZSet().size("premium:btc:history")
+            val zsetSize = redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:history")
             assertThat(zsetSize).isGreaterThanOrEqualTo(1)
 
-            val members = redisTemplate.opsForZSet().rangeWithScores("premium:btc:history", 0, -1)
+            val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:history", 0, -1)
             assertThat(members).isNotEmpty
             // value format: "premiumRate:koreaPrice:foreignPrice"
             val parts = members!!.first().value!!.split(":")
@@ -128,8 +128,8 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
             premiumScheduler.calculatePremium()
 
             // then - premium 캐시 없음
-            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:btc")).isEmpty()
-            assertThat(redisTemplate.opsForZSet().size("premium:seconds:btc")).isEqualTo(0)
+            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc")).isEmpty()
+            assertThat(redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:seconds")).isEqualTo(0)
         }
     }
 }

@@ -1,5 +1,10 @@
 package io.premiumspread.repository
 
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
 import io.premiumspread.support.BatchIntegrationTestBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
@@ -20,6 +25,7 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
     private val minuteAt = Instant.parse("2024-01-29T12:00:00Z")
     private val hourAt = Instant.parse("2024-01-29T12:00:00Z")
     private val dayAt = LocalDate.of(2024, 1, 29)
+    private val pair = MarketPair.default(Symbol("BTC"))
 
     private fun agg(
         high: String = "2.00",
@@ -45,10 +51,10 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         @Test
         fun `분 데이터를 저장하고 조회할 수 있다`() {
             // when
-            repository.saveMinute("btc", minuteAt, agg())
+            repository.saveMinute(pair, minuteAt, agg())
 
             // then
-            val result = repository.findLatestMinute("btc")
+            val result = repository.findLatestMinute(pair)
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("2.00")
             assertThat(result.low).isEqualByComparingTo("1.50")
@@ -65,13 +71,13 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         @Test
         fun `동일 심볼+분에 재저장 시 값이 갱신된다`() {
             // given
-            repository.saveMinute("btc", minuteAt, agg(high = "2.00", count = 10))
+            repository.saveMinute(pair, minuteAt, agg(high = "2.00", count = 10))
 
             // when - 같은 (symbol, minute_at) → ON DUPLICATE KEY UPDATE
-            repository.saveMinute("btc", minuteAt, agg(high = "3.00", count = 15))
+            repository.saveMinute(pair, minuteAt, agg(high = "3.00", count = 15))
 
             // then - 갱신된 값 반환
-            val result = repository.findLatestMinute("btc")
+            val result = repository.findLatestMinute(pair)
             assertThat(result!!.high).isEqualByComparingTo("3.00")
             assertThat(result.count).isEqualTo(15)
             val count = jdbcTemplate.queryForObject(
@@ -84,11 +90,11 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         @Test
         fun `여러 분 데이터 중 가장 최근 minute_at의 데이터를 반환한다`() {
             // given
-            repository.saveMinute("btc", minuteAt, agg(high = "2.00"))
-            repository.saveMinute("btc", minuteAt.plusSeconds(60), agg(high = "3.00"))
+            repository.saveMinute(pair, minuteAt, agg(high = "2.00"))
+            repository.saveMinute(pair, minuteAt.plusSeconds(60), agg(high = "3.00"))
 
             // when
-            val result = repository.findLatestMinute("btc")
+            val result = repository.findLatestMinute(pair)
 
             // then - 더 나중 시각의 데이터
             assertThat(result!!.high).isEqualByComparingTo("3.00")
@@ -96,7 +102,17 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
 
         @Test
         fun `데이터가 없으면 null을 반환한다`() {
-            assertThat(repository.findLatestMinute("btc")).isNull()
+            assertThat(repository.findLatestMinute(pair)).isNull()
+        }
+
+        @Test
+        fun `같은 symbol과 bucket도 거래소 pair가 다르면 서로 덮어쓰지 않는다`() {
+            val upbitPair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+            repository.saveMinute(pair, minuteAt, agg(high = "2.00"))
+            repository.saveMinute(upbitPair, minuteAt, agg(high = "7.00"))
+
+            assertThat(repository.findLatestMinute(pair)!!.high).isEqualByComparingTo("2.00")
+            assertThat(repository.findLatestMinute(upbitPair)!!.high).isEqualByComparingTo("7.00")
         }
     }
 
@@ -107,10 +123,10 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         @Test
         fun `시간 데이터를 저장하고 조회할 수 있다`() {
             // when
-            repository.saveHour("btc", hourAt, agg(high = "3.00", count = 60))
+            repository.saveHour(pair, hourAt, agg(high = "3.00", count = 60))
 
             // then
-            val result = repository.findLatestHour("btc")
+            val result = repository.findLatestHour(pair)
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("3.00")
             assertThat(result.count).isEqualTo(60)
@@ -124,19 +140,19 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         @Test
         fun `동일 심볼+시각에 재저장 시 값이 갱신된다`() {
             // given
-            repository.saveHour("btc", hourAt, agg(high = "3.00", count = 60))
+            repository.saveHour(pair, hourAt, agg(high = "3.00", count = 60))
 
             // when
-            repository.saveHour("btc", hourAt, agg(high = "3.50", count = 65))
+            repository.saveHour(pair, hourAt, agg(high = "3.50", count = 65))
 
             // then
-            val result = repository.findLatestHour("btc")
+            val result = repository.findLatestHour(pair)
             assertThat(result!!.high).isEqualByComparingTo("3.50")
         }
 
         @Test
         fun `데이터가 없으면 null을 반환한다`() {
-            assertThat(repository.findLatestHour("btc")).isNull()
+            assertThat(repository.findLatestHour(pair)).isNull()
         }
     }
 
@@ -147,10 +163,10 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         @Test
         fun `일 데이터를 저장하고 조회할 수 있다`() {
             // when
-            repository.saveDay("btc", dayAt, agg(high = "4.00", count = 1440))
+            repository.saveDay(pair, dayAt, agg(high = "4.00", count = 1440))
 
             // then
-            val result = repository.findLatestDay("btc")
+            val result = repository.findLatestDay(pair)
             assertThat(result).isNotNull
             assertThat(result!!.high).isEqualByComparingTo("4.00")
             assertThat(result.count).isEqualTo(1440)
@@ -159,19 +175,19 @@ class PremiumAggregationRepositoryTest : BatchIntegrationTestBase() {
         @Test
         fun `동일 심볼+날짜에 재저장 시 값이 갱신된다`() {
             // given
-            repository.saveDay("btc", dayAt, agg(high = "4.00"))
+            repository.saveDay(pair, dayAt, agg(high = "4.00"))
 
             // when
-            repository.saveDay("btc", dayAt, agg(high = "5.00"))
+            repository.saveDay(pair, dayAt, agg(high = "5.00"))
 
             // then
-            val result = repository.findLatestDay("btc")
+            val result = repository.findLatestDay(pair)
             assertThat(result!!.high).isEqualByComparingTo("5.00")
         }
 
         @Test
         fun `데이터가 없으면 null을 반환한다`() {
-            assertThat(repository.findLatestDay("btc")).isNull()
+            assertThat(repository.findLatestDay(pair)).isNull()
         }
     }
 }

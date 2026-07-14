@@ -1,6 +1,6 @@
 package io.premiumspread.scheduler
 
-import io.premiumspread.repository.TickerAggregationRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationRepository
 import io.premiumspread.application.job.aggregation.AggregationWindowPolicy
 import io.premiumspread.support.BatchIntegrationTestBase
 import org.assertj.core.api.Assertions.assertThat

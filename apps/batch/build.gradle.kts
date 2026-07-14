@@ -19,12 +19,11 @@ tasks.register<Test>("integrationTest") {
 
 dependencies {
     implementation(project(":domain"))
-    runtimeOnly(project(":infrastructure:common"))
+    // TODO(Phase 6): Port 전환 후 runtimeOnly로 복원한다.
+    implementation(project(":infrastructure:common"))
     runtimeOnly(project(":infrastructure:batch"))
 
     // modules
-    // TODO(Phase 6): Remove after Batch JDBC/JPA adapters move behind ports in infrastructure:common.
-    implementation(project(":modules:jpa"))
     // TODO(Phase 6): Remove after Batch cache/lock adapters move behind ports in infrastructure modules.
     implementation(project(":modules:redis"))
 

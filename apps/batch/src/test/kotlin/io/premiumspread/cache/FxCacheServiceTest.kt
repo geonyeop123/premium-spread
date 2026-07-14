@@ -7,6 +7,10 @@ import io.mockk.verify
 import io.premiumspread.client.FxRateData
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.infrastructure.common.cache.AfterCommitCacheExecutor
+import io.premiumspread.infrastructure.common.cache.CacheReadMetrics
+import io.premiumspread.infrastructure.common.cache.exchangerate.FxCacheReader
+import io.premiumspread.infrastructure.common.cache.exchangerate.FxCacheWriter
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -30,7 +34,10 @@ class FxCacheServiceTest {
         redisTemplate = mockk()
         every { redisTemplate.opsForHash<String, String>() } returns hashOps
         every { redisTemplate.expire(any(), any<Duration>()) } returns true
-        fxCacheService = FxCacheService(redisTemplate)
+        fxCacheService = FxCacheService(
+            FxCacheReader(redisTemplate, CacheReadMetrics { _, _ -> }),
+            FxCacheWriter(redisTemplate, AfterCommitCacheExecutor()),
+        )
     }
 
     private fun fxRateData(

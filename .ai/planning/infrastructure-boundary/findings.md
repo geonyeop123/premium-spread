@@ -110,3 +110,27 @@ Docker VM/WSL/JVM 시각 보정 직후 MySQL 컨테이너가 생성한 self-sign
 앞서 전체 context가 연쇄 실패할 수 있었다. 테스트와 local production URL은 원래 TLS를 사용하지 않는 정책이므로
 공통 fixture와 별도 V12 safety container URL에 `sslMode=DISABLED`를 명시했다. 외부 DB TLS 검증은 이 fixture와
 분리된 환경별 smoke/CI 책임으로 유지한다.
+
+## 6. Phase 4 실행 중 추가 확인사항
+
+### F-13 Redis 장애와 부분 손상 시 cache hit을 확정하면 안 됨
+
+Redis 연결 오류가 reader 밖으로 전파되면 DB fallback에 도달하지 못하고, ZSet의 손상 row만 제외하면 잘못된
+OHLC/평균/count/fxRate가 DB 정본으로 저장될 수 있다. 모든 공통 reader와 Batch 시계열 reader는 Redis 장애를
+bounded `ERROR` metric으로 기록하고 fallback 가능한 miss를 반환한다. ZSet은 한 row라도 format/숫자/timestamp가
+손상되면 전체 결과를 폐기하며, Premium seconds는 exact 4개 numeric field를 요구한다.
+
+### F-14 Boot auto-configuration 조건은 bean 생성 순서와 독립 소비자를 함께 검증해야 함
+
+`JdbcTemplate`, `EntityManagerFactory`, `StringRedisTemplate` 조건을 같은 구성에 묶으면 조건 평가 순서에 따라
+필수 adapter가 누락될 수 있다. common 구성을 JDBC/JPA/cache로 분리하고 `JdbcTemplateAutoConfiguration` 이후에
+평가되도록 했다. JPA datasource는 `datasource.mysql-jpa.enabled=true`, Redis business cache는
+`redis.enabled=true`에서만 활성화하며, Redis-only/Redis-disabled context test로 불필요한 Hikari/Redisson 생성을
+막았다. 양 앱은 third-party Redisson auto-configuration을 제외하고 property-aware custom 구성을 단일 소유자로 쓴다.
+
+### F-15 Legacy cutover TTL과 키 canonicalization
+
+legacy key를 `Symbol.code` 대문자로 조합하면 기존 소문자 Redis key를 놓치고, legacy hit마다 TTL을 다시 설정하면
+cutover window가 무기한 연장된다. legacy premium seconds/minutes/hours/days/summary key를 소문자로 canonicalize하고,
+현재 TTL이 cutover window보다 길거나 영구 키일 때만 줄인다. 반복 조회가 TTL을 연장하지 않는 계약을 테스트로
+고정했다.

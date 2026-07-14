@@ -1,5 +1,7 @@
 package io.premiumspread.repository
 
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregation
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationRepository
 import io.premiumspread.support.BatchIntegrationTestBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName

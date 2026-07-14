@@ -109,6 +109,15 @@ class MemberRepositoryTest @Autowired constructor(
 
             assertThat(found).isNull()
         }
+
+        @Test
+        fun `soft-deleted 회원은 ID로도 조회되지 않는다`() {
+            val saved = createMember()
+            saved.delete(Instant.parse("2026-07-14T03:00:00Z"))
+            memberRepository.save(saved)
+
+            assertThat(memberRepository.findById(saved.id)).isNull()
+        }
     }
 
     @Nested

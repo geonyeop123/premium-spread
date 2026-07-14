@@ -377,6 +377,24 @@ class PositionFacadeTest {
         }
     }
 
+    @Nested
+    inner class GetSummary {
+
+        @Test
+        fun `회원의 포지션 summary는 상태별 count query 결과로 만든다`() {
+            every { positionService.countOpenByMemberId(7L) } returns 2L
+            every { positionService.countClosedByMemberId(7L) } returns 3L
+
+            val result = facade.getSummary(7L)
+
+            assertThat(result.totalPositions).isEqualTo(5)
+            assertThat(result.openPositions).isEqualTo(2)
+            assertThat(result.closedPositions).isEqualTo(3)
+            verify(exactly = 0) { positionService.findAllOpenByMemberId(any()) }
+            verify(exactly = 0) { positionService.findAllClosedByMemberId(any()) }
+        }
+    }
+
     private fun openAutoCriteria(
         symbol: String = "BTC",
         koreaExchange: Exchange = Exchange.UPBIT,

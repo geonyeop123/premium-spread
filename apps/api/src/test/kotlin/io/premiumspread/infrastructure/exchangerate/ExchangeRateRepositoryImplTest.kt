@@ -1,5 +1,10 @@
 package io.premiumspread.infrastructure.exchangerate
 
+import io.premiumspread.infrastructure.common.cache.exchangerate.CachedFxRate
+import io.premiumspread.infrastructure.common.cache.exchangerate.FxCacheReader
+import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.ExchangeRateQueryRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -15,13 +20,13 @@ class ExchangeRateRepositoryImplTest {
 
     private lateinit var fxCacheReader: FxCacheReader
     private lateinit var exchangeRateQueryRepository: ExchangeRateQueryRepository
-    private lateinit var repository: ExchangeRateRepositoryImpl
+    private lateinit var repository: JdbcExchangeRateRepositoryAdapter
 
     @BeforeEach
     fun setUp() {
         fxCacheReader = mockk()
         exchangeRateQueryRepository = mockk()
-        repository = ExchangeRateRepositoryImpl(
+        repository = JdbcExchangeRateRepositoryAdapter(
             fxCacheReader = fxCacheReader,
             exchangeRateQueryRepository = exchangeRateQueryRepository,
         )

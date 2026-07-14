@@ -1,5 +1,12 @@
 package io.premiumspread.infrastructure.ticker
 
+import io.premiumspread.infrastructure.common.cache.ticker.CachedTicker
+import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheReader
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationSnapshot
+
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationQueryRepository
+import io.premiumspread.infrastructure.common.persistence.jpa.ticker.JpaTickerRepositoryAdapter
+import io.premiumspread.infrastructure.common.persistence.jpa.ticker.SpringDataTickerRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -14,17 +21,17 @@ import java.time.Instant
 
 class TickerRepositoryImplTest {
 
-    private lateinit var tickerJpaRepository: TickerJpaRepository
+    private lateinit var tickerJpaRepository: SpringDataTickerRepository
     private lateinit var tickerCacheReader: TickerCacheReader
     private lateinit var tickerAggregationQueryRepository: TickerAggregationQueryRepository
-    private lateinit var repository: TickerRepositoryImpl
+    private lateinit var repository: JpaTickerRepositoryAdapter
 
     @BeforeEach
     fun setUp() {
         tickerJpaRepository = mockk()
         tickerCacheReader = mockk()
         tickerAggregationQueryRepository = mockk()
-        repository = TickerRepositoryImpl(
+        repository = JpaTickerRepositoryAdapter(
             tickerJpaRepository = tickerJpaRepository,
             tickerCacheReader = tickerCacheReader,
             tickerAggregationQueryRepository = tickerAggregationQueryRepository,
