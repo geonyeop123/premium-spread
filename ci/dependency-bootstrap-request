@@ -1,6 +1,0 @@
-schema=1
-request=GENERATE_LOCKS_AND_SHA256
-branch=refactor/infrastructure-boundary
-target_sha=34792b88d5b0c0de80ec59a3efcafdc7ad333534
-dependency_fingerprint=sha256:0a09e9a1b1c90b9320c7d7648e9edbf9374887310ce97a14b4099399184d185b
-expires_at=2026-07-16T05:33:44Z

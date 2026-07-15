@@ -94,7 +94,7 @@ jobs:
           echo "::error::Review the candidate-bound verification metadata artifacts, commit both approved XML files, and rerun this SHA gate."
           exit 1
       - name: Compile without warnings and verify architecture boundaries
-        run: ./gradlew compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions :build-logic:test --dependency-verification strict --no-daemon
+        run: ./gradlew compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions :build-logic:test --dependency-verification strict --no-daemon
       - name: Verify repository quality and documentation contracts
         run: |
           bash ci/quality-gate-contract-test.sh

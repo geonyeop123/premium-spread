@@ -172,9 +172,14 @@ grep -Fq "${api_integration_command}" <<< "${api_job}" ||
 grep -Fq "${batch_integration_command}" <<< "${batch_job}" ||
   fail "batch-integration job must execute the exact strict Batch integration task"
 
-compile_contract='compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions :build-logic:test --dependency-verification strict'
+compile_contract='compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions :build-logic:test --dependency-verification strict'
 grep -q "${compile_contract}" "${quality_workflow}" ||
   fail "required compiler, architecture, isolation, exclusion and build-logic gates must execute together"
+grep -q 'tasks.registering.*verifySecurityDependencyVersions\|val verifySecurityDependencyVersions by tasks.registering' \
+  "${root_dir}/build.gradle.kts" || fail "production runtime security-version gate is required"
+grep -q 'SpringLibraryConventionPlugin.importSpringBootBom' \
+  "${root_dir}/build-logic/src/main/java/io/premiumspread/buildlogic/SpringBootApplicationConventionPlugin.java" ||
+  fail "Boot applications must re-apply the reviewed BOM overrides after the Boot plugin"
 grep -Fq 'include("test.exec")' "${root_dir}/build.gradle.kts" ||
   fail "unit coverage must consume only unit-test execution data"
 if grep -Fq 'include("*.exec")' "${root_dir}/build.gradle.kts"; then

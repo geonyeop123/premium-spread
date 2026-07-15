@@ -161,6 +161,56 @@ val verifyCoverageExclusions by tasks.registering {
     }
 }
 
+val verifySecurityDependencyVersions by tasks.registering {
+    group = "verification"
+    description = "Verifies security-reviewed versions on API and Batch production runtime classpaths."
+    val expectedByProject =
+        mapOf(
+            ":apps:api" to
+                mapOf(
+                    "org.springframework.boot:spring-boot" to providers.gradleProperty("springBootVersion").get(),
+                    "com.fasterxml.jackson.core:jackson-databind" to "2.21.4",
+                    "io.netty:netty-common" to providers.gradleProperty("nettyVersion").get(),
+                    "org.apache.logging.log4j:log4j-api" to providers.gradleProperty("log4j2Version").get(),
+                    "org.apache.tomcat.embed:tomcat-embed-core" to providers.gradleProperty("tomcatVersion").get(),
+                    "org.redisson:redisson" to providers.gradleProperty("redissonVersion").get(),
+                    "org.springframework:spring-context" to "6.2.19",
+                    "org.springframework.security:spring-security-core" to "6.5.11",
+                    "org.springdoc:springdoc-openapi-starter-webmvc-ui" to
+                        providers.gradleProperty("springDocOpenApiVersion").get(),
+                ),
+            ":apps:batch" to
+                mapOf(
+                    "org.springframework.boot:spring-boot" to providers.gradleProperty("springBootVersion").get(),
+                    "com.fasterxml.jackson.core:jackson-databind" to "2.21.4",
+                    "io.netty:netty-common" to providers.gradleProperty("nettyVersion").get(),
+                    "org.apache.logging.log4j:log4j-api" to providers.gradleProperty("log4j2Version").get(),
+                    "org.apache.tomcat.embed:tomcat-embed-el" to providers.gradleProperty("tomcatVersion").get(),
+                    "org.eclipse.angus:jakarta.mail" to "2.0.5",
+                    "org.redisson:redisson" to providers.gradleProperty("redissonVersion").get(),
+                    "org.springframework:spring-context" to "6.2.19",
+                ),
+        )
+    doLast {
+        expectedByProject.forEach { (projectPath, expectedVersions) ->
+            val runtime = project(projectPath).configurations.getByName("productionRuntimeClasspath")
+            val resolvedVersions =
+                runtime.incoming.resolutionResult.allComponents
+                    .mapNotNull { component ->
+                        (component.id as? ModuleComponentIdentifier)?.let { identifier ->
+                            "${identifier.group}:${identifier.module}" to identifier.version
+                        }
+                    }.toMap()
+            expectedVersions.forEach { (coordinate, expectedVersion) ->
+                check(resolvedVersions[coordinate] == expectedVersion) {
+                    "$projectPath production runtime requires $coordinate:$expectedVersion, " +
+                        "but resolved ${resolvedVersions[coordinate] ?: "nothing"}"
+                }
+            }
+        }
+    }
+}
+
 val jacocoTestReport by tasks.registering(JacocoReport::class) {
     group = "verification"
     description = "Generates aggregate unit-test coverage for all production modules."

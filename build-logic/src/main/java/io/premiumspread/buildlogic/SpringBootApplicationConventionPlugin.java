@@ -1,5 +1,6 @@
 package io.premiumspread.buildlogic;
 
+import io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
@@ -15,6 +16,16 @@ public final class SpringBootApplicationConventionPlugin implements Plugin<Proje
     public void apply(Project project) {
         project.getPluginManager().apply("premiumspread.spring-library");
         project.getPluginManager().apply("org.springframework.boot");
+        // The Boot plugin imports its default BOM after the library convention when
+        // dependency-management is already present. Re-import the reviewed overrides
+        // last so application runtime classpaths cannot silently fall back to BOM defaults.
+        project.getExtensions().configure(
+            DependencyManagementExtension.class,
+            dependencyManagement -> SpringLibraryConventionPlugin.importSpringBootBom(
+                project,
+                dependencyManagement
+            )
+        );
 
         project.getTasks().named("bootJar", BootJar.class).configure(task -> {
             task.setEnabled(true);
