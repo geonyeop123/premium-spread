@@ -1,6 +1,6 @@
 # Project Status
 
-> Last updated: 2026-07-15, infrastructure boundary refactoring Phase 8 완료 / Phase 9 진행 중
+> Last updated: 2026-07-15, infrastructure boundary refactoring Phase 9 구현/CI 완료 / Phase 10 마감
 
 ## Current State
 
@@ -24,12 +24,15 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 
 ## Infrastructure Boundary 진행 상태
 
-- Phase 0~8은 각각 commit/push와 독립 spec/code review를 완료했다.
-- Phase 8 commit은 `efff300`이며 unit/architecture 454, Common integration 14, API integration 118,
-  Batch integration 69가 green이었다.
-- Phase 9는 compiler/test/security/CI quality gate와 문서 SSOT를 구현 중이다.
-- 전체 상세와 Phase별 증거는
-  [`.ai/planning/infrastructure-boundary/progress.md`](planning/infrastructure-boundary/progress.md)에 기록한다.
+- Phase 0~9 구현은 각각 commit/push와 독립 spec/code review를 완료했다.
+- Phase 9 코드 후보 `ed1855b`의 GitHub Quality Gate run `29395537342`에서 compile/architecture,
+  unit/coverage, API/Batch integration, ktlint/detekt, dependency/security, Docker build 7개 job이 모두 성공했다.
+- Phase 10은 완료 결과 문서와 상태 문서를 마감한 뒤, 이 문서를 포함하는 closing commit 자체의 동일 7-job CI로
+  최종 판정한다.
+- Q-11은 저장소 기본 branch가 `dev`이고 `main`, branch protection, `production` Environment가 없어
+  `NOT_CONFIGURED`다. 운영/스테이징 배포도 `NOT_DEPLOYED`이며 코드/CI 완료와 구분한다.
+- 전체 상세와 Phase별 증거는 [진행 문서](planning/infrastructure-boundary/progress.md), 완료 조건별 판정은
+  [결과 문서](../docs/superpowers/plans/2026-07-14-infrastructure-boundary-refactoring-result.md)에 기록한다.
 
 ## 기능 상태
 

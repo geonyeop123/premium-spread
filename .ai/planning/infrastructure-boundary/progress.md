@@ -13,8 +13,8 @@
 | 6. Batch Port/외부 Adapter | COMPLETE | `193cf35` | `origin/refactor/infrastructure-boundary` | Domain 109, Email 7, Monitoring 7, Infrastructure Batch 34, Batch unit 38/integration 62, Architecture 21 green |
 | 7. Durable Notification Delivery | COMPLETE | `6d46477` | `origin/refactor/infrastructure-boundary` | Domain 114, Email 12, Common unit 40/integration 14, Infrastructure Batch 36, API unit 83/integration 117, Batch unit 52/integration 69, Architecture 21 green |
 | 8. 설정·시간·관측성·배포 | COMPLETE | `efff300` | `origin/refactor/infrastructure-boundary` | unit 454, Common integration 14, API integration 118, Batch integration 69 green |
-| 9. Quality Gate/CI/문서 SSOT | IN_PROGRESS | 없음 | 없음 | Phase 9 task packet 구현 중 |
-| 10. 최종 E2E/완료 Push | NOT_STARTED | 없음 | 없음 | Phase 9 완료 후 착수 |
+| 9. Quality Gate/CI/문서 SSOT | COMPLETE | `ed1855b` | `origin/refactor/infrastructure-boundary` | run `29395537342`, 7/7 jobs success |
+| 10. 최종 E2E/완료 Push | CLOSING | closing docs commit | push/CI 대기 | 결과·상태 문서 반영 후 동일 7-job CI로 최종 판정 |
 
 ## Phase 0 실행 기록
 
@@ -318,3 +318,25 @@ commit/push한다.
   명시적 primary로 지정했다. OWASP는
   fail-open 또는 update 생략 없이 NIST CVE 2.0 static datafeed로 초기 DB를 만들고 완성된 H2 data directory를 다음
   실행이 복원하도록 cache namespace를 교체했다. 후속 후보 CI에서 세 gate를 다시 판정한다.
+
+- 이후 격리 CI에서 확인된 runtime artifact/checksum, Docker context, Spring context, NVD datafeed 및 CVE
+  좌표 문제를 각각 재현 가능한 계약 테스트로 보완했다. 최종 root verification metadata는 967 artifacts,
+  build-logic metadata는 143 artifacts를 각각 artifact별 SHA-256 하나로 고정한다. 14개 dependency lock과 wrapper,
+  standalone ktlint/detekt/OWASP checksum도 strict 검증한다.
+- OWASP suppression은 production runtime의 정확한 좌표/버전과 실제 오탐 CVE/CPE에만 적용한다. Tomcat 계열은
+  확인된 19개 CVE를 열거해 새 CVE가 자동으로 숨겨지지 않으며, 모든 suppression은 reason/owner/expires/until을
+  가진다. NVD API key 없이 NIST CVE 2.0 static datafeed로 격리 DB를 구성하고 update/scan 실패는 fail-closed다.
+- 코드 후보 `ed1855b91dd4a228bb2d96d6ee0f11c2ca98b580`의 GitHub Quality Gate run
+  `29395537342`은 7개 job을 모두 성공했다. Unit 476, Architecture 25, Common Integration 14,
+  API Integration 120, Batch Integration 69가 failure/error/skip 0이며 coverage는 overall 72.82%,
+  Domain 93.63%, Application 85.80%, 미해결 CVSS 7 이상은 0건이다.
+
+## Phase 10 실행 기록
+
+- 완료 조건 A/D/S/N/O/Q를 구현 파일, 검증, 결과, 대표 commit에 연결한
+  `docs/superpowers/plans/2026-07-14-infrastructure-boundary-refactoring-result.md`를 작성했다.
+- 외부 저장소 상태를 다시 확인한 결과 default branch는 `dev`, `main` 조회는 404, GitHub Environment는 0개다.
+  따라서 Q-11은 `NOT_CONFIGURED`, 운영/스테이징은 `NOT_DEPLOYED`로 유지하며 내부 구현 완료로 대체하지 않는다.
+- 결과·상태 문서를 포함하는 closing commit을 push한 뒤 동일 Quality Gate 7개 job이 모두 성공해야 Phase 10의
+  저장소 내부 완료를 확정한다. 결과 문서에 그 run 번호를 다시 쓰는 재귀 commit은 만들지 않고, 최종 원격 SHA와
+  run URL을 인수인계 시 외부 증거로 남긴다.
