@@ -27,18 +27,44 @@ jobs:
   compile-architecture:
     name: 1. Compile + architecture
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 2
+          persist-credentials: false
       - name: Verify exact candidate SHA
         run: bash ci/verify-target-sha.sh
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
           java-version: '21'
+      - name: Validate dependency bootstrap request
+        id: bootstrap-request
+        run: bash ci/check-dependency-bootstrap-request.sh "${GITHUB_OUTPUT}"
       - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+        with:
+          cache-disabled: ${{ steps.bootstrap-request.outputs.requested == 'true' }}
+      - name: Generate candidate-bound dependency locks and SHA-256 metadata
+        if: steps.bootstrap-request.outputs.requested == 'true'
+        run: >-
+          bash ci/generate-dependency-bootstrap.sh
+          "${{ steps.bootstrap-request.outputs.target_sha }}"
+          build/reports/dependency-bootstrap-review
+      - name: Publish dependency bootstrap review bundle
+        if: steps.bootstrap-request.outputs.requested == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-bootstrap-${{ env.TARGET_SHA }}-for-${{ steps.bootstrap-request.outputs.target_sha }}
+          path: build/reports/dependency-bootstrap-review/**
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require dependency bootstrap review and marker removal
+        if: steps.bootstrap-request.outputs.requested == 'true'
+        run: |
+          echo "::error::Review dependency-bootstrap-${TARGET_SHA}-for-${{ steps.bootstrap-request.outputs.target_sha }}, commit only approved generated files, and remove ci/dependency-bootstrap-request."
+          exit 1
       - name: Detect committed dependency verification metadata
         id: verification-metadata
         run: |
@@ -167,6 +193,7 @@ jobs:
 
   static-analysis:
     name: 5. ktlint + detekt
+    needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

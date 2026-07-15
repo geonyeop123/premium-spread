@@ -5,7 +5,7 @@
 
 ## 기술과 실행 경계
 
-- Kotlin 2.0 / Java 21 / Spring Boot 3.4
+- Kotlin 2.0 / Java 21 / Spring Boot 3.5.16
 - MySQL 8 / Redis 7 / Testcontainers
 - API `8080`, Batch `8081`; management는 각각 `9080`, `9081`
 - DataSource는 `spring.datasource`, Redis는 `spring.data.redis`가 설정 SSOT다.

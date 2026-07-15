@@ -95,6 +95,10 @@ grep -q 'profiles: \["local"\]' "${monitoring_compose}" ||
   fail "Grafana admin fallback must be local profile only"
 grep -q '127.0.0.1:3000:3000' "${monitoring_compose}" ||
   fail "local Grafana must bind loopback only"
+grep -Fq 'image: prom/prometheus:v3.5.5@sha256:332c2f43e7e389d74d3893b55bb02fbbd684208e681eeb604641d5d769c0fe2a' \
+  "${monitoring_compose}" || fail "Prometheus must use the reviewed security-fixed tag and immutable digest"
+grep -Fq 'image: grafana/grafana:13.1.0@sha256:121a7a9ece6dc10b969f1f96eed64b4f07dfac0d0b8abc070f7cb83bbde86f63' \
+  "${monitoring_compose}" || fail "Grafana must use the reviewed tag and immutable digest"
 grep -q "targets: \['api:9080'\]" "${root_dir}/docker/grafana/prometheus.yml" ||
   fail "Prometheus must scrape the API management port"
 grep -q "targets: \['batch:9081'\]" "${root_dir}/docker/grafana/prometheus.yml" ||
@@ -111,6 +115,7 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
   EXCHANGE_RATE_API_KEY=test \
     docker compose -f "${app_compose}" config --quiet
   docker compose -f "${root_dir}/docker/infra-compose.yml" config --quiet
+  docker compose -f "${monitoring_compose}" config --quiet
 fi
 
 echo "deploy contracts verified"

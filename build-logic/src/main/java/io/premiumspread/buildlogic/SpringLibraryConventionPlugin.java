@@ -23,14 +23,24 @@ public final class SpringLibraryConventionPlugin implements Plugin<Project> {
                 imports.mavenBom(
                     "org.springframework.boot:spring-boot-dependencies:"
                         + project.property("springBootVersion"),
-                    bom -> bom.bomProperty(
-                        "kotlin.version",
-                        project.property("kotlinVersion").toString()
-                    )
-                );
-                imports.mavenBom(
-                    "org.springframework.cloud:spring-cloud-dependencies:"
-                        + project.property("springCloudDependenciesVersion")
+                    bom -> {
+                        bom.bomProperty(
+                            "kotlin.version",
+                            project.property("kotlinVersion").toString()
+                        );
+                        bom.bomProperty(
+                            "tomcat.version",
+                            project.property("tomcatVersion").toString()
+                        );
+                        bom.bomProperty(
+                            "netty.version",
+                            project.property("nettyVersion").toString()
+                        );
+                        bom.bomProperty(
+                            "log4j2.version",
+                            project.property("log4j2Version").toString()
+                        );
+                    }
                 );
             })
         );

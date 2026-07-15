@@ -1,8 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.4.xsd">
     <!--
       Suppressions are exceptional. Every entry must include notes containing:
       reason=<why it is a false positive or accepted risk>; owner=<team/person>;
       expires=<YYYY-MM-DD>. The CI contract rejects entries missing those fields.
     -->
+    <suppress until="2026-10-15Z">
+        <notes><![CDATA[
+            reason=CVE applies to the Prometheus server /api/v1/read implementation, not the Java metrics client JAR; owner=backend; expires=2026-10-15
+        ]]></notes>
+        <filePath regex="true">.*io\.prometheus__prometheus-metrics-core__1\.3\.10__prometheus-metrics-core-1\.3\.10\.jar$</filePath>
+        <cve>CVE-2026-42154</cve>
+    </suppress>
+    <suppress until="2026-08-15Z">
+        <notes><![CDATA[
+            reason=CVE affects Kotlin build-cache metadata deserialization rather than runtime stdlib; Gradle build cache remains disabled until Kotlin 2.4.20 GA; owner=backend; expires=2026-08-15
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/org\.jetbrains\.kotlin/kotlin-stdlib@2\.0\.20$</packageUrl>
+        <cve>CVE-2026-53914</cve>
+    </suppress>
 </suppressions>

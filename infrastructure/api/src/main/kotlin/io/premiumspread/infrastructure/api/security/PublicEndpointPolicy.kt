@@ -1,11 +1,12 @@
 package io.premiumspread.infrastructure.api.security
 
 import org.springframework.http.HttpMethod
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.util.AntPathMatcher
 
 data class PublicEndpoint(val method: HttpMethod, val pattern: String) {
-    fun requestMatcher(): AntPathRequestMatcher = AntPathRequestMatcher(pattern, method.name())
+    fun requestMatcher(): RequestMatcher = PathPatternRequestMatcher.withDefaults().matcher(method, pattern)
 }
 
 object PublicEndpointPolicy {

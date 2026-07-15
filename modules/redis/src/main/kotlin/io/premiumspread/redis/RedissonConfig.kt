@@ -2,6 +2,7 @@ package io.premiumspread.redis
 
 import org.redisson.Redisson
 import org.redisson.api.RedissonClient
+import org.redisson.config.ConstantDelay
 import org.redisson.config.Config
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -34,7 +35,7 @@ class RedissonConfig(
                 connectionMinimumIdleSize = redisson.minimumIdle
                 connectionPoolSize = redisson.poolSize
                 retryAttempts = redisson.retryAttempts
-                retryInterval = redisson.retryInterval.toMillis().toInt()
+                retryDelay = ConstantDelay(redisson.retryInterval)
                 timeout = redisson.commandTimeout.toMillis().toInt()
                 connectTimeout = redisson.connectTimeout.toMillis().toInt()
             }

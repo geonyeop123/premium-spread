@@ -14,7 +14,6 @@ import org.springframework.context.annotation.FilterType
 
 @SpringBootApplication(
     exclude = [MailSenderAutoConfiguration::class],
-    excludeName = ["org.redisson.spring.starter.RedissonAutoConfigurationV2"],
 )
 @EnableConfigurationProperties(
     AggregationProperties::class,

@@ -5,7 +5,7 @@
 
 ## Tech Stack
 
-- Kotlin 2.0, Java 21, Spring Boot 3.4
+- Kotlin 2.0, Java 21, Spring Boot 3.5.16
 - MySQL 8, Redis 7, Testcontainers
 - Gradle 멀티모듈, Next.js web
 

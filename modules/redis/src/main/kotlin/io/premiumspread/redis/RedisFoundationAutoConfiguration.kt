@@ -1,7 +1,6 @@
 package io.premiumspread.redis
 
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
-import org.redisson.spring.starter.RedissonAutoConfigurationV2
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -16,7 +15,7 @@ import java.time.Clock
 /**
  * Owns the Redis/Redisson foundation independently of an application's component scan.
  */
-@AutoConfiguration(before = [RedissonAutoConfigurationV2::class, RedisAutoConfiguration::class])
+@AutoConfiguration(before = [RedisAutoConfiguration::class])
 @EnableConfigurationProperties(RedisFeatureProperties::class, RedisRuntimeProperties::class, RedissonClientProperties::class)
 @Import(
     RedisConfig::class,

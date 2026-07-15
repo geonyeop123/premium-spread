@@ -7,6 +7,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import okhttp3.mockwebserver.MockWebServer
 import org.redisson.Redisson
 import org.redisson.api.RedissonClient
+import org.redisson.config.ConstantDelay
 import org.redisson.config.Config
 import org.springframework.beans.factory.InitializingBean
 import org.springframework.boot.test.context.TestConfiguration
@@ -16,6 +17,7 @@ import org.springframework.core.io.ClassPathResource
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.web.reactive.function.client.WebClient
 import org.testcontainers.containers.GenericContainer
+import java.time.Duration
 
 @TestConfiguration
 class BatchTestConfig {
@@ -50,7 +52,7 @@ class BatchTestConfig {
                 connectionMinimumIdleSize = 1
                 connectionPoolSize = 5
                 retryAttempts = 3
-                retryInterval = 1500
+                retryDelay = ConstantDelay(Duration.ofMillis(1500))
                 timeout = 3000
                 connectTimeout = 10000
             }

@@ -62,6 +62,54 @@ grep -q 'TARGET_SHA:.*github.event.inputs.sha.*github.sha' "${quality_workflow}"
 grep -q '\^\[0-9a-fA-F\]{40}\$' "${root_dir}/ci/verify-target-sha.sh" || fail "manual candidate SHA must be 40-hex"
 grep -q 'git rev-parse HEAD' "${root_dir}/ci/verify-target-sha.sh" || fail "checked out HEAD must be verified"
 
+compile_job="$(workflow_job_block compile-architecture)"
+grep -q 'fetch-depth: 2' <<< "${compile_job}" || fail "dependency bootstrap validation requires the candidate parent"
+grep -q 'persist-credentials: false' <<< "${compile_job}" || fail "compile checkout must not retain push credentials"
+grep -q 'id: bootstrap-request' <<< "${compile_job}" || fail "compile job must validate the dependency bootstrap marker"
+grep -Fq 'bash ci/check-dependency-bootstrap-request.sh "${GITHUB_OUTPUT}"' <<< "${compile_job}" ||
+  fail "dependency bootstrap marker must use the fail-closed validator"
+grep -Fq "cache-disabled: \${{ steps.bootstrap-request.outputs.requested == 'true' }}" <<< "${compile_job}" ||
+  fail "dependency bootstrap generation must not restore or save Gradle caches"
+grep -q 'bash ci/generate-dependency-bootstrap.sh' <<< "${compile_job}" ||
+  fail "dependency bootstrap must use the allowlisted generation script"
+grep -Fq 'name: dependency-bootstrap-${{ env.TARGET_SHA }}-for-${{ steps.bootstrap-request.outputs.target_sha }}' \
+  <<< "${compile_job}" || fail "dependency bootstrap artifact must bind request and dependency SHAs"
+grep -q 'Require dependency bootstrap review and marker removal' <<< "${compile_job}" ||
+  fail "dependency bootstrap must fail pending artifact review"
+
+bootstrap_validator="${root_dir}/ci/check-dependency-bootstrap-request.sh"
+bootstrap_generator="${root_dir}/ci/generate-dependency-bootstrap.sh"
+bootstrap_output_validator="${root_dir}/ci/validate-dependency-bootstrap-output.sh"
+fingerprint_script="${root_dir}/ci/dependency-fingerprint.sh"
+for bootstrap_script in \
+  "${bootstrap_validator}" "${bootstrap_generator}" "${bootstrap_output_validator}" "${fingerprint_script}"; do
+  [[ -f "${bootstrap_script}" ]] || fail "missing dependency bootstrap script: ${bootstrap_script}"
+  grep -q 'set -euo pipefail' "${bootstrap_script}" || fail "dependency bootstrap scripts must fail closed"
+done
+grep -q 'GITHUB_EVENT_NAME.*push' "${bootstrap_validator}" || fail "bootstrap marker must be restricted to push events"
+grep -q 'refs/heads/refactor/infrastructure-boundary' "${bootstrap_validator}" ||
+  fail "bootstrap marker must be restricted to the refactor branch"
+grep -q 'target_sha.*revision_line\[1\]' "${bootstrap_validator}" ||
+  fail "bootstrap target must be the marker commit parent"
+grep -q 'changed_paths\[0\].*marker' "${bootstrap_validator}" ||
+  fail "bootstrap marker commit must contain no other changes"
+grep -q 'timedelta(hours=48)' "${bootstrap_validator}" || fail "bootstrap marker expiry must be limited to 48 hours"
+grep -q 'resolveAndLockAll resolveVerificationArtifacts' "${bootstrap_generator}" ||
+  fail "bootstrap must generate both locks and verification metadata"
+[[ "$(grep -c -- '--write-verification-metadata sha256' "${bootstrap_generator}")" -eq 2 ]] ||
+  fail "root and build-logic bootstrap must generate SHA-256 metadata"
+if rg -n -- '--dependency-verification[= ]off|--write-verification-metadata (md5|sha1)|git (commit|push)' \
+  "${bootstrap_generator}" "${bootstrap_validator}" "${bootstrap_output_validator}"; then
+  fail "bootstrap must not disable verification or mutate the remote repository"
+fi
+grep -q 'each artifact must use SHA-256 and no other trust mechanism' "${bootstrap_output_validator}" ||
+  fail "bootstrap output validation must enforce SHA-256 per artifact"
+grep -q 'trusted-keys' "${bootstrap_output_validator}" ||
+  fail "bootstrap output validation must reject alternate trusted-key paths"
+bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"
+grep -q '^permissions:$' "${quality_workflow}" && grep -q '^  contents: read$' "${quality_workflow}" ||
+  fail "quality workflow token must remain read-only"
+
 expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-build)
 for job in "${expected_jobs[@]}"; do
   grep -q "^  ${job}:$" "${quality_workflow}" || fail "required job ${job} is missing"
@@ -104,7 +152,7 @@ grep -q '^            build-logic/gradle/verification-metadata.xml' "${quality_w
   fail "build-logic verification metadata must be published"
 grep -q 'Require metadata review and a follow-up commit' "${quality_workflow}" || fail "bootstrap run must require review and a follow-up commit"
 grep -q 'exit 1' "${quality_workflow}" || fail "uncommitted verification metadata must fail closed"
-for dependent_job in unit-coverage api-integration batch-integration dependency-security docker-build; do
+for dependent_job in unit-coverage api-integration batch-integration static-analysis dependency-security docker-build; do
   job_line="$(grep -n "^  ${dependent_job}:$" "${quality_workflow}" | cut -d: -f1)"
   sed -n "${job_line},$((job_line + 5))p" "${quality_workflow}" | grep -q 'needs: compile-architecture' ||
     fail "${dependent_job} must wait for strict compile/bootstrap verification"

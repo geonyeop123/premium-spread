@@ -11,7 +11,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // Redisson (분산 락)
-    api("org.redisson:redisson-spring-boot-starter:${project.properties["redissonVersion"]}")
+    api("org.redisson:redisson:${project.properties["redissonVersion"]}")
 
     // Test
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

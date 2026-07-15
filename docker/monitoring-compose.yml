@@ -1,6 +1,6 @@
 services:
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:v3.5.5@sha256:332c2f43e7e389d74d3893b55bb02fbbd684208e681eeb604641d5d769c0fe2a
     profiles: ["local"]
     ports:
       - "127.0.0.1:9090:9090"
@@ -10,7 +10,7 @@ services:
       - premium-spread
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:13.1.0@sha256:121a7a9ece6dc10b969f1f96eed64b4f07dfac0d0b8abc070f7cb83bbde86f63
     profiles: ["local"]
     ports:
       - "127.0.0.1:3000:3000"
