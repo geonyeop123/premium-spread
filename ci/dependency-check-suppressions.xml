@@ -23,7 +23,7 @@
         <notes><![CDATA[
             reason=Reactor Netty 1.2.18 was misidentified as Netty 1.2.18 while the runtime uses patched Netty 4.1.136.Final; owner=backend; expires=2026-10-15
         ]]></notes>
-        <filePath regex="true">.*io\.projectreactor\.netty__reactor-netty-core__1\.2\.18__reactor-netty-core-1\.2\.18\.jar$</filePath>
+        <filePath regex="true">.*io\.projectreactor\.netty__reactor-netty-(core|http)__1\.2\.18__reactor-netty-\1-1\.2\.18\.jar$</filePath>
         <cpe>cpe:/a:netty:netty</cpe>
     </suppress>
     <suppress until="2026-10-15Z">
@@ -37,7 +37,7 @@
         <notes><![CDATA[
             reason=Tomcat Embed 10.1.57 was additionally misidentified as obsolete Tomcat 3.0 and 6.0.0; Apache lists 10.1.57 after the affected ranges; owner=backend; expires=2026-10-15
         ]]></notes>
-        <filePath regex="true">.*org\.apache\.tomcat\.embed__tomcat-embed-core__10\.1\.57__tomcat-embed-core-10\.1\.57\.jar$</filePath>
+        <filePath regex="true">.*org\.apache\.tomcat\.embed__tomcat-embed-(core|el|websocket)__10\.1\.57__tomcat-embed-\1-10\.1\.57\.jar$</filePath>
         <cve>CVE-2002-0493</cve>
         <cve>CVE-2009-3548</cve>
         <cve>CVE-2011-3190</cve>
@@ -62,21 +62,21 @@
         <notes><![CDATA[
             reason=CVE affects Jakarta Mail before 2.0.2, not Angus Activation 2.0.3; the runtime also uses Angus Mail 2.0.5; owner=backend; expires=2026-10-15
         ]]></notes>
-        <filePath regex="true">.*org\.eclipse\.angus__angus-activation__2\.0\.3__angus-activation-2\.0\.3\.jar$</filePath>
+        <filePath regex="true">.*(?:org\.eclipse\.angus__angus-activation__2\.0\.3__angus-activation-2\.0\.3\.jar|org\.eclipse\.angus__jakarta\.mail__2\.0\.5__jakarta\.mail-2\.0\.5\.jar)$</filePath>
         <cve>CVE-2025-7962</cve>
     </suppress>
     <suppress until="2026-10-15Z">
         <notes><![CDATA[
-            reason=JAXB Core 4.0.9 was misidentified as the Eclipse GlassFish application server; owner=backend; expires=2026-10-15
+            reason=JAXB runtime libraries 4.0.9 were misidentified as the Eclipse GlassFish application server; owner=backend; expires=2026-10-15
         ]]></notes>
-        <filePath regex="true">.*org\.glassfish\.jaxb__jaxb-core__4\.0\.9__jaxb-core-4\.0\.9\.jar$</filePath>
+        <filePath regex="true">.*org\.glassfish\.jaxb__(jaxb-core|jaxb-runtime|txw2)__4\.0\.9__\1-4\.0\.9\.jar$</filePath>
         <cpe>cpe:/a:eclipse:glassfish</cpe>
     </suppress>
     <suppress until="2026-10-15Z">
         <notes><![CDATA[
             reason=CVE is limited to Spring Framework 5.0.5 and does not affect this Spring Framework 6.2 / Spring Security 6.5 runtime; owner=backend; expires=2026-10-15
         ]]></notes>
-        <filePath regex="true">.*org\.springframework\.security__spring-security-(core|web)__6\.5\.11__spring-security-\1-6\.5\.11\.jar$</filePath>
+        <filePath regex="true">.*org\.springframework\.security__spring-security-(config|core|crypto|web)__6\.5\.11__spring-security-\1-6\.5\.11\.jar$</filePath>
         <cve>CVE-2018-1258</cve>
     </suppress>
 </suppressions>
