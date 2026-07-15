@@ -255,15 +255,17 @@ jobs:
             dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}-
       - name: Bootstrap standalone security scanner
         run: bash ci/bootstrap-quality-tools.sh --verify-checksums
-      - name: Stage strict-verified production runtime dependencies
-        run: ./gradlew prepareDependencyCheckInput --dependency-verification strict --no-daemon
-      - name: OWASP Dependency-Check (CVSS 7+ fails)
-        run: bash ci/run-dependency-check.sh
+      - name: Update Dependency-Check NVD data
+        run: bash ci/update-dependency-check-data.sh
       - name: Save verified Dependency-Check NVD data
         uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: .ci-tools/dependency-check-data
           key: dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}-${{ github.run_id }}
+      - name: Stage strict-verified production runtime dependencies
+        run: ./gradlew prepareDependencyCheckInput --dependency-verification strict --no-daemon
+      - name: OWASP Dependency-Check (CVSS 7+ fails)
+        run: bash ci/run-dependency-check.sh
       - name: Publish security evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

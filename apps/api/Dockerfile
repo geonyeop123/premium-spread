@@ -27,7 +27,7 @@ COPY supports/logging/build.gradle.kts supports/logging/gradle.lockfile supports
 COPY supports/monitoring/build.gradle.kts supports/monitoring/gradle.lockfile supports/monitoring/
 
 # 의존성 다운로드 (소스 변경 없이 캐시 활용)
-RUN ./gradlew :apps:api:dependencies --dependency-verification strict --no-daemon --quiet
+RUN ./gradlew materializeProductionBuildArtifacts --dependency-verification strict --no-daemon --quiet
 
 # 전체 소스 복사 후 빌드
 COPY . .

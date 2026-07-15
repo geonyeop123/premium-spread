@@ -29,6 +29,24 @@ deploy_workflow_job_block() {
   ' "${deploy_workflow}"
 }
 
+workflow_step_block() {
+  local step="$1"
+  awk -v step="${step}" '
+    $0 == "      - name: " step { inside = 1 }
+    inside && $0 ~ /^      - (name: |uses: )/ && $0 != "      - name: " step { exit }
+    inside { print }
+  ' "${quality_workflow}"
+}
+
+gradle_task_block() {
+  local task="$1"
+  awk -v task="${task}" '
+    $0 == "tasks.register(\"" task "\") {" { inside = 1 }
+    inside && $0 ~ /^tasks\.register\("/ && $0 != "tasks.register(\"" task "\") {" { exit }
+    inside { print }
+  ' "${root_dir}/build.gradle.kts"
+}
+
 for script in "${root_dir}"/ci/*.sh; do
   bash -n "${script}"
 done
@@ -150,17 +168,53 @@ grep -q 'dependency-check-datafeed-v1-${{ runner.os }}' "${quality_workflow}" ||
   fail "NVD datafeed cache key is missing"
 grep -q 'uses: actions/cache/restore@' "${quality_workflow}" || fail "NVD data cache must have an explicit restore step"
 grep -q 'uses: actions/cache/save@' "${quality_workflow}" || fail "verified NVD data cache must have an explicit save step"
-nvd_scan_line="$(grep -n 'run: bash ci/run-dependency-check.sh' "${quality_workflow}" | cut -d: -f1)"
+nvd_update_step="$(workflow_step_block "Update Dependency-Check NVD data")"
+nvd_save_step="$(workflow_step_block "Save verified Dependency-Check NVD data")"
+nvd_scan_step="$(workflow_step_block "OWASP Dependency-Check (CVSS 7+ fails)")"
+grep -Fxq '        run: bash ci/update-dependency-check-data.sh' <<< "${nvd_update_step}" ||
+  fail "NVD update step must execute the fail-closed updater directly"
+grep -Fxq '        run: bash ci/run-dependency-check.sh' <<< "${nvd_scan_step}" ||
+  fail "NVD scan step must execute the fail-closed scanner directly"
+if rg -n 'continue-on-error|always\(\)' <<< "${nvd_update_step}${nvd_save_step}${nvd_scan_step}"; then
+  fail "NVD update, cache save and scan steps must not override normal failure propagation"
+fi
+grep -Fxq '        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3' \
+  <<< "${nvd_save_step}" || fail "verified NVD data must use the pinned cache save action"
+grep -Fxq '          path: .ci-tools/dependency-check-data' <<< "${nvd_save_step}" ||
+  fail "verified NVD cache save step must write only the isolated data directory"
+grep -Fxq '          key: dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('"'"'ci/quality-tools.lock'"'"') }}-${{ github.run_id }}' \
+  <<< "${nvd_save_step}" || fail "verified NVD cache save key must be immutable per run"
+nvd_update_line="$(grep -n 'run: bash ci/update-dependency-check-data.sh' "${quality_workflow}" | cut -d: -f1)"
 nvd_save_line="$(grep -n 'name: Save verified Dependency-Check NVD data' "${quality_workflow}" | cut -d: -f1)"
-[[ -n "${nvd_scan_line}" && -n "${nvd_save_line}" && "${nvd_scan_line}" -lt "${nvd_save_line}" ]] ||
-  fail "NVD data must be saved only after a successful Dependency-Check scan"
+nvd_scan_line="$(grep -n 'run: bash ci/run-dependency-check.sh' "${quality_workflow}" | cut -d: -f1)"
+[[ -n "${nvd_update_line}" && -n "${nvd_save_line}" && -n "${nvd_scan_line}" &&
+  "${nvd_update_line}" -lt "${nvd_save_line}" && "${nvd_save_line}" -lt "${nvd_scan_line}" ]] ||
+  fail "NVD data must be saved after a successful update and before the fail-closed scan"
 if grep -q '^          path: \.ci-tools$' "${quality_workflow}"; then
   fail "tool installation cache must not absorb the isolated NVD data directory"
 fi
 grep -Fq -- '--nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"' \
-  "${root_dir}/ci/run-dependency-check.sh" || fail "Dependency-Check must use the authoritative NVD static datafeed"
-if rg -n -- '--noupdate|--nvdApiKey' "${root_dir}/ci/run-dependency-check.sh"; then
-  fail "Dependency-Check must neither skip updates nor depend on a runner-specific NVD API key"
+  "${root_dir}/ci/update-dependency-check-data.sh" || fail "Dependency-Check must use the authoritative NVD static datafeed"
+grep -Fq 'set -euo pipefail' "${root_dir}/ci/update-dependency-check-data.sh" ||
+  fail "Dependency-Check update must propagate command failures"
+grep -Fq 'set -euo pipefail' "${root_dir}/ci/run-dependency-check.sh" ||
+  fail "Dependency-Check scan must propagate suppression validation and scanner failures"
+expected_nvd_data_dir='data_dir="${root_dir}/.ci-tools/dependency-check-data"'
+grep -Fxq "${expected_nvd_data_dir}" "${root_dir}/ci/update-dependency-check-data.sh" ||
+  fail "Dependency-Check updater must use the canonical isolated data directory"
+grep -Fxq "${expected_nvd_data_dir}" "${root_dir}/ci/run-dependency-check.sh" ||
+  fail "Dependency-Check scanner must use the same canonical isolated data directory"
+grep -q -- '--data "${data_dir}"' "${root_dir}/ci/update-dependency-check-data.sh" ||
+  fail "Dependency-Check update and scan must share the isolated data directory"
+grep -q -- '--updateonly' "${root_dir}/ci/update-dependency-check-data.sh" ||
+  fail "Dependency-Check data must be updated independently before scanning"
+grep -q -- '--noupdate' "${root_dir}/ci/run-dependency-check.sh" ||
+  fail "Dependency-Check scan must read the database completed by the update step"
+if rg -n -- '--nvdApiKey|--noupdate|\|\|[[:space:]]*true' "${root_dir}/ci/update-dependency-check-data.sh"; then
+  fail "Dependency-Check update must neither skip nor hide authoritative datafeed failures"
+fi
+if rg -n -- '--nvdApiKey|--updateonly|\|\|[[:space:]]*true' "${root_dir}/ci/run-dependency-check.sh"; then
+  fail "Dependency-Check scan must not update data, use a runner-specific API key, or hide failures"
 fi
 
 docker_job="$(workflow_job_block docker-build)"
@@ -183,6 +237,8 @@ for dockerfile in "${root_dir}/apps/api/Dockerfile" "${root_dir}/apps/batch/Dock
     [[ "${gradle_line}" == *"--dependency-verification strict"* ]] ||
       fail "container Gradle resolution is not explicitly strict: ${gradle_line}"
   done <<< "${gradle_lines}"
+  grep -q 'RUN ./gradlew materializeProductionBuildArtifacts .*--dependency-verification strict' "${dockerfile}" ||
+    fail "container dependency layer must materialize verified production build artifacts"
   grep -q 'COPY gradle gradle' "${dockerfile}" ||
     fail "container dependency layer must receive committed verification metadata"
   grep -q 'gradle.properties gradle.lockfile ./' "${dockerfile}" ||
@@ -203,6 +259,46 @@ for dockerfile in "${root_dir}/apps/api/Dockerfile" "${root_dir}/apps/batch/Dock
     grep -q "${locked_project}/gradle.lockfile" "${dockerfile}" ||
       fail "container dependency layer is missing ${locked_project}/gradle.lockfile"
   done
+done
+
+materializer_task="$(gradle_task_block materializeProductionBuildArtifacts)"
+[[ -n "${materializer_task}" ]] ||
+  fail "container runtime artifact materializer is missing"
+grep -Fq 'externalArtifactsOf(productionProjects, configurationNames)' <<< "${materializer_task}" ||
+  fail "production build materializer must resolve the declared project/configuration matrix"
+production_projects=(
+  :apps:api :apps:batch :domain
+  :infrastructure:common :infrastructure:api :infrastructure:batch
+  :modules:jpa :modules:redis
+  :supports:logging :supports:email :supports:monitoring
+)
+for production_project in "${production_projects[@]}"; do
+  grep -Fq "project(\"${production_project}\")" <<< "${materializer_task}" ||
+    fail "production build materializer is missing ${production_project}"
+done
+actual_production_projects="$(sed -n 's/^                project("\([^"]*\)"),$/\1/p' <<< "${materializer_task}" | sort -u)"
+expected_production_projects="$(printf '%s\n' "${production_projects[@]}" | sort -u)"
+[[ "${actual_production_projects}" == "${expected_production_projects}" ]] ||
+  fail "production build materializer project set must match the reviewed production modules exactly"
+production_configurations=(
+  compileClasspath runtimeClasspath productionRuntimeClasspath
+  kotlinCompilerClasspath kotlinCompilerPluginClasspathMain kotlinBuildToolsApiClasspath
+)
+for production_configuration in "${production_configurations[@]}"; do
+  grep -Fq "\"${production_configuration}\"" <<< "${materializer_task}" ||
+    fail "production build materializer is missing ${production_configuration}"
+done
+actual_production_configurations="$(sed -n 's/^                "\([^"]*\)",$/\1/p' <<< "${materializer_task}" | sort -u)"
+expected_production_configurations="$(printf '%s\n' "${production_configurations[@]}" | sort -u)"
+[[ "${actual_production_configurations}" == "${expected_production_configurations}" ]] ||
+  fail "production build materializer configuration set must match the reviewed build inputs exactly"
+grep -q 'check(artifact.file.isFile).*Production build artifact was not materialized' \
+  <<< "${materializer_task}" || fail "production build materializer must prove artifact files were downloaded"
+
+verification_materializer_task="$(gradle_task_block resolveVerificationArtifacts)"
+for kotlin_build_configuration in kotlinCompilerPluginClasspathMain kotlinBuildToolsApiClasspath; do
+  grep -Fq "\"${kotlin_build_configuration}\"" <<< "${verification_materializer_task}" ||
+    fail "verification metadata bootstrap is missing ${kotlin_build_configuration}"
 done
 
 lock_entries="$(grep -Evc '^#|^[[:space:]]*$' "${tool_lock}")"

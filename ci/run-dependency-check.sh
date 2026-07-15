@@ -52,7 +52,7 @@ args=(
   --format ALL
   --failOnCVSS 7
   --suppression "${suppression_file}"
-  --nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"
+  --noupdate
 )
 
 "${scanner}" "${args[@]}"

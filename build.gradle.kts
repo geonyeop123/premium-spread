@@ -287,6 +287,8 @@ tasks.register("resolveVerificationArtifacts") {
                 "productionRuntimeClasspath",
                 "kotlinCompilerClasspath",
                 "kotlinCompilerPluginClasspath",
+                "kotlinCompilerPluginClasspathMain",
+                "kotlinBuildToolsApiClasspath",
                 "jacocoAgent",
                 "jacocoAnt",
             )
@@ -297,6 +299,52 @@ tasks.register("resolveVerificationArtifacts") {
         check(artifacts.isNotEmpty()) { "No external verification artifacts were resolved" }
         artifacts.values.forEach { artifact ->
             check(artifact.file.isFile) { "Artifact was not materialized: ${artifact.stableCoordinate()}" }
+        }
+        manifestFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(artifacts.keys.joinToString(separator = "\n", postfix = "\n"))
+        }
+    }
+}
+
+tasks.register("materializeProductionBuildArtifacts") {
+    group = "build setup"
+    description = "Materializes external artifacts required to build the API and Batch production modules."
+    val manifestFile = layout.buildDirectory.file("reports/container-runtime/production-build-artifacts.txt")
+    outputs.file(manifestFile)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val productionProjects =
+            listOf(
+                project(":apps:api"),
+                project(":apps:batch"),
+                project(":domain"),
+                project(":infrastructure:common"),
+                project(":infrastructure:api"),
+                project(":infrastructure:batch"),
+                project(":modules:jpa"),
+                project(":modules:redis"),
+                project(":supports:logging"),
+                project(":supports:email"),
+                project(":supports:monitoring"),
+            )
+        val configurationNames =
+            setOf(
+                "compileClasspath",
+                "runtimeClasspath",
+                "productionRuntimeClasspath",
+                "kotlinCompilerClasspath",
+                "kotlinCompilerPluginClasspathMain",
+                "kotlinBuildToolsApiClasspath",
+            )
+        val artifacts =
+            externalArtifactsOf(productionProjects, configurationNames)
+                .associateBy { artifact -> artifact.stableCoordinate() }
+                .toSortedMap()
+        check(artifacts.isNotEmpty()) { "No external production build artifacts were resolved" }
+        artifacts.values.forEach { artifact ->
+            check(artifact.file.isFile) { "Production build artifact was not materialized: ${artifact.stableCoordinate()}" }
         }
         manifestFile.get().asFile.apply {
             parentFile.mkdirs()
