@@ -47,6 +47,15 @@ gradle_task_block() {
   ' "${root_dir}/build.gradle.kts"
 }
 
+bootstrap_gradle_invocation() {
+  local command="$1"
+  awk -v command="${command}" '
+    $0 == command " \\" { inside = 1 }
+    inside { print }
+    inside && $0 ~ /--no-daemon$/ { exit }
+  ' "${bootstrap_generator}"
+}
+
 for script in "${root_dir}"/ci/*.sh; do
   bash -n "${script}"
 done
@@ -106,6 +115,15 @@ grep -q 'candidate.buildscript.configurations' "${root_dir}/build.gradle.kts" ||
   fail "verification artifact resolution must materialize buildscript plugin classpaths"
 [[ "$(grep -c -- '--write-verification-metadata sha256' "${bootstrap_generator}")" -eq 2 ]] ||
   fail "root and build-logic bootstrap must generate SHA-256 metadata"
+for bootstrap_invocation in \
+  "$(bootstrap_gradle_invocation './gradlew -p build-logic')" \
+  "$(bootstrap_gradle_invocation './gradlew')"; do
+  [[ -n "${bootstrap_invocation}" ]] || fail "root and build-logic bootstrap invocations must exist"
+  [[ "$(grep -c -- '--write-verification-metadata sha256' <<< "${bootstrap_invocation}")" -eq 1 ]] ||
+    fail "each bootstrap invocation must generate SHA-256 metadata exactly once"
+  [[ "$(grep -c -- '--refresh-dependencies' <<< "${bootstrap_invocation}")" -eq 1 ]] ||
+    fail "each bootstrap invocation must refresh cached metadata exactly once"
+done
 if rg -n -- '--dependency-verification[= ]off|--write-verification-metadata (md5|sha1)|git (commit|push)' \
   "${bootstrap_generator}" "${bootstrap_validator}" "${bootstrap_output_validator}"; then
   fail "bootstrap must not disable verification or mutate the remote repository"

@@ -18,6 +18,7 @@ rm -f build-logic/gradle/verification-metadata.xml
   resolveAndLockAll resolveVerificationArtifacts \
   --write-locks \
   --write-verification-metadata sha256 \
+  --refresh-dependencies \
   --no-daemon
 
 rm -f gradle/verification-metadata.xml
@@ -28,6 +29,7 @@ rm -f gradle/verification-metadata.xml
   :build-logic:test \
   --write-locks \
   --write-verification-metadata sha256 \
+  --refresh-dependencies \
   --no-daemon
 
 bash ci/validate-dependency-bootstrap-output.sh "${review_dir}"
