@@ -17,10 +17,7 @@ import java.time.Instant
  */
 @Component
 @ConditionalOnMissingBean(TimeSeriesCacheSupport::class)
-class TimeSeriesCacheSupport(
-    private val redisTemplate: StringRedisTemplate,
-    private val clock: Clock,
-) {
+class TimeSeriesCacheSupport(private val redisTemplate: StringRedisTemplate, private val clock: Clock) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -77,7 +74,5 @@ class TimeSeriesCacheSupport(
     /**
      * TypedTuple에서 timestamp 추출
      */
-    fun extractTimestamp(entry: TypedTuple<String>): Instant? {
-        return entry.score?.toLong()?.let { Instant.ofEpochMilli(it) }
-    }
+    fun extractTimestamp(entry: TypedTuple<String>): Instant? = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) }
 }

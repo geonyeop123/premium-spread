@@ -14,9 +14,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/members")
-class MemberController(
-    private val memberFacade: MemberFacade,
-) {
+class MemberController(private val memberFacade: MemberFacade) {
 
     @PostMapping("/register")
     fun register(@Valid @RequestBody request: MemberRequest.Register): ResponseEntity<MemberResponse.Detail> {

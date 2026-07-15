@@ -13,10 +13,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 @Component
-class WebSocketMetrics(
-    private val registry: MeterRegistry,
-    private val clock: Clock,
-) {
+class WebSocketMetrics(private val registry: MeterRegistry, private val clock: Clock) {
     private val connectionStates = ConcurrentHashMap<String, AtomicReference<Double>>()
     private val lastMessageMs = ConcurrentHashMap<String, AtomicLong>()
 
@@ -95,7 +92,4 @@ class WebSocketMetrics(
     )
 }
 
-data class WebSocketHealthSnapshot(
-    val connected: Boolean,
-    val lastMessageAge: java.time.Duration?,
-)
+data class WebSocketHealthSnapshot(val connected: Boolean, val lastMessageAge: java.time.Duration?)

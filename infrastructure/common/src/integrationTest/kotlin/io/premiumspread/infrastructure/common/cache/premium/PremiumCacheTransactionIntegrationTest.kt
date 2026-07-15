@@ -109,6 +109,5 @@ class PremiumCacheTransactionIntegrationTest {
         @JvmStatic
         val redis: GenericContainer<*> = GenericContainer("redis:7-alpine")
             .withExposedPorts(6379)
-
     }
 }

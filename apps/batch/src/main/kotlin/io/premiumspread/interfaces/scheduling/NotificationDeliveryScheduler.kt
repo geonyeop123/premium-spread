@@ -8,9 +8,7 @@ import org.springframework.stereotype.Component
 @Component
 @ConditionalOnBatchScheduling
 @ConditionalOnProperty(prefix = "notification.email", name = ["enabled"], havingValue = "true")
-class NotificationDeliveryScheduler(
-    private val worker: NotificationDeliveryJob,
-) {
+class NotificationDeliveryScheduler(private val worker: NotificationDeliveryJob) {
     @Scheduled(fixedDelayString = "\${notification.delivery.poll-interval:5s}")
     fun poll() {
         worker.poll()

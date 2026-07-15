@@ -45,8 +45,5 @@ class PremiumResult private constructor() {
         val fxRate: BigDecimal?,
     )
 
-    data class AggregationPage(
-        val data: List<Aggregation>,
-        val hasMore: Boolean,
-    )
+    data class AggregationPage(val data: List<Aggregation>, val hasMore: Boolean)
 }

@@ -3,10 +3,7 @@ package io.premiumspread.infrastructure.batch.notification
 import io.premiumspread.email.SmtpConnectionProperties
 import java.time.Duration
 
-class NotificationDeliveryStartupValidator(
-    smtp: SmtpConnectionProperties,
-    hardSendDeadline: Duration,
-) {
+class NotificationDeliveryStartupValidator(smtp: SmtpConnectionProperties, hardSendDeadline: Duration) {
     init {
         smtp.requireWithin(hardSendDeadline)
         val configuredOperationBudget = smtp.connectTimeout

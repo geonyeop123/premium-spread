@@ -24,10 +24,7 @@ data class CachedTicker(
 }
 
 @Component
-class TickerCacheReader(
-    private val redisTemplate: StringRedisTemplate,
-    private val metrics: CacheReadMetrics,
-) {
+class TickerCacheReader(private val redisTemplate: StringRedisTemplate, private val metrics: CacheReadMetrics) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun get(exchange: String, symbol: String): CachedTicker? {

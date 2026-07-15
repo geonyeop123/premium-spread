@@ -61,13 +61,14 @@ class PositionFacade(
 
     @Transactional
     fun openManualPosition(criteria: PositionCriteria.OpenManual): PositionResult.Detail = translateInvalidPosition {
+        val pair = parsePair(criteria.symbol, criteria.koreaExchange, criteria.foreignExchange)
         val command = PositionCommand.Create(
             memberId = criteria.memberId,
-            symbol = criteria.symbol,
-            koreaExchange = parseExchange(criteria.koreaExchange),
+            symbol = pair.symbol.code,
+            koreaExchange = pair.koreaExchange,
             koreaQuantity = criteria.koreaQuantity,
             koreaEntryPrice = criteria.koreaEntryPrice,
-            foreignExchange = parseExchange(criteria.foreignExchange),
+            foreignExchange = pair.foreignExchange,
             foreignQuantity = criteria.foreignQuantity,
             foreignEntryPrice = criteria.foreignEntryPrice,
             foreignLeverage = criteria.foreignLeverage,
@@ -88,18 +89,14 @@ class PositionFacade(
     }
 
     @Transactional(readOnly = true)
-    fun findAllOpenByMemberId(criteria: PositionCriteria.FindAllOpen): PositionResult.Details {
-        return PositionResult.Details(
+    fun findAllOpenByMemberId(criteria: PositionCriteria.FindAllOpen): PositionResult.Details = PositionResult.Details(
             positionService.findAllOpenByMemberId(criteria.memberId).map(::toDetail),
         )
-    }
 
     @Transactional(readOnly = true)
-    fun findAllClosedByMemberId(criteria: PositionCriteria.FindAllClosed): PositionResult.Details {
-        return PositionResult.Details(
+    fun findAllClosedByMemberId(criteria: PositionCriteria.FindAllClosed): PositionResult.Details = PositionResult.Details(
             positionService.findAllClosedByMemberId(criteria.memberId).map(::toDetail),
         )
-    }
 
     @Transactional(readOnly = true)
     fun calculatePnl(criteria: PositionCriteria.CalculatePnl): PositionResult.Pnl = translateInvalidPosition {
@@ -196,13 +193,6 @@ class PositionFacade(
                 koreaExchange = Exchange.valueOf(koreaExchange),
                 foreignExchange = Exchange.valueOf(foreignExchange),
             )
-        } catch (ex: IllegalArgumentException) {
-            throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
-        }
-
-    private fun parseExchange(raw: String): Exchange =
-        try {
-            Exchange.valueOf(raw)
         } catch (ex: IllegalArgumentException) {
             throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
         }

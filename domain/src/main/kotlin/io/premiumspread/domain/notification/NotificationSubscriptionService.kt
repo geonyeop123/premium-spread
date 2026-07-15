@@ -7,9 +7,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
-class NotificationSubscriptionService(
-    private val repository: NotificationSubscriptionRepository,
-) {
+class NotificationSubscriptionService(private val repository: NotificationSubscriptionRepository) {
 
     @Transactional
     fun create(command: NotificationSubscriptionCommand.Create): NotificationSubscription {

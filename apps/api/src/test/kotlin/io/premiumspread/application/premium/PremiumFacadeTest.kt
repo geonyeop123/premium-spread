@@ -93,13 +93,22 @@ class PremiumFacadeTest {
         val to = Instant.parse("2024-01-01T01:00:00Z")
         every {
             premiumService.findAggregation(
-                MarketPair.default(Symbol("BTC")), "1m", from, to, AggregationZone.of("UTC"),
+                MarketPair.default(Symbol("BTC")),
+                "1m",
+                from,
+                to,
+                AggregationZone.of("UTC"),
             )
         } returns listOf(
             PremiumAggregationSnapshot(
-                symbol = "BTC", high = BigDecimal("2"), low = BigDecimal.ONE,
-                open = BigDecimal.ONE, close = BigDecimal("2"), avg = BigDecimal("1.5"),
-                count = 2, observedAt = from,
+                symbol = "BTC",
+                high = BigDecimal("2"),
+                low = BigDecimal.ONE,
+                open = BigDecimal.ONE,
+                close = BigDecimal("2"),
+                avg = BigDecimal("1.5"),
+                count = 2,
+                observedAt = from,
             ),
         )
 

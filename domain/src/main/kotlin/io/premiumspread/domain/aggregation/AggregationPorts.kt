@@ -16,11 +16,7 @@ enum class AggregationUnit(val duration: Duration) {
     DAY(Duration.ofDays(1)),
 }
 
-data class AggregationWindow(
-    val from: Instant,
-    val to: Instant,
-    val zone: AggregationZone,
-) {
+data class AggregationWindow(val from: Instant, val to: Instant, val zone: AggregationZone) {
     init {
         require(from < to) { "Aggregation window must have from < to." }
     }

@@ -9,10 +9,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 
 @Component
-class TickerCacheWriter(
-    private val redisTemplate: StringRedisTemplate,
-    private val afterCommit: AfterCommitCacheExecutor,
-) {
+class TickerCacheWriter(private val redisTemplate: StringRedisTemplate, private val afterCommit: AfterCommitCacheExecutor) {
     fun save(snapshot: TickerSnapshot) {
         val key = RedisKeyGenerator.tickerKey(snapshot.exchange.lowercase(), snapshot.symbol.lowercase())
         redisTemplate.opsForHash<String, String>().putAll(

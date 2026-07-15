@@ -20,5 +20,4 @@ class Phase1BatchConfigurationContractTest {
         assertThat(yaml).contains("port: \${MANAGEMENT_PORT:9081}", "include: health", "show-details: never")
         assertThat(yaml).doesNotContain("include: health,info,prometheus,metrics")
     }
-
 }

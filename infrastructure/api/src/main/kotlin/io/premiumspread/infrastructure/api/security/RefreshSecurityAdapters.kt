@@ -9,9 +9,7 @@ import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-class HmacRefreshTokenHasher(
-    properties: RefreshProperties,
-) : RefreshTokenHasher {
+class HmacRefreshTokenHasher(properties: RefreshProperties) : RefreshTokenHasher {
     private val key = SecretKeySpec(properties.hmacKey.toByteArray(Charsets.UTF_8), HMAC_ALGORITHM)
 
     override fun hash(rawToken: String): String {
@@ -25,9 +23,7 @@ class HmacRefreshTokenHasher(
     }
 }
 
-class RefreshCookiePolicyAdapter(
-    private val properties: CookieProperties,
-) : RefreshCookiePolicy {
+class RefreshCookiePolicyAdapter(private val properties: CookieProperties) : RefreshCookiePolicy {
     override fun issue(token: String, expiresAt: Instant, issuedAt: Instant): RefreshCookie = RefreshCookie(
         name = properties.name,
         value = token,

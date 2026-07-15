@@ -12,9 +12,7 @@ import io.premiumspread.domain.ticker.TickerService
 import org.springframework.stereotype.Service
 
 @Service
-class TickerFacade(
-    private val tickerService: TickerService,
-) {
+class TickerFacade(private val tickerService: TickerService) {
     fun ingest(criteria: TickerCriteria.Ingest): TickerResult.Detail =
         try {
             val ticker = tickerService.create(

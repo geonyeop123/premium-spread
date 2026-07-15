@@ -68,6 +68,24 @@ class JobExecutorTest {
     }
 
     @Test
+    fun `action Error도 failure로 변환하고 completion 이후 lock을 해제한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } returns true
+        every { lock.release(any(), any()) } returns Unit
+        val error = AssertionError("fatal")
+
+        val result = executor.execute(config) { throw error }
+
+        val failure = result as JobResult.Failure
+        assertThat(failure.exception).isInstanceOf(RuntimeException::class.java)
+        assertThat(failure.exception.cause).isSameAs(error)
+        verify { lock.release("lock:fx", any()) }
+        verify {
+            recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.FAILED, clock.instant(), "RuntimeException")
+        }
+        verify { alert.send(any()) }
+    }
+
+    @Test
     fun `lock 미획득은 action을 실행하지 않고 skipped로 기록한다`() {
         every { lock.tryAcquire(any(), any(), any(), any()) } returns false
         var invoked = false

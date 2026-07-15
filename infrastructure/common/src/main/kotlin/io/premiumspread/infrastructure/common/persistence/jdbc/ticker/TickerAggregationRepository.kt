@@ -24,10 +24,7 @@ data class TickerAggregation(
 )
 
 @Repository
-class TickerAggregationRepository(
-    private val jdbcTemplate: JdbcTemplate,
-    private val clock: Clock,
-) {
+class TickerAggregationRepository(private val jdbcTemplate: JdbcTemplate, private val clock: Clock) {
 
     /**
      * 분 집계 저장

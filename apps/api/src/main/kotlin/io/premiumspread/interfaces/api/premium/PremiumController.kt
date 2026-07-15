@@ -13,9 +13,7 @@ import java.time.Instant
 
 @RestController
 @RequestMapping("/api/v1/premiums")
-class PremiumController(
-    private val premiumFacade: PremiumFacade,
-) {
+class PremiumController(private val premiumFacade: PremiumFacade) {
 
     @PostMapping("/calculate/{symbol}")
     fun calculate(@PathVariable symbol: String): ResponseEntity<PremiumResponse.Detail> {

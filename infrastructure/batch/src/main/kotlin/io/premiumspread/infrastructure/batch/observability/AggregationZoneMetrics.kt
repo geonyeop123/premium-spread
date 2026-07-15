@@ -10,15 +10,11 @@ import java.time.ZoneId
 
 @Validated
 @ConfigurationProperties(prefix = "aggregation")
-data class AggregationZoneMetricProperties(
-    @field:NotBlank val zone: String = "Asia/Seoul",
-) {
+data class AggregationZoneMetricProperties(@field:NotBlank val zone: String = "Asia/Seoul") {
     val zoneId: ZoneId = ZoneId.of(zone)
 }
 
-class AggregationZoneMetrics(
-    private val properties: AggregationZoneMetricProperties,
-) : MeterBinder {
+class AggregationZoneMetrics(private val properties: AggregationZoneMetricProperties) : MeterBinder {
     override fun bindTo(registry: MeterRegistry) {
         Gauge.builder("aggregation.zone.info") { 1.0 }
             .description("Configured business timezone for aggregation windows")

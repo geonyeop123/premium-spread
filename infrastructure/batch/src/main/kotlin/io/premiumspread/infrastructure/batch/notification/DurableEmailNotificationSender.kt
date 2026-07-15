@@ -5,9 +5,7 @@ import io.premiumspread.domain.notification.NotificationSender
 import io.premiumspread.email.EmailMessage
 import io.premiumspread.email.EmailSender
 
-class DurableEmailNotificationSender(
-    private val emailSender: EmailSender,
-) : NotificationSender {
+class DurableEmailNotificationSender(private val emailSender: EmailSender) : NotificationSender {
     override fun deliver(delivery: ClaimedNotificationDelivery) {
         emailSender.send(
             EmailMessage(

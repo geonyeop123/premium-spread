@@ -10,9 +10,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
-class PremiumService(
-    private val premiumRepository: PremiumRepository,
-) {
+class PremiumService(private val premiumRepository: PremiumRepository) {
     companion object {
         private val MAX_RANGE = mapOf(
             "1m" to Duration.ofHours(24),
@@ -93,13 +91,16 @@ class PremiumService(
     ): Pair<Instant, Instant> = when (interval) {
         "1m" -> from.truncatedTo(ChronoUnit.MINUTES) to
             to.truncatedTo(ChronoUnit.MINUTES).plus(1, ChronoUnit.MINUTES)
+
         "1h" -> from.truncatedTo(ChronoUnit.HOURS) to
             to.truncatedTo(ChronoUnit.HOURS).plus(1, ChronoUnit.HOURS)
+
         "1d" -> {
             val zoneId = zone.zoneId
             from.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant() to
                 to.atZone(zoneId).toLocalDate().plusDays(1).atStartOfDay(zoneId).toInstant()
         }
+
         else -> error("Interval validation must run before normalization: $interval")
     }
 }

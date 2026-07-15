@@ -1,8 +1,9 @@
 package io.premiumspread.domain.position
 
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.premium.PremiumPolicy
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
-import io.premiumspread.domain.premium.PremiumPolicy
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -60,27 +61,27 @@ class PositionTest {
     }
 
     @Test
-    fun `한국 거래소가 KOREA region이 아니면 예외를 던진다`() {
+    fun `한국 거래소가 KOREA region이 아니면 페어 생성에서 예외를 던진다`() {
         assertThatThrownBy {
             createPosition(koreaExchange = Exchange.BINANCE)
-        }.isInstanceOf(InvalidPositionException::class.java)
+        }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("KOREA")
     }
 
     @Test
-    fun `해외 거래소가 FOREIGN region이 아니면 예외를 던진다`() {
+    fun `해외 거래소가 FOREIGN region이 아니면 페어 생성에서 예외를 던진다`() {
         assertThatThrownBy {
             createPosition(foreignExchange = Exchange.UPBIT)
-        }.isInstanceOf(InvalidPositionException::class.java)
+        }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("FOREIGN")
     }
 
     @Test
-    fun `해외 거래소로 FX_PROVIDER는 허용하지 않는다`() {
+    fun `페어는 해외 거래소로 FX_PROVIDER를 허용하지 않는다`() {
         assertThatThrownBy {
             createPosition(foreignExchange = Exchange.FX_PROVIDER)
-        }.isInstanceOf(InvalidPositionException::class.java)
-            .hasMessageContaining("FX_PROVIDER")
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("tradable FOREIGN")
     }
 
     @Test
@@ -246,16 +247,16 @@ class PositionTest {
         entryFxRate: BigDecimal = BigDecimal("1432.6"),
         entryObservedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
     ): Position = Position.create(
-        memberId = memberId,
-        symbol = symbol,
-        koreaExchange = koreaExchange,
-        koreaQuantity = koreaQuantity,
-        koreaEntryPrice = koreaEntryPrice,
-        foreignExchange = foreignExchange,
-        foreignQuantity = foreignQuantity,
-        foreignEntryPrice = foreignEntryPrice,
-        foreignLeverage = foreignLeverage,
-        entryFxRate = entryFxRate,
-        entryObservedAt = entryObservedAt,
+        PositionOpenSpec(
+            memberId = memberId,
+            pair = MarketPair(symbol, koreaExchange, foreignExchange),
+            koreaQuantity = koreaQuantity,
+            koreaEntryPrice = koreaEntryPrice,
+            foreignQuantity = foreignQuantity,
+            foreignEntryPrice = foreignEntryPrice,
+            foreignLeverage = foreignLeverage,
+            entryFxRate = entryFxRate,
+            entryObservedAt = entryObservedAt,
+        ),
     )
 }

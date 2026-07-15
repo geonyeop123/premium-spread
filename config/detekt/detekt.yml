@@ -12,14 +12,15 @@ complexity:
   LongMethod:
     active: true
     threshold: 100
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/src/test/**', '**/src/integrationTest/**', '**/src/architectureTest/**', '**/src/testFixtures/**']
   LongParameterList:
     active: true
     functionThreshold: 8
     constructorThreshold: 12
     ignoreDefaultParameters: true
     ignoreDataClasses: true
-    ignoreAnnotated: ['ConfigurationProperties']
+    ignoreAnnotatedParameter: ['ConfigurationProperties']
+    excludes: ['**/src/test/**', '**/src/integrationTest/**', '**/src/architectureTest/**', '**/src/testFixtures/**']
   TooManyFunctions:
     active: true
     thresholdInFiles: 20
@@ -27,7 +28,7 @@ complexity:
     thresholdInInterfaces: 20
     thresholdInObjects: 20
     thresholdInEnums: 20
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/src/test/**', '**/src/integrationTest/**', '**/src/architectureTest/**', '**/src/testFixtures/**']
 
 coroutines:
   active: true
@@ -52,7 +53,7 @@ style:
     excludePackageStatements: true
     excludeImportStatements: true
     excludeCommentStatements: false
-    excludes: ['**/test/**', '**/integrationTest/**']
+    excludes: ['**/src/test/**', '**/src/integrationTest/**', '**/src/architectureTest/**', '**/src/testFixtures/**']
   ReturnCount:
     active: true
     max: 4

@@ -35,12 +35,7 @@ fun interface FxRateCacheWritePort {
     fun save(snapshot: ExchangeRateSnapshot)
 }
 
-data class MarketTick(
-    val exchange: Exchange,
-    val quote: Quote,
-    val price: BigDecimal,
-    val observedAt: Instant,
-)
+data class MarketTick(val exchange: Exchange, val quote: Quote, val price: BigDecimal, val observedAt: Instant)
 
 fun interface TickerSink {
     fun accept(tick: MarketTick)

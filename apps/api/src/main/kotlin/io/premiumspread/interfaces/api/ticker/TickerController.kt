@@ -12,9 +12,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/tickers")
-class TickerController(
-    private val tickerFacade: TickerFacade,
-) {
+class TickerController(private val tickerFacade: TickerFacade) {
 
     @PostMapping
     fun ingest(@Valid @RequestBody request: TickerRequest.Ingest): ResponseEntity<TickerResponse.Detail> {

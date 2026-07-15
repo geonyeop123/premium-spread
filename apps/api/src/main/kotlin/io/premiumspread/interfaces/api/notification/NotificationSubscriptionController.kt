@@ -17,9 +17,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/notifications/subscriptions")
-class NotificationSubscriptionController(
-    private val facade: NotificationSubscriptionFacade,
-) {
+class NotificationSubscriptionController(private val facade: NotificationSubscriptionFacade) {
 
     @PostMapping
     fun create(

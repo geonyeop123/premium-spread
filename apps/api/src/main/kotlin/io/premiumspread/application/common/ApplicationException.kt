@@ -18,7 +18,4 @@ enum class ApplicationError {
     NOTIFICATION_SUBSCRIPTION_NOT_FOUND,
 }
 
-class ApplicationException(
-    val error: ApplicationError,
-    cause: Throwable? = null,
-) : RuntimeException(error.name, cause)
+class ApplicationException(val error: ApplicationError, cause: Throwable? = null) : RuntimeException(error.name, cause)

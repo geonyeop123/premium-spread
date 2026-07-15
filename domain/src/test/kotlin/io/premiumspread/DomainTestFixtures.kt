@@ -1,7 +1,9 @@
 package io.premiumspread
 
 import io.premiumspread.domain.BaseEntity
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.position.PositionOpenSpec
 import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
@@ -72,17 +74,17 @@ object PositionFixtures {
         id: Long? = 1L,
     ): Position {
         val position = Position.create(
-            memberId = memberId,
-            symbol = Symbol(symbol),
-            koreaExchange = koreaExchange,
-            koreaQuantity = koreaQuantity,
-            koreaEntryPrice = koreaEntryPrice,
-            foreignExchange = foreignExchange,
-            foreignQuantity = foreignQuantity,
-            foreignEntryPrice = foreignEntryPrice,
-            foreignLeverage = foreignLeverage,
-            entryFxRate = entryFxRate,
-            entryObservedAt = entryObservedAt,
+            PositionOpenSpec(
+                memberId = memberId,
+                pair = MarketPair(Symbol(symbol), koreaExchange, foreignExchange),
+                koreaQuantity = koreaQuantity,
+                koreaEntryPrice = koreaEntryPrice,
+                foreignQuantity = foreignQuantity,
+                foreignEntryPrice = foreignEntryPrice,
+                foreignLeverage = foreignLeverage,
+                entryFxRate = entryFxRate,
+                entryObservedAt = entryObservedAt,
+            ),
         )
         return id?.let(position::withId) ?: position
     }

@@ -10,9 +10,7 @@ import java.time.Duration
 
 @Validated
 @ConfigurationProperties(prefix = "redis")
-data class RedisFeatureProperties(
-    val enabled: Boolean = true,
-)
+data class RedisFeatureProperties(val enabled: Boolean = true)
 
 /** Spring Data Redis와 Redisson이 함께 사용하는 단일 접속 설정 계약. */
 @Validated
@@ -45,10 +43,7 @@ data class RedissonClientProperties(
 }
 
 /** 운영 profile에서 Spring Redis의 localhost/empty-password fallback을 차단한다. */
-class ProductionRedisSettingsValidator(
-    environment: Environment,
-    properties: RedisRuntimeProperties,
-) {
+class ProductionRedisSettingsValidator(environment: Environment, properties: RedisRuntimeProperties) {
     init {
         if (environment.activeProfiles.contains("prd")) {
             require(properties.host != "localhost" && properties.host != "127.0.0.1") {

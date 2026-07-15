@@ -13,10 +13,7 @@ import org.springframework.web.client.RestTemplate
  *
  * alert.slack.webhook-url 설정이 존재할 때 활성화된다.
  */
-class SlackAlertService(
-    private val properties: SlackAlertProperties,
-    private val objectMapper: ObjectMapper,
-) : AlertService {
+class SlackAlertService(private val properties: SlackAlertProperties, private val objectMapper: ObjectMapper) : AlertService {
     init {
         require(properties.webhookUrl.isNotBlank()) { "alert.slack.webhook-url must not be blank" }
     }

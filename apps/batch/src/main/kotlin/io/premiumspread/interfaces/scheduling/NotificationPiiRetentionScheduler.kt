@@ -6,9 +6,7 @@ import org.springframework.stereotype.Component
 
 @Component
 @ConditionalOnBatchScheduling
-class NotificationPiiRetentionScheduler(
-    private val job: NotificationPiiRetentionJob,
-) {
+class NotificationPiiRetentionScheduler(private val job: NotificationPiiRetentionJob) {
     @Scheduled(fixedDelayString = "\${notification.delivery.scrub-interval:1h}")
     fun scrubSentPii() {
         job.scrubSentPii()

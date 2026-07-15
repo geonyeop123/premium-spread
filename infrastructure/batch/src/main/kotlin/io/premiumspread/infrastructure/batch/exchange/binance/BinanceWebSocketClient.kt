@@ -140,6 +140,7 @@ class BinanceWebSocketClient(
         // 참고: miniTicker는 `/market`에서 동작했으나(#46/#51) bookTicker는 엔트리포인트가 다르다.
         private const val EXCHANGE = "binance"
         private const val EXCHANGE_UPPER = "BINANCE"
+
         // mid 계산 시 나눗셈 결과 정밀도 — BTC 선물 가격은 소수 1~2자리이므로 8자리면 충분.
         private const val MID_PRICE_SCALE = 8
         private const val PARSE_FAILURE_ALERT_THRESHOLD = 5

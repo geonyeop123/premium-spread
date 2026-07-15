@@ -13,9 +13,7 @@ import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Instant
 
-class NotificationDeliveryMetrics(
-    registry: MeterRegistry?,
-) : NotificationDeliveryStaleOwnershipObserver {
+class NotificationDeliveryMetrics(registry: MeterRegistry?) : NotificationDeliveryStaleOwnershipObserver {
     private val counters: Map<String, Counter> = registry?.let { meterRegistry ->
         OUTCOMES.associateWith { outcome ->
             Counter.builder(METRIC_NAME)

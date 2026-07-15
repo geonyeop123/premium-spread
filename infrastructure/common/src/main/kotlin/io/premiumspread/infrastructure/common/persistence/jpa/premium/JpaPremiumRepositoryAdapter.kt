@@ -22,13 +22,9 @@ class JpaPremiumRepositoryAdapter(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    override fun save(premium: Premium): Premium {
-        return premiumRepository.save(premium)
-    }
+    override fun save(premium: Premium): Premium = premiumRepository.save(premium)
 
-    override fun findById(id: Long): Premium? {
-        return premiumRepository.findByIdAndDeletedAtIsNull(id)
-    }
+    override fun findById(id: Long): Premium? = premiumRepository.findByIdAndDeletedAtIsNull(id)
 
     override fun findLatestByPair(pair: MarketPair): Premium? = premiumRepository.findLatestByPair(
         symbol = pair.symbol.code,

@@ -110,7 +110,8 @@ val aggregateExecutionData =
     files(
         coverageProjects.map { candidate ->
             candidate.fileTree(candidate.layout.buildDirectory.dir("jacoco")) {
-                include("*.exec")
+                // Unit coverage must not change when a developer ran integrationTest earlier in the same worktree.
+                include("test.exec")
             }
         },
     )

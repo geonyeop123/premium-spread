@@ -24,8 +24,7 @@ class FxIngestionJob(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun run(): JobResult {
-        return executor.execute(jobConfigs.get(JobId.FX_INGESTION)) {
+    fun run(): JobResult = executor.execute(jobConfigs.get(JobId.FX_INGESTION)) {
             try {
                 val market = marketProvider.defaultMarket()
                 val fxRate = exchangeRateProvider.fetch(market.fxBase, market.fxQuote)
@@ -41,6 +40,4 @@ class FxIngestionJob(
                 JobResult.Failure(exception)
             }
         }
-    }
-
 }

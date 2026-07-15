@@ -146,12 +146,7 @@ class ExchangeRateClient(
 
 open class ExchangeRateApiException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
-open class ExchangeRateHttpException(
-    val status: HttpStatusCode,
-    body: String,
-) : ExchangeRateApiException("Exchange rate HTTP ${status.value()}: ${body.take(256)}")
+open class ExchangeRateHttpException(val status: HttpStatusCode, body: String) :
+    ExchangeRateApiException("Exchange rate HTTP ${status.value()}: ${body.take(256)}")
 
-class RetryableExchangeRateException(
-    status: HttpStatusCode,
-    body: String,
-) : ExchangeRateHttpException(status, body)
+class RetryableExchangeRateException(status: HttpStatusCode, body: String) : ExchangeRateHttpException(status, body)

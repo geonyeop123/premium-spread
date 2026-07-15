@@ -9,9 +9,7 @@ import io.premiumspread.domain.member.MemberService
 import org.springframework.stereotype.Service
 
 @Service
-class MemberFacade(
-    private val memberService: MemberService,
-) {
+class MemberFacade(private val memberService: MemberService) {
     fun register(criteria: MemberCriteria.Register): MemberResult.Detail =
         translate {
             toDetail(

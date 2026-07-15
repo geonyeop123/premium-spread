@@ -160,9 +160,12 @@ class PremiumRepositoryImplTest {
             val to = Instant.parse("2024-01-02T00:00:00Z")
             val snapshot = PremiumAggregationSnapshot(
                 symbol = "BTC",
-                high = BigDecimal("2.50"), low = BigDecimal("1.00"),
-                open = BigDecimal("1.50"), close = BigDecimal("2.00"),
-                avg = BigDecimal("1.75"), count = 60,
+                high = BigDecimal("2.50"),
+                low = BigDecimal("1.00"),
+                open = BigDecimal("1.50"),
+                close = BigDecimal("2.00"),
+                avg = BigDecimal("1.75"),
+                count = 60,
                 observedAt = from,
             )
 
@@ -189,9 +192,12 @@ class PremiumRepositoryImplTest {
             val to = Instant.parse("2024-01-01T02:00:00Z")
             fun snapshot(at: Instant, close: String) = PremiumAggregationSnapshot(
                 symbol = "BTC",
-                high = BigDecimal(close), low = BigDecimal(close),
-                open = BigDecimal(close), close = BigDecimal(close),
-                avg = BigDecimal(close), count = 60,
+                high = BigDecimal(close),
+                low = BigDecimal(close),
+                open = BigDecimal(close),
+                close = BigDecimal(close),
+                avg = BigDecimal(close),
+                count = 60,
                 observedAt = at,
             )
             every { premiumAggregationCacheReader.findByInterval(pair, "1h", from, to) } returns listOf(
@@ -217,9 +223,12 @@ class PremiumRepositoryImplTest {
             val snapshots = listOf(
                 PremiumAggregationSnapshot(
                     symbol = "BTC",
-                    high = BigDecimal("2.50"), low = BigDecimal("1.00"),
-                    open = BigDecimal("1.50"), close = BigDecimal("2.00"),
-                    avg = BigDecimal("1.75"), count = 60,
+                    high = BigDecimal("2.50"),
+                    low = BigDecimal("1.00"),
+                    open = BigDecimal("1.50"),
+                    close = BigDecimal("2.00"),
+                    avg = BigDecimal("1.75"),
+                    count = 60,
                     observedAt = from,
                 ),
             )

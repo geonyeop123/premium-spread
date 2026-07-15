@@ -23,7 +23,9 @@ import java.security.Principal
 @Import(WebMvcConfig::class)
 class MemberControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
+
     @Autowired lateinit var objectMapper: ObjectMapper
+
     @MockkBean lateinit var facade: MemberFacade
 
     @Test

@@ -109,6 +109,11 @@ grep -Fq "${batch_integration_command}" <<< "${batch_job}" ||
 compile_contract='compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions :build-logic:test --dependency-verification strict'
 grep -q "${compile_contract}" "${quality_workflow}" ||
   fail "required compiler, architecture, isolation, exclusion and build-logic gates must execute together"
+grep -Fq 'include("test.exec")' "${root_dir}/build.gradle.kts" ||
+  fail "unit coverage must consume only unit-test execution data"
+if grep -Fq 'include("*.exec")' "${root_dir}/build.gradle.kts"; then
+  fail "unit coverage must not absorb stale integration execution data"
+fi
 for contract_command in \
   'bash ci/quality-gate-contract-test.sh' \
   'bash ci/local-offline-contract-test.sh' \

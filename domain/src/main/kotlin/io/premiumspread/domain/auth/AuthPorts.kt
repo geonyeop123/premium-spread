@@ -3,16 +3,9 @@ package io.premiumspread.domain.auth
 import java.time.Duration
 import java.time.Instant
 
-data class TokenSubject(
-    val memberId: Long,
-    val email: String,
-)
+data class TokenSubject(val memberId: Long, val email: String)
 
-data class IssuedToken(
-    val value: String,
-    val tokenId: String,
-    val expiresAt: Instant,
-)
+data class IssuedToken(val value: String, val tokenId: String, val expiresAt: Instant)
 
 data class IssuedTokenPair(
     val accessToken: IssuedToken,
@@ -21,11 +14,7 @@ data class IssuedTokenPair(
     val generation: Long,
 )
 
-data class VerifiedAccessToken(
-    val subject: TokenSubject,
-    val tokenId: String,
-    val expiresAt: Instant,
-)
+data class VerifiedAccessToken(val subject: TokenSubject, val tokenId: String, val expiresAt: Instant)
 
 data class VerifiedRefreshToken(
     val subject: TokenSubject,

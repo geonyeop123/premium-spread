@@ -264,9 +264,12 @@ class PremiumServiceTest {
             val snapshots = listOf(
                 PremiumAggregationSnapshot(
                     symbol = "BTC",
-                    high = BigDecimal("2.50"), low = BigDecimal("1.00"),
-                    open = BigDecimal("1.50"), close = BigDecimal("2.00"),
-                    avg = BigDecimal("1.75"), count = 60,
+                    high = BigDecimal("2.50"),
+                    low = BigDecimal("1.00"),
+                    open = BigDecimal("1.50"),
+                    close = BigDecimal("2.00"),
+                    avg = BigDecimal("1.75"),
+                    count = 60,
                     observedAt = from,
                 ),
             )
@@ -274,7 +277,10 @@ class PremiumServiceTest {
             // 정규화 후: from=00:00, to=02:00 (1h truncate + 1)
             every {
                 premiumRepository.findAggregationByPair(
-                    MarketPair.default(symbol), "1h", from, Instant.parse("2024-01-01T02:00:00Z"),
+                    MarketPair.default(symbol),
+                    "1h",
+                    from,
+                    Instant.parse("2024-01-01T02:00:00Z"),
                 )
             } returns snapshots
 
@@ -295,7 +301,10 @@ class PremiumServiceTest {
             // 정규화 후: from=00:00, to=00:06 (1m truncate + 1)
             every {
                 premiumRepository.findAggregationByPair(
-                    MarketPair.default(symbol), "1m", from, Instant.parse("2024-01-01T00:06:00Z"),
+                    MarketPair.default(symbol),
+                    "1m",
+                    from,
+                    Instant.parse("2024-01-01T00:06:00Z"),
                 )
             } returns emptyList()
 
@@ -308,7 +317,7 @@ class PremiumServiceTest {
         fun `from이 최대 범위를 초과하면 clamp된다`() {
             // given
             val to = Instant.parse("2026-03-03T10:00:00Z")
-            val from = to.minus(Duration.ofHours(48))  // 1m 최대 24시간 초과
+            val from = to.minus(Duration.ofHours(48)) // 1m 최대 24시간 초과
 
             every { premiumRepository.findAggregationByPair(any(), any(), any(), any()) } returns emptyList()
 
@@ -318,7 +327,8 @@ class PremiumServiceTest {
             // then — from이 24시간 이내로 clamp됨
             verify {
                 premiumRepository.findAggregationByPair(
-                    MarketPair.default(Symbol("BTC")), "1m",
+                    MarketPair.default(Symbol("BTC")),
+                    "1m",
                     match { it >= to.minus(Duration.ofHours(24)) },
                     any(),
                 )
@@ -339,7 +349,8 @@ class PremiumServiceTest {
             // then — from은 시간 단위 truncate, to는 다음 시간
             verify {
                 premiumRepository.findAggregationByPair(
-                    MarketPair.default(Symbol("BTC")), "1h",
+                    MarketPair.default(Symbol("BTC")),
+                    "1h",
                     Instant.parse("2026-03-03T09:00:00Z"),
                     Instant.parse("2026-03-03T11:00:00Z"),
                 )

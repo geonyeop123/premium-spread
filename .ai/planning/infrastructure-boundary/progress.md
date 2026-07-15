@@ -271,8 +271,10 @@ commit/push한다.
   Testcontainers reuse를 끄고 외부 HTTP/WebSocket/SMTP endpoint, 승인 없는 `@Disabled`, 숨은 test retry를 정적
   gate로 차단했다. 테스트 worker의 비데몬 thread detector는 이름 allowlist 없이 Spring cached context를 실제 close한
   뒤 검사하며, Batch test context도 class 종료 시 닫아 MockWebServer/Redisson 자원을 회수한다.
-- aggregate JaCoCo와 고정 exclusion allowlist를 구성했다. 로컬 line coverage는 overall 86.22%, Domain 95.56%,
-  Application 93.55%로 각각 70%/85%/80% gate를 통과했다.
+- aggregate JaCoCo와 고정 exclusion allowlist를 구성했다. unit coverage 입력은 이전 integration 실행 이력에
+  오염되지 않도록 각 모듈의 `test.exec`로 한정했다. clean unit-only line coverage는 overall 72.82%, Domain 93.63%,
+  Application 85.80%로 각각 70%/85%/80% gate를 통과했다. cache hit/miss/legacy/corrupt/error와 Auth
+  login/rotation/logout 계약 테스트를 보강했으며 Unit 476개가 failure/error/skip 0으로 green이다.
 - 14개 Gradle dependency lock, Gradle 8.14.3 distribution checksum, standalone ktlint/detekt/OWASP checksum lock,
   npm high/critical audit gate와 suppression schema를 추가했다. verification metadata는 offline에서 생성하지 않고
   후보 SHA CI가 artifact를 생성한 뒤 사람이 검토·커밋해야 다음 strict CI가 진행되는 fail-closed 절차로 고정했다.
@@ -285,7 +287,11 @@ commit/push한다.
   Gate 성공, `main` push, `production` environment 승인 없이는 실행되지 않는다.
 - 구조/도메인/개발 규칙 SSOT와 Auth, Redis, durable notification, V12, 배포/rollback, metric/alert runbook을
   현재 코드에 맞췄으며 문서 path/placeholder 계약 검사가 통과했다.
-- 로컬 최종 검증은 Unit 431, Architecture 25, Common Integration 14, API Integration 120,
+- 첫 후보 `fb202a6`의 격리 CI에서 Linux 실행 권한이 없는 `gradlew`와 기존 Kotlin formatting debt 673건을 확인했다.
+  wrapper mode를 `100755`로 고정하고 ktlint 1.8로 전체 소스를 정리했으며, detekt가 검출한 22건은 테스트 source-set
+  exclude 교정과 Position input value object, cache/readiness/lock 책임 분리로 해소했다. 최종 standalone ktlint와
+  detekt 410파일/0 smell 결과를 확보했고 빈 detekt baseline과 전역 threshold를 유지했다.
+- 로컬 최종 검증은 Unit 476, Architecture 25, Common Integration 14, API Integration 120,
   Batch Integration 69가 failure/error/skip 0으로 green이다. migration gate, test isolation/coverage exclusion,
   CI/deploy/documentation contract, Web Node 20 `npm ci`/lint/production build와 npm high/critical 0건도 통과했다.
 - 최초 독립 spec/code review에서 확인한 metadata runtime 누락, OWASP scan/cache, required 계약 미연결,

@@ -13,9 +13,7 @@ typealias ActiveSubscriptionView = ActiveNotificationSubscription
 typealias ThresholdDirectionView = ThresholdDirection
 
 @Repository
-class ActiveSubscriptionReadRepository(
-    private val jdbcTemplate: JdbcTemplate,
-) : ActiveNotificationSubscriptionPort {
+class ActiveSubscriptionReadRepository(private val jdbcTemplate: JdbcTemplate) : ActiveNotificationSubscriptionPort {
 
     override fun findActiveByPair(pair: MarketPair): List<ActiveNotificationSubscription> =
         jdbcTemplate.query(

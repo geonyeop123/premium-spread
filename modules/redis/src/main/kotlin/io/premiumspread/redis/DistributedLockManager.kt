@@ -16,9 +16,7 @@ import java.util.concurrent.TimeUnit
 @Component
 @ConditionalOnProperty(name = ["redis.enabled"], havingValue = "true", matchIfMissing = true)
 @ConditionalOnMissingBean(DistributedLockManager::class)
-class DistributedLockManager(
-    private val redissonClient: RedissonClient,
-) {
+class DistributedLockManager(private val redissonClient: RedissonClient) {
 
     private val logger = LoggerFactory.getLogger(DistributedLockManager::class.java)
 
@@ -104,10 +102,7 @@ class DistributedLockManager(
     /**
      * 락 핸들 (수동 해제용)
      */
-    inner class LockHandle(
-        private val lock: RLock,
-        private val lockKey: String,
-    ) : AutoCloseable {
+    inner class LockHandle(private val lock: RLock, private val lockKey: String) : AutoCloseable {
 
         fun release() {
             unlockSafely(lock, lockKey)

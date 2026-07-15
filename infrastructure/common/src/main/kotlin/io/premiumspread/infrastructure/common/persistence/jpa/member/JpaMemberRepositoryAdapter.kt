@@ -7,12 +7,9 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Repository
 
 @Repository
-class JpaMemberRepositoryAdapter(
-    private val memberRepository: SpringDataMemberRepository,
-) : MemberRepository {
+class JpaMemberRepositoryAdapter(private val memberRepository: SpringDataMemberRepository) : MemberRepository {
 
-    override fun save(member: Member): Member {
-        return try {
+    override fun save(member: Member): Member = try {
             memberRepository.saveAndFlush(member)
         } catch (ex: DataIntegrityViolationException) {
             if (ex.hasConstraint("uk_member_email")) {
@@ -20,19 +17,12 @@ class JpaMemberRepositoryAdapter(
             }
             throw ex
         }
-    }
 
-    override fun findByEmail(email: String): Member? {
-        return memberRepository.findByEmailAndDeletedAtIsNull(email)
-    }
+    override fun findByEmail(email: String): Member? = memberRepository.findByEmailAndDeletedAtIsNull(email)
 
-    override fun findById(id: Long): Member? {
-        return memberRepository.findByIdAndDeletedAtIsNull(id)
-    }
+    override fun findById(id: Long): Member? = memberRepository.findByIdAndDeletedAtIsNull(id)
 
-    override fun existsByEmail(email: String): Boolean {
-        return memberRepository.existsByEmailAndDeletedAtIsNull(email)
-    }
+    override fun existsByEmail(email: String): Boolean = memberRepository.existsByEmailAndDeletedAtIsNull(email)
 
     private fun Throwable.hasConstraint(constraint: String): Boolean =
         generateSequence(this) { it.cause }

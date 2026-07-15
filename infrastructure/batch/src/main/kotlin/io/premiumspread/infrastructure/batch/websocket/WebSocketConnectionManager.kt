@@ -35,10 +35,12 @@ class WebSocketConnectionManager(
     private val running = AtomicBoolean(false)
     private val currentBackoff = AtomicReference(initialBackoff)
     private val lastMessageAt = AtomicLong(0L)
+
     // 연결 세대 카운터 — 매 connectWithRetry() 호출마다 증가.
     // watchdog/firstMessageTimeout 콜백이 자신이 속한 세대를 기억하고,
     // 현재 세대와 다르면 stale 콜백으로 간주해 force-reconnect를 발동하지 않는다 (ISSUE-1 대응).
     private val connectionGeneration = AtomicLong(0L)
+
     // watchdog 또는 firstMessageTimeout이 강제 재연결을 트리거했음을 표시.
     // doFinally의 CANCEL 가드가 stop()에 의한 cancel과 force-reconnect cancel을 구분하는 데 사용.
     private val forceReconnectArmed = AtomicBoolean(false)
@@ -84,11 +86,11 @@ class WebSocketConnectionManager(
             val timer = Mono.delay(config.firstMessageTimeout, Schedulers.parallel())
                 .doOnNext {
                     if (firstReceived.compareAndSet(false, true).not()) return@doOnNext
-                    if (myGeneration != connectionGeneration.get()) return@doOnNext  // stale callback (ISSUE-1)
+                    if (myGeneration != connectionGeneration.get()) return@doOnNext // stale callback (ISSUE-1)
                     if (!triggerForceReconnect(myGeneration)) return@doOnNext
                     metrics.recordFirstMessageTimeout(config.exchange)
                     dispatchAlert(
-                        "[${config.exchange}] WebSocket 연결 후 ${config.firstMessageTimeout.toSeconds()}초 내 메시지 미수신 — 강제 재연결"
+                        "[${config.exchange}] WebSocket 연결 후 ${config.firstMessageTimeout.toSeconds()}초 내 메시지 미수신 — 강제 재연결",
                     )
                 }
                 .subscribe()
@@ -102,6 +104,7 @@ class WebSocketConnectionManager(
                         .subscribe()
                     pingDisposable.set(ping)
                 }
+
                 HeartbeatPolicy.None, HeartbeatPolicy.ServerPingResponse -> { /* no-op */ }
             }
 
@@ -115,7 +118,7 @@ class WebSocketConnectionManager(
                     // Cancel timeout on first message arrival and reset backoff
                     if (firstReceived.compareAndSet(false, true)) {
                         timeoutDisposable.getAndSet(null)?.dispose()
-                        currentBackoff.set(initialBackoff)  // 첫 메시지 수신 시 reset (Codex review P2)
+                        currentBackoff.set(initialBackoff) // 첫 메시지 수신 시 reset (Codex review P2)
                     }
                     val payload = frame.payloadAsText
                     metrics.recordMessage(config.exchange)
@@ -134,9 +137,9 @@ class WebSocketConnectionManager(
         val disposable = mono
             .doOnError { e -> log.error("WebSocket connection error: {}", e.message) }
             .doFinally { signalType ->
-                timeoutDisposable.getAndSet(null)?.dispose()  // resource cleanup, CANCEL 신호에서도 실행
-                pingDisposable.getAndSet(null)?.dispose()      // ping stream cleanup, CANCEL 신호에서도 실행
-                watchdogDisposable.getAndSet(null)?.dispose()  // watchdog cleanup, CANCEL 신호에서도 실행
+                timeoutDisposable.getAndSet(null)?.dispose() // resource cleanup, CANCEL 신호에서도 실행
+                pingDisposable.getAndSet(null)?.dispose() // ping stream cleanup, CANCEL 신호에서도 실행
+                watchdogDisposable.getAndSet(null)?.dispose() // watchdog cleanup, CANCEL 신호에서도 실행
                 metrics.setConnectionState(config.exchange, connected = false)
                 // CANCEL 신호 처리: force-reconnect armed인 경우만 reconnect 경로 진입, 아니면 stop()에 의한 cancel로 간주.
                 if (signalType == SignalType.CANCEL && !forceReconnectArmed.compareAndSet(true, false)) {
@@ -179,7 +182,7 @@ class WebSocketConnectionManager(
         val watchdog = Flux.interval(watchdogCheckInterval, watchdogCheckInterval, Schedulers.parallel())
             .doOnNext {
                 if (!running.get()) return@doOnNext
-                if (ownerGeneration != connectionGeneration.get()) return@doOnNext  // stale callback (ISSUE-1)
+                if (ownerGeneration != connectionGeneration.get()) return@doOnNext // stale callback (ISSUE-1)
                 val last = lastMessageAt.get()
                 if (last <= 0L) return@doOnNext // not yet primed (shouldn't happen since handshake sets it)
                 val idle = metrics.currentEpochMilli() - last
@@ -192,7 +195,7 @@ class WebSocketConnectionManager(
                     // 재연결 타이머를 먼저 arm한 뒤 bounded OperatorAlert adapter에 알림을 위임한다.
                     if (!triggerForceReconnect(ownerGeneration)) return@doOnNext
                     dispatchAlert(
-                        "[${config.exchange}] WebSocket idle ${idle / 1000}s (threshold ${idleMs / 1000}s) — 강제 재연결"
+                        "[${config.exchange}] WebSocket idle ${idle / 1000}s (threshold ${idleMs / 1000}s) — 강제 재연결",
                     )
                 }
             }
@@ -212,7 +215,7 @@ class WebSocketConnectionManager(
      */
     private fun triggerForceReconnect(callerGeneration: Long): Boolean {
         if (!running.get()) return false
-        if (callerGeneration != connectionGeneration.get()) return false  // stale caller
+        if (callerGeneration != connectionGeneration.get()) return false // stale caller
         val activeSubscription = subscription.getAndSet(null) ?: return false
         forceReconnectArmed.set(true)
         activeSubscription.dispose()

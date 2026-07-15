@@ -292,6 +292,7 @@ class ArchitectureBoundaryTest {
                         when {
                             involvedType.isFacadeContractForbidden() ->
                                 violations += "${method.fullName} exposes ${involvedType.name}"
+
                             involvedType.isApplicationContractType() && involvedType.name != facade.name ->
                                 contractTypes += involvedType
                         }
@@ -311,6 +312,7 @@ class ArchitectureBoundaryTest {
                     when {
                         involvedType.isFacadeContractForbidden() ->
                             violations += "${field.fullName} exposes ${involvedType.name}"
+
                         involvedType.isApplicationContractType() -> contractTypes += involvedType
                     }
                 }
@@ -321,6 +323,7 @@ class ArchitectureBoundaryTest {
                         when {
                             involvedType.isFacadeContractForbidden() ->
                                 violations += "${codeUnit.fullName} exposes ${involvedType.name}"
+
                             involvedType.isApplicationContractType() -> contractTypes += involvedType
                         }
                     }

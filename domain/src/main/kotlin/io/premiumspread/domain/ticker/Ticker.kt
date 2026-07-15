@@ -34,14 +34,12 @@ class Ticker private constructor(
             quote: Quote,
             price: BigDecimal,
             observedAt: Instant,
-        ): Ticker {
-            return Ticker(
+        ): Ticker = Ticker(
                 exchange = exchange,
                 exchangeRegion = exchange.region,
                 quote = quote,
                 price = price,
                 observedAt = observedAt,
             )
-        }
     }
 }

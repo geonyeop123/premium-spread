@@ -7,9 +7,7 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.web.filter.OncePerRequestFilter
 
-class CookieEndpointOriginFilter(
-    private val properties: CorsProperties,
-) : OncePerRequestFilter() {
+class CookieEndpointOriginFilter(private val properties: CorsProperties) : OncePerRequestFilter() {
     override fun shouldNotFilter(request: HttpServletRequest): Boolean =
         request.method != HttpMethod.POST.name() || request.requestURI !in COOKIE_ENDPOINTS
 

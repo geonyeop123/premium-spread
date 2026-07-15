@@ -14,6 +14,7 @@ import io.premiumspread.redis.RedisTtl
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.ZSetOperations
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.time.Instant
@@ -50,40 +51,21 @@ data class PremiumHistoryEntry(
     val timestamp: Instant,
 )
 
+private fun MarketPair.v2Key(): String = RedisKeyGenerator.premiumV2Key(
+    koreaExchange.name,
+    foreignExchange.name,
+    symbol.code,
+)
+
 @Component
-class PremiumCacheReader(
-    private val redisTemplate: StringRedisTemplate,
-    private val metrics: CacheReadMetrics,
-) {
+class PremiumCacheReader(private val redisTemplate: StringRedisTemplate, private val metrics: CacheReadMetrics) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** v2를 우선 조회하며, default pair에 한해서만 symbol-only legacy key를 fallback한다. */
     fun get(pair: MarketPair): CachedPremium? {
-        val v2Key = pair.v2Key()
-        val v2Hash = try {
-            redisTemplate.opsForHash<String, String>().entries(v2Key)
-        } catch (exception: DataAccessException) {
-            return readError(v2Key, exception)
-        }
-        if (v2Hash.isNotEmpty()) {
-            val payload = parseSafely(v2Hash, pair, allowUnversionedLegacy = false, v2Key)
-            metrics.record(CACHE_NAME, if (payload == null) CacheReadOutcome.CORRUPT else CacheReadOutcome.HIT)
-            return payload
-        }
-
-        metrics.record(CACHE_NAME, CacheReadOutcome.MISS)
-        if (pair != MarketPair.default(pair.symbol)) return null
-
-        val legacyKey = RedisKeyGenerator.premiumKey(pair.symbol.code)
-        val legacyHash = try {
-            redisTemplate.opsForHash<String, String>().entries(legacyKey)
-        } catch (exception: DataAccessException) {
-            return readError(legacyKey, exception)
-        }
-        if (legacyHash.isEmpty()) return null
-        redisTemplate.shortenTtl(legacyKey, RedisTtl.PREMIUM_LEGACY_READ_WINDOW)
-        val payload = parseSafely(legacyHash, pair, allowUnversionedLegacy = true, legacyKey)
-        metrics.record(CACHE_NAME, if (payload == null) CacheReadOutcome.CORRUPT else CacheReadOutcome.LEGACY_HIT)
+        val selected = selectPayload(pair) ?: return null
+        val payload = parseSafely(selected.value, pair, selected.allowUnversionedLegacy, selected.key)
+        metrics.record(CACHE_NAME, selected.outcomeFor(payload))
         return payload
     }
 
@@ -92,49 +74,11 @@ class PremiumCacheReader(
     fun getBtc(): CachedPremium? = get("btc")
 
     fun getHistory(pair: MarketPair, limit: Long = 100): List<PremiumHistoryEntry> {
-        val v2Key = RedisKeyGenerator.premiumV2HistoryKey(
-            pair.koreaExchange.name,
-            pair.foreignExchange.name,
-            pair.symbol.code,
-        )
-        val v2Entries = try {
-            redisTemplate.opsForZSet().reverseRangeWithScores(v2Key, 0, limit - 1)
-        } catch (exception: DataAccessException) {
-            readHistoryError(v2Key, exception)
-            return emptyList()
+        val selected = selectHistory(pair, limit) ?: return emptyList()
+        val parsed = selected.value.map { entry ->
+            parseHistoryEntry(entry) ?: return corruptHistory(selected.key)
         }
-        val (selectedKey, selected, outcome) = if (!v2Entries.isNullOrEmpty()) {
-            Triple(v2Key, v2Entries, CacheReadOutcome.HIT)
-        } else if (pair == MarketPair.default(pair.symbol)) {
-            metrics.record(HISTORY_CACHE_NAME, CacheReadOutcome.MISS)
-            val legacyKey = RedisKeyGenerator.premiumHistoryKey(pair.symbol.code)
-            val legacyEntries = try {
-                redisTemplate.opsForZSet().reverseRangeWithScores(legacyKey, 0, limit - 1)
-            } catch (exception: DataAccessException) {
-                readHistoryError(legacyKey, exception)
-                return emptyList()
-            }
-            if (legacyEntries.isNullOrEmpty()) {
-                null
-            } else {
-                redisTemplate.shortenTtl(legacyKey, RedisTtl.PREMIUM_LEGACY_READ_WINDOW)
-                Triple(legacyKey, legacyEntries, CacheReadOutcome.LEGACY_HIT)
-            }
-        } else {
-            null
-        } ?: return emptyList()
-
-        val parsed = selected.map { entry ->
-            val parts = entry.value?.split(":") ?: return corruptHistory(selectedKey)
-            if (parts.size < 3) return corruptHistory(selectedKey)
-            PremiumHistoryEntry(
-                premiumRate = parts[0].toBigDecimalOrNull() ?: return corruptHistory(selectedKey),
-                koreaPrice = parts[1].toBigDecimalOrNull() ?: return corruptHistory(selectedKey),
-                foreignPrice = parts[2].toBigDecimalOrNull() ?: return corruptHistory(selectedKey),
-                timestamp = entry.score?.toLong()?.let(Instant::ofEpochMilli) ?: return corruptHistory(selectedKey),
-            )
-        }
-        metrics.record(HISTORY_CACHE_NAME, outcome)
+        metrics.record(HISTORY_CACHE_NAME, selected.hitOutcome)
         return parsed
     }
 
@@ -154,6 +98,93 @@ class PremiumCacheReader(
 
     fun exists(symbol: String): Boolean = exists(MarketPair.default(Symbol(symbol)))
 
+    private fun selectPayload(pair: MarketPair): CacheSelection<Map<String, String>>? {
+        val v2Key = pair.v2Key()
+        return when (val read = readHash(v2Key)) {
+            is RedisRead.Found -> CacheSelection(v2Key, read.value, CacheReadOutcome.HIT)
+            RedisRead.Failed -> null
+            RedisRead.Missing -> selectLegacyPayload(pair)
+        }
+    }
+
+    private fun selectLegacyPayload(pair: MarketPair): CacheSelection<Map<String, String>>? {
+        metrics.record(CACHE_NAME, CacheReadOutcome.MISS)
+        if (pair != MarketPair.default(pair.symbol)) return null
+
+        val legacyKey = RedisKeyGenerator.premiumKey(pair.symbol.code)
+        return when (val read = readHash(legacyKey)) {
+            is RedisRead.Found -> {
+                redisTemplate.shortenTtl(legacyKey, RedisTtl.PREMIUM_LEGACY_READ_WINDOW)
+                CacheSelection(legacyKey, read.value, CacheReadOutcome.LEGACY_HIT, allowUnversionedLegacy = true)
+            }
+
+            RedisRead.Failed, RedisRead.Missing -> null
+        }
+    }
+
+    private fun readHash(key: String): RedisRead<Map<String, String>> = try {
+        redisTemplate.opsForHash<String, String>().entries(key)
+            .takeUnless(Map<String, String>::isEmpty)
+            ?.let { hash -> RedisRead.Found(hash) }
+            ?: RedisRead.Missing
+    } catch (exception: DataAccessException) {
+        recordReadError(CACHE_NAME, key, exception)
+        RedisRead.Failed
+    }
+
+    private fun selectHistory(pair: MarketPair, limit: Long): CacheSelection<Set<ZSetOperations.TypedTuple<String>>>? {
+        val v2Key = RedisKeyGenerator.premiumV2HistoryKey(
+            pair.koreaExchange.name,
+            pair.foreignExchange.name,
+            pair.symbol.code,
+        )
+        return when (val read = readHistory(v2Key, limit)) {
+            is RedisRead.Found -> CacheSelection(v2Key, read.value, CacheReadOutcome.HIT)
+            RedisRead.Failed -> null
+            RedisRead.Missing -> selectLegacyHistory(pair, limit)
+        }
+    }
+
+    private fun selectLegacyHistory(
+        pair: MarketPair,
+        limit: Long,
+    ): CacheSelection<Set<ZSetOperations.TypedTuple<String>>>? {
+        metrics.record(HISTORY_CACHE_NAME, CacheReadOutcome.MISS)
+        if (pair != MarketPair.default(pair.symbol)) return null
+
+        val legacyKey = RedisKeyGenerator.premiumHistoryKey(pair.symbol.code)
+        return when (val read = readHistory(legacyKey, limit)) {
+            is RedisRead.Found -> {
+                redisTemplate.shortenTtl(legacyKey, RedisTtl.PREMIUM_LEGACY_READ_WINDOW)
+                CacheSelection(legacyKey, read.value, CacheReadOutcome.LEGACY_HIT)
+            }
+
+            RedisRead.Failed, RedisRead.Missing -> null
+        }
+    }
+
+    private fun readHistory(key: String, limit: Long): RedisRead<Set<ZSetOperations.TypedTuple<String>>> = try {
+        redisTemplate.opsForZSet().reverseRangeWithScores(key, 0, limit - 1)
+            ?.takeUnless(Set<ZSetOperations.TypedTuple<String>>::isEmpty)
+            ?.let { entries -> RedisRead.Found(entries) }
+            ?: RedisRead.Missing
+    } catch (exception: DataAccessException) {
+        recordReadError(HISTORY_CACHE_NAME, key, exception)
+        RedisRead.Failed
+    }
+
+    @Suppress("ReturnCount")
+    private fun parseHistoryEntry(entry: ZSetOperations.TypedTuple<String>): PremiumHistoryEntry? {
+        val parts = entry.value?.split(":") ?: return null
+        if (parts.size < 3) return null
+        return PremiumHistoryEntry(
+            premiumRate = parts[0].toBigDecimalOrNull() ?: return null,
+            koreaPrice = parts[1].toBigDecimalOrNull() ?: return null,
+            foreignPrice = parts[2].toBigDecimalOrNull() ?: return null,
+            timestamp = entry.score?.toLong()?.let(Instant::ofEpochMilli) ?: return null,
+        )
+    }
+
     private fun parseSafely(
         hash: Map<String, String>,
         requestedPair: MarketPair,
@@ -163,6 +194,8 @@ class PremiumCacheReader(
         .onFailure { log.warn("Corrupt premium cache payload: {}", key, it) }
         .getOrNull()
 
+    // Cache payload validation is intentionally fail-fast at every required field boundary.
+    @Suppress("ReturnCount")
     private fun parse(
         hash: Map<String, String>,
         requestedPair: MarketPair,
@@ -205,27 +238,33 @@ class PremiumCacheReader(
         )
     }
 
-    private fun MarketPair.v2Key(): String = RedisKeyGenerator.premiumV2Key(
-        koreaExchange.name,
-        foreignExchange.name,
-        symbol.code,
-    )
-
-    private fun readError(key: String, exception: DataAccessException): CachedPremium? {
-        log.warn("Premium cache read failed: {}", key, exception)
-        metrics.record(CACHE_NAME, CacheReadOutcome.ERROR)
-        return null
-    }
-
-    private fun readHistoryError(key: String, exception: DataAccessException) {
-        log.warn("Premium history cache read failed: {}", key, exception)
-        metrics.record(HISTORY_CACHE_NAME, CacheReadOutcome.ERROR)
+    private fun recordReadError(cacheName: String, key: String, exception: DataAccessException) {
+        log.warn("Premium cache read failed: cache={}, key={}", cacheName, key, exception)
+        metrics.record(cacheName, CacheReadOutcome.ERROR)
     }
 
     private fun corruptHistory(key: String): List<PremiumHistoryEntry> {
         log.warn("Corrupt premium history cache entry: {}", key)
         metrics.record(HISTORY_CACHE_NAME, CacheReadOutcome.CORRUPT)
         return emptyList()
+    }
+
+    private data class CacheSelection<T>(
+        val key: String,
+        val value: T,
+        val hitOutcome: CacheReadOutcome,
+        val allowUnversionedLegacy: Boolean = false,
+    ) {
+        fun outcomeFor(payload: CachedPremium?): CacheReadOutcome =
+            if (payload == null) CacheReadOutcome.CORRUPT else hitOutcome
+    }
+
+    private sealed interface RedisRead<out T> {
+        data class Found<T>(val value: T) : RedisRead<T>
+
+        data object Missing : RedisRead<Nothing>
+
+        data object Failed : RedisRead<Nothing>
     }
 
     private companion object {

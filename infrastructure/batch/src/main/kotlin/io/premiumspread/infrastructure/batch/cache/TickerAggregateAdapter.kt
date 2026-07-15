@@ -10,10 +10,8 @@ import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggr
 import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationRepository
 import io.premiumspread.redis.TickerAggregationTimeUnit
 
-class TickerAggregateAdapter(
-    private val cache: TickerCacheService,
-    private val repository: TickerAggregationRepository,
-) : TickerAggregatePort {
+class TickerAggregateAdapter(private val cache: TickerCacheService, private val repository: TickerAggregationRepository) :
+    TickerAggregatePort {
     override fun aggregate(
         exchange: Exchange,
         quote: Quote,
@@ -25,7 +23,14 @@ class TickerAggregateAdapter(
         val aggregate = if (sourceUnit == null) {
             cache.aggregateSecondsData(exchange.name, symbol, quote.currency.code, window.from, window.to)
         } else {
-            cache.aggregateData(sourceUnit.toTickerCacheUnit(), exchange.name, symbol, quote.currency.code, window.from, window.to)
+            cache.aggregateData(
+                sourceUnit.toTickerCacheUnit(),
+                exchange.name,
+                symbol,
+                quote.currency.code,
+                window.from,
+                window.to,
+            )
         } ?: return null
 
         return aggregate.toDomain(exchange, quote, window.from)
@@ -40,10 +45,12 @@ class TickerAggregateAdapter(
                 repository.saveMinute(snapshot.exchange.name, symbol, window.from, aggregate)
                 cache.saveAggregation(TickerAggregationTimeUnit.MINUTES, snapshot.exchange.name, symbol, window.from, aggregate)
             }
+
             AggregationUnit.HOUR -> {
                 repository.saveHour(snapshot.exchange.name, symbol, window.from, aggregate)
                 cache.saveAggregation(TickerAggregationTimeUnit.HOURS, snapshot.exchange.name, symbol, window.from, aggregate)
             }
+
             AggregationUnit.DAY -> repository.saveDay(
                 snapshot.exchange.name,
                 symbol,

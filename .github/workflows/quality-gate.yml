@@ -198,7 +198,7 @@ jobs:
           --input apps,architecture-tests,domain,infrastructure,modules,supports
           --config config/detekt/detekt.yml
           --baseline config/detekt/baseline.xml
-          --excludes '**/build/**,**/.gradle/**'
+          --excludes '**/build/**,**/.gradle/**,**/node_modules/**'
           --report html:build/reports/detekt.html
           --report sarif:build/reports/detekt.sarif
       - name: Publish static-analysis evidence

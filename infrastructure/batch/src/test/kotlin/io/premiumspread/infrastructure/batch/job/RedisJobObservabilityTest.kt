@@ -60,8 +60,14 @@ class RedisJobObservabilityTest {
         assertThat(registry.find("batch.job.lock").meters().flatMap { it.id.tags })
             .noneMatch { it.key == "key" || it.key == "owner" }
 
-        every { values.setIfAbsent(any(), any(), any<Duration>()) } throws RedisConnectionFailureException("down")
-        runCatching { adapter.tryAcquire("another-key", "owner", Duration.ofSeconds(5), Instant.EPOCH) }
+        val redisFailure = RedisConnectionFailureException("down")
+        every { values.setIfAbsent(any(), any(), any<Duration>()) } throws redisFailure
+
+        val propagated = runCatching {
+            adapter.tryAcquire("another-key", "owner", Duration.ofSeconds(5), Instant.EPOCH)
+        }.exceptionOrNull()
+
+        assertThat(propagated).isSameAs(redisFailure)
         assertThat(registry.get("batch.job.lock").tag("outcome", "error").counter().count()).isEqualTo(1.0)
     }
 }

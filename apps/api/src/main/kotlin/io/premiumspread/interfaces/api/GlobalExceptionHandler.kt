@@ -18,46 +18,34 @@ import java.time.Clock
 import java.time.Instant
 
 @RestControllerAdvice
-class GlobalExceptionHandler(
-    private val clock: Clock = Clock.systemUTC(),
-) {
+class GlobalExceptionHandler(private val clock: Clock = Clock.systemUTC()) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
     @ExceptionHandler(ApplicationException::class)
-    fun handleApplicationException(ex: ApplicationException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
+    fun handleApplicationException(ex: ApplicationException): ResponseEntity<ErrorResponse> = ResponseEntity
             .status(statusOf(ex.error))
             .body(error(ex.error.name))
-    }
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
-    fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
+    fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> = ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(error("INVALID_ARGUMENT"))
-    }
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
-    fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
+    fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> = ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(error("INVALID_ARGUMENT"))
-    }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
-    fun handleMethodNotSupported(ex: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
+    fun handleMethodNotSupported(ex: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> = ResponseEntity
             .status(HttpStatus.METHOD_NOT_ALLOWED)
             .body(error("METHOD_NOT_ALLOWED"))
-    }
 
     @ExceptionHandler(NoResourceFoundException::class)
-    fun handleNoResourceFound(ex: NoResourceFoundException): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
+    fun handleNoResourceFound(ex: NoResourceFoundException): ResponseEntity<ErrorResponse> = ResponseEntity
             .status(HttpStatus.NOT_FOUND)
             .body(error("NOT_FOUND"))
-    }
 
     @ExceptionHandler(ResponseStatusException::class)
     fun handleResponseStatusException(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
@@ -81,34 +69,36 @@ class GlobalExceptionHandler(
 
     private fun statusOf(error: ApplicationError): HttpStatus = when (error) {
         ApplicationError.AUTHENTICATION_FAILED,
-        ApplicationError.INVALID_REFRESH_TOKEN -> HttpStatus.UNAUTHORIZED
+        ApplicationError.INVALID_REFRESH_TOKEN,
+        -> HttpStatus.UNAUTHORIZED
 
         ApplicationError.MEMBER_NOT_FOUND,
         ApplicationError.TICKER_NOT_FOUND,
         ApplicationError.POSITION_NOT_FOUND,
         ApplicationError.PREMIUM_NOT_FOUND,
-        ApplicationError.NOTIFICATION_SUBSCRIPTION_NOT_FOUND -> HttpStatus.NOT_FOUND
+        ApplicationError.NOTIFICATION_SUBSCRIPTION_NOT_FOUND,
+        -> HttpStatus.NOT_FOUND
 
         ApplicationError.DUPLICATE_EMAIL,
         ApplicationError.PREMIUM_SNAPSHOT_NOT_AVAILABLE,
-        ApplicationError.STALE_PREMIUM_SNAPSHOT -> HttpStatus.CONFLICT
+        ApplicationError.STALE_PREMIUM_SNAPSHOT,
+        -> HttpStatus.CONFLICT
 
         ApplicationError.INVALID_TICKER,
         ApplicationError.INVALID_QUOTE,
         ApplicationError.INVALID_PREMIUM_INPUT,
         ApplicationError.INVALID_POSITION,
-        ApplicationError.DOMAIN_ERROR -> HttpStatus.UNPROCESSABLE_ENTITY
+        ApplicationError.DOMAIN_ERROR,
+        -> HttpStatus.UNPROCESSABLE_ENTITY
     }
 
     @ExceptionHandler(
         MethodArgumentTypeMismatchException::class,
         MissingServletRequestParameterException::class,
     )
-    fun handleRequestBinding(ex: Exception): ResponseEntity<ErrorResponse> {
-        return ResponseEntity
+    fun handleRequestBinding(ex: Exception): ResponseEntity<ErrorResponse> = ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(error("INVALID_ARGUMENT"))
-    }
 
     companion object {
         val ERROR_MESSAGES = mapOf(
@@ -136,8 +126,4 @@ class GlobalExceptionHandler(
     }
 }
 
-data class ErrorResponse(
-    val code: String,
-    val message: String,
-    val timestamp: Instant,
-)
+data class ErrorResponse(val code: String, val message: String, val timestamp: Instant)

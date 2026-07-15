@@ -11,9 +11,9 @@ import org.springframework.web.server.ResponseStatusException
 
 class LoginMemberArgumentResolver : HandlerMethodArgumentResolver {
 
-    override fun supportsParameter(parameter: MethodParameter): Boolean {
-        return parameter.hasParameterAnnotation(LoginMemberId::class.java)
-    }
+    override fun supportsParameter(parameter: MethodParameter): Boolean = parameter.hasParameterAnnotation(
+        LoginMemberId::class.java,
+    )
 
     override fun resolveArgument(
         parameter: MethodParameter,

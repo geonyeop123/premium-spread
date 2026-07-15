@@ -95,8 +95,6 @@ class Premium private constructor(
             }
         }
 
-        private fun latestObservedAt(first: Instant, second: Instant, third: Instant): Instant {
-            return maxOf(first, second, third)
-        }
+        private fun latestObservedAt(first: Instant, second: Instant, third: Instant): Instant = maxOf(first, second, third)
     }
 }

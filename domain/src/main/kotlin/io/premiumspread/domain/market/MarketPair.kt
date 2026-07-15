@@ -5,11 +5,7 @@ import io.premiumspread.domain.ticker.ExchangeRegion
 import io.premiumspread.domain.ticker.Symbol
 
 /** 동일 symbol의 한국 현물과 해외 헤지 거래소 조합을 식별한다. */
-class MarketPair(
-    val symbol: Symbol,
-    val koreaExchange: Exchange,
-    val foreignExchange: Exchange,
-) {
+class MarketPair(val symbol: Symbol, val koreaExchange: Exchange, val foreignExchange: Exchange) {
     init {
         require(koreaExchange.region == ExchangeRegion.KOREA) { "koreaExchange must have KOREA region." }
         require(foreignExchange.region == ExchangeRegion.FOREIGN && foreignExchange != Exchange.FX_PROVIDER) {

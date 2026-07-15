@@ -12,9 +12,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 
 @ConfigurationProperties("migration.v12")
-data class V12MigrationSafetyProperties(
-    val allowEmptyPositionMigration: Boolean = false,
-)
+data class V12MigrationSafetyProperties(val allowEmptyPositionMigration: Boolean = false)
 
 class V12MigrationSafetyPolicy {
     fun validate(version: String?, positionRows: Long, approvedForEmpty: Boolean) {

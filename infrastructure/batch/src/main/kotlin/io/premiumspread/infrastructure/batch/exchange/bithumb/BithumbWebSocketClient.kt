@@ -99,6 +99,8 @@ class BithumbWebSocketClient(
         externalSink.get()?.accept(ticker.toMarketTick()) ?: ingestion.onMessage(ticker)
     }
 
+    // Every validation return drops an untrusted websocket payload before it reaches the ingestion port.
+    @Suppress("ReturnCount")
     internal fun parse(payload: String): TickerData? {
         return try {
             val msg = objectMapper.readValue(payload, BithumbWebSocketTickerMessage::class.java)

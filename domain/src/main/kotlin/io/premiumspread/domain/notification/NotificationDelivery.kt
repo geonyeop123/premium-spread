@@ -36,11 +36,7 @@ data class NewNotificationDelivery(
 )
 
 /** PROCESSING 상태를 변경할 때 반드시 함께 검증할 소유권이다. */
-data class DeliveryClaim(
-    val id: Long,
-    val lockedBy: String,
-    val claimToken: String,
-)
+data class DeliveryClaim(val id: Long, val lockedBy: String, val claimToken: String)
 
 /** SMTP I/O 전에 commit된 PROCESSING delivery snapshot이다. */
 data class ClaimedNotificationDelivery(

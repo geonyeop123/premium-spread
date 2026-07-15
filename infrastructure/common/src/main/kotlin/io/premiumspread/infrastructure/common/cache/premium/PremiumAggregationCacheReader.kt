@@ -16,10 +16,7 @@ import org.springframework.stereotype.Component
 import java.time.Instant
 
 @Component
-class PremiumAggregationCacheReader(
-    private val redisTemplate: StringRedisTemplate,
-    private val metrics: CacheReadMetrics,
-) {
+class PremiumAggregationCacheReader(private val redisTemplate: StringRedisTemplate, private val metrics: CacheReadMetrics) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun findByInterval(

@@ -27,35 +27,36 @@ class DependencyReadinessHealthIndicator(
     private val ingestionHealth: ObjectProvider<CriticalIngestionHealth>,
 ) : HealthIndicator {
     override fun health(): Health {
-        if (availability.readinessState != ReadinessState.ACCEPTING_TRAFFIC) {
-            return Health.outOfService().withDetail("application", "refusing_traffic").build()
-        }
-
-        val app = environment.getProperty("spring.application.name", "unknown")
-        if (app != "api" && app != "premium-spread-batch") {
-            return Health.up().withDetail("policy", "availability_only").build()
-        }
-
-        val db = checkDatabase(dataSources.getIfAvailable())
-        if (db != null) return db
-
-        val redis = checkRedis(redisTemplates.getIfAvailable())
-        if (redis != null) return redis
-
-        if (app == "premium-spread-batch" && environment.getProperty("batch.scheduling.enabled", Boolean::class.java, true)) {
-            val contributors = ingestionHealth.orderedStream().toList()
-            if (contributors.isEmpty()) {
-                return Health.down().withDetail("ingestion", "missing_policy_contributor").build()
-            }
-            contributors.firstNotNullOfOrNull { contributor ->
-                contributor.health().takeUnless { it.status == org.springframework.boot.actuate.health.Status.UP }
-            }?.let { return it }
-        }
-
-        return Health.up()
-            .withDetail("policy", if (app == "api") "db_redis" else "db_redis_ingestion")
-            .build()
+        val application by lazy(::applicationPolicy)
+        val orderedChecks = sequenceOf<() -> Health?>(
+            ::checkAvailability,
+            { checkApplication(application) },
+            { checkDatabase(dataSources.getIfAvailable()) },
+            { checkRedis(redisTemplates.getIfAvailable()) },
+            { checkIngestion(application) },
+        )
+        return orderedChecks.mapNotNull { check -> check() }.firstOrNull() ?: ready(application)
     }
+
+    private fun checkAvailability(): Health? =
+        if (availability.readinessState == ReadinessState.ACCEPTING_TRAFFIC) {
+            null
+        } else {
+            Health.outOfService().withDetail("application", "refusing_traffic").build()
+        }
+
+    private fun applicationPolicy(): ApplicationPolicy = when (environment.getProperty("spring.application.name", "unknown")) {
+        "api" -> ApplicationPolicy.API
+        "premium-spread-batch" -> ApplicationPolicy.BATCH
+        else -> ApplicationPolicy.AVAILABILITY_ONLY
+    }
+
+    private fun checkApplication(application: ApplicationPolicy): Health? =
+        if (application == ApplicationPolicy.AVAILABILITY_ONLY) {
+            Health.up().withDetail("policy", "availability_only").build()
+        } else {
+            null
+        }
 
     private fun checkDatabase(dataSource: DataSource?): Health? {
         if (dataSource == null) return Health.down().withDetail("database", "missing").build()
@@ -78,6 +79,27 @@ class DependencyReadinessHealthIndicator(
         }.getOrElse { error -> dependencyFailure("redis", error) }
     }
 
+    private fun checkIngestion(application: ApplicationPolicy): Health? {
+        if (application != ApplicationPolicy.BATCH || !isBatchSchedulingEnabled()) return null
+
+        val contributors = ingestionHealth.orderedStream().iterator()
+        if (!contributors.hasNext()) {
+            return Health.down().withDetail("ingestion", "missing_policy_contributor").build()
+        }
+        return generateSequence { if (contributors.hasNext()) contributors.next() else null }
+            .map(CriticalIngestionHealth::health)
+            .firstOrNull { health -> health.status != org.springframework.boot.actuate.health.Status.UP }
+    }
+
+    private fun isBatchSchedulingEnabled(): Boolean =
+        environment.getProperty("batch.scheduling.enabled", Boolean::class.java, true)
+
+    private fun ready(application: ApplicationPolicy): Health = Health.up()
+        .withDetail(
+            "policy",
+            if (application == ApplicationPolicy.API) "db_redis" else "db_redis_ingestion",
+        ).build()
+
     private fun dependencyFailure(dependency: String, error: Throwable): Health =
         Health.down()
             .withDetail(dependency, "unavailable")
@@ -86,5 +108,11 @@ class DependencyReadinessHealthIndicator(
 
     private companion object {
         const val DB_VALIDATION_TIMEOUT_SECONDS = 2
+    }
+
+    private enum class ApplicationPolicy {
+        API,
+        BATCH,
+        AVAILABILITY_ONLY,
     }
 }

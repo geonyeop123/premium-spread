@@ -88,10 +88,12 @@ class WebSocketConnectionManagerRegressionTest {
     fun `stop then start does not retain a duplicate reconnect timer`() {
         val connections = AtomicInteger()
         repeat(5) {
-            server.enqueue(webSocketResponse { webSocket ->
+            server.enqueue(
+                webSocketResponse { webSocket ->
                 connections.incrementAndGet()
                 webSocket.close(1000, "bye")
-            })
+            },
+            )
         }
         val candidate = manager(
             firstMessageTimeout = Duration.ofSeconds(10),
@@ -188,7 +190,8 @@ class WebSocketConnectionManagerRegressionTest {
     @Test
     fun `client ping heartbeat is emitted while connected`() {
         val pings = ConcurrentLinkedQueue<String>()
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 serverSockets.add(webSocket)
             }
@@ -196,7 +199,8 @@ class WebSocketConnectionManagerRegressionTest {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 pings.add(text)
             }
-        }))
+        }),
+        )
         manager = manager(
             firstMessageTimeout = Duration.ofSeconds(2),
             idleTimeout = Duration.ofSeconds(5),
@@ -213,10 +217,12 @@ class WebSocketConnectionManagerRegressionTest {
     fun `repeated handshake close applies exponential reconnect backoff`() {
         val openedAt = ConcurrentLinkedQueue<Long>()
         repeat(5) {
-            server.enqueue(webSocketResponse { webSocket ->
+            server.enqueue(
+                webSocketResponse { webSocket ->
                 openedAt.add(System.nanoTime())
                 webSocket.close(1000, "bye")
-            })
+            },
+            )
         }
         manager = manager(
             firstMessageTimeout = Duration.ofSeconds(30),
@@ -258,7 +264,8 @@ class WebSocketConnectionManagerRegressionTest {
 
     @Test
     fun `continuous messages below idle timeout do not trigger watchdog`() {
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 serverSockets.add(webSocket)
                 Thread {
@@ -268,7 +275,8 @@ class WebSocketConnectionManagerRegressionTest {
                     }
                 }.start()
             }
-        }))
+        }),
+        )
         manager = manager(
             firstMessageTimeout = Duration.ofSeconds(2),
             idleTimeout = Duration.ofMillis(200),
@@ -285,7 +293,8 @@ class WebSocketConnectionManagerRegressionTest {
     @Test
     fun `stale generation watchdog and timeout cannot terminate replacement connection`() {
         server.enqueue(webSocketResponse())
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 serverSockets.add(webSocket)
                 Thread {
@@ -295,7 +304,8 @@ class WebSocketConnectionManagerRegressionTest {
                     }
                 }.start()
             }
-        }))
+        }),
+        )
         manager = manager(
             firstMessageTimeout = Duration.ofMillis(140),
             idleTimeout = Duration.ofSeconds(5),
@@ -351,10 +361,12 @@ class WebSocketConnectionManagerRegressionTest {
     fun `stop prevents pending reconnect and watchdog alert`() {
         val opens = AtomicInteger()
         repeat(2) {
-            server.enqueue(webSocketResponse { webSocket ->
+            server.enqueue(
+                webSocketResponse { webSocket ->
                 opens.incrementAndGet()
                 webSocket.send("hello")
-            })
+            },
+            )
         }
         val candidate = manager(
             firstMessageTimeout = Duration.ofSeconds(2),

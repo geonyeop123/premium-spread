@@ -81,8 +81,6 @@ class JobExecutor(
             started.compareAndSet(false, true)
             try {
                 action()
-            } catch (throwable: Throwable) {
-                JobResult.Failure(throwable.asException())
             } finally {
                 completion.countDown()
             }
@@ -90,13 +88,13 @@ class JobExecutor(
         return SubmittedAction(future, started, completion)
     }
 
-    private fun awaitResult(config: JobConfig, submitted: SubmittedAction): AwaitedResult {
-        return try {
+    private fun awaitResult(config: JobConfig, submitted: SubmittedAction): AwaitedResult =
+        try {
             AwaitedResult(
                 submitted.future.get(config.executionTimeout.toMillis(), TimeUnit.MILLISECONDS),
                 actionMayStillRun = false,
             )
-        } catch (exception: TimeoutException) {
+        } catch (expectedTimeout: TimeoutException) {
             cancel(submitted)
             AwaitedResult(
                 JobResult.Failure(JobExecutionTimeoutException(config.jobId.tag, config.executionTimeout)),
@@ -104,7 +102,7 @@ class JobExecutor(
             )
         } catch (exception: ExecutionException) {
             AwaitedResult(JobResult.Failure(exception.cause?.asException() ?: exception), actionMayStillRun = false)
-        } catch (exception: CancellationException) {
+        } catch (expectedCancellation: CancellationException) {
             AwaitedResult(
                 JobResult.Failure(JobLockOwnershipLostException(config.jobId.tag)),
                 actionMayStillRun = submitted.completion.count > 0,
@@ -114,7 +112,6 @@ class JobExecutor(
             cancel(submitted)
             AwaitedResult(JobResult.Failure(exception), actionMayStillRun = submitted.completion.count > 0)
         }
-    }
 
     private fun cancel(submitted: SubmittedAction) {
         submitted.future.cancel(true)
@@ -232,21 +229,13 @@ class JobExecutor(
     }
 }
 
-private data class SubmittedAction(
-    val future: Future<JobResult>,
-    val started: AtomicBoolean,
-    val completion: CountDownLatch,
-)
+private data class SubmittedAction(val future: Future<JobResult>, val started: AtomicBoolean, val completion: CountDownLatch)
 
-private data class AwaitedResult(
-    val result: JobResult,
-    val actionMayStillRun: Boolean,
-)
+private data class AwaitedResult(val result: JobResult, val actionMayStillRun: Boolean)
 
 class JobExecutionTimeoutException(job: String, timeout: java.time.Duration) :
     RuntimeException("$job exceeded execution timeout ${timeout.toMillis()}ms")
 
-class JobLockOwnershipLostException(job: String) :
-    RuntimeException("$job lost distributed lock ownership while executing")
+class JobLockOwnershipLostException(job: String) : RuntimeException("$job lost distributed lock ownership while executing")
 
 private fun Throwable.asException(): Exception = this as? Exception ?: RuntimeException(this)

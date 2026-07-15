@@ -18,9 +18,7 @@ fun interface CacheReadMetrics {
 }
 
 @Component
-class MicrometerCacheReadMetrics(
-    private val meterRegistry: ObjectProvider<MeterRegistry>,
-) : CacheReadMetrics {
+class MicrometerCacheReadMetrics(private val meterRegistry: ObjectProvider<MeterRegistry>) : CacheReadMetrics {
     override fun record(cache: String, outcome: CacheReadOutcome) {
         val registry = meterRegistry.getIfAvailable() ?: return
         Counter.builder(METRIC_NAME)

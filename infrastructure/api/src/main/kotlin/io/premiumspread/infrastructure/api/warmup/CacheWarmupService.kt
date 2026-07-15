@@ -43,12 +43,18 @@ class CacheWarmupService(
         properties.symbols.forEach { symbol ->
             runCatching { premiumService.findLatestSnapshotBySymbol(Symbol(symbol)) }
                 .onSuccess { successCount++ }
-                .onFailure { failCount++; log.warn("Failed to warm up premium snapshot: {}", symbol, it) }
+                .onFailure {
+                    failCount++
+                    log.warn("Failed to warm up premium snapshot: {}", symbol, it)
+                }
         }
         properties.exchanges.forEach { pair ->
             runCatching { tickerService.findLatestSnapshot(pair.exchange, pair.symbol) }
                 .onSuccess { successCount++ }
-                .onFailure { failCount++; log.warn("Failed to warm up ticker snapshot: {}:{}", pair.exchange, pair.symbol, it) }
+                .onFailure {
+                    failCount++
+                    log.warn("Failed to warm up ticker snapshot: {}:{}", pair.exchange, pair.symbol, it)
+                }
         }
         log.info(
             "Cache warmup completed in {}ms (success={}, fail={})",

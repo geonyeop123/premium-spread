@@ -10,10 +10,8 @@ import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAg
 import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
 import io.premiumspread.redis.AggregationTimeUnit
 
-class PremiumAggregateAdapter(
-    private val cache: PremiumCacheService,
-    private val repository: PremiumAggregationRepository,
-) : PremiumAggregatePort {
+class PremiumAggregateAdapter(private val cache: PremiumCacheService, private val repository: PremiumAggregationRepository) :
+    PremiumAggregatePort {
     override fun aggregate(
         pair: MarketPair,
         sourceUnit: AggregationUnit?,
@@ -31,7 +29,9 @@ class PremiumAggregateAdapter(
         val aggregate = snapshot.toInfrastructure()
         when (unit) {
             AggregationUnit.MINUTE -> repository.saveMinute(snapshot.pair, window.from, aggregate)
+
             AggregationUnit.HOUR -> repository.saveHour(snapshot.pair, window.from, aggregate)
+
             AggregationUnit.DAY -> repository.saveDay(
                 snapshot.pair,
                 window.from.atZone(window.zone.zoneId).toLocalDate(),

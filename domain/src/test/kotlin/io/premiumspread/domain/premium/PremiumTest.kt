@@ -213,12 +213,10 @@ class PremiumTest {
         quote: Quote,
         price: String,
         observedAt: Instant,
-    ): Ticker {
-        return Ticker.create(
+    ): Ticker = Ticker.create(
             exchange = exchange,
             quote = quote,
             price = BigDecimal(price),
             observedAt = observedAt,
         )
-    }
 }

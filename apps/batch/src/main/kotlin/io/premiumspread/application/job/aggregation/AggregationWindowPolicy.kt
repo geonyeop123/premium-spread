@@ -8,9 +8,7 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 @Component
-class AggregationWindowPolicy(
-    private val properties: AggregationProperties,
-) {
+class AggregationWindowPolicy(private val properties: AggregationProperties) {
     val zoneId: ZoneId
         get() = properties.aggregationZone.zoneId
 

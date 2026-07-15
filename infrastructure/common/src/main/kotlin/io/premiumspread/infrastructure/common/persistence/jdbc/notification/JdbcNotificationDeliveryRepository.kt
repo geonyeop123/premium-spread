@@ -14,9 +14,7 @@ import java.time.Instant
 import java.util.UUID
 
 @Repository
-class JdbcNotificationDeliveryRepository(
-    private val jdbcTemplate: JdbcTemplate,
-) : NotificationDeliveryPort {
+class JdbcNotificationDeliveryRepository(private val jdbcTemplate: JdbcTemplate) : NotificationDeliveryPort {
 
     override fun enqueue(delivery: NewNotificationDelivery): NotificationDeliveryEnqueueResult {
         require(delivery.deliveryId.isNotBlank()) { "deliveryId must not be blank." }

@@ -19,10 +19,42 @@ import javax.sql.DataSource
 
 class DependencyReadinessHealthIndicatorTest {
     @Test
+    fun `refusing traffic stops before application dependencies`() {
+        val dataSource = Mockito.mock(DataSource::class.java)
+        val redis = Mockito.mock(StringRedisTemplate::class.java)
+        val ingestion = Mockito.mock(CriticalIngestionHealth::class.java)
+        val indicator = indicator(
+            "api",
+            listOf(dataSource),
+            listOf(redis),
+            listOf(ingestion),
+            ReadinessState.REFUSING_TRAFFIC,
+        )
+
+        assertThat(indicator.health().status).isEqualTo(Status.OUT_OF_SERVICE)
+        Mockito.verifyNoInteractions(dataSource, redis, ingestion)
+    }
+
+    @Test
+    fun `unknown application uses availability only without resolving dependencies`() {
+        val dataSource = Mockito.mock(DataSource::class.java)
+        val redis = Mockito.mock(StringRedisTemplate::class.java)
+        val indicator = indicator("other", listOf(dataSource), listOf(redis))
+
+        val health = indicator.health()
+
+        assertThat(health.status).isEqualTo(Status.UP)
+        assertThat(health.details["policy"]).isEqualTo("availability_only")
+        Mockito.verifyNoInteractions(dataSource, redis)
+    }
+
+    @Test
     fun `api readiness requires database and request critical redis`() {
-        val indicator = indicator("api", emptyList(), emptyList())
+        val redis = Mockito.mock(StringRedisTemplate::class.java)
+        val indicator = indicator("api", emptyList(), listOf(redis))
 
         assertThat(indicator.health().status).isEqualTo(Status.DOWN)
+        Mockito.verifyNoInteractions(redis)
     }
 
     @Test
@@ -52,9 +84,10 @@ class DependencyReadinessHealthIndicatorTest {
         dataSources: List<DataSource>,
         redisTemplates: List<StringRedisTemplate>,
         ingestion: List<CriticalIngestionHealth> = emptyList(),
+        readinessState: ReadinessState = ReadinessState.ACCEPTING_TRAFFIC,
     ): DependencyReadinessHealthIndicator {
         val availability = Mockito.mock(ApplicationAvailability::class.java)
-        Mockito.`when`(availability.readinessState).thenReturn(ReadinessState.ACCEPTING_TRAFFIC)
+        Mockito.`when`(availability.readinessState).thenReturn(readinessState)
         val environment = StandardEnvironment().apply {
             propertySources.addFirst(MapPropertySource("test", mapOf("spring.application.name" to appName)))
         }

@@ -4,10 +4,7 @@ import org.springframework.http.HttpMethod
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher
 import org.springframework.util.AntPathMatcher
 
-data class PublicEndpoint(
-    val method: HttpMethod,
-    val pattern: String,
-) {
+data class PublicEndpoint(val method: HttpMethod, val pattern: String) {
     fun requestMatcher(): AntPathRequestMatcher = AntPathRequestMatcher(pattern, method.name())
 }
 

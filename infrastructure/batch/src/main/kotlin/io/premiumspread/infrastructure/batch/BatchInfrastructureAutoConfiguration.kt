@@ -123,10 +123,7 @@ class BatchInfrastructureAutoConfiguration {
     ) = BatchMarketStreamConsistencyValidator(market, streams)
 }
 
-class BatchMarketStreamConsistencyValidator(
-    market: BatchMarketProperties,
-    streams: WebSocketStreamProperties,
-) {
+class BatchMarketStreamConsistencyValidator(market: BatchMarketProperties, streams: WebSocketStreamProperties) {
     init {
         require(streams.binance.symbol.equals(market.symbol, ignoreCase = true)) {
             "market-streams.binance.symbol must match batch.market.symbol"

@@ -49,7 +49,8 @@ class BithumbTickerIngestion(
             metrics.recordOutOfOrder(EXCHANGE)
             log.debug(
                 "Discard out-of-order bithumb ticker: prev={}, current={}",
-                updated?.ticker?.timestamp, ticker.timestamp,
+                updated?.ticker?.timestamp,
+                ticker.timestamp,
             )
             return
         }

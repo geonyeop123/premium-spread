@@ -18,12 +18,7 @@ class MemberRequest private constructor() {
 }
 
 class MemberResponse private constructor() {
-    data class Detail(
-        val id: Long,
-        val email: String,
-        val nickname: String,
-        val status: String,
-    ) {
+    data class Detail(val id: Long, val email: String, val nickname: String, val status: String) {
         companion object {
             fun from(result: MemberResult.Detail): Detail = Detail(
                 id = result.id,

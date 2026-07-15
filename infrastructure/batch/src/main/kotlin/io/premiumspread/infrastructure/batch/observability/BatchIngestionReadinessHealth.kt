@@ -6,10 +6,8 @@ import io.premiumspread.monitoring.CriticalIngestionHealth
 import org.springframework.boot.actuate.health.Health
 
 /** 필수 Binance/Bithumb stream이 연결되고 idle 임계값 이내 메시지를 받았을 때만 Batch를 ready로 본다. */
-class BatchIngestionReadinessHealth(
-    private val metrics: WebSocketMetrics,
-    properties: WebSocketStreamProperties,
-) : CriticalIngestionHealth {
+class BatchIngestionReadinessHealth(private val metrics: WebSocketMetrics, properties: WebSocketStreamProperties) :
+    CriticalIngestionHealth {
     private val staleThreshold = properties.connection.idleTimeout
 
     override fun health(): Health {

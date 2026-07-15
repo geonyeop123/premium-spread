@@ -1,8 +1,6 @@
 package io.premiumspread.architecture
 
-internal class KotlinSourceDependencyScanner(
-    forbiddenPackagePrefixes: Set<String>,
-) {
+internal class KotlinSourceDependencyScanner(forbiddenPackagePrefixes: Set<String>) {
     private val forbiddenPackagePrefixes = forbiddenPackagePrefixes.sortedByDescending(String::length)
 
     init {

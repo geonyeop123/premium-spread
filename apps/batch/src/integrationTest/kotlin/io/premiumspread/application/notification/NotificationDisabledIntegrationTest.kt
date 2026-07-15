@@ -24,6 +24,7 @@ import java.time.Instant
 @TestPropertySource(properties = ["notification.email.enabled=false"])
 class NotificationDisabledIntegrationTest : BatchIntegrationTestBase() {
     @Autowired lateinit var evaluator: PremiumThresholdEvaluator
+
     @Autowired lateinit var context: ApplicationContext
 
     @SpykBean

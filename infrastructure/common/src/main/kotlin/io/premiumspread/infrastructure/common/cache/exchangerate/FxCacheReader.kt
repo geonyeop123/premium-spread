@@ -24,10 +24,7 @@ data class CachedFxRate(
 }
 
 @Component
-class FxCacheReader(
-    private val redisTemplate: StringRedisTemplate,
-    private val metrics: CacheReadMetrics,
-) {
+class FxCacheReader(private val redisTemplate: StringRedisTemplate, private val metrics: CacheReadMetrics) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun get(baseCurrency: String, quoteCurrency: String): CachedFxRate? {

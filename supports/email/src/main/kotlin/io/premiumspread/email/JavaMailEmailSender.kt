@@ -6,10 +6,7 @@ import org.springframework.mail.javamail.JavaMailSender
 import org.springframework.mail.javamail.MimeMessageHelper
 import java.nio.charset.StandardCharsets
 
-class JavaMailEmailSender(
-    private val mailSender: JavaMailSender,
-    private val from: String,
-) : EmailSender {
+class JavaMailEmailSender(private val mailSender: JavaMailSender, private val from: String) : EmailSender {
 
     override fun send(message: EmailMessage) {
         try {
@@ -57,10 +54,7 @@ class JavaMailEmailSender(
     private fun toSmtpMessageId(deliveryId: String): String = "<$deliveryId@$MESSAGE_ID_DOMAIN>"
 
     /** Jakarta Mail이 transport 직전 saveChanges()를 호출해도 stable ID를 다시 설정한다. */
-    private class StableMessageIdMimeMessage(
-        source: MimeMessage,
-        private val stableMessageId: String,
-    ) : MimeMessage(source) {
+    private class StableMessageIdMimeMessage(source: MimeMessage, private val stableMessageId: String) : MimeMessage(source) {
         override fun updateMessageID() {
             setHeader(MESSAGE_ID_HEADER, stableMessageId)
         }

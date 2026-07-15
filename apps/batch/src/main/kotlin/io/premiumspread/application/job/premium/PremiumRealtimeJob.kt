@@ -29,11 +29,9 @@ class PremiumRealtimeJob(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun run(): JobResult {
-        return executor.execute(jobConfigs.get(JobId.PREMIUM_REALTIME)) {
+    fun run(): JobResult = executor.execute(jobConfigs.get(JobId.PREMIUM_REALTIME)) {
             calculate()
         }
-    }
 
     private fun calculate(): JobResult {
         return try {
@@ -54,7 +52,9 @@ class PremiumRealtimeJob(
                 return JobResult.Skipped("missing_data")
             }
 
-            if (bithumbTicker.price <= BigDecimal.ZERO || binanceTicker.price <= BigDecimal.ZERO || fxSnapshot.rate <= BigDecimal.ZERO) {
+            if (bithumbTicker.price <= BigDecimal.ZERO || binanceTicker.price <= BigDecimal.ZERO ||
+                fxSnapshot.rate <= BigDecimal.ZERO
+            ) {
                 log.warn(
                     "Invalid price detected - korea({}): {}, foreign({}): {}, FX: {}",
                     market.pair.koreaExchange,
@@ -111,5 +111,4 @@ class PremiumRealtimeJob(
             JobResult.Failure(e)
         }
     }
-
 }

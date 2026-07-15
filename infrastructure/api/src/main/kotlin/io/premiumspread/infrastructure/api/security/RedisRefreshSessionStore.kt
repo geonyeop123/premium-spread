@@ -10,10 +10,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript
 import java.time.Duration
 import java.time.Instant
 
-class RedisRefreshSessionStore(
-    private val redisTemplate: StringRedisTemplate,
-    private val properties: RefreshProperties,
-) : RefreshSessionStore {
+class RedisRefreshSessionStore(private val redisTemplate: StringRedisTemplate, private val properties: RefreshProperties) :
+    RefreshSessionStore {
     override fun replace(session: RefreshSession, replacedAt: Instant) {
         val ttl = remainingTtl(session.expiresAt, replacedAt)
         redisTemplate.execute(

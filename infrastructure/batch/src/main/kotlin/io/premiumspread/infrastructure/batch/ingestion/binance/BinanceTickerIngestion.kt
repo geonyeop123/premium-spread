@@ -50,7 +50,8 @@ class BinanceTickerIngestion(
             metrics.recordOutOfOrder(EXCHANGE)
             log.debug(
                 "Discard out-of-order binance ticker: prev={}, current={}",
-                updated?.ticker?.timestamp, ticker.timestamp,
+                updated?.ticker?.timestamp,
+                ticker.timestamp,
             )
             return
         }

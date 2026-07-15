@@ -13,10 +13,7 @@ import org.springframework.stereotype.Service
 import java.time.Clock
 
 @Service
-class NotificationSubscriptionFacade(
-    private val service: NotificationSubscriptionService,
-    private val clock: Clock,
-) {
+class NotificationSubscriptionFacade(private val service: NotificationSubscriptionService, private val clock: Clock) {
     fun create(criteria: NotificationSubscriptionCriteria.Create): NotificationSubscriptionResult.Detail =
         translate {
             toDetail(

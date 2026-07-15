@@ -77,5 +77,4 @@ class TickerAggregationJob(
     }
 
     private data class Target(val exchange: Exchange, val quote: Quote)
-
 }

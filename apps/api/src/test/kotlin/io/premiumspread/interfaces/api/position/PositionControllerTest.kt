@@ -27,7 +27,9 @@ import java.time.Instant
 @Import(WebMvcConfig::class)
 class PositionControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
+
     @Autowired lateinit var objectMapper: ObjectMapper
+
     @MockkBean lateinit var facade: PositionFacade
     private val principal = Principal { "1" }
 

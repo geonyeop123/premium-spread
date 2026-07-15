@@ -6,9 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarFile
 
-internal enum class ArchitectureTarget(
-    private val propertySuffix: String,
-) {
+internal enum class ArchitectureTarget(private val propertySuffix: String) {
     DOMAIN("domain"),
     INFRASTRUCTURE_COMMON("infrastructure.common"),
     INFRASTRUCTURE_API("infrastructure.api"),

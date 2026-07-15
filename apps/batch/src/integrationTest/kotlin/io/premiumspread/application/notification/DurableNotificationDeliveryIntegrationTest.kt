@@ -53,9 +53,13 @@ import java.util.concurrent.atomic.AtomicInteger
 )
 class DurableNotificationDeliveryIntegrationTest : BatchIntegrationTestBase() {
     @Autowired lateinit var evaluator: PremiumThresholdEvaluator
+
     @Autowired lateinit var job: NotificationDeliveryJob
+
     @Autowired lateinit var transactions: NotificationDeliveryTransactionService
+
     @Autowired lateinit var meterRegistry: MeterRegistry
+
     @Autowired lateinit var transactionManager: PlatformTransactionManager
 
     @MockkBean(relaxed = true)

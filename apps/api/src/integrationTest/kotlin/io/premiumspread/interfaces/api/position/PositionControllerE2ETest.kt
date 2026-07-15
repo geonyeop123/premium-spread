@@ -2,9 +2,11 @@ package io.premiumspread.interfaces.api.position
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.config.TestConfig
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
 import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.position.PositionOpenSpec
 import io.premiumspread.domain.position.PositionRepository
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.premium.Premium
@@ -382,17 +384,17 @@ class PositionControllerE2ETest @Autowired constructor(
         entryFxRate: BigDecimal = BigDecimal("1432.6"),
     ): Position = positionRepository.save(
         Position.create(
-            memberId = memberId,
-            symbol = Symbol(symbol),
-            koreaExchange = Exchange.BITHUMB,
-            koreaQuantity = koreaQuantity,
-            koreaEntryPrice = koreaEntryPrice,
-            foreignExchange = Exchange.BINANCE,
-            foreignQuantity = foreignQuantity,
-            foreignEntryPrice = foreignEntryPrice,
-            foreignLeverage = 1,
-            entryFxRate = entryFxRate,
-            entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            PositionOpenSpec(
+                memberId = memberId,
+                pair = MarketPair(Symbol(symbol), Exchange.BITHUMB, Exchange.BINANCE),
+                koreaQuantity = koreaQuantity,
+                koreaEntryPrice = koreaEntryPrice,
+                foreignQuantity = foreignQuantity,
+                foreignEntryPrice = foreignEntryPrice,
+                foreignLeverage = 1,
+                entryFxRate = entryFxRate,
+                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            ),
         ),
     )
 

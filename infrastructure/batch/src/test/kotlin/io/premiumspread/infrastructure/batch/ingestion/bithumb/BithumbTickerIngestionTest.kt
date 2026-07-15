@@ -125,8 +125,10 @@ class BithumbTickerIngestionTest {
             assertThat(alert.code).isEqualTo("websocket.ingestion.failure")
             assertThat(alert.message).contains("5회 연속")
         }
-        assertThat(registry.find("ticker.flush").tag("exchange", "bithumb").tag("outcome", "failure")
-            .tag("error", "other").counter()?.count()).isEqualTo(10.0)
+        assertThat(
+            registry.find("ticker.flush").tag("exchange", "bithumb").tag("outcome", "failure")
+            .tag("error", "other").counter()?.count(),
+        ).isEqualTo(10.0)
     }
 
     private fun tickerAt(timestamp: Instant) = TickerData(

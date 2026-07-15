@@ -22,21 +22,15 @@ class JpaTickerRepositoryAdapter(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    override fun save(ticker: Ticker): Ticker {
-        return tickerJpaRepository.save(ticker)
-    }
+    override fun save(ticker: Ticker): Ticker = tickerJpaRepository.save(ticker)
 
-    override fun findById(id: Long): Ticker? {
-        return tickerJpaRepository.findByIdAndDeletedAtIsNull(id)
-    }
+    override fun findById(id: Long): Ticker? = tickerJpaRepository.findByIdAndDeletedAtIsNull(id)
 
-    override fun findLatest(exchange: Exchange, quote: Quote): Ticker? {
-        return tickerJpaRepository.findLatest(
+    override fun findLatest(exchange: Exchange, quote: Quote): Ticker? = tickerJpaRepository.findLatest(
             exchange = exchange,
             baseCode = quote.baseCode,
             currency = quote.currency,
         )
-    }
 
     override fun findLatestSnapshotByExchangeAndSymbol(exchange: String, symbol: String): TickerSnapshot? {
         // 1. 캐시에서 조회
@@ -93,10 +87,9 @@ class JpaTickerRepositoryAdapter(
         }
     }
 
-    override fun findAllByExchangeAndSymbol(exchange: Exchange, symbol: Symbol): List<Ticker> {
-        return tickerJpaRepository.findAllByExchangeAndSymbol(
+    override fun findAllByExchangeAndSymbol(exchange: Exchange, symbol: Symbol): List<Ticker> =
+        tickerJpaRepository.findAllByExchangeAndSymbol(
             exchange = exchange,
             symbol = symbol.code,
         )
-    }
 }

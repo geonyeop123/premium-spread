@@ -17,9 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-class AuthController(
-    private val authFacade: AuthFacade,
-) {
+class AuthController(private val authFacade: AuthFacade) {
     @PostMapping("/api/v1/members/login")
     fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<LoginResponse> {
         val result = authFacade.login(AuthCriteria.Login(request.email, request.password))
@@ -55,12 +53,7 @@ class AuthController(
         val password: String = "",
     )
 
-    data class LoginResponse(
-        val accessToken: String,
-        val id: Long,
-        val email: String,
-        val nickname: String,
-    )
+    data class LoginResponse(val accessToken: String, val id: Long, val email: String, val nickname: String)
 
     data class RefreshResponse(val accessToken: String)
 

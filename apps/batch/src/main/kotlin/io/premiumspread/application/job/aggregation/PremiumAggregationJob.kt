@@ -77,5 +77,4 @@ class PremiumAggregationJob(
             JobResult.Failure(exception)
         }
     }
-
 }

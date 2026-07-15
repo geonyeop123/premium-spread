@@ -8,10 +8,7 @@ import java.time.Instant
 import java.sql.Timestamp
 
 @Repository
-class JdbcExchangeRateWriteRepository(
-    private val jdbcTemplate: JdbcTemplate,
-    private val clock: Clock,
-) {
+class JdbcExchangeRateWriteRepository(private val jdbcTemplate: JdbcTemplate, private val clock: Clock) {
 
     /**
      * 환율 스냅샷 저장 (30분 단위)

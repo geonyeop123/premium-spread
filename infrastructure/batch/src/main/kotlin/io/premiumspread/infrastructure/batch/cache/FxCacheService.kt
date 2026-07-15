@@ -9,10 +9,7 @@ import org.springframework.stereotype.Service
 import java.math.BigDecimal
 
 @Service
-class FxCacheService(
-    private val cacheReader: FxCacheReader,
-    private val cacheWriter: FxCacheWriter,
-) : FxRateCacheWritePort {
+class FxCacheService(private val cacheReader: FxCacheReader, private val cacheWriter: FxCacheWriter) : FxRateCacheWritePort {
     /**
      * 환율 데이터 저장
      */
@@ -35,9 +32,7 @@ class FxCacheService(
     /**
      * USD/KRW 환율 조회
      */
-    fun getUsdKrw(): BigDecimal? {
-        return get("usd", "krw")?.rate
-    }
+    fun getUsdKrw(): BigDecimal? = get("usd", "krw")?.rate
 
     fun getUsdKrwData(): FxRateData? = get("usd", "krw")
 

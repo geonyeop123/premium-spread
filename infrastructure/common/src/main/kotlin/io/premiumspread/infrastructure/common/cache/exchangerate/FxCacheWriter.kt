@@ -9,10 +9,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 
 @Component
-class FxCacheWriter(
-    private val redisTemplate: StringRedisTemplate,
-    private val afterCommit: AfterCommitCacheExecutor,
-) {
+class FxCacheWriter(private val redisTemplate: StringRedisTemplate, private val afterCommit: AfterCommitCacheExecutor) {
     fun save(snapshot: ExchangeRateSnapshot) {
         val key = RedisKeyGenerator.fxKey(snapshot.baseCurrency.lowercase(), snapshot.quoteCurrency.lowercase())
         redisTemplate.opsForHash<String, String>().putAll(

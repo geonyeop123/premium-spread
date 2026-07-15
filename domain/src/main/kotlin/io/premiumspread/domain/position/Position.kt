@@ -4,7 +4,6 @@ import io.premiumspread.domain.BaseEntity
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumPolicy
 import io.premiumspread.domain.ticker.Exchange
-import io.premiumspread.domain.ticker.ExchangeRegion
 import io.premiumspread.domain.ticker.Symbol
 import jakarta.persistence.AttributeOverride
 import jakarta.persistence.Column
@@ -17,6 +16,20 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
 
+data class PositionOpenSpec(
+    val memberId: Long,
+    val pair: MarketPair,
+    val koreaQuantity: BigDecimal,
+    val koreaEntryPrice: BigDecimal,
+    val foreignQuantity: BigDecimal,
+    val foreignEntryPrice: BigDecimal,
+    val foreignLeverage: Int,
+    val entryFxRate: BigDecimal,
+    val entryObservedAt: Instant,
+)
+
+// JPA aggregate state stays explicit so persistence and domain invariants share one constructor.
+@Suppress("LongParameterList")
 @Entity
 @Table(name = "position")
 class Position private constructor(
@@ -116,65 +129,34 @@ class Position private constructor(
     }
 
     companion object {
-        fun create(
-            memberId: Long,
-            symbol: Symbol,
-            koreaExchange: Exchange,
-            koreaQuantity: BigDecimal,
-            koreaEntryPrice: BigDecimal,
-            foreignExchange: Exchange,
-            foreignQuantity: BigDecimal,
-            foreignEntryPrice: BigDecimal,
-            foreignLeverage: Int,
-            entryFxRate: BigDecimal,
-            entryObservedAt: Instant,
-        ): Position {
-            validateKoreaRegion(koreaExchange)
-            validateForeignRegion(foreignExchange)
-            validatePositive("koreaQuantity", koreaQuantity)
-            validatePositive("koreaEntryPrice", koreaEntryPrice)
-            validatePositive("foreignQuantity", foreignQuantity)
-            validatePositive("foreignEntryPrice", foreignEntryPrice)
-            validatePositive("entryFxRate", entryFxRate)
-            validateLeverage(foreignLeverage)
+        fun create(spec: PositionOpenSpec): Position {
+            validatePositive("koreaQuantity", spec.koreaQuantity)
+            validatePositive("koreaEntryPrice", spec.koreaEntryPrice)
+            validatePositive("foreignQuantity", spec.foreignQuantity)
+            validatePositive("foreignEntryPrice", spec.foreignEntryPrice)
+            validatePositive("entryFxRate", spec.entryFxRate)
+            validateLeverage(spec.foreignLeverage)
 
             val entryPremiumRate = PremiumPolicy.calculate(
-                koreaPrice = koreaEntryPrice,
-                foreignPriceUsd = foreignEntryPrice,
-                fxRate = entryFxRate,
+                koreaPrice = spec.koreaEntryPrice,
+                foreignPriceUsd = spec.foreignEntryPrice,
+                fxRate = spec.entryFxRate,
             ).entityPremiumRate
 
             return Position(
-                symbol = symbol,
-                koreaExchange = koreaExchange,
-                koreaQuantity = koreaQuantity,
-                koreaEntryPrice = koreaEntryPrice,
-                foreignExchange = foreignExchange,
-                foreignQuantity = foreignQuantity,
-                foreignEntryPrice = foreignEntryPrice,
-                foreignLeverage = foreignLeverage,
-                entryFxRate = entryFxRate,
+                symbol = spec.pair.symbol,
+                koreaExchange = spec.pair.koreaExchange,
+                koreaQuantity = spec.koreaQuantity,
+                koreaEntryPrice = spec.koreaEntryPrice,
+                foreignExchange = spec.pair.foreignExchange,
+                foreignQuantity = spec.foreignQuantity,
+                foreignEntryPrice = spec.foreignEntryPrice,
+                foreignLeverage = spec.foreignLeverage,
+                entryFxRate = spec.entryFxRate,
                 entryPremiumRate = entryPremiumRate,
-                entryObservedAt = entryObservedAt,
-                memberId = memberId,
+                entryObservedAt = spec.entryObservedAt,
+                memberId = spec.memberId,
             )
-        }
-
-        private fun validateKoreaRegion(exchange: Exchange) {
-            if (exchange.region != ExchangeRegion.KOREA) {
-                throw InvalidPositionException("Korea exchange must be KOREA region.")
-            }
-        }
-
-        private fun validateForeignRegion(exchange: Exchange) {
-            if (exchange.region != ExchangeRegion.FOREIGN) {
-                throw InvalidPositionException("Foreign exchange must be FOREIGN region.")
-            }
-            if (exchange == Exchange.FX_PROVIDER) {
-                throw InvalidPositionException(
-                    "Foreign exchange must be a tradable exchange (FX_PROVIDER is the FX-rate source, not an exchange)."
-                )
-            }
         }
 
         private fun validatePositive(name: String, value: BigDecimal) {
@@ -188,6 +170,5 @@ class Position private constructor(
                 throw InvalidPositionException("Foreign leverage must be between 1 and 125.")
             }
         }
-
     }
 }

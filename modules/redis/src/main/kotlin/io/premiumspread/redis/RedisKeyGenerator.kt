@@ -5,6 +5,8 @@ package io.premiumspread.redis
  *
  * 키 패턴: {domain}:{sub-domain}:{identifier}:{optional-qualifier}
  */
+// One namespace owner prevents incompatible key formats from being duplicated across adapters.
+@Suppress("TooManyFunctions")
 object RedisKeyGenerator {
 
     private fun canonical(value: String): String = value.trim().lowercase()

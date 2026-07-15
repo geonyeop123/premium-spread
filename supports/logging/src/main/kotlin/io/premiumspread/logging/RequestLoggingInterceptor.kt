@@ -108,10 +108,11 @@ class RequestLoggingInterceptor : AsyncHandlerInterceptor {
         }
     }
 
-    private class MdcCallableProcessingInterceptor(
-        private val context: Map<String, String>?,
-    ) : CallableProcessingInterceptor {
-        override fun <T : Any?> preProcess(request: org.springframework.web.context.request.NativeWebRequest, task: java.util.concurrent.Callable<T>) {
+    private class MdcCallableProcessingInterceptor(private val context: Map<String, String>?) : CallableProcessingInterceptor {
+        override fun <T : Any?> preProcess(
+            request: org.springframework.web.context.request.NativeWebRequest,
+            task: java.util.concurrent.Callable<T>,
+        ) {
             MdcContext.restore(context)
         }
 

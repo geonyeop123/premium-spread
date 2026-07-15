@@ -57,10 +57,7 @@ data class HikariPoolProperties(
 }
 
 /** 운영 profile이 실수로 local DB 기본값을 재사용하는 것을 startup 단계에서 차단한다. */
-class ProductionDatabaseSettingsValidator(
-    environment: Environment,
-    properties: DatabaseProperties,
-) {
+class ProductionDatabaseSettingsValidator(environment: Environment, properties: DatabaseProperties) {
     init {
         if (environment.activeProfiles.contains(PRODUCTION_PROFILE)) {
             require(!properties.url.isLocalAddress()) { "prd datasource must not use a local address" }

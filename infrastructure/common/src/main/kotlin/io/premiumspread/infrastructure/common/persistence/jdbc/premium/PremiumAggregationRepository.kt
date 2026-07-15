@@ -24,10 +24,7 @@ data class PremiumAggregation(
 )
 
 @Repository
-class PremiumAggregationRepository(
-    private val jdbcTemplate: JdbcTemplate,
-    private val clock: Clock,
-) {
+class PremiumAggregationRepository(private val jdbcTemplate: JdbcTemplate, private val clock: Clock) {
 
     /**
      * 분 집계 저장

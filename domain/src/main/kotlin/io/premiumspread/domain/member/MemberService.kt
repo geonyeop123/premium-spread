@@ -4,10 +4,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
-class MemberService(
-    private val memberRepository: MemberRepository,
-    private val passwordEncoder: PasswordEncoder,
-) {
+class MemberService(private val memberRepository: MemberRepository, private val passwordEncoder: PasswordEncoder) {
 
     @Transactional
     fun register(command: MemberCommand.Register): Member {
@@ -24,9 +21,7 @@ class MemberService(
     }
 
     @Transactional(readOnly = true)
-    fun findById(id: Long): Member? {
-        return memberRepository.findById(id)
-    }
+    fun findById(id: Long): Member? = memberRepository.findById(id)
 
     @Transactional(readOnly = true)
     fun authenticate(email: String, rawPassword: String): Member? {

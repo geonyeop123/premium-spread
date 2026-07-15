@@ -125,5 +125,4 @@ class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
             assertThat(results).hasSize(1)
         }
     }
-
 }

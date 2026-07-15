@@ -78,9 +78,13 @@ class LoggingAutoConfigurationTest {
         val executor: ExecutorService = Executors.newSingleThreadExecutor()
         try {
             MDC.put(RequestLoggingInterceptor.MDC_REQUEST_ID, "correlation-1")
-            val propagated = executor.submit(MdcContext.wrap(Runnable {
+            val propagated = executor.submit(
+                MdcContext.wrap(
+                    Runnable {
                 assertThat(MDC.get(RequestLoggingInterceptor.MDC_REQUEST_ID)).isEqualTo("correlation-1")
-            }))
+            },
+                ),
+            )
             propagated.get()
 
             assertThat(executor.submit<String?> { MDC.get(RequestLoggingInterceptor.MDC_REQUEST_ID) }.get()).isNull()

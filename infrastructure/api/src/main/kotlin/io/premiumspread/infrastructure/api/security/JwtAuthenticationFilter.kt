@@ -9,10 +9,7 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.filter.OncePerRequestFilter
 import java.time.Clock
 
-class JwtAuthenticationFilter(
-    private val tokenIssuer: TokenIssuer,
-    private val clock: Clock,
-) : OncePerRequestFilter() {
+class JwtAuthenticationFilter(private val tokenIssuer: TokenIssuer, private val clock: Clock) : OncePerRequestFilter() {
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,

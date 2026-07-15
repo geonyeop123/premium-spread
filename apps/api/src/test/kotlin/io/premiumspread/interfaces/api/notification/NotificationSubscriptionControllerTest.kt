@@ -28,6 +28,7 @@ import java.security.Principal
 @Import(WebMvcConfig::class)
 class NotificationSubscriptionControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
+
     @MockkBean lateinit var facade: NotificationSubscriptionFacade
     private val principal = Principal { "1" }
 
@@ -133,6 +134,13 @@ class NotificationSubscriptionControllerTest {
         koreaExchange: String = "BITHUMB",
         foreignExchange: String = "BINANCE",
     ) = NotificationSubscriptionResult.Detail(
-        10L, 1L, "BTC", "ABOVE", BigDecimal("5"), "ACTIVE", koreaExchange, foreignExchange,
+        10L,
+        1L,
+        "BTC",
+        "ABOVE",
+        BigDecimal("5"),
+        "ACTIVE",
+        koreaExchange,
+        foreignExchange,
     )
 }

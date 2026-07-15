@@ -104,20 +104,22 @@ class TickerCacheService(
      */
     fun getSecondsData(exchange: String, symbol: String, from: Instant, to: Instant): List<Pair<Instant, BigDecimal>> {
         val key = TickerAggregationTimeUnit.SECONDS.keyFor(exchange, symbol)
-        val entries = readTimeSeries(key, SECONDS_CACHE_NAME, from, to) ?: return emptyList()
-        if (entries.isEmpty()) {
-            metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.MISS)
-            return emptyList()
+        val entries = readTimeSeries(key, SECONDS_CACHE_NAME, from, to)
+        return when {
+            entries == null -> emptyList()
+
+            entries.isEmpty() -> emptyList<Pair<Instant, BigDecimal>>().also {
+                metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.MISS)
+            }
+
+            else -> when (val parsed = parseTickerSeconds(entries, timeSeriesCache::extractTimestamp)) {
+                TickerSecondsParseResult.Corrupt -> corruptSeconds(key)
+
+                is TickerSecondsParseResult.Valid -> parsed.entries.also {
+                    metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.HIT)
+                }
+            }
         }
-        val parsed = entries.map { entry ->
-            val member = entry.value ?: return corruptSeconds(key)
-            val priceStr = if (":" in member) member.substringAfter(":") else member
-            val price = priceStr.toBigDecimalOrNull() ?: return corruptSeconds(key)
-            val timestamp = timeSeriesCache.extractTimestamp(entry) ?: return corruptSeconds(key)
-            timestamp to price
-        }
-        metrics.record(SECONDS_CACHE_NAME, CacheReadOutcome.HIT)
-        return parsed
     }
 
     // ========== 집계 데이터 저장/조회 ==========
@@ -164,6 +166,8 @@ class TickerCacheService(
         return parsed
     }
 
+    // Nullable parsing keeps malformed legacy cache payloads outside the domain model.
+    @Suppress("ReturnCount")
     private fun parseAggregation(
         exchange: String,
         symbol: String,
@@ -281,4 +285,25 @@ class TickerCacheService(
         volume = null,
         timestamp = observedAt,
     )
+}
+
+internal sealed interface TickerSecondsParseResult {
+    data object Corrupt : TickerSecondsParseResult
+
+    data class Valid(val entries: List<Pair<Instant, BigDecimal>>) : TickerSecondsParseResult
+}
+
+internal fun parseTickerSeconds(
+    entries: List<TypedTuple<String>>,
+    extractTimestamp: (TypedTuple<String>) -> Instant?,
+): TickerSecondsParseResult {
+    val parsed = mutableListOf<Pair<Instant, BigDecimal>>()
+    entries.forEach { entry ->
+        val member = entry.value ?: return TickerSecondsParseResult.Corrupt
+        val priceText = if (":" in member) member.substringAfter(":") else member
+        val price = priceText.toBigDecimalOrNull() ?: return TickerSecondsParseResult.Corrupt
+        val timestamp = extractTimestamp(entry) ?: return TickerSecondsParseResult.Corrupt
+        parsed += timestamp to price
+    }
+    return TickerSecondsParseResult.Valid(parsed)
 }

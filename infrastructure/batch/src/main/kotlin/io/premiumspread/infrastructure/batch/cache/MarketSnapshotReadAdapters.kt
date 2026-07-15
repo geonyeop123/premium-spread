@@ -10,24 +10,22 @@ import io.premiumspread.domain.ticker.TickerSnapshot
 import io.premiumspread.infrastructure.common.cache.exchangerate.FxCacheReader
 import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheReader
 
-class FxRateReadAdapter(
-    private val reader: FxCacheReader,
-) : FxRateReadPort {
+class FxRateReadAdapter(private val reader: FxCacheReader) : FxRateReadPort {
     override fun findLatest(base: Currency, quote: Currency): ExchangeRateSnapshot? =
         reader.get(base.code, quote.code)?.toDomain()
 }
 
-class TickerReadAdapter(
-    private val reader: TickerCacheReader,
-) : TickerReadPort {
+class TickerReadAdapter(private val reader: TickerCacheReader) : TickerReadPort {
     override fun findLatest(exchange: Exchange, quote: Quote): TickerSnapshot? {
         val symbol = quote.baseSymbolOrNull()?.code ?: return null
         return reader.getSnapshot(exchange.name, symbol)
             ?.takeIf { snapshot ->
                 snapshot.currency.equals(quote.currency.code, ignoreCase = true) ||
-                    (exchange == Exchange.BINANCE &&
+                    (
+                        exchange == Exchange.BINANCE &&
                         quote.currency == Currency.USD &&
-                        snapshot.currency.equals("USDT", ignoreCase = true))
+                        snapshot.currency.equals("USDT", ignoreCase = true)
+                    )
             }
     }
 }

@@ -1,8 +1,10 @@
 package io.premiumspread
 
 import io.premiumspread.domain.BaseEntity
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.position.PositionOpenSpec
 import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
@@ -37,41 +39,35 @@ object TickerFixtures {
         price: BigDecimal = BigDecimal("129555000"),
         observedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
         id: Long = 1L,
-    ): Ticker {
-        return Ticker.create(
+    ): Ticker = Ticker.create(
             exchange = exchange,
             quote = Quote.coin(Symbol(symbol), Currency.KRW),
             price = price,
             observedAt = observedAt,
         ).withId(id)
-    }
 
     fun foreignTicker(
         symbol: String = "BTC",
         price: BigDecimal = BigDecimal("89277"),
         observedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
         id: Long = 2L,
-    ): Ticker {
-        return Ticker.create(
+    ): Ticker = Ticker.create(
             exchange = Exchange.BINANCE,
             quote = Quote.coin(Symbol(symbol), Currency.USD),
             price = price,
             observedAt = observedAt,
         ).withId(id)
-    }
 
     fun fxTicker(
         price: BigDecimal = BigDecimal("1432.6"),
         observedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
         id: Long = 3L,
-    ): Ticker {
-        return Ticker.create(
+    ): Ticker = Ticker.create(
             exchange = Exchange.FX_PROVIDER,
             quote = Quote.fx(Currency.USD, Currency.KRW),
             price = price,
             observedAt = observedAt,
         ).withId(id)
-    }
 }
 
 object PositionFixtures {
@@ -90,17 +86,17 @@ object PositionFixtures {
         id: Long? = 1L,
     ): Position {
         val position = Position.create(
-            memberId = memberId,
-            symbol = Symbol(symbol),
-            koreaExchange = koreaExchange,
-            koreaQuantity = koreaQuantity,
-            koreaEntryPrice = koreaEntryPrice,
-            foreignExchange = foreignExchange,
-            foreignQuantity = foreignQuantity,
-            foreignEntryPrice = foreignEntryPrice,
-            foreignLeverage = foreignLeverage,
-            entryFxRate = entryFxRate,
-            entryObservedAt = entryObservedAt,
+            PositionOpenSpec(
+                memberId = memberId,
+                pair = MarketPair(Symbol(symbol), koreaExchange, foreignExchange),
+                koreaQuantity = koreaQuantity,
+                koreaEntryPrice = koreaEntryPrice,
+                foreignQuantity = foreignQuantity,
+                foreignEntryPrice = foreignEntryPrice,
+                foreignLeverage = foreignLeverage,
+                entryFxRate = entryFxRate,
+                entryObservedAt = entryObservedAt,
+            ),
         )
         return id?.let { position.withId(it) } ?: position
     }
@@ -111,12 +107,10 @@ object MemberFixtures {
         email: String = "test@example.com",
         encodedPassword: String = "encoded_password",
         id: Long = 1L,
-    ): Member {
-        return Member.create(
+    ): Member = Member.create(
             email = email,
             encodedPassword = encodedPassword,
         ).withId(id)
-    }
 }
 
 object PremiumFixtures {

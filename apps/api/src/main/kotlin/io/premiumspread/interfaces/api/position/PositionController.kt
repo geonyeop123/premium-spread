@@ -15,9 +15,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/positions")
-class PositionController(
-    private val positionFacade: PositionFacade,
-) {
+class PositionController(private val positionFacade: PositionFacade) {
 
     @PostMapping("/auto")
     fun openAuto(

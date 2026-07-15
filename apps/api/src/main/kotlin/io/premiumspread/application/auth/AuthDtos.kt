@@ -7,10 +7,7 @@ object AuthCookieContract {
 }
 
 object AuthCriteria {
-    data class Login(
-        val email: String,
-        val password: String,
-    )
+    data class Login(val email: String, val password: String)
 
     data class Refresh(val refreshToken: String?)
 
@@ -18,18 +15,9 @@ object AuthCriteria {
 }
 
 object AuthResult {
-    data class Login(
-        val accessToken: String,
-        val id: Long,
-        val email: String,
-        val nickname: String,
-        val refreshCookie: Cookie,
-    )
+    data class Login(val accessToken: String, val id: Long, val email: String, val nickname: String, val refreshCookie: Cookie)
 
-    data class Refresh(
-        val accessToken: String,
-        val refreshCookie: Cookie,
-    )
+    data class Refresh(val accessToken: String, val refreshCookie: Cookie)
 
     data class Logout(val refreshCookie: Cookie)
 

@@ -25,13 +25,11 @@ class Member private constructor(
         fun create(
             email: String,
             encodedPassword: String,
-        ): Member {
-            return Member(
+        ): Member = Member(
                 email = email,
                 password = encodedPassword,
                 nickname = email.substringBefore("@"),
                 status = MemberStatus.ACTIVE,
             )
-        }
     }
 }

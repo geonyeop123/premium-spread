@@ -9,9 +9,7 @@ import java.time.Instant
  * Ticker 집계 데이터 조회용 Repository (Cache miss fallback용)
  */
 @Repository
-class TickerAggregationQueryRepository(
-    private val jdbcTemplate: JdbcTemplate,
-) {
+class TickerAggregationQueryRepository(private val jdbcTemplate: JdbcTemplate) {
 
     /**
      * 최신 분 집계 데이터 조회

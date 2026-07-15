@@ -1,8 +1,10 @@
 package io.premiumspread.infrastructure.position
 
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
 import io.premiumspread.domain.position.Position
+import io.premiumspread.domain.position.PositionOpenSpec
 import io.premiumspread.domain.position.PositionRepository
 import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.ticker.Exchange
@@ -51,21 +53,19 @@ class PositionRepositoryTest @Autowired constructor(
 
     private fun createPosition(
         symbol: String = "BTC",
-    ): Position {
-        return Position.create(
+    ): Position = Position.create(
+        PositionOpenSpec(
             memberId = memberId,
-            symbol = Symbol(symbol),
-            koreaExchange = Exchange.UPBIT,
+            pair = MarketPair(Symbol(symbol), Exchange.UPBIT, Exchange.BINANCE),
             koreaQuantity = BigDecimal("0.5"),
             koreaEntryPrice = BigDecimal("129555000"),
-            foreignExchange = Exchange.BINANCE,
             foreignQuantity = BigDecimal("0.5"),
             foreignEntryPrice = BigDecimal("89500"),
             foreignLeverage = 1,
             entryFxRate = BigDecimal("1432.6"),
             entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-        )
-    }
+        ),
+    )
 
     @Nested
     @DisplayName("save")

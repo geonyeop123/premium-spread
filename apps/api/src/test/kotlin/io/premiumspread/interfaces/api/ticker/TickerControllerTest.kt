@@ -22,11 +22,17 @@ import java.time.Instant
 @AutoConfigureMockMvc(addFilters = false)
 class TickerControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
+
     @Autowired lateinit var objectMapper: ObjectMapper
+
     @MockkBean lateinit var facade: TickerFacade
 
     private val request = TickerRequest.Ingest(
-        "UPBIT", "BTC", "KRW", BigDecimal("100"), Instant.parse("2024-01-01T00:00:00Z"),
+        "UPBIT",
+        "BTC",
+        "KRW",
+        BigDecimal("100"),
+        Instant.parse("2024-01-01T00:00:00Z"),
     )
 
     @Test

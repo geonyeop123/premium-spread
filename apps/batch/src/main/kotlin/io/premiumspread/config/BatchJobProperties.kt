@@ -14,13 +14,18 @@ import java.time.Duration
 data class BatchJobProperties(
     @field:Valid val fxIngestion: LockSpec = LockSpec("lock:fx", Duration.ofSeconds(35), Duration.ofSeconds(30)),
     @field:Valid val premiumRealtime: LockSpec = LockSpec("lock:premium", Duration.ofSeconds(5), Duration.ofSeconds(3)),
-    @field:Valid val premiumSummary: LockSpec = LockSpec("lock:aggregation:summary", Duration.ofSeconds(30), Duration.ofSeconds(20)),
-    @field:Valid val premiumMinute: LockSpec = LockSpec("lock:aggregation:minute", Duration.ofSeconds(30), Duration.ofSeconds(20)),
+    @field:Valid val premiumSummary: LockSpec =
+    LockSpec("lock:aggregation:summary", Duration.ofSeconds(30), Duration.ofSeconds(20)),
+    @field:Valid val premiumMinute: LockSpec =
+    LockSpec("lock:aggregation:minute", Duration.ofSeconds(30), Duration.ofSeconds(20)),
     @field:Valid val premiumHour: LockSpec = LockSpec("lock:aggregation:hour", Duration.ofSeconds(60), Duration.ofSeconds(45)),
     @field:Valid val premiumDay: LockSpec = LockSpec("lock:aggregation:day", Duration.ofSeconds(120), Duration.ofSeconds(90)),
-    @field:Valid val tickerMinute: LockSpec = LockSpec("lock:ticker:aggregation:minute", Duration.ofSeconds(30), Duration.ofSeconds(20)),
-    @field:Valid val tickerHour: LockSpec = LockSpec("lock:ticker:aggregation:hour", Duration.ofSeconds(60), Duration.ofSeconds(45)),
-    @field:Valid val tickerDay: LockSpec = LockSpec("lock:ticker:aggregation:day", Duration.ofSeconds(120), Duration.ofSeconds(90)),
+    @field:Valid val tickerMinute: LockSpec =
+    LockSpec("lock:ticker:aggregation:minute", Duration.ofSeconds(30), Duration.ofSeconds(20)),
+    @field:Valid val tickerHour: LockSpec =
+    LockSpec("lock:ticker:aggregation:hour", Duration.ofSeconds(60), Duration.ofSeconds(45)),
+    @field:Valid val tickerDay: LockSpec =
+    LockSpec("lock:ticker:aggregation:day", Duration.ofSeconds(120), Duration.ofSeconds(90)),
     @field:Valid val binanceFlush: LockSpec = LockSpec("lock:ticker:flush:binance", Duration.ofSeconds(5), Duration.ofSeconds(3)),
     @field:Valid val bithumbFlush: LockSpec = LockSpec("lock:ticker:flush:bithumb", Duration.ofSeconds(5), Duration.ofSeconds(3)),
 ) : JobConfigProvider {
@@ -38,11 +43,7 @@ data class BatchJobProperties(
         JobId.BITHUMB_TICKER_FLUSH -> bithumbFlush
     }.toJobConfig(jobId)
 
-    data class LockSpec(
-        @field:NotBlank val lockKey: String,
-        val lease: Duration,
-        val executionTimeout: Duration,
-    ) {
+    data class LockSpec(@field:NotBlank val lockKey: String, val lease: Duration, val executionTimeout: Duration) {
         init {
             require(lease.isPositive()) { "lease must be positive." }
             require(executionTimeout.isPositive()) { "executionTimeout must be positive." }

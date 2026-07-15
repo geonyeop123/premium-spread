@@ -21,6 +21,7 @@ import java.time.Instant
 @AutoConfigureMockMvc(addFilters = false)
 class PremiumControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
+
     @MockkBean lateinit var facade: PremiumFacade
     private val from = Instant.parse("2024-01-01T00:00:00Z")
     private val to = Instant.parse("2024-01-01T01:00:00Z")
@@ -49,7 +50,9 @@ class PremiumControllerTest {
         every { facade.findAggregation(PremiumCriteria.FindAggregation("BTC", "1m", from, to)) } returns
             PremiumResult.AggregationPage(emptyList(), true)
         mockMvc.get("/api/v1/premiums/aggregation/BTC") {
-            param("interval", "1m"); param("from", from.toString()); param("to", to.toString())
+            param("interval", "1m")
+            param("from", from.toString())
+            param("to", to.toString())
         }.andExpect {
             status { isOk() }
             jsonPath("$.data") { isArray() }
@@ -61,11 +64,18 @@ class PremiumControllerTest {
     fun `semantic 범위 오류는 422다`() {
         every { facade.findByPeriod(any()) } throws ApplicationException(ApplicationError.INVALID_PREMIUM_INPUT)
         mockMvc.get("/api/v1/premiums/history/BTC") {
-            param("from", to.toString()); param("to", from.toString())
+            param("from", to.toString())
+            param("to", from.toString())
         }.andExpect { status { isUnprocessableEntity() } }
     }
 
     private fun detail() = PremiumResult.Detail(
-        1L, "BTC", 1L, 2L, 3L, BigDecimal("1.3"), from,
+        1L,
+        "BTC",
+        1L,
+        2L,
+        3L,
+        BigDecimal("1.3"),
+        from,
     )
 }

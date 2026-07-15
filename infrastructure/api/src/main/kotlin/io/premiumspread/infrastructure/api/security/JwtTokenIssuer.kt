@@ -14,9 +14,7 @@ import java.util.Date
 import java.util.UUID
 import javax.crypto.SecretKey
 
-class JwtTokenIssuer(
-    private val properties: JwtProperties,
-) : TokenIssuer {
+class JwtTokenIssuer(private val properties: JwtProperties) : TokenIssuer {
     private val secretKey: SecretKey = Keys.hmacShaKeyFor(properties.secretKey.toByteArray(Charsets.UTF_8))
 
     override fun issue(
@@ -98,12 +96,7 @@ class JwtTokenIssuer(
         ParsedToken(TokenSubject(memberId, email), tokenId, expiresAt, claims)
     }.getOrNull()
 
-    private data class ParsedToken(
-        val subject: TokenSubject,
-        val tokenId: String,
-        val expiresAt: Instant,
-        val claims: Claims,
-    )
+    private data class ParsedToken(val subject: TokenSubject, val tokenId: String, val expiresAt: Instant, val claims: Claims)
 
     companion object {
         private const val MEMBER_ID = "memberId"

@@ -9,9 +9,7 @@ import java.time.Instant
  * 환율 조회용 Repository (Cache miss fallback용)
  */
 @Repository
-class ExchangeRateQueryRepository(
-    private val jdbcTemplate: JdbcTemplate,
-) {
+class ExchangeRateQueryRepository(private val jdbcTemplate: JdbcTemplate) {
 
     /**
      * 최신 환율 조회
