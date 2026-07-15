@@ -300,3 +300,13 @@ commit/push한다.
 - 저장소 기본 branch는 `dev`이고 `main` branch, branch protection, `production` Environment는 현재 없다.
   운영/스테이징도 `NOT_DEPLOYED`이므로 외부 보호 설정 완료를 주장하지 않는다. 후보 SHA push 후 verification metadata
   검토 커밋과 strict GitHub Quality Gate 결과를 Phase 9 최종 증거로 추가한다.
+- 보완 후보 `514c2a1`의 Quality Gate run `29384982990`에서 static analysis는 성공했고, compile bootstrap은
+  verification metadata artifact를 생성·업로드한 뒤 후속 검토 커밋을 요구하며 의도대로 fail-closed했다. 검토한
+  root metadata는 575 components/1,006 artifacts/1,006 SHA-256이며 파일 SHA-256은
+  `6ed8aec8f3830854863d1d0793e25f2a2880ebca57d9a320edf40fbbb8dab2f3`, build-logic metadata는
+  69 components/123 artifacts/123 SHA-256이며 파일 SHA-256은
+  `6ec8815a4f7d5398b91da18f7df994b071bde5fb15685e9df4715188799522a1`이다. 두 파일 모두 trusted/ignored artifact,
+  SHA-1/MD5, HTTP/file repository, reason 기반 우회, PGP 예외가 없고 `verify-metadata=true`이다. 로컬 strict offline
+  실행은 현재 로컬 캐시에 Kotlin Gradle plugin/allopen/noarg 2.0.20 artifact가 없어 materialize 전에 중단됐으며,
+  metadata mismatch는 관찰되지 않았다. 추가 다운로드는 하지 않고 후속 커밋의 격리 CI strict 실행을 최종 권위값으로
+  사용한다.
