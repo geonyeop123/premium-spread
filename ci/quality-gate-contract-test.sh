@@ -96,6 +96,14 @@ grep -q 'changed_paths\[0\].*marker' "${bootstrap_validator}" ||
 grep -q 'timedelta(hours=48)' "${bootstrap_validator}" || fail "bootstrap marker expiry must be limited to 48 hours"
 grep -q 'resolveAndLockAll resolveVerificationArtifacts' "${bootstrap_generator}" ||
   fail "bootstrap must generate both locks and verification metadata"
+grep -q 'compileKotlin architectureTest' "${bootstrap_generator}" ||
+  fail "bootstrap metadata generation must exercise the final compile and architecture path"
+grep -q 'verifySecurityDependencyVersions' "${bootstrap_generator}" ||
+  fail "bootstrap must reject stale production runtime security versions before publication"
+grep -q ':build-logic:test' "${bootstrap_generator}" ||
+  fail "bootstrap metadata generation must exercise the build-logic test path"
+grep -q 'candidate.buildscript.configurations' "${root_dir}/build.gradle.kts" ||
+  fail "verification artifact resolution must materialize buildscript plugin classpaths"
 [[ "$(grep -c -- '--write-verification-metadata sha256' "${bootstrap_generator}")" -eq 2 ]] ||
   fail "root and build-logic bootstrap must generate SHA-256 metadata"
 if rg -n -- '--dependency-verification[= ]off|--write-verification-metadata (md5|sha1)|git (commit|push)' \

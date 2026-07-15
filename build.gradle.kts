@@ -101,6 +101,17 @@ fun externalArtifactsOf(
             }
     }
 
+fun externalBuildscriptArtifactsOf(projects: Iterable<Project>): List<ResolvedArtifactResult> =
+    projects.flatMap { candidate ->
+        candidate.buildscript.configurations
+            .filter { configuration -> configuration.isCanBeResolved }
+            .flatMap { configuration ->
+                configuration.incoming.artifactView {
+                    componentFilter { identifier -> identifier is ModuleComponentIdentifier }
+                }.artifacts.artifacts
+            }
+    }
+
 fun ResolvedArtifactResult.stableCoordinate(): String {
     val component = id.componentIdentifier as ModuleComponentIdentifier
     return "${component.group}:${component.module}:${component.version}:${file.name}"
@@ -343,7 +354,7 @@ tasks.register("resolveVerificationArtifacts") {
                 "jacocoAnt",
             )
         val artifacts =
-            externalArtifactsOf(allprojects, configurationNames)
+            (externalArtifactsOf(allprojects, configurationNames) + externalBuildscriptArtifactsOf(allprojects))
                 .associateBy { artifact -> artifact.stableCoordinate() }
                 .toSortedMap()
         check(artifacts.isNotEmpty()) { "No external verification artifacts were resolved" }

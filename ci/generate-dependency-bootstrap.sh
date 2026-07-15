@@ -23,6 +23,9 @@ rm -f build-logic/gradle/verification-metadata.xml
 rm -f gradle/verification-metadata.xml
 ./gradlew \
   resolveAndLockAll resolveVerificationArtifacts \
+  compileKotlin architectureTest \
+  verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions \
+  :build-logic:test \
   --write-locks \
   --write-verification-metadata sha256 \
   --no-daemon
