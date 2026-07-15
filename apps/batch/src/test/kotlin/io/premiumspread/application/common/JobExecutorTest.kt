@@ -1,225 +1,178 @@
 package io.premiumspread.application.common
 
-import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
-import io.mockk.*
-import io.premiumspread.monitoring.AlertService
-import io.premiumspread.redis.DistributedLockManager
-import io.premiumspread.redis.DistributedLockManager.LockResult
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import io.mockk.verifyOrder
+import io.premiumspread.domain.job.JobId
+import io.premiumspread.domain.job.JobLock
+import io.premiumspread.domain.job.JobRunOutcome
+import io.premiumspread.domain.job.JobRunRecorder
+import io.premiumspread.domain.job.OperatorAlert
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.data.redis.core.ValueOperations
+import java.time.Clock
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneOffset
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class JobExecutorTest {
-
-    private lateinit var lockManager: DistributedLockManager
-    private lateinit var redisTemplate: StringRedisTemplate
-    private lateinit var meterRegistry: MeterRegistry
-    private lateinit var valueOps: ValueOperations<String, String>
-    private lateinit var alertService: AlertService
-    private lateinit var jobExecutor: JobExecutor
+    private val lock = mockk<JobLock>()
+    private val recorder = mockk<JobRunRecorder>(relaxed = true)
+    private val alert = mockk<OperatorAlert>(relaxed = true)
+    private val clock = Clock.fixed(Instant.parse("2026-07-14T00:00:00Z"), ZoneOffset.UTC)
+    private lateinit var executor: JobExecutor
+    private val config = JobConfig(
+        JobId.FX_INGESTION,
+        "lock:fx",
+        Duration.ofSeconds(30),
+        Duration.ofSeconds(20),
+    )
 
     @BeforeEach
     fun setUp() {
-        lockManager = mockk()
-        redisTemplate = mockk()
-        valueOps = mockk(relaxed = true)
-        every { redisTemplate.opsForValue() } returns valueOps
-        meterRegistry = SimpleMeterRegistry()
-        alertService = mockk(relaxed = true)
-        jobExecutor = JobExecutor(lockManager, redisTemplate, meterRegistry, alertService)
+        every { lock.renew(any(), any(), any()) } returns true
+        executor = JobExecutor(lock, recorder, alert, clock)
     }
 
-    private fun jobConfig(
-        jobName: String = "test-job",
-        lockKey: String = "lock:test",
-        leaseTime: Long = 2,
-    ) = JobConfig(
-        jobName = jobName,
-        lockKey = lockKey,
-        leaseTime = leaseTime,
-        leaseTimeUnit = TimeUnit.SECONDS,
-    )
+    @Test
+    fun `성공 작업은 bounded id로 기록하고 lock을 해제한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } returns true
+        every { lock.release(any(), any()) } returns Unit
 
-    @Nested
-    @DisplayName("실행")
-    inner class Execute {
+        val result = executor.execute(config) { JobResult.Success }
 
-        @Test
-        fun `락 획득 후 job 성공 시 success 메트릭을 기록한다`() {
-            // given
-            val config = jobConfig()
-            every {
-                lockManager.withLock(
-                    lockKey = "lock:test",
-                    waitTime = 0,
-                    leaseTime = 2,
-                    timeUnit = TimeUnit.SECONDS,
-                    action = any<() -> JobResult>(),
-                )
-            } answers {
-                val action = arg<() -> JobResult>(4)
-                LockResult.Success(action())
+        assertThat(result).isEqualTo(JobResult.Success)
+        verify { recorder.started(JobId.FX_INGESTION, any(), clock.instant()) }
+        verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SUCCEEDED, clock.instant(), null) }
+        verify { lock.release("lock:fx", any()) }
+        verify(exactly = 0) { alert.send(any()) }
+    }
+
+    @Test
+    fun `실패 알림은 lock release 이후에 전달한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } returns true
+        every { lock.release(any(), any()) } returns Unit
+
+        val result = executor.execute(config) { JobResult.Failure(IllegalStateException("boom")) }
+
+        assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+        verifyOrder {
+            lock.release("lock:fx", any())
+            alert.send(match { it.attributes["job"] == JobId.FX_INGESTION.tag })
+        }
+    }
+
+    @Test
+    fun `action Error도 failure로 변환하고 completion 이후 lock을 해제한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } returns true
+        every { lock.release(any(), any()) } returns Unit
+        val error = AssertionError("fatal")
+
+        val result = executor.execute(config) { throw error }
+
+        val failure = result as JobResult.Failure
+        assertThat(failure.exception).isInstanceOf(RuntimeException::class.java)
+        assertThat(failure.exception.cause).isSameAs(error)
+        verify { lock.release("lock:fx", any()) }
+        verify {
+            recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.FAILED, clock.instant(), "RuntimeException")
+        }
+        verify { alert.send(any()) }
+    }
+
+    @Test
+    fun `lock 미획득은 action을 실행하지 않고 skipped로 기록한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } returns false
+        var invoked = false
+
+        val result = executor.execute(config) {
+            invoked = true
+            JobResult.Success
+        }
+
+        assertThat(invoked).isFalse()
+        assertThat((result as JobResult.Skipped).reason).isEqualTo("lock")
+        verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SKIPPED, clock.instant(), "lock") }
+        verify(exactly = 0) { lock.release(any(), any()) }
+    }
+
+    @Test
+    fun `lock 획득 예외는 failure로 기록하고 알림을 전달한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } throws IllegalStateException("redis down")
+
+        val result = executor.execute(config) { JobResult.Success }
+
+        assertThat(result).isInstanceOf(JobResult.Failure::class.java)
+        verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.FAILED, clock.instant(), "IllegalStateException") }
+        verify { alert.send(any()) }
+    }
+
+    @Test
+    fun `execution timeout을 넘긴 interruptible 작업은 중단하고 실패로 기록한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } returns true
+        every { lock.release(any(), any()) } returns Unit
+        val shortConfig = config.copy(
+            lease = Duration.ofMillis(200),
+            executionTimeout = Duration.ofMillis(50),
+        )
+
+        val result = executor.execute(shortConfig) {
+            Thread.sleep(5_000)
+            JobResult.Success
+        }
+
+        assertThat((result as JobResult.Failure).exception).isInstanceOf(JobExecutionTimeoutException::class.java)
+        verify(timeout = 1_000) { lock.release("lock:fx", any()) }
+        verify(timeout = 1_000) {
+            recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.FAILED, clock.instant(), "JobExecutionTimeoutException")
+        }
+        verify(timeout = 1_000) { alert.send(any()) }
+    }
+
+    @Test
+    fun `timeout interrupt를 무시하는 작업은 실제 종료까지 lease를 갱신하고 lock을 유지한다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } returns true
+        every { lock.release(any(), any()) } returns Unit
+        val shortConfig = config.copy(
+            lease = Duration.ofMillis(90),
+            executionTimeout = Duration.ofMillis(20),
+        )
+        val mayFinish = CountDownLatch(1)
+        val started = CountDownLatch(1)
+        val running = AtomicBoolean(true)
+
+        val result = executor.execute(shortConfig) {
+            started.countDown()
+            while (running.get()) {
+                try {
+                    mayFinish.await(10, TimeUnit.MILLISECONDS)
+                    if (mayFinish.count == 0L) running.set(false)
+                } catch (_: InterruptedException) {
+                    // 취소를 무시하는 외부 I/O를 재현한다.
+                }
             }
-
-            // when
-            val result = jobExecutor.execute(config) { JobResult.Success }
-
-            // then
-            assertThat(result).isEqualTo(JobResult.Success)
-            assertThat(meterRegistry.counter("scheduler.test-job.success").count()).isEqualTo(1.0)
-            verify { valueOps.set(match { it.contains("test-job") }, any(), any<Duration>()) }
-            verify(exactly = 0) { alertService.sendCriticalAlert(any()) }
+            JobResult.Success
         }
 
-        @Test
-        fun `job이 Skipped를 반환하면 skipped 메트릭을 기록한다`() {
-            // given
-            val config = jobConfig()
-            every {
-                lockManager.withLock(
-                    lockKey = any(),
-                    waitTime = any(),
-                    leaseTime = any(),
-                    timeUnit = any(),
-                    action = any<() -> JobResult>(),
-                )
-            } answers {
-                val action = arg<() -> JobResult>(4)
-                LockResult.Success(action())
-            }
-
-            // when
-            val result = jobExecutor.execute(config) { JobResult.Skipped("missing_data") }
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat(meterRegistry.counter("scheduler.test-job.skipped", "reason", "missing_data").count()).isEqualTo(1.0)
+        assertThat(started.count).isZero()
+        assertThat((result as JobResult.Failure).exception).isInstanceOf(JobExecutionTimeoutException::class.java)
+        verify(exactly = 0) { lock.release("lock:fx", any()) }
+        verify {
+            recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.FAILED, clock.instant(), "JobExecutionTimeoutException")
         }
+        verify { alert.send(match { it.attributes["lock_retained"] == "true" }) }
+        verify(timeout = 500, atLeast = 1) { lock.renew("lock:fx", any(), Duration.ofMillis(90)) }
 
-        @Test
-        fun `job이 Failure를 반환하면 error 메트릭과 CRITICAL 알림을 기록한다`() {
-            // given
-            val config = jobConfig()
-            val exception = RuntimeException("db error")
-            every {
-                lockManager.withLock(
-                    lockKey = any(),
-                    waitTime = any(),
-                    leaseTime = any(),
-                    timeUnit = any(),
-                    action = any<() -> JobResult>(),
-                )
-            } answers {
-                val action = arg<() -> JobResult>(4)
-                LockResult.Success(action())
-            }
+        mayFinish.countDown()
 
-            // when
-            val result = jobExecutor.execute(config) { JobResult.Failure(exception) }
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            assertThat(meterRegistry.counter("scheduler.test-job.error", "error", "RuntimeException").count()).isEqualTo(1.0)
-            verify { alertService.sendCriticalAlert(match { it.contains("test-job") && it.contains("db error") }) }
-        }
-
-        @Test
-        fun `락 미획득 시 reason이 lock인 skipped 메트릭을 기록한다`() {
-            // given
-            val config = jobConfig()
-            every {
-                lockManager.withLock(
-                    lockKey = any(),
-                    waitTime = any(),
-                    leaseTime = any(),
-                    timeUnit = any(),
-                    action = any<() -> JobResult>(),
-                )
-            } returns LockResult.NotAcquired()
-
-            // when
-            val result = jobExecutor.execute(config) { JobResult.Success }
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Skipped::class.java)
-            assertThat((result as JobResult.Skipped).reason).isEqualTo("lock")
-            assertThat(meterRegistry.counter("scheduler.test-job.skipped", "reason", "lock").count()).isEqualTo(1.0)
-        }
-
-        @Test
-        fun `락이 Error를 반환하면 error 메트릭과 CRITICAL 알림을 기록한다`() {
-            // given
-            val config = jobConfig()
-            val exception = RuntimeException("redis down")
-            every {
-                lockManager.withLock(
-                    lockKey = any(),
-                    waitTime = any(),
-                    leaseTime = any(),
-                    timeUnit = any(),
-                    action = any<() -> JobResult>(),
-                )
-            } returns LockResult.Error(exception)
-
-            // when
-            val result = jobExecutor.execute(config) { JobResult.Success }
-
-            // then
-            assertThat(result).isInstanceOf(JobResult.Failure::class.java)
-            assertThat(meterRegistry.counter("scheduler.test-job.error", "error", "RuntimeException").count()).isEqualTo(1.0)
-            verify { alertService.sendCriticalAlert(match { it.contains("test-job") && it.contains("redis down") }) }
-        }
-
-        @Test
-        fun `job이 skip되면 last-run 시간을 갱신하지 않는다`() {
-            // given
-            val config = jobConfig()
-            every {
-                lockManager.withLock(
-                    lockKey = any(),
-                    waitTime = any(),
-                    leaseTime = any(),
-                    timeUnit = any(),
-                    action = any<() -> JobResult>(),
-                )
-            } returns LockResult.NotAcquired()
-
-            // when
-            jobExecutor.execute(config) { JobResult.Success }
-
-            // then
-            verify(exactly = 0) { valueOps.set(any(), any(), any<Duration>()) }
-        }
-
-        @Test
-        fun `job이 Failure를 반환하면 last-run 시간을 갱신하지 않는다`() {
-            // given
-            val config = jobConfig()
-            every {
-                lockManager.withLock(
-                    lockKey = any(),
-                    waitTime = any(),
-                    leaseTime = any(),
-                    timeUnit = any(),
-                    action = any<() -> JobResult>(),
-                )
-            } answers {
-                val action = arg<() -> JobResult>(4)
-                LockResult.Success(action())
-            }
-
-            // when
-            jobExecutor.execute(config) { JobResult.Failure(RuntimeException("fail")) }
-
-            // then
-            verify(exactly = 0) { valueOps.set(any(), any(), any<Duration>()) }
+        verify(timeout = 1_000) { lock.release("lock:fx", any()) }
+        verify(exactly = 1) {
+            recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.FAILED, clock.instant(), "JobExecutionTimeoutException")
         }
     }
 }

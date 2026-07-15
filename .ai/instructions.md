@@ -1,293 +1,120 @@
-# Premium Spread - Development Instructions
+# Premium Spread 개발 지침
 
-> 비즈니스 도메인은 `.ai/context/project-overview.md` 참조
+> 이 문서는 저장소 작업의 entry point다. 비즈니스 의미는 `context/project-overview.md`, 구조는
+> `architecture/ARCHITECTURE_DESIGN.md`, 세부 규칙은 `rules/`가 정본이다.
 
-## Tech Stack
+## 기술과 실행 경계
 
-- Kotlin 2.0, Java 21, Spring Boot 3.4
-- MySQL 8, Redis 7, Testcontainers
-- Gradle 멀티모듈
+- Kotlin 2.0 / Java 21 / Spring Boot 3.5.16
+- MySQL 8 / Redis 7 / Testcontainers
+- API `8080`, Batch `8081`; management는 각각 `9080`, `9081`
+- DataSource는 `spring.datasource`, Redis는 `spring.data.redis`가 설정 SSOT다.
+- Flyway 실행 owner는 API 하나이며 Batch migration은 비활성이다.
+- 시간 저장은 UTC, day bucket과 cron zone은 `aggregation.zone`(기본 `Asia/Seoul`)을 사용한다.
 
----
-
-## Module Structure
-
-```
-apps/
-├── api/          # REST API 서버 (Port 8080)
-└── batch/        # 배치 스케줄러 (Port 8081, 1초/30분 수집 + 1분/1시간/1일 집계)
-
-modules/
-├── jpa/          # JPA 공통 설정, BaseEntity
-└── redis/        # Redis, Redisson 분산 락
-
-supports/
-├── logging/      # 구조화 로깅, 민감정보 마스킹
-└── monitoring/   # Micrometer 메트릭, 헬스체크
-```
-
----
-
-## Architecture Rules
-
-### Layer 구조 (apps/api)
-
-```
-interfaces/api/   → Controller, Request/Response DTO
-application/      → Facade, Criteria/Result DTO
-domain/           → Service, Command, Entity, Repository(interface), Read Model
-infrastructure/   → RepositoryImpl (JPA + Cache), Cache Reader
-```
-
-### 의존성 방향
-
-```
-interfaces → application → domain ← infrastructure
-```
-
-- **domain은 외부 의존 금지** (프레임워크 독립)
-- **application은 infrastructure 직접 참조 금지** (domain 인터페이스를 통해서만 접근)
-- Repository는 domain에 interface, infrastructure에 구현체
-
-### 계층별 주입 규칙
-
-| 구분    | Facade (application)                       | Service (domain)              | RepositoryImpl (infrastructure)                  |
-|-------|--------------------------------------------|-------------------------------|--------------------------------------------------|
-| 역할    | 유스케이스 조합, DTO 변환                           | 단일 도메인 로직 위임                  | 데이터 접근 전략 (cache→DB fallback)                    |
-| 주입 가능 | **domain Service만**                        | 자기 도메인 Repository만            | Cache Reader, JPA, 타 Repository, QueryRepository |
-| 주입 금지 | Repository, CacheReader, infrastructure 전체 | 타 도메인 Service, infrastructure | —                                                |
-
-```kotlin
-// Good: Facade → Service → Repository
-@Service
-class TickerFacade(
-    private val tickerService: TickerService,           // domain Service ✅
-    private val exchangeRateService: ExchangeRateService, // domain Service ✅
-)
-
-// Bad: Facade → infrastructure 직접 참조
-@Service
-class TickerCacheFacade(
-    private val tickerCacheReader: TickerCacheReader,   // infrastructure ❌
-    private val fxCacheReader: FxCacheReader,           // infrastructure ❌
-    private val tickerAggregationQueryRepository: ...,  // infrastructure ❌
-)
-
-// Bad: Facade → Repository 직접 주입
-@Service
-class SomeFacade(
-    private val exchangeRateRepository: ExchangeRateRepository, // Repository 직접 주입 ❌
-)
-```
-
-### 도메인 분리 규칙
-
-서로 다른 비즈니스 개념은 **별도 domain 패키지**로 분리한다.
-하나의 Facade/Service에 여러 도메인 개념을 혼재하지 않는다.
-
-```
-domain/
-├── ticker/           # 코인 시세 (Ticker, TickerRepository, TickerService, TickerSnapshot)
-├── premium/          # 김치 프리미엄 (Premium, PremiumRepository, PremiumService, PremiumSnapshot)
-├── position/         # 포지션 (Position, PositionRepository, PositionService)
-└── exchangerate/     # 환율 (ExchangeRateRepository, ExchangeRateService, ExchangeRateSnapshot)
-```
-
-**분리 기준:**
-
-- 비즈니스 개념이 다르면 분리 (예: 코인 시세 vs 환율)
-- 하나의 Facade에서 여러 도메인 Service를 조합하는 것은 허용 (Facade의 역할)
-
-### 신규 도메인 추가 체크리스트
-
-새로운 도메인 개념 추가 시 아래를 확인한다:
-
-- [ ] `domain/{name}/` 패키지에 Entity/Repository(interface)/Service 배치
-- [ ] cache→DB fallback이 필요하면 Read Model(`*Snapshot`) + Repository 메서드 추가
-- [ ] `infrastructure/{name}/` 패키지에 RepositoryImpl 배치, fallback은 RepositoryImpl 내부
-- [ ] application Facade는 **domain Service만 주입** (infrastructure 직접 참조 금지)
-- [ ] `rg "^import io\.premiumspread\.infrastructure\." apps/api/src/main/kotlin/io/premiumspread/application/`
-  결과 확인
-
-### Cache→DB Fallback 규칙
-
-캐시 우선 조회 + DB fallback 로직은 **infrastructure의 RepositoryImpl 내부**에서 처리한다.
-application은 "데이터를 조회한다"만 요청하고, cache hit/miss 여부를 알지 못한다.
-
-```
-// Good: infrastructure가 전략 결정
-Controller → Facade → Service → Repository(interface)
-                                    └→ RepositoryImpl: cache hit → 반환
-                                                       cache miss → DB + ticker 조합 → 반환
-
-// Bad: application이 cache/DB를 직접 분기
-Controller → CacheFacade → CacheReader (infrastructure 직접 참조)
-                         → Service → Repository
-```
-
-### Read Model 패턴
-
-조회 시 여러 엔티티를 조합해야 하는 경우 domain에 **Read Model**을 정의한다.
-
-```kotlin
-// domain에 정의 — 조회 전용, JPA 엔티티 아님
-data class PremiumSnapshot(
-    val symbol: String,
-    val premiumRate: BigDecimal,
-    val koreaPrice: BigDecimal, // cache or ticker에서 조합
-    ...
-)
-
-// Repository 인터페이스에 메서드 추가
-interface PremiumRepository {
-    fun findLatestSnapshotBySymbol(symbol: Symbol): PremiumSnapshot?
-}
-
-// RepositoryImpl에서 cache→DB+ticker enrichment로 구현
-```
-
-**적용 기준:**
-
-- Entity 단독 반환으로 충분하면 Read Model 불필요
-- 캐시 데이터와 DB 데이터의 shape이 다를 때 도입
-- DB fallback 시 관련 엔티티를 추가 조회하여 enrichment 필요할 때
-
----
-
-## Naming Conventions
-
-### DTO (Inner Class Pattern)
-
-모든 레이어의 DTO는 컨테이너 클래스 내 inner class 패턴을 사용:
-
-| Layer       | 컨테이너                     | Inner Class | 예시                                               |
-|-------------|--------------------------|-------------|--------------------------------------------------|
-| interfaces  | `*Request`, `*Response`  | 동작          | `PositionRequest.Open`                           |
-| application | `*Criteria`, `*Result`   | 동작          | `PositionCriteria.Open`, `PositionResult.Detail` |
-| domain      | `*Command`               | 동작          | `PositionCommand.Create`                         |
-| domain      | `*Snapshot` (Read Model) | —           | `PremiumSnapshot` (조회 전용, 단독 data class)         |
-
-### DTO 파일 구조
-
-```kotlin
-// 모든 레이어에 동일 패턴 적용
-class PositionCriteria private constructor() {
-    data class Open(val symbol: String, ...)
-}
-
-class PositionResult private constructor() {
-    data class Detail(val id: Long, ...) {
-        companion object {
-            fun from(entity: Position): Detail = ...
-        }
-    }
-    data class Pnl(val positionId: Long, ...)
-}
-```
-
-### Entity
-
-- prefix/suffix 없음: `Position`, `Ticker`, `Premium`
-- `@Enumerated(EnumType.STRING)` 필수
-
----
-
-## Testing
-
-### 테스트 실행
-
-```bash
-./gradlew test                           # Unit tests
-./gradlew :apps:api:integrationTest      # Integration (Docker 필요)
-```
-
-### 테스트 규칙
-
-- **도구**: AssertJ 필수!!
-- **Unit Test**: Mock Repository 사용
-- **Integration Test**: `@Tag("integration")`, TestConfig Import
-
-```kotlin
-@Tag("integration")
-@SpringBootTest
-@ActiveProfiles("test")
-@Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, TestConfig::class)
-class RepositoryTest { ... }
-```
-
----
-
-## Quick Commands
-
-```bash
-# 빌드
-./gradlew compileKotlin
-
-# 인프라 실행 (Docker)
-docker compose -f docker/infra-compose.yml up -d
-
-# 서버 실행 (동시 실행)
-./gradlew :apps:api:bootRun &      # Port 8080
-./gradlew :apps:batch:bootRun &    # Port 8081
-
-# 테스트
-./gradlew test
-./gradlew :apps:api:integrationTest
-```
-
----
-
-## Coding Guidelines
-
-1. **Kotlin 불변 우선** - `val`, `data class`
-2. **순수 함수** - 도메인 계산은 부작용 최소화
-3. **과도한 추상화 금지** - 필요할 때만 인터페이스
-4. **컴파일 가능 + 테스트 통과** 상태 유지
-
----
-
-## HTTP 파일 작성 규칙
-
-- 새로운 Controller 또는 endpoint 추가 시 `http/api/{도메인}.http` 요청 샘플을 반드시 갱신한다.
-- HTTP 상세 작성 규칙/예시는 `http/README.md`를 따른다.
-
----
-
-## Git Conventions
-
-- 브랜치 규칙: `<type>/<short-description>` (`type`: `feat|fix|refactor|docs|test|chore`)
-- 커밋 규칙: `<type>: <subject>` + 한글 bullet 본문
-- PR 규칙: 제목은 커밋 첫 줄과 동일, 본문에 `Summary`/`Test plan` 포함
-
-## Planning Directory 규칙
-
-- 새로운 기능/리팩토링/테스트 작업은 `.ai/planning/{domain-or-topic}/` 폴더에 계획 문서를 추가한다.
-- 기본 구성은 `task_plan.md`, `findings.md`, `progress.md`를 기본으로 두고 필요 시 보조 문서를 함께 둔다.
-- `alert` 작업은 아래 형태로 시작한다.
+## 모듈과 의존 방향
 
 ```text
-.ai/planning/alert/
-├── business-rules.md   # 비즈니스 룰 상세
-├── task_plan.md        # 단계별 작업 계획
-├── findings.md         # 요구사항/의사결정 기록
-└── progress.md         # 세션별 진행 로그
+HTTP/Schedule → apps interfaces → apps application → domain ← infrastructure adapters
+                                                       ↑
+                                      modules foundations / supports
 ```
-- 상세 Git 정책은 `.ai/skills/codex-claude-flow/references/git-policy.md`를 기준으로 따른다.
 
----
+| 모듈 | 책임 |
+|---|---|
+| `apps:api` | REST Controller, Request/Response, Application Facade/DTO |
+| `apps:batch` | thin Scheduler, Application Job, delivery orchestration |
+| `domain` | Entity, Value, Policy, Service, Port, Snapshot |
+| `infrastructure:common` | JPA/JDBC, Redis business cache, Flyway V1~V14 |
+| `infrastructure:api` | JWT/cookie/refresh session, API Security |
+| `infrastructure:batch` | 외부 거래소/FX/WebSocket, Redis job/cache, SMTP adapter |
+| `modules:jpa`, `modules:redis` | 기술 foundation과 공통 설정/key/TTL |
+| `supports:*` | logging, monitoring, email의 재사용 auto-configuration |
 
-## 관련 문서
+- 앱 main source에는 JDBC/Redis/WebClient/MeterRegistry 같은 기술 구현을 두지 않는다.
+- Controller는 Application Facade 하나, Scheduler는 Application Job 하나를 호출한다.
+- Application은 Domain service/port만 의존한다. Infrastructure concrete type을 import하지 않는다.
+- Infrastructure는 앱을 참조하지 않고 Domain port를 구현한다.
+- `domain`의 허용된 framework 계약은 JPA API와 Spring Context/Tx/Data Commons뿐이다.
+- Facade는 선택 사항이 아니다. HTTP 유스케이스의 interfaces/application 경계를 항상 유지한다.
 
-| 문서                                                      | 용도                       |
-|---------------------------------------------------------|--------------------------|
-| `.ai/PROJECT_STATUS.md`                                 | 현재 상태, TODO, 진행 상황       |
-| `.ai/architecture/ARCHITECTURE_DESIGN.md`               | 시스템 아키텍처, 데이터 흐름         |
-| `.ai/context/project-overview.md`                       | 비즈니스 도메인 설명              |
-| `.ai/skills/codex-claude-flow/references/git-policy.md` | Git 상세 정책(브랜치/커밋/PR/게이트) |
-| `.ai/planning/`                                         | 작업별 계획 문서 디렉터리           |
-| `http/README.md`                                        | HTTP 샘플 작성 규칙/예시         |
+세부 기준은 `rules/architecture.md`와 `rules/batch.md`를 따른다.
 
-## Planning 문서 운영
+## Domain과 데이터 계약
 
-- 작업별 계획/진행 문서는 `.ai/planning/` 하위에 수시로 생성/갱신된다.
-- 문서 경로/파일명은 작업 성격에 따라 달라질 수 있으므로 최신 문서는 디렉터리에서 확인한다.
+- Premium, Position, Notification은 `MarketPair(Symbol, KoreaExchange, ForeignExchange)`를 identity에 포함한다.
+- 기존 symbol-only 호출만 `BITHUMB/BINANCE` 기본 pair로 호환한다.
+- Premium 계산은 Domain `PremiumPolicy`만 사용한다.
+- cache→DB fallback과 cache/DB 병합은 infrastructure가 소유한다.
+- 범위 query는 `[from,to)`이고 손상 cache는 부분 성공 대신 전체 miss다.
+- DB+cache write는 DB-first 또는 transaction after-commit을 사용한다.
+- Redis business payload는 `schema_version=2`; writer는 pair-aware premium v2만 기록한다.
+- notification은 MySQL durable queue의 at-least-once 전달이며 exactly-once를 문서나 API에서 주장하지 않는다.
+
+## DTO와 naming
+
+- interfaces: `*Request`, `*Response`
+- application: `*Criteria`, `*Result`
+- domain input: `*Command`; read model: `*Snapshot`
+- JPA Entity: suffix 없음, 일반 class, enum은 `EnumType.STRING`
+- 기술 구현은 `*Adapter`, Spring Data interface는 `SpringData*Repository`, JDBC query/write 역할을 이름으로 구분한다.
+
+## 테스트와 검증
+
+새 Gradle 배포본/의존성/cache를 검증 도중 다운로드하지 않는다. 로컬 Gradle 명령은
+`--offline --no-daemon`을 사용한다.
+
+```bash
+./gradlew compileKotlin --offline --no-daemon
+./gradlew test architectureTest --offline --no-daemon
+./gradlew :infrastructure:common:integrationTest --offline --no-daemon
+./gradlew :apps:api:integrationTest --offline --no-daemon
+./gradlew :apps:batch:integrationTest --offline --no-daemon
+./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
+bash docs/check-documentation.sh
+```
+
+- unit은 외부 I/O를 mock/fake로 격리한다.
+- integration은 `@Tag("integration")`과 Testcontainers를 사용한다.
+- test profile에서 실제 거래소, 실제 SMTP, 실제 Slack endpoint를 사용하지 않는다.
+- architecture test가 모듈 dependency, 금지 import, source/bytecode debt를 검증한다.
+- disabled test로 계약을 미루지 않는다.
+- 테스트 task의 timeout/resource leak/coverage 정책은 `rules/testing.md`를 따른다.
+
+Web 검증:
+
+```bash
+npm --prefix apps/web ci
+npm --prefix apps/web run lint
+npm --prefix apps/web run build
+```
+
+## Runtime과 운영 변경
+
+- local/test/prd 설정 역할은 `docs/runbooks/configuration-profiles.md`가 정본이다.
+- Redis 변경은 `docs/runbooks/redis-contract.md`, 인증 변경은 `docs/runbooks/auth-security.md`를 함께 갱신한다.
+- migration은 append-only다. V12 파일/checksum은 변경하지 않는다.
+- 배포 단위는 commit SHA image이며 API migration/readiness 뒤 Batch를 시작한다.
+- rollback은 이전 image만 재기동하고 DB down migration을 수행하지 않는다.
+- metric tag에 email/member/token/cookie/delivery ID 같은 PII·고 cardinality 값을 넣지 않는다.
+
+## HTTP와 Git
+
+- endpoint를 추가/변경하면 `http/api/{domain}.http`를 함께 갱신하고 `http/README.md`를 따른다.
+- branch: `<type>/<short-description>` (`feat|fix|refactor|docs|test|chore`)
+- commit: `<type>: <한국어 subject>`와 필요한 검증 bullet
+- 기능/리팩터링 계획과 진행 증거는 `.ai/planning/{topic}/`에 둔다.
+- 과거 계획 문서는 당시 경로를 보존하는 역사 기록이다. 현재 구조 설명으로 사용하지 않는다.
+
+## 문서 정본
+
+| 문서 | 책임 |
+|---|---|
+| `architecture/ARCHITECTURE_DESIGN.md` | 최종 모듈 구조와 데이터 흐름 |
+| `context/project-overview.md` | MarketPair, 계산, 알림 보장 |
+| `PROJECT_STATUS.md` | migration 상태와 known issue |
+| `rules/architecture.md` | source/module boundary |
+| `rules/http.md` | endpoint/public policy 변경 절차 |
+| `rules/batch.md` | Job/port/외부 adapter 규칙 |
+| `rules/testing.md` | test 격리와 quality gate |
+| `../docs/runbooks/` | 운영·복구 절차 |

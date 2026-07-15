@@ -94,13 +94,14 @@ nano .env
 ./deploy/deploy.sh
 ```
 
-`deploy.sh`가 수행: 인프라 기동 → MySQL/Redis healthy 대기 → 앱 빌드·기동 → `/actuator/health` UP 대기 → 상태 출력.
+`deploy.sh`가 수행: 인프라 기동 → MySQL/Redis healthy 대기 → V12 preflight → 앱 빌드·기동 →
+`/actuator/health/readiness` UP 대기 → 상태 출력.
 
 > 최초 빌드는 1 OCPU ARM에서 수 분 소요(gradle×2 + npm). swap 덕에 OOM 없이 완주.
 
 확인:
 ```bash
-curl http://localhost:8080/actuator/health     # {"status":"UP"}
+curl http://localhost:8080/actuator/health/readiness     # {"status":"UP"}
 curl http://<PUBLIC_IP>/                        # web 응답 (nginx→web)
 docker ps
 ```
@@ -131,7 +132,7 @@ docker run --rm \
 ```bash
 sed 's/__DOMAIN__/your.domain.com/g' deploy/nginx.ssl.conf > docker/nginx/nginx.conf
 docker compose -f docker/app-compose.yml restart nginx
-curl https://your.domain.com/actuator/health
+curl http://localhost:8080/actuator/health/readiness
 ```
 
 ### 5-4. 자동 갱신 (cron)

@@ -10,9 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 메트릭 설정 및 레지스트리
  */
 @Configuration
-class MetricsConfig(
-    private val meterRegistry: MeterRegistry,
-) {
+class MetricsConfig(private val meterRegistry: MeterRegistry) {
 
     private val counters = ConcurrentHashMap<String, Counter>()
     private val timers = ConcurrentHashMap<String, Timer>()

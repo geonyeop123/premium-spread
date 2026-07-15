@@ -2,12 +2,14 @@ package io.premiumspread.application.premium
 
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.verify
 import io.premiumspread.PremiumFixtures
 import io.premiumspread.TickerFixtures
+import io.premiumspread.application.common.ApplicationError
+import io.premiumspread.application.common.ApplicationException
+import io.premiumspread.config.AggregationProperties
+import io.premiumspread.domain.aggregation.AggregationZone
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumAggregationSnapshot
-import io.premiumspread.domain.premium.PremiumCommand
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Currency
@@ -18,14 +20,11 @@ import io.premiumspread.domain.ticker.TickerService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 
 class PremiumFacadeTest {
-
     private lateinit var tickerService: TickerService
     private lateinit var premiumService: PremiumService
     private lateinit var facade: PremiumFacade
@@ -34,247 +33,122 @@ class PremiumFacadeTest {
     fun setUp() {
         tickerService = mockk()
         premiumService = mockk()
-        facade = PremiumFacade(tickerService, premiumService)
+        facade = PremiumFacade(tickerService, premiumService, AggregationProperties("UTC"))
     }
 
-    @Nested
-    inner class CalculateAndSave {
+    @Test
+    fun `계산 결과는 Domain Entity가 아닌 Detail Result로 반환한다`() {
+        every { tickerService.findLatest(Exchange.BITHUMB, Quote.coin(Symbol("BTC"), Currency.KRW)) } returns
+            TickerFixtures.koreaTicker(exchange = Exchange.BITHUMB)
+        every { tickerService.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD)) } returns
+            TickerFixtures.foreignTicker()
+        every { tickerService.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW)) } returns
+            TickerFixtures.fxTicker()
+        every { premiumService.create(any()) } returns PremiumFixtures.premium(id = 1L)
 
-        @Test
-        fun `프리미엄을 계산하고 저장한다`() {
-            val koreaTicker = TickerFixtures.koreaTicker(symbol = "BTC", price = BigDecimal("129555000"))
-            val foreignTicker = TickerFixtures.foreignTicker(symbol = "BTC", price = BigDecimal("89277"))
-            val fxTicker = TickerFixtures.fxTicker(price = BigDecimal("1432.6"))
+        val result = facade.calculateAndSave(PremiumCriteria.Create("BTC"))
 
-            every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
-            } returns koreaTicker
+        assertThat(result.id).isEqualTo(1L)
+        assertThat(result.symbol).isEqualTo("BTC")
+    }
 
-            every {
-                tickerService.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
-            } returns foreignTicker
+    @Test
+    fun `티커 미발견은 안정된 Application 오류로 변환한다`() {
+        every { tickerService.findLatest(Exchange.BITHUMB, Quote.coin(Symbol("BTC"), Currency.KRW)) } returns null
 
-            every {
-                tickerService.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW))
-            } returns fxTicker
-
-            val commandSlot = slot<PremiumCommand.Create>()
-            every { premiumService.create(capture(commandSlot)) } returns
-                    PremiumFixtures.premium(symbol = "BTC", id = 1L)
-
-            val result = facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
-
-            assertThat(result.id).isEqualTo(1L)
-            assertThat(result.symbol).isEqualTo("BTC")
-
-            verify(exactly = 1) { premiumService.create(any()) }
-            assertThat(commandSlot.captured.koreaTicker).isEqualTo(koreaTicker)
-            assertThat(commandSlot.captured.foreignTicker).isEqualTo(foreignTicker)
-            assertThat(commandSlot.captured.fxTicker).isEqualTo(fxTicker)
-        }
-
-        @Test
-        fun `한국 티커가 없으면 예외를 던진다`() {
-            every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
-            } returns null
-
-            assertThatThrownBy {
-                facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
-            }.isInstanceOf(TickerNotFoundException::class.java)
-                .hasMessageContaining("Korea ticker not found")
-        }
-
-        @Test
-        fun `해외 티커가 없으면 예외를 던진다`() {
-            val koreaTicker = TickerFixtures.koreaTicker()
-
-            every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
-            } returns koreaTicker
-
-            every {
-                tickerService.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
-            } returns null
-
-            assertThatThrownBy {
-                facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
-            }.isInstanceOf(TickerNotFoundException::class.java)
-                .hasMessageContaining("Foreign ticker not found")
-        }
-
-        @Test
-        fun `환율 티커가 없으면 예외를 던진다`() {
-            val koreaTicker = TickerFixtures.koreaTicker()
-            val foreignTicker = TickerFixtures.foreignTicker()
-
-            every {
-                tickerService.findLatest(Exchange.UPBIT, Quote.coin(Symbol("BTC"), Currency.KRW))
-            } returns koreaTicker
-
-            every {
-                tickerService.findLatest(Exchange.BINANCE, Quote.coin(Symbol("BTC"), Currency.USD))
-            } returns foreignTicker
-
-            every {
-                tickerService.findLatest(Exchange.FX_PROVIDER, Quote.fx(Currency.USD, Currency.KRW))
-            } returns null
-
-            assertThatThrownBy {
-                facade.calculateAndSave(PremiumCriteria.Create(symbol = "BTC"))
-            }.isInstanceOf(TickerNotFoundException::class.java)
-                .hasMessageContaining("FX ticker not found")
+        assertApplicationError(ApplicationError.TICKER_NOT_FOUND) {
+            facade.calculateAndSave(PremiumCriteria.Create("BTC"))
         }
     }
 
-    @Nested
-    inner class FindLatest {
+    @Test
+    fun `현재 스냅샷은 Current Result로 변환하고 미발견은 404 오류로 변환한다`() {
+        val snapshot = snapshot()
+        every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns snapshot
+        assertThat(facade.findCurrent(PremiumCriteria.FindCurrent("BTC")).premiumRate)
+            .isEqualByComparingTo(BigDecimal("1.30"))
 
-        @Test
-        fun `심볼로 최신 프리미엄을 조회한다`() {
-            val premium = PremiumFixtures.premium(symbol = "BTC")
-
-            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns premium
-
-            val result = facade.findLatest("BTC")
-
-            assertThat(result).isNotNull
-            assertThat(result!!.symbol).isEqualTo("BTC")
-            assertThat(result.id).isEqualTo(premium.id)
-        }
-
-        @Test
-        fun `프리미엄이 없으면 null을 반환한다`() {
-            every { premiumService.findLatestBySymbol(Symbol("BTC")) } returns null
-
-            val result = facade.findLatest("BTC")
-
-            assertThat(result).isNull()
+        every { premiumService.findLatestSnapshotBySymbol(Symbol("ETH")) } returns null
+        assertApplicationError(ApplicationError.PREMIUM_NOT_FOUND) {
+            facade.findCurrent(PremiumCriteria.FindCurrent("ETH"))
         }
     }
 
-    @Nested
-    inner class FindLatestSnapshot {
+    @Test
+    fun `기간 조회는 Details로 감싸고 역전 범위는 422 오류로 변환한다`() {
+        val from = Instant.parse("2024-01-01T00:00:00Z")
+        val to = Instant.parse("2024-01-02T00:00:00Z")
+        every { premiumService.findAllBySymbolAndPeriod(Symbol("BTC"), from, to) } returns
+            listOf(PremiumFixtures.premium(id = 1L))
 
-        @Test
-        fun `심볼로 최신 프리미엄 스냅샷을 조회한다`() {
-            val snapshot = PremiumSnapshot(
+        assertThat(facade.findByPeriod(PremiumCriteria.FindHistory("BTC", from, to)).items).hasSize(1)
+        assertApplicationError(ApplicationError.INVALID_PREMIUM_INPUT) {
+            facade.findByPeriod(PremiumCriteria.FindHistory("BTC", to, from))
+        }
+    }
+
+    @Test
+    fun `집계 페이지와 hasMore를 Facade가 계산한다`() {
+        val from = Instant.parse("2024-01-01T00:00:00Z")
+        val to = Instant.parse("2024-01-01T01:00:00Z")
+        every {
+            premiumService.findAggregation(
+                MarketPair.default(Symbol("BTC")),
+                "1m",
+                from,
+                to,
+                AggregationZone.of("UTC"),
+            )
+        } returns listOf(
+            PremiumAggregationSnapshot(
                 symbol = "BTC",
-                premiumRate = BigDecimal("1.30"),
-                koreaPrice = BigDecimal("129555000"),
-                foreignPrice = BigDecimal("89277"),
-                foreignPriceInKrw = BigDecimal("127916893.2"),
-                fxRate = BigDecimal("1432.6"),
-                observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
+                high = BigDecimal("2"),
+                low = BigDecimal.ONE,
+                open = BigDecimal.ONE,
+                close = BigDecimal("2"),
+                avg = BigDecimal("1.5"),
+                count = 2,
+                observedAt = from,
+            ),
+        )
 
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns snapshot
+        val result = facade.findAggregation(PremiumCriteria.FindAggregation("BTC", "1m", from, to))
 
-            val result = facade.findLatestSnapshot("BTC")
+        assertThat(result.data).hasSize(1)
+        assertThat(result.hasMore).isTrue()
+    }
 
-            assertThat(result).isNotNull
-            assertThat(result!!.symbol).isEqualTo("BTC")
-            assertThat(result.premiumRate).isEqualByComparingTo(BigDecimal("1.30"))
-            assertThat(result.koreaPrice).isEqualByComparingTo(BigDecimal("129555000"))
-        }
-
-        @Test
-        fun `스냅샷이 없으면 null을 반환한다`() {
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns null
-
-            val result = facade.findLatestSnapshot("BTC")
-
-            assertThat(result).isNull()
+    @Test
+    fun `지원하지 않는 집계 interval은 422 오류로 변환한다`() {
+        val now = Instant.parse("2024-01-01T00:00:00Z")
+        assertApplicationError(ApplicationError.INVALID_PREMIUM_INPUT) {
+            facade.findAggregation(PremiumCriteria.FindAggregation("BTC", "5m", now, now))
         }
     }
 
-    @Nested
-    inner class FindByPeriod {
+    @Test
+    fun `adapter 불변식 위반은 사용자 입력 오류로 숨기지 않는다`() {
+        every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } throws
+            IllegalArgumentException("snapshot pair mismatch")
 
-        @Test
-        fun `기간으로 프리미엄 목록을 조회한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
-            val premiums = listOf(
-                PremiumFixtures.premium(symbol = "BTC", id = 1L),
-                PremiumFixtures.premium(symbol = "BTC", id = 2L),
-            )
-
-            every {
-                premiumService.findAllBySymbolAndPeriod(Symbol("BTC"), from, to)
-            } returns premiums
-
-            val result = facade.findByPeriod("BTC", from, to)
-
-            assertThat(result).hasSize(2)
-            assertThat(result[0].id).isEqualTo(1L)
-            assertThat(result[1].id).isEqualTo(2L)
-        }
-
-        @Test
-        fun `프리미엄이 없으면 빈 목록을 반환한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
-
-            every {
-                premiumService.findAllBySymbolAndPeriod(Symbol("BTC"), from, to)
-            } returns emptyList()
-
-            val result = facade.findByPeriod("BTC", from, to)
-
-            assertThat(result).isEmpty()
-        }
+        assertThatThrownBy { facade.findCurrent(PremiumCriteria.FindCurrent("BTC")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .isNotInstanceOf(ApplicationException::class.java)
     }
 
-    @Nested
-    inner class FindAggregation {
-
-        @Test
-        fun `집계 데이터를 조회하여 Result로 변환한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
-            val snapshots = listOf(
-                PremiumAggregationSnapshot(
-                    symbol = "BTC",
-                    high = BigDecimal("2.50"), low = BigDecimal("1.00"),
-                    open = BigDecimal("1.50"), close = BigDecimal("2.00"),
-                    avg = BigDecimal("1.75"), count = 60,
-                    observedAt = from,
-                ),
-                PremiumAggregationSnapshot(
-                    symbol = "BTC",
-                    high = BigDecimal("3.00"), low = BigDecimal("1.50"),
-                    open = BigDecimal("2.00"), close = BigDecimal("2.50"),
-                    avg = BigDecimal("2.25"), count = 55,
-                    observedAt = from.plus(1, ChronoUnit.HOURS),
-                ),
-            )
-
-            every {
-                premiumService.findAggregation(Symbol("BTC"), "1h", from, to)
-            } returns snapshots
-
-            val result = facade.findAggregation("BTC", "1h", from, to)
-
-            assertThat(result).hasSize(2)
-            assertThat(result[0].symbol).isEqualTo("BTC")
-            assertThat(result[0].high).isEqualByComparingTo(BigDecimal("2.50"))
-            assertThat(result[0].count).isEqualTo(60)
-            assertThat(result[1].avg).isEqualByComparingTo(BigDecimal("2.25"))
-        }
-
-        @Test
-        fun `집계 데이터가 없으면 빈 목록을 반환한다`() {
-            val from = Instant.parse("2024-01-01T00:00:00Z")
-            val to = Instant.parse("2024-01-02T00:00:00Z")
-
-            every {
-                premiumService.findAggregation(Symbol("BTC"), "1m", from, to)
-            } returns emptyList()
-
-            val result = facade.findAggregation("BTC", "1m", from, to)
-
-            assertThat(result).isEmpty()
-        }
+    private fun assertApplicationError(expected: ApplicationError, block: () -> Unit) {
+        assertThatThrownBy { block() }
+            .isInstanceOf(ApplicationException::class.java)
+            .hasFieldOrPropertyWithValue("error", expected)
     }
+
+    private fun snapshot() = PremiumSnapshot(
+        pair = MarketPair.default(Symbol("BTC")),
+        premiumRate = BigDecimal("1.30"),
+        koreaPrice = BigDecimal("129555000"),
+        foreignPrice = BigDecimal("89277"),
+        foreignPriceInKrw = BigDecimal("127916893.2"),
+        fxRate = BigDecimal("1432.6"),
+        observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+    )
 }

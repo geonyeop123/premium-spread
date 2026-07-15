@@ -10,9 +10,7 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * 실시간 프리미엄 값을 Gauge로 노출하여 Prometheus/Grafana에서 모니터링
  */
-class PremiumMetrics(
-    private val meterRegistry: MeterRegistry,
-) {
+class PremiumMetrics(private val meterRegistry: MeterRegistry) {
     private val premiumRates = mutableMapOf<String, AtomicReference<Double>>()
     private val koreaPrices = mutableMapOf<String, AtomicReference<Double>>()
     private val foreignPrices = mutableMapOf<String, AtomicReference<Double>>()
@@ -33,7 +31,7 @@ class PremiumMetrics(
     /**
      * 프리미엄 게이지 등록
      */
-    fun registerPremiumGauge(symbol: String) {
+    private fun registerPremiumGauge(symbol: String) {
         val rateRef = premiumRates.computeIfAbsent(symbol) { AtomicReference(0.0) }
         val koreaRef = koreaPrices.computeIfAbsent(symbol) { AtomicReference(0.0) }
         val foreignRef = foreignPrices.computeIfAbsent(symbol) { AtomicReference(0.0) }

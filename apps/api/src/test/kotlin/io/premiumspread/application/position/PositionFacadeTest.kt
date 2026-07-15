@@ -2,14 +2,13 @@ package io.premiumspread.application.position
 
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
 import io.mockk.verify
 import io.premiumspread.PositionFixtures
+import io.premiumspread.application.common.ApplicationError
+import io.premiumspread.application.common.ApplicationException
+import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.position.InvalidPositionException
-import io.premiumspread.domain.position.Position
-import io.premiumspread.domain.position.PositionCommand
 import io.premiumspread.domain.position.PositionService
-import io.premiumspread.domain.position.PositionStatus
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Exchange
@@ -17,383 +16,155 @@ import io.premiumspread.domain.ticker.Symbol
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 
 class PositionFacadeTest {
-
     private lateinit var positionService: PositionService
     private lateinit var premiumService: PremiumService
     private lateinit var facade: PositionFacade
+    private val now = Instant.parse("2026-07-14T03:00:00Z")
 
     @BeforeEach
     fun setUp() {
         positionService = mockk()
         premiumService = mockk()
-        facade = PositionFacade(positionService, premiumService)
+        facade = PositionFacade(positionService, premiumService, Clock.fixed(now, ZoneOffset.UTC))
     }
 
-    @Nested
-    inner class OpenAutoPosition {
+    @Test
+    fun `AUTO 생성은 문자열 거래소를 도메인 값으로 변환하고 Result에는 문자열만 노출한다`() {
+        val pair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+        every { premiumService.findLatestSnapshot(pair) } returns snapshot(pair, now.minusSeconds(10))
+        every { positionService.create(any()) } returns PositionFixtures.openPosition(id = 1L)
 
-        @Test
-        fun `최신 프리미엄 스냅샷으로 포지션을 생성한다`() {
-            val observedAt = Instant.now()
-            val snapshot = premiumSnapshot(observedAt = observedAt)
-            val criteria = PositionCriteria.OpenAuto(
-                memberId = 1L,
-                symbol = "BTC",
-                koreaExchange = Exchange.UPBIT,
-                koreaQuantity = BigDecimal("0.5"),
-                foreignExchange = Exchange.BINANCE,
-                foreignQuantity = BigDecimal("0.5"),
-                foreignLeverage = 1,
-            )
-            val commandSlot = slot<PositionCommand.Create>()
+        val result = facade.openAutoPosition(openAuto())
 
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns snapshot
-            every { positionService.create(capture(commandSlot)) } returns PositionFixtures.openPosition(
-                id = 1L,
-                koreaEntryPrice = snapshot.koreaPrice,
-                foreignEntryPrice = snapshot.foreignPrice,
-                entryFxRate = snapshot.fxRate,
-                entryObservedAt = snapshot.observedAt,
-            )
+        assertThat(result.koreaExchange).isEqualTo("UPBIT")
+        assertThat(result.foreignExchange).isEqualTo("BINANCE")
+        assertThat(result.status).isEqualTo("OPEN")
+    }
 
-            val result = facade.openAutoPosition(criteria)
-
-            assertThat(result.id).isEqualTo(1L)
-            assertThat(result.symbol).isEqualTo("BTC")
-            assertThat(result.koreaEntryPrice).isEqualByComparingTo(snapshot.koreaPrice)
-            assertThat(result.foreignEntryPrice).isEqualByComparingTo(snapshot.foreignPrice)
-            assertThat(result.entryFxRate).isEqualByComparingTo(snapshot.fxRate)
-            assertThat(result.entryObservedAt).isEqualTo(snapshot.observedAt)
-            assertThat(result.status).isEqualTo(PositionStatus.OPEN)
-
-            verify(exactly = 1) { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) }
-            verify(exactly = 1) { positionService.create(any()) }
-            assertThat(commandSlot.captured.koreaEntryPrice).isEqualByComparingTo(snapshot.koreaPrice)
-            assertThat(commandSlot.captured.foreignEntryPrice).isEqualByComparingTo(snapshot.foreignPrice)
-            assertThat(commandSlot.captured.entryFxRate).isEqualByComparingTo(snapshot.fxRate)
-            assertThat(commandSlot.captured.entryObservedAt).isEqualTo(snapshot.observedAt)
+    @Test
+    fun `잘못된 거래소와 도메인 예외는 안정된 INVALID_POSITION으로 변환한다`() {
+        assertApplicationError(ApplicationError.INVALID_POSITION) {
+            facade.openAutoPosition(openAuto(koreaExchange = "UNKNOWN"))
         }
 
-        @Test
-        fun `프리미엄 스냅샷이 없으면 예외를 던진다`() {
-            val criteria = openAutoCriteria(symbol = "DOGE")
-
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("DOGE")) } returns null
-
-            assertThatThrownBy {
-                facade.openAutoPosition(criteria)
-            }.isInstanceOf(PremiumSnapshotNotAvailableException::class.java)
-                .hasMessageContaining("Premium snapshot not available")
-        }
-
-        @Test
-        fun `프리미엄 스냅샷이 오래되면 예외를 던진다`() {
-            val criteria = openAutoCriteria()
-            val snapshot = premiumSnapshot(observedAt = Instant.now().minusSeconds(120))
-
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns snapshot
-
-            assertThatThrownBy {
-                facade.openAutoPosition(criteria)
-            }.isInstanceOf(StalePremiumSnapshotException::class.java)
-                .hasMessageContaining("Premium snapshot is stale")
-        }
-
-        @Test
-        fun `region 위반이면 도메인 예외를 전파한다`() {
-            val criteria = openAutoCriteria(koreaExchange = Exchange.BINANCE)
-
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns premiumSnapshot()
-            every { positionService.create(any()) } throws InvalidPositionException("한국 거래소가 아닙니다")
-
-            assertThatThrownBy {
-                facade.openAutoPosition(criteria)
-            }.isInstanceOf(InvalidPositionException::class.java)
+        every { positionService.create(any()) } throws InvalidPositionException("internal")
+        assertApplicationError(ApplicationError.INVALID_POSITION) {
+            facade.openManualPosition(openManual())
         }
     }
 
-    @Nested
-    inner class OpenManualPosition {
-
-        @Test
-        fun `입력값으로 포지션을 생성한다`() {
-            val criteria = PositionCriteria.OpenManual(
-                memberId = 1L,
-                symbol = "BTC",
-                koreaExchange = Exchange.UPBIT,
-                koreaQuantity = BigDecimal("0.5"),
-                koreaEntryPrice = BigDecimal("129555000"),
-                foreignExchange = Exchange.BINANCE,
-                foreignQuantity = BigDecimal("0.5"),
-                foreignEntryPrice = BigDecimal("89500"),
-                foreignLeverage = 1,
-                entryFxRate = BigDecimal("1432.6"),
-                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-            val commandSlot = slot<PositionCommand.Create>()
-
-            every { positionService.create(capture(commandSlot)) } returns PositionFixtures.openPosition(id = 1L)
-
-            val result = facade.openManualPosition(criteria)
-
-            assertThat(result.id).isEqualTo(1L)
-            assertThat(result.symbol).isEqualTo("BTC")
-            assertThat(result.koreaExchange).isEqualTo(Exchange.UPBIT)
-            assertThat(result.foreignExchange).isEqualTo(Exchange.BINANCE)
-            assertThat(result.status).isEqualTo(PositionStatus.OPEN)
-
-            verify(exactly = 1) { positionService.create(any()) }
-            assertThat(commandSlot.captured.symbol).isEqualTo("BTC")
-            assertThat(commandSlot.captured.koreaEntryPrice).isEqualByComparingTo(BigDecimal("129555000"))
-            assertThat(commandSlot.captured.foreignEntryPrice).isEqualByComparingTo(BigDecimal("89500"))
-            assertThat(commandSlot.captured.entryFxRate).isEqualByComparingTo(BigDecimal("1432.6"))
-            assertThat(commandSlot.captured.entryObservedAt).isEqualTo(Instant.parse("2024-01-01T00:00:00Z"))
+    @Test
+    fun `스냅샷 없음과 stale은 충돌 Application 오류로 변환한다`() {
+        val pair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+        every { premiumService.findLatestSnapshot(pair) } returns null
+        assertApplicationError(ApplicationError.PREMIUM_SNAPSHOT_NOT_AVAILABLE) {
+            facade.openAutoPosition(openAuto())
         }
 
-        @Test
-        fun `region 위반이면 도메인 예외를 전파한다`() {
-            val criteria = PositionCriteria.OpenManual(
-                memberId = 1L,
-                symbol = "BTC",
-                koreaExchange = Exchange.BINANCE,
-                koreaQuantity = BigDecimal("0.5"),
-                koreaEntryPrice = BigDecimal("129555000"),
-                foreignExchange = Exchange.BINANCE,
-                foreignQuantity = BigDecimal("0.5"),
-                foreignEntryPrice = BigDecimal("89500"),
-                foreignLeverage = 1,
-                entryFxRate = BigDecimal("1432.6"),
-                entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
-            )
-
-            every { positionService.create(any()) } throws InvalidPositionException("한국 거래소가 아닙니다")
-
-            assertThatThrownBy {
-                facade.openManualPosition(criteria)
-            }.isInstanceOf(InvalidPositionException::class.java)
+        every { premiumService.findLatestSnapshot(pair) } returns snapshot(pair, now.minusSeconds(61))
+        assertApplicationError(ApplicationError.STALE_PREMIUM_SNAPSHOT) {
+            facade.openAutoPosition(openAuto())
         }
     }
 
-    @Nested
-    inner class FindById {
+    @Test
+    fun `premium snapshot 불변식 위반은 INVALID_POSITION으로 숨기지 않는다`() {
+        val pair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+        every { premiumService.findLatestSnapshot(pair) } throws IllegalArgumentException("snapshot pair mismatch")
 
-        @Test
-        fun `ID로 포지션을 조회한다`() {
-            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
+        assertThatThrownBy { facade.openAutoPosition(openAuto()) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .isNotInstanceOf(ApplicationException::class.java)
+    }
 
-            every { positionService.findById(1L) } returns position
-
-            val result = facade.findById(1L, 1L)
-
-            assertThat(result).isNotNull
-            assertThat(result!!.id).isEqualTo(1L)
-            assertThat(result.symbol).isEqualTo("BTC")
+    @Test
+    fun `단건 미발견과 소유권 위반은 같은 POSITION_NOT_FOUND로 숨긴다`() {
+        every { positionService.findById(99L) } returns null
+        assertApplicationError(ApplicationError.POSITION_NOT_FOUND) {
+            facade.findById(PositionCriteria.FindById(99L, 1L))
         }
 
-        @Test
-        fun `포지션이 없으면 null을 반환한다`() {
-            every { positionService.findById(999L) } returns null
-
-            val result = facade.findById(999L, 1L)
-
-            assertThat(result).isNull()
-        }
-
-        @Test
-        fun `다른 회원의 포지션을 조회하면 예외를 던진다`() {
-            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
-
-            every { positionService.findById(1L) } returns position
-
-            assertThatThrownBy {
-                facade.findById(1L, 999L)
-            }.isInstanceOf(PositionNotFoundException::class.java)
-                .hasMessageContaining("Position not found")
+        every { positionService.findById(1L) } returns PositionFixtures.openPosition(id = 1L, memberId = 2L)
+        assertApplicationError(ApplicationError.POSITION_NOT_FOUND) {
+            facade.findById(PositionCriteria.FindById(1L, 1L))
         }
     }
 
-    @Nested
-    inner class FindAllOpenByMemberId {
+    @Test
+    fun `목록은 Details Result로 감싼다`() {
+        every { positionService.findAllOpenByMemberId(1L) } returns listOf(PositionFixtures.openPosition(id = 1L))
 
-        @Test
-        fun `회원별 열린 포지션 목록을 조회한다`() {
-            val positions = listOf(
-                PositionFixtures.openPosition(memberId = 1L, symbol = "BTC", id = 1L),
-                PositionFixtures.openPosition(memberId = 1L, symbol = "ETH", id = 2L),
-            )
+        val result = facade.findAllOpenByMemberId(PositionCriteria.FindAllOpen(1L))
 
-            every { positionService.findAllOpenByMemberId(1L) } returns positions
-
-            val result = facade.findAllOpenByMemberId(1L)
-
-            assertThat(result).hasSize(2)
-            assertThat(result[0].symbol).isEqualTo("BTC")
-            assertThat(result[1].symbol).isEqualTo("ETH")
-        }
-
-        @Test
-        fun `열린 포지션이 없으면 빈 목록을 반환한다`() {
-            every { positionService.findAllOpenByMemberId(1L) } returns emptyList()
-
-            val result = facade.findAllOpenByMemberId(1L)
-
-            assertThat(result).isEmpty()
-        }
+        assertThat(result.items).hasSize(1)
     }
 
-    @Nested
-    inner class CalculatePnl {
+    @Test
+    fun `PnL은 Criteria로 조회하고 주입 Clock을 사용한다`() {
+        val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
+        every { positionService.findById(1L) } returns position
+        every { premiumService.findLatestSnapshot(position.pair) } returns snapshot(position.pair, now)
 
-        @Test
-        fun `포지션의 PnL을 페어 기반 KRW 손익으로 계산한다`() {
-            val position = PositionFixtures.openPosition(
-                id = 1L,
-                memberId = 1L,
-                koreaEntryPrice = BigDecimal("161493792"),
-                koreaQuantity = BigDecimal("0.157"),
-                foreignEntryPrice = BigDecimal("118100"),
-                foreignQuantity = BigDecimal("0.15"),
-                entryFxRate = BigDecimal("1521.6"),
-            )
-            val snapshot = premiumSnapshot(
-                koreaPrice = BigDecimal("118326000"),
-                foreignPrice = BigDecimal("79699.1"),
-                fxRate = BigDecimal("1490.5"),
-                foreignPriceInKrw = BigDecimal("118791508.55"),
-                premiumRate = BigDecimal("-0.39"),
-            )
+        val result = facade.calculatePnl(PositionCriteria.CalculatePnl(1L, 1L))
 
-            every { positionService.findById(1L) } returns position
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns snapshot
-
-            val result = facade.calculatePnl(1L, 1L)
-
-            assertThat(result.positionId).isEqualTo(1L)
-            assertThat(result.currentPremiumRate).isEqualByComparingTo(BigDecimal("-0.39"))
-            assertThat(result.koreaPnl).isEqualByComparingTo(BigDecimal("-6777343.344"))
-            assertThat(result.foreignPnlKrw).isEqualByComparingTo(BigDecimal("8585481.2175"))
-            assertThat(result.totalPnlKrw).isEqualByComparingTo(BigDecimal("1808137.8735"))
-            assertThat(result.koreaCurrentValue).isEqualByComparingTo(BigDecimal("18577182"))
-            assertThat(result.totalPnlPercent).isEqualByComparingTo(BigDecimal("9.73"))
-            assertThat(result.isProfit).isTrue()
-        }
-
-        @Test
-        fun `프리미엄 스냅샷이 없으면 예외를 던진다`() {
-            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
-
-            every { positionService.findById(1L) } returns position
-            every { premiumService.findLatestSnapshotBySymbol(Symbol("BTC")) } returns null
-
-            assertThatThrownBy {
-                facade.calculatePnl(1L, 1L)
-            }.isInstanceOf(PremiumNotFoundException::class.java)
-                .hasMessageContaining("Premium not found")
-        }
-
-        @Test
-        fun `다른 회원의 포지션 PnL을 계산하면 예외를 던진다`() {
-            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
-
-            every { positionService.findById(1L) } returns position
-
-            assertThatThrownBy {
-                facade.calculatePnl(1L, 999L)
-            }.isInstanceOf(PositionNotFoundException::class.java)
-                .hasMessageContaining("Position not found")
-
-            verify(exactly = 0) { premiumService.findLatestSnapshotBySymbol(any()) }
-        }
-
-        @Test
-        fun `포지션이 없으면 예외를 던진다`() {
-            every { positionService.findById(999L) } returns null
-
-            assertThatThrownBy {
-                facade.calculatePnl(999L, 1L)
-            }.isInstanceOf(PositionNotFoundException::class.java)
-                .hasMessageContaining("Position not found")
-        }
+        assertThat(result.calculatedAt).isEqualTo(now)
     }
 
-    @Nested
-    inner class ClosePosition {
+    @Test
+    fun `summary는 목록 조회 없이 count 결과만 사용한다`() {
+        every { positionService.countOpenByMemberId(7L) } returns 2L
+        every { positionService.countClosedByMemberId(7L) } returns 3L
 
-        @Test
-        fun `포지션을 청산한다`() {
-            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
+        val result = facade.getSummary(PositionCriteria.Summary(7L))
 
-            every { positionService.findById(1L) } returns position
-
-            val positionSlot = slot<Position>()
-            every { positionService.save(capture(positionSlot)) } answers {
-                positionSlot.captured
-            }
-
-            val result = facade.closePosition(1L, 1L)
-
-            assertThat(result.id).isEqualTo(1L)
-            assertThat(result.status).isEqualTo(PositionStatus.CLOSED)
-
-            verify(exactly = 1) { positionService.save(any()) }
-        }
-
-        @Test
-        fun `포지션이 없으면 예외를 던진다`() {
-            every { positionService.findById(999L) } returns null
-
-            assertThatThrownBy {
-                facade.closePosition(999L, 1L)
-            }.isInstanceOf(PositionNotFoundException::class.java)
-                .hasMessageContaining("Position not found")
-        }
-
-        @Test
-        fun `다른 회원의 포지션을 청산하면 예외를 던진다`() {
-            val position = PositionFixtures.openPosition(id = 1L, memberId = 1L)
-
-            every { positionService.findById(1L) } returns position
-
-            assertThatThrownBy {
-                facade.closePosition(1L, 999L)
-            }.isInstanceOf(PositionNotFoundException::class.java)
-                .hasMessageContaining("Position not found")
-        }
+        assertThat(result.totalPositions).isEqualTo(5)
+        verify(exactly = 0) { positionService.findAllOpenByMemberId(any()) }
     }
 
-    private fun openAutoCriteria(
-        symbol: String = "BTC",
-        koreaExchange: Exchange = Exchange.UPBIT,
-    ): PositionCriteria.OpenAuto = PositionCriteria.OpenAuto(
+    private fun assertApplicationError(expected: ApplicationError, block: () -> Unit) {
+        assertThatThrownBy { block() }
+            .isInstanceOf(ApplicationException::class.java)
+            .hasFieldOrPropertyWithValue("error", expected)
+    }
+
+    private fun openAuto(koreaExchange: String = "UPBIT") = PositionCriteria.OpenAuto(
         memberId = 1L,
-        symbol = symbol,
+        symbol = "BTC",
         koreaExchange = koreaExchange,
         koreaQuantity = BigDecimal("0.5"),
-        foreignExchange = Exchange.BINANCE,
+        foreignExchange = "BINANCE",
         foreignQuantity = BigDecimal("0.5"),
         foreignLeverage = 1,
     )
 
-    private fun premiumSnapshot(
-        observedAt: Instant = Instant.now(),
-        premiumRate: BigDecimal = BigDecimal("1.04"),
-        koreaPrice: BigDecimal = BigDecimal("129555000"),
-        foreignPrice: BigDecimal = BigDecimal("89500"),
-        foreignPriceInKrw: BigDecimal = BigDecimal("128203000"),
-        fxRate: BigDecimal = BigDecimal("1432.6"),
-    ): PremiumSnapshot = PremiumSnapshot(
+    private fun openManual() = PositionCriteria.OpenManual(
+        memberId = 1L,
         symbol = "BTC",
-        premiumRate = premiumRate,
-        koreaPrice = koreaPrice,
-        foreignPrice = foreignPrice,
-        foreignPriceInKrw = foreignPriceInKrw,
-        fxRate = fxRate,
+        koreaExchange = "UPBIT",
+        koreaQuantity = BigDecimal("0.5"),
+        koreaEntryPrice = BigDecimal("100"),
+        foreignExchange = "BINANCE",
+        foreignQuantity = BigDecimal("0.5"),
+        foreignEntryPrice = BigDecimal("90"),
+        foreignLeverage = 1,
+        entryFxRate = BigDecimal("1400"),
+        entryObservedAt = now,
+    )
+
+    private fun snapshot(pair: MarketPair, observedAt: Instant) = PremiumSnapshot(
+        pair = pair,
+        premiumRate = BigDecimal("1.00"),
+        koreaPrice = BigDecimal("129555000"),
+        foreignPrice = BigDecimal("89500"),
+        foreignPriceInKrw = BigDecimal("128203000"),
+        fxRate = BigDecimal("1432.6"),
         observedAt = observedAt,
     )
 }

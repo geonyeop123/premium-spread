@@ -2,6 +2,7 @@ package io.premiumspread.monitoring
 
 import org.springframework.boot.actuate.health.Health
 import org.springframework.boot.actuate.health.HealthIndicator
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
@@ -14,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference
 class BatchHealthIndicator(
     private val jobName: String,
     private val staleThreshold: Duration,
+    private val clock: Clock = Clock.systemUTC(),
 ) : HealthIndicator {
 
     private val lastRunTime = AtomicReference<Instant?>(null)
@@ -32,7 +34,7 @@ class BatchHealthIndicator(
                 .build()
         }
 
-        val elapsed = Duration.between(lastRun, Instant.now())
+        val elapsed = Duration.between(lastRun, clock.instant())
         val isStale = elapsed > staleThreshold
 
         val builder = if (isStale || failures >= MAX_CONSECUTIVE_FAILURES) {
@@ -62,7 +64,7 @@ class BatchHealthIndicator(
      * 성공 기록
      */
     fun recordSuccess() {
-        lastRunTime.set(Instant.now())
+        lastRunTime.set(clock.instant())
         lastError.set(null)
         consecutiveFailures.set(0)
     }
@@ -71,7 +73,7 @@ class BatchHealthIndicator(
      * 실패 기록
      */
     fun recordFailure(errorMessage: String) {
-        lastRunTime.set(Instant.now())
+        lastRunTime.set(clock.instant())
         lastError.set(errorMessage)
         consecutiveFailures.incrementAndGet()
     }

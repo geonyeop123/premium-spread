@@ -37,14 +37,18 @@ wait_healthy() {  # $1=container  $2=timeout초
 wait_healthy premium-spread-mysql 120
 wait_healthy redis-master 60
 
-# ── 2. 앱 빌드 + 기동 (api가 Flyway로 스키마 생성, batch는 그 후 자동 복구) ──
+# ── 2. V12 destructive migration 선행 차단 ─────────────────
+log "V12 migration preflight"
+bash docker/preflight-v12.sh
+
+# ── 3. 앱 빌드 + 기동 (api가 Flyway로 스키마 생성, batch는 Flyway 비활성) ──
 log "앱 빌드 + 기동 (최초 빌드는 ARM 1vCPU에서 수 분 소요)"
 $APP up -d --build
 
-# ── 3. API 헬스체크 (Flyway 마이그레이션 + 부팅 완료 확인) ────
+# ── 4. API readiness (Flyway 마이그레이션 + 부팅 완료 확인) ────
 log "API 헬스 대기 (Flyway 마이그레이션 포함)"
 waited=0
-until curl -fsS http://localhost:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"'; do
+until curl -fsS http://localhost:8080/actuator/health/readiness 2>/dev/null | grep -q '"status":"UP"'; do
   sleep 5; waited=$((waited+5))
   if [ "$waited" -ge 180 ]; then
     err "API 헬스 타임아웃 — 로그 확인:"; docker logs --tail 50 premium-spread-api || true; exit 1
@@ -52,7 +56,7 @@ until curl -fsS http://localhost:8080/actuator/health 2>/dev/null | grep -q '"st
 done
 log "API UP"
 
-# ── 4. 상태 요약 ────────────────────────────────────────────
+# ── 5. 상태 요약 ────────────────────────────────────────────
 log "컨테이너 상태"
 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 log "배포 완료 → http://<PUBLIC_IP>/  (SSL은 deploy/README.md 5단계 참조)"

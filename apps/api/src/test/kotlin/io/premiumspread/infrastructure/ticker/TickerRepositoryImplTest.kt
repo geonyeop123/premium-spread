@@ -1,5 +1,12 @@
 package io.premiumspread.infrastructure.ticker
 
+import io.premiumspread.infrastructure.common.cache.ticker.CachedTicker
+import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheReader
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationSnapshot
+
+import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationQueryRepository
+import io.premiumspread.infrastructure.common.persistence.jpa.ticker.JpaTickerRepositoryAdapter
+import io.premiumspread.infrastructure.common.persistence.jpa.ticker.SpringDataTickerRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -14,17 +21,17 @@ import java.time.Instant
 
 class TickerRepositoryImplTest {
 
-    private lateinit var tickerJpaRepository: TickerJpaRepository
+    private lateinit var tickerJpaRepository: SpringDataTickerRepository
     private lateinit var tickerCacheReader: TickerCacheReader
     private lateinit var tickerAggregationQueryRepository: TickerAggregationQueryRepository
-    private lateinit var repository: TickerRepositoryImpl
+    private lateinit var repository: JpaTickerRepositoryAdapter
 
     @BeforeEach
     fun setUp() {
         tickerJpaRepository = mockk()
         tickerCacheReader = mockk()
         tickerAggregationQueryRepository = mockk()
-        repository = TickerRepositoryImpl(
+        repository = JpaTickerRepositoryAdapter(
             tickerJpaRepository = tickerJpaRepository,
             tickerCacheReader = tickerCacheReader,
             tickerAggregationQueryRepository = tickerAggregationQueryRepository,
@@ -112,6 +119,29 @@ class TickerRepositoryImplTest {
             assertThat(result.symbol).isEqualTo("BTC")
             assertThat(result.currency).isEqualTo("KRW")
             assertThat(result.price).isEqualByComparingTo(BigDecimal("129555000"))
+        }
+
+        @Test
+        fun `Binance의 DB fallback은 USD ticker를 조회한다`() {
+            every { tickerCacheReader.get("binance", "btc") } returns null
+            every { tickerAggregationQueryRepository.findLatestMinute("binance", "btc") } returns null
+            val ticker = io.premiumspread.domain.ticker.Ticker.create(
+                exchange = Exchange.BINANCE,
+                quote = io.premiumspread.domain.ticker.Quote.coin(
+                    io.premiumspread.domain.ticker.Symbol("BTC"),
+                    Currency.USD,
+                ),
+                price = BigDecimal("89277"),
+                observedAt = Instant.parse("2024-01-01T00:00:00Z"),
+            )
+            every {
+                tickerJpaRepository.findLatest(Exchange.BINANCE, "BTC", Currency.USD)
+            } returns ticker
+
+            val result = repository.findLatestSnapshotByExchangeAndSymbol("binance", "btc")
+
+            assertThat(result!!.currency).isEqualTo("USD")
+            assertThat(result.price).isEqualByComparingTo("89277")
         }
 
         @Test

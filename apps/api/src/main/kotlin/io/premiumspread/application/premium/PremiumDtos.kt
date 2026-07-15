@@ -1,14 +1,13 @@
 package io.premiumspread.application.premium
 
-import io.premiumspread.domain.premium.Premium
-import io.premiumspread.domain.premium.PremiumAggregationSnapshot
 import java.math.BigDecimal
 import java.time.Instant
 
 class PremiumCriteria private constructor() {
-    data class Create(
-        val symbol: String,
-    )
+    data class Create(val symbol: String)
+    data class FindCurrent(val symbol: String)
+    data class FindHistory(val symbol: String, val from: Instant, val to: Instant)
+    data class FindAggregation(val symbol: String, val interval: String, val from: Instant, val to: Instant)
 }
 
 class PremiumResult private constructor() {
@@ -20,19 +19,19 @@ class PremiumResult private constructor() {
         val fxTickerId: Long,
         val premiumRate: BigDecimal,
         val observedAt: Instant,
-    ) {
-        companion object {
-            fun from(premium: Premium): Detail = Detail(
-                id = premium.id,
-                symbol = premium.symbol.code,
-                koreaTickerId = premium.koreaTickerId,
-                foreignTickerId = premium.foreignTickerId,
-                fxTickerId = premium.fxTickerId,
-                premiumRate = premium.premiumRate,
-                observedAt = premium.observedAt,
-            )
-        }
-    }
+    )
+
+    data class Details(val items: List<Detail>)
+
+    data class Current(
+        val symbol: String,
+        val premiumRate: BigDecimal,
+        val koreaPrice: BigDecimal,
+        val foreignPrice: BigDecimal,
+        val foreignPriceInKrw: BigDecimal,
+        val fxRate: BigDecimal,
+        val observedAt: Instant,
+    )
 
     data class Aggregation(
         val symbol: String,
@@ -44,19 +43,7 @@ class PremiumResult private constructor() {
         val count: Int,
         val observedAt: Instant,
         val fxRate: BigDecimal?,
-    ) {
-        companion object {
-            fun from(snapshot: PremiumAggregationSnapshot): Aggregation = Aggregation(
-                symbol = snapshot.symbol,
-                high = snapshot.high,
-                low = snapshot.low,
-                open = snapshot.open,
-                close = snapshot.close,
-                avg = snapshot.avg,
-                count = snapshot.count,
-                observedAt = snapshot.observedAt,
-                fxRate = snapshot.fxRate,
-            )
-        }
-    }
+    )
+
+    data class AggregationPage(val data: List<Aggregation>, val hasMore: Boolean)
 }

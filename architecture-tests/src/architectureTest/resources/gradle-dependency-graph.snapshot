@@ -1,0 +1,38 @@
+# inspected application/infrastructure runtime project component coordinates
+:apps:api => io.premiumspread:api
+:apps:batch => io.premiumspread:batch
+:infrastructure:api => io.premiumspread.infrastructure:api
+:infrastructure:batch => io.premiumspread.infrastructure:batch
+# inspected project dependency configurations: api, compileOnly, compileOnlyApi, implementation, runtimeOnly
+:apps:api [implementation] -> :domain
+:apps:api [runtimeOnly] -> :infrastructure:api
+:apps:api [runtimeOnly] -> :infrastructure:common
+:apps:api [runtimeOnly] -> :supports:logging
+:apps:api [runtimeOnly] -> :supports:monitoring
+:apps:batch [implementation] -> :domain
+:apps:batch [runtimeOnly] -> :infrastructure:batch
+:apps:batch [runtimeOnly] -> :infrastructure:common
+:apps:batch [runtimeOnly] -> :supports:logging
+:apps:batch [runtimeOnly] -> :supports:monitoring
+:infrastructure:api [implementation] -> :domain
+:infrastructure:api [implementation] -> :infrastructure:common
+:infrastructure:api [implementation] -> :modules:redis
+:infrastructure:batch [implementation] -> :domain
+:infrastructure:batch [implementation] -> :infrastructure:common
+:infrastructure:batch [implementation] -> :modules:redis
+:infrastructure:batch [implementation] -> :supports:email
+:infrastructure:batch [implementation] -> :supports:monitoring
+:infrastructure:common [implementation] -> :domain
+:infrastructure:common [implementation] -> :modules:jpa
+:infrastructure:common [implementation] -> :modules:redis
+:modules:jpa [implementation] -> :domain
+# inspected :domain direct external dependencies (excluding Kotlin plugin stdlib): api, compileOnly, compileOnlyApi, implementation, runtimeOnly
+:domain [api] => jakarta.persistence:jakarta.persistence-api
+:domain [implementation] => org.springframework.data:spring-data-commons
+:domain [implementation] => org.springframework:spring-context
+:domain [implementation] => org.springframework:spring-tx
+# inspected :apps:batch direct external dependencies (excluding Kotlin plugin stdlib): api, compileOnly, compileOnlyApi, implementation, runtimeOnly
+:apps:batch [implementation] => org.jetbrains.kotlin:kotlin-reflect
+:apps:batch [implementation] => org.springframework.boot:spring-boot-starter
+:apps:batch [implementation] => org.springframework.boot:spring-boot-starter-validation
+:apps:batch [implementation] => org.springframework:spring-tx

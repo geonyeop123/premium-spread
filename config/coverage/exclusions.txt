@@ -1,0 +1,13 @@
+# Only generated code, configuration wiring, and DTO-only types may be excluded.
+**/generated/**
+**/*Generated*.*
+**/PremiumSpreadApplication*.*
+**/PremiumSpreadBatchApplication*.*
+**/config/**
+**/*Configuration*.*
+**/*AutoConfiguration*.*
+**/*Properties*.*
+**/*Dto*.*
+**/*Dtos*.*
+**/interfaces/api/**/*Request*.*
+**/interfaces/api/**/*Response*.*

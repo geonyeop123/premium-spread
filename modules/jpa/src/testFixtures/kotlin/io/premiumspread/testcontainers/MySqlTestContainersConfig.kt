@@ -22,10 +22,13 @@ class MySqlTestContainersConfig {
             }
 
         init {
-            val mySqlJdbcUrl = mySqlContainer.let { "jdbc:mysql://${it.host}:${it.firstMappedPort}/${it.databaseName}" }
-            System.setProperty("datasource.mysql-jpa.main.jdbc-url", mySqlJdbcUrl)
-            System.setProperty("datasource.mysql-jpa.main.username", mySqlContainer.username)
-            System.setProperty("datasource.mysql-jpa.main.password", mySqlContainer.password)
+            val mySqlJdbcUrl = mySqlContainer.let {
+                "jdbc:mysql://${it.host}:${it.firstMappedPort}/${it.databaseName}" +
+                    "?sslMode=DISABLED&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
+            }
+            System.setProperty("spring.datasource.url", mySqlJdbcUrl)
+            System.setProperty("spring.datasource.username", mySqlContainer.username)
+            System.setProperty("spring.datasource.password", mySqlContainer.password)
         }
     }
 }

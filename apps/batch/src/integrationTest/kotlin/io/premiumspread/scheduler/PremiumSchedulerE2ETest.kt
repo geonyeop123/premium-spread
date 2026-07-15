@@ -1,0 +1,136 @@
+package io.premiumspread.interfaces.scheduling
+
+import io.premiumspread.application.job.premium.PremiumRealtimeJob
+import io.premiumspread.support.BatchIntegrationTestBase
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import java.math.BigDecimal
+import java.time.Instant
+
+@DisplayName("PremiumScheduler E2E")
+class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
+
+    @Autowired
+    lateinit var premiumJob: PremiumRealtimeJob
+
+    private val nowMillis = Instant.now().toEpochMilli()
+
+    /**
+     * 선행 캐시 seed
+     * - ticker:bithumb:btc = 129,555,000 KRW
+     * - ticker:binance:btc = 89,277.10 USDT
+     * - fx:usd:krw = 1,432.60
+     */
+    @BeforeEach
+    fun seedCacheData() {
+        // 빗썸 티커
+        redisTemplate.opsForHash<String, String>().putAll(
+            "ticker:bithumb:btc",
+            mapOf(
+                "exchange" to "BITHUMB",
+                "symbol" to "BTC",
+                "currency" to "KRW",
+                "price" to "129555000",
+                "volume" to "2345.6789",
+                "timestamp" to nowMillis.toString(),
+            ),
+        )
+
+        // 바이낸스 티커
+        redisTemplate.opsForHash<String, String>().putAll(
+            "ticker:binance:btc",
+            mapOf(
+                "exchange" to "BINANCE",
+                "symbol" to "BTC",
+                "currency" to "USDT",
+                "price" to "89277.10",
+                "volume" to "",
+                "timestamp" to nowMillis.toString(),
+            ),
+        )
+
+        // 환율
+        redisTemplate.opsForHash<String, String>().putAll(
+            "fx:usd:krw",
+            mapOf(
+                "base" to "USD",
+                "quote" to "KRW",
+                "rate" to "1432.60",
+                "timestamp" to nowMillis.toString(),
+            ),
+        )
+    }
+
+    @Nested
+    @DisplayName("calculatePremium")
+    inner class CalculatePremium {
+
+        @Test
+        fun `실행 후 프리미엄 캐시가 저장된다`() {
+            // when
+            premiumJob.run()
+
+            // then
+            val hash = redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc")
+            assertThat(hash).isNotEmpty
+            assertThat(hash["symbol"]).isEqualTo("BTC")
+            assertThat(BigDecimal(hash["korea_price"])).isEqualByComparingTo(BigDecimal("129555000"))
+            assertThat(BigDecimal(hash["foreign_price"])).isEqualByComparingTo(BigDecimal("89277.10"))
+            assertThat(BigDecimal(hash["fx_rate"])).isEqualByComparingTo(BigDecimal("1432.60"))
+            assertThat(BigDecimal(hash["rate"])).isPositive()
+            assertThat(hash["observed_at"]).isNotNull()
+        }
+
+        @Test
+        fun `실행 후 프리미엄 초당 ZSet에 데이터가 저장된다`() {
+            // when
+            premiumJob.run()
+
+            // then
+            val zsetSize = redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:seconds")
+            assertThat(zsetSize).isGreaterThanOrEqualTo(1)
+
+            val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:seconds", 0, -1)
+            assertThat(members).isNotEmpty
+            // value format: "rate:koreaPrice:foreignPrice:fxRate"
+            val entry = members!!.first()
+            val parts = entry.value!!.split(":")
+            assertThat(parts).hasSize(4)
+            assertThat(BigDecimal(parts[0])).isPositive() // premiumRate
+        }
+
+        @Test
+        fun `실행 후 히스토리 ZSet에 데이터가 항상 저장된다`() {
+            // when - 포지션 유무와 관계없이 히스토리 저장
+            premiumJob.run()
+
+            // then
+            val zsetSize = redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:history")
+            assertThat(zsetSize).isGreaterThanOrEqualTo(1)
+
+            val members = redisTemplate.opsForZSet().rangeWithScores("premium:bithumb:binance:btc:history", 0, -1)
+            assertThat(members).isNotEmpty
+            // value format: "premiumRate:koreaPrice:foreignPrice"
+            val parts = members!!.first().value!!.split(":")
+            assertThat(parts).hasSize(3)
+        }
+
+        @Test
+        fun `ticker 캐시가 없으면 premium 캐시가 저장되지 않는다`() {
+            // given - seedCacheData로 세팅된 ticker 캐시 제거
+            redisTemplate.delete("ticker:bithumb:btc")
+            redisTemplate.delete("ticker:binance:btc")
+
+            // when
+            premiumJob.run()
+
+            // then - premium 캐시 없음
+            assertThat(redisTemplate.opsForHash<String, String>().entries("premium:bithumb:binance:btc")).isEmpty()
+            assertThat(redisTemplate.opsForZSet().size("premium:bithumb:binance:btc:seconds")).isEqualTo(0)
+        }
+    }
+}

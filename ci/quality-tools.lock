@@ -1,0 +1,7 @@
+# name|version|download URL|SHA-256
+#
+# CI-only binaries are deliberately kept out of Gradle plugin resolution. Update a
+# version and checksum together after verifying the publisher's primary release.
+ktlint|1.8.0|https://repo1.maven.org/maven2/com/pinterest/ktlint/ktlint-cli/1.8.0/ktlint-cli-1.8.0-all.jar|369ad2b789f95a011f807e1fcb690ccef80bd7cd014fd139e73ae82dcc0baeab
+detekt|1.23.8|https://repo1.maven.org/maven2/io/gitlab/arturbosch/detekt/detekt-cli/1.23.8/detekt-cli-1.23.8-all.jar|3afe89a11120303c73c9bdda3d8fe558dd9070a6937d27819ddc04b275381245
+dependency-check|12.2.2|https://github.com/dependency-check/DependencyCheck/releases/download/v12.2.2/dependency-check-12.2.2-release.zip|bf07fefd81af3094c5f6850423b014df44db62ce2dbad0f79079a90df675e44a

@@ -2,83 +2,69 @@
 
 ## 구조
 
-- `application/common/`: `JobResult`, `JobConfig`, `JobExecutor` (lock/metrics/last-run 공통)
-- `application/job/premium/`: `PremiumRealtimeJob`
-- `application/job/fx/`: `FxIngestionJob`
-- `application/job/aggregation/`: `AggregationJob<T>` (제네릭, reader/writer 패턴)
-- `client/{exchange}/`: `*WebSocketClient` (거래소 WebSocket 구독·파싱)
-- `infrastructure/websocket/`: `WebSocketConnectionManager`, `WebSocketMetrics` (공통 WS 인프라)
-- `infrastructure/ingestion/{exchange}/`: `*TickerIngestion` (수신 처리), `*FlushJob` (1초 down-sample)
-- `scheduler/`: `*FlushScheduler` (thin entrypoint), 집계 scheduler
+```text
+apps:batch/interfaces/scheduling   # @Scheduled thin trigger
+apps:batch/application/job         # premium/fx/ticker/aggregation use case
+apps:batch/application/notification# durable delivery/retention orchestration
+domain                             # Job/market/aggregation/notification ports
+infrastructure:batch               # 외부 거래소/FX/WebSocket/cache/lock/metric/email adapter
+infrastructure:common              # 공유 JDBC/JPA/Redis adapter와 migration
+```
 
-## 스케줄링 Job 규칙 (집계 등)
+앱 내부 `client`, `cache`, `repository`, `infrastructure` 기술 구현은 금지한다. Scheduler는 Application Job
+하나만 호출하고, Job은 Domain port만 주입받는다.
 
-- scheduler는 `@Scheduled` + `jobExecutor.execute(config) { job.run() }` 패턴만 담당 (thin entrypoint)
-- 비즈니스 로직은 Job 클래스에 위치
-- JobExecutor가 lock/metrics/last-run 등 공통 관심사 처리
+## Job 실행 계약
 
-## WebSocket Ingestion 패턴
+- 모든 일반 Job은 `JobExecutor`를 통해 typed `JobConfig`의 lock key, lease, execution timeout을 적용한다.
+- Redis lock은 owner token과 atomic renew/release를 사용한다. timeout 이후 실제 action이 끝나기 전에 lock을
+  해제하지 않는다.
+- `JobResult`는 success/skipped/failure를 구분하고 bounded outcome metric과 last-success age를 남긴다.
+- `batch.scheduling.enabled=false`이면 Scheduler와 scheduling infrastructure가 모두 비활성화된다.
+- cron zone과 aggregation zone이 다르면 startup에서 실패한다.
 
-시세 수집은 거래소 WebSocket 실시간 스트림으로 처리한다 (REST 폴링은 #32에서 제거).
-다음 6개 패턴을 신규 WebSocket 수집 컴포넌트에 동일하게 적용한다.
+## Market과 시간
 
-### 1. thin scheduler + ingestion/flush Job 패턴
+- Batch runtime market은 `batch.market`의 `MarketPair`, 한국/해외 quote, FX base/quote가 하나의 설정 계약이다.
+- stream symbol/quote/endpoint가 market 설정과 다르면 startup에서 실패한다.
+- 현재 저장 모델은 pair-aware지만 실행 중 동시에 수집하는 pair는 하나다.
+- 현재 시각은 주입한 `Clock`을 사용한다.
+- minute/hour DB bucket은 UTC, day bucket/cron은 `aggregation.zone`을 사용한다.
+- 모든 집계 range는 `[from,to)`다.
 
-- `*WebSocketClient`: 거래소 연결·구독·JSON 파싱. 메시지마다 `*TickerIngestion.onMessage(ticker)`로 위임.
-- `*TickerIngestion`: 수신 메시지를 in-memory `AtomicReference`에 보관 + Hash 갱신. ZSet은 건드리지 않음.
-- `*FlushJob`: 1초 주기로 최신값을 ZSet에 down-sample flush. bookTicker처럼 초당 수십~수백 건
-  push되는 채널을 1Hz로 정규화한다.
-- `*FlushScheduler`: `@Scheduled(fixedRate = 1000)` + `flushJob.run()`만 호출하는 thin entrypoint.
-  단일 인스턴스 전제이므로 분산 락 불필요 → `JobExecutor` 미사용 (집계 Job과 다름).
-- 비즈니스 로직·예외·메트릭·last-run·알람은 모두 Job 클래스 내부에 둔다. scheduler는 trigger만.
-- WebSocket 컴포넌트는 `@Profile("!test")`로 가드한다 — `test` 프로파일에서 `@PostConstruct`가
-  실제 거래소로 outbound 연결을 여는 것을 막는다 (통합 테스트는 `WebSocketConnectionManager`를
-  수동 생성해 Mock WebSocket Server에 붙는다).
+## WebSocket ingestion
 
-### 2. last-run 헬스 모델 (`batch:last-run:{job}` 갱신)
+- 외부 연결/구독/JSON 파싱은 `infrastructure:batch/exchange`, 최신값 buffer는
+  `infrastructure:batch/ingestion`이 소유한다.
+- Application `TickerFlushJob`은 `LatestMarketTickReadPort`에서 읽어 `TickerTimeSeriesWritePort`로 1초
+  down-sample한다.
+- exchange timestamp보다 오래된 메시지는 버리고 같은 timestamp는 허용한다.
+- 관측값이 10초보다 오래되면 seconds 기록을 중단한다.
+- connection은 first-message timeout, idle watchdog, generation fencing, exponential reconnect를 사용한다.
+- `test` profile은 실제 stream bean 대신 port fallback을 사용한다. 테스트는 MockWebServer/가짜 stream으로만
+  외부 연결을 검증한다.
 
-- `*FlushJob`은 flush 성공 시마다 Redis 키 `batch:last-run:{job}`(예: `batch:last-run:bithumb-flush`)에
-  현재 epoch millis를 기록한다. TTL은 `RedisTtl.BATCH_HEALTH`.
-- 모니터링은 이 키의 존재/신선도로 수집 정상 여부를 판단한다 (`JobExecutor`의 last-run과 동등한 헬스 모델).
-- no-op(첫 메시지 미수신)·stale skip 시에는 last-run을 갱신하지 않는다 — 장애가 헬스 키에 가려지지 않도록.
+## FX와 Premium
 
-### 3. 연속 N회 실패 시 AlertService 호출 규칙
+- FX write는 MySQL 성공 후 Redis를 갱신한다. DB 실패 시 cache-only 값을 발행하지 않는다.
+- Premium 계산은 Domain `PremiumPolicy`만 사용하고 `MarketPair`/FX source/observedAt을 보존한다.
+- current/seconds는 필수 경로다. history 실패는 현재 계산을 실패시키지 않는 명시적 non-critical 경로다.
+- threshold 평가는 premium snapshot 저장 뒤 실행되며 활성 구독 조회와 enqueue는 같은 DB transaction이다.
 
-- Hash 저장(`*TickerIngestion`) 또는 ZSet flush(`*FlushJob`) 실패는 `AtomicInteger`로 연속 실패 횟수를 센다.
-- `FAILURE_ALERT_THRESHOLD = 5` 회 연속 실패 시 `AlertService.sendCriticalAlert(...)` 호출 후 카운터 리셋.
-- 1회성 실패는 다음 1초 주기에 자연 복구되므로 알람하지 않는다 (메트릭만 증가).
+## Durable notification
 
-### 4. monotonic check (메시지 reorder/replay 방어)
+- in-memory event, `@Async` listener, Redis cooldown을 전달 보장으로 사용하지 않는다.
+- event identity는 subscription revision, MarketPair, direction, threshold, cooldown window를 포함한다.
+- worker는 실행 가능한 concurrency만큼만 `FOR UPDATE SKIP LOCKED`로 claim한다.
+- row마다 owner와 UUID claim token을 저장하고 모든 상태 전이에 fencing 조건을 적용한다.
+- SMTP 전에 PROCESSING claim을 commit한다. 성공 후 mark 실패로 중복될 수 있으므로 at-least-once다.
+- retry/max attempts/stale recovery/redrive/PII scrub은
+  `docs/runbooks/durable-notification-delivery.md`와 함께 변경한다.
 
-- `*TickerIngestion.onMessage`는 `AtomicReference.updateAndGet` CAS로 직전 메시지와 exchange timestamp를
-  비교한다. 직전보다 **오래된**(`isBefore`) timestamp 메시지는 폐기하고 `ws.out_of_order{exchange}` 증가.
-- 동일 timestamp는 수용한다 (Bithumb은 HHmmss 초 정밀도, Binance bookTicker는 동일 eventTime ms에
-  복수 push가 정상이므로 strict-less-than만 폐기).
+## Readiness와 metric
 
-### 5. stale threshold + skip + 메트릭
-
-- `*FlushJob.run()`은 `now - lastReceivedAt > STALE_THRESHOLD`(10초)이면 flush를 skip하고
-  `ws.stale.{exchange}` 카운터를 증가시킨다.
-- stale 동안 ZSet 기록을 멈춰 오래된 가격이 신선한 데이터로 누적되는 오염을 막는다.
-- 재연결 후 첫 메시지가 도착하면 자동으로 flush를 재개한다.
-
-### 6. silent ingestion outage 방어 + idle-timeout watchdog (이슈 #57)
-
-TCP 연결은 살아있으나 메시지가 전혀 들어오지 않는 "silent outage"를 두 레이어에서 처리한다.
-
-**WebSocket 연결 레이어 — `WebSocketConnectionManager`:**
-- 연결 후 `firstMessageTimeout`(5초) 내 첫 메시지 미수신 시 `ws.first.message.timeout{exchange}` 증가 +
-  `AlertService.sendCriticalAlert` + **강제 재연결**(이슈 #57).
-- 핸드셰이크 직후부터 idle-timeout watchdog 동작 — `now - lastMessageAt > idleTimeout`(기본 60초) 시
-  현재 연결을 강제 종료하고 backoff 후 재연결(`ws.reconnect.attempt{exchange}` 증가, `AlertService` 호출).
-- watchdog 콜백은 boundedElastic 스케줄러에서 alert를 dispatch하므로 alert hang에도 reconnect timer가 막히지 않는다.
-- 연결 세대 카운터(`connectionGeneration`)로 stale 콜백이 새 연결을 끊는 race를 방지한다.
-
-**Ingestion 레이어 — `*FlushJob.STALE_THRESHOLD`(10초):**
-- `ws.last.message.age{exchange}` Gauge로 마지막 메시지 후 경과 시간을 노출.
-- `*FlushJob`이 ZSet flush를 skip하고 `ws.stale.{exchange}` 카운터를 증가 — ticker-specific staleness.
-
-두 레이어는 직교한다: watchdog는 **모든 inbound 프레임**을 fresh로 인정하여 TCP-level 완전 침묵을 검출,
-FlushJob staleness는 ticker 데이터 stream 정체를 검출. 운영팀 식별 시그널은 `ws.connection.state == 0`,
-`ws.stale.{exchange}` 증가, `ws.last.message.age` 임계값 초과(connected-but-no-message), `ws.reconnect.attempt` 급증.
-</content>
+- liveness에는 외부 dependency를 넣지 않는다.
+- Batch readiness는 DB/Redis와 필수 Binance/Bithumb connection/message freshness를 포함한다.
+- scheduling disabled test에서는 ingestion만 readiness 대상에서 제외한다.
+- exchange/job/outcome처럼 bounded tag만 사용한다. symbol은 configured bounded market만 허용한다.
+- owner, claim token, delivery ID, email, exception message는 tag로 기록하지 않는다.

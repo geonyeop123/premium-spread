@@ -1,0 +1,15 @@
+.git
+.git/**
+**/.git
+**/.git/**
+**/.gradle
+**/.gradle/**
+**/build
+**/build/**
+**/node_modules
+**/node_modules/**
+**/.idea
+**/.idea/**
+**/*.log
+.env
+.env.*

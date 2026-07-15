@@ -1,260 +1,108 @@
-## 1. 개요 (Overview)
+# Premium Spread 비즈니스 개요
 
-본 서비스는 동일한 암호화폐(대표적으로 **BTC**)가
+## 1. 목적
 
-**한국 거래소와 해외 거래소 간 가격 차이(김치 프리미엄)** 를 이용하여
+Premium Spread는 동일 암호화폐의 한국 현물 가격과 해외 헤지 거래소 가격 차이를 USD/KRW 환율로
+정규화해 김치 프리미엄을 관측한다. 사용자는 한국 현물 Long과 해외 선물 Short를 함께 보유해 가격
+방향 노출을 줄이고 프리미엄 변화에 따른 손익을 관리한다. 서비스는 거래를 직접 체결하지 않으며 현재는
+관측, 포지션 기록, 손익 계산, 임계값 알림을 제공한다.
 
-차익을 추구하는 **헤지 기반 트레이딩 모델**을 제공한다.
+## 2. 핵심 식별자: MarketPair
 
-한국 거래소의 현물 포지션과
+프리미엄과 알림 조건을 symbol 하나로 식별하지 않는다.
 
-해외 거래소의 선물 포지션을 **동시에 운용**함으로써
-
-가격 방향성 리스크를 최소화하고,
-
-프리미엄 변화에 따른 수익을 실현하는 것이 핵심 목적이다.
-
----
-
-## 2. 핵심 개념 (Core Concepts)
-
-### 2.1 김치 프리미엄 (Kimchi Premium)
-
-김치 프리미엄이란,
-
-**한국 거래소의 암호화폐 가격이 해외 거래소 대비 얼마나 높은지를 백분율로 표현한 값**이다.
-
-### 계산식
-
-> ⚠️ 기존 계산식은 분모 선택이 다소 부정확하여 보정함
->
-
-```kotlin
-// 권장 계산식
-((koreanPrice - (foreignPrice * exchangeRate))
-        / (foreignPrice * exchangeRate)) * 100
-
+```text
+MarketPair = Symbol + KoreaExchange + ForeignExchange
+canonicalKey = {symbol}:{KOREA_EXCHANGE}:{FOREIGN_EXCHANGE}
 ```
 
-- `koreanPrice` : 한국 거래소 BTC 현물 가격 (KRW)
-- `foreignPrice` : 해외 거래소 BTC 선물 가격 (USD)
-- `exchangeRate` : 원/달러 환율
+- `KoreaExchange`는 한국 현물 거래소여야 한다.
+- `ForeignExchange`는 거래 가능한 해외 거래소여야 하며 환율 공급자는 사용할 수 없다.
+- 현재 기본 pair는 `BTC:BITHUMB:BINANCE`다.
+- API의 기존 symbol-only 요청은 기본 pair로 해석한다.
+- 저장/조회/알림 dedupe는 pair를 보존한다. Batch 수집은 현재 설정된 한 pair만 실행한다.
 
-### 보정 사유
+이 구분이 없으면 같은 BTC라도 거래소 조합이 다른 가격, 프리미엄, 임계값 알림이 섞이므로 모든 신규
+premium/position/notification 기능은 `MarketPair`를 identity에 포함해야 한다.
 
-- **해외 기준 가격 대비 얼마나 프리미엄이 붙었는지**가 본질이므로
+## 3. 김치 프리미엄
 
-  분모는 `foreignPrice * exchangeRate`가 타당함
-
-- 한국 가격을 분모로 사용할 경우 프리미엄 왜곡 발생 가능
-
-### 출력 포맷
-
-```kotlin
-premium.roundTo(2)// 소수점 2자리
-
+```text
+foreignPriceInKrw = foreignPriceUsd × exchangeRate
+premiumRate = ((koreaPrice - foreignPriceInKrw) / foreignPriceInKrw) × 100
 ```
 
----
+- `koreaPrice`: 한국 거래소 현물 가격(KRW)
+- `foreignPriceUsd`: 해외 거래소 헤지 가격(USD로 정규화)
+- `exchangeRate`: USD/KRW
+- 계산 입력은 모두 양수여야 한다.
+- Domain `PremiumPolicy`가 계산 정밀도와 반올림의 단일 정본이다. 저장 정밀도와 API 표시 정밀도는 분리한다.
+- 음수 프리미엄도 정상적인 시장 값이며 오류나 0으로 보정하지 않는다.
 
-### 2.2 포지션 (Position)
+## 4. Position과 손익
 
-포지션은 **프리미엄을 매수한 상태**를 의미하며,
+Position 한 행은 같은 symbol의 한 MarketPair를 나타낸다.
 
-한국 현물과 해외 선물을 **동일 수량으로 동시에 진입**한다.
+| 측 | 방향 | 필수 값 |
+|---|---|---|
+| 한국 거래소 | 현물 Long | exchange, quantity, entry price(KRW) |
+| 해외 거래소 | 헤지 Short | exchange, quantity, entry price(USD), leverage |
+| 공통 | 진입 기준 | entry FX rate, entry premium rate, observed time |
 
-- 이때, 해외거래소의 레버리지를 통해 작은 시드로 큰 수익을 가져올 수 있으나, ‘청산’리스크 발생
+AUTO 오픈은 해당 pair의 60초 이내 최신 Premium snapshot에서 진입 가격/환율/관측 시각을 채운다.
+MANUAL 오픈은 사용자가 이를 제공하되 서버가 양수·거래소 지역·레버리지 범위를 검증한다. 진입 프리미엄은
+클라이언트 값을 신뢰하지 않고 서버가 계산한다.
 
-### 예시
+```text
+koreaPnl = (currentKoreaPrice - koreaEntryPrice) × koreaQuantity
+foreignPnlKrw = (foreignEntryPrice - currentForeignPrice) × foreignQuantity × currentFxRate
+totalPnlKrw = koreaPnl + foreignPnlKrw
+totalPnlPercent = totalPnlKrw / koreaEntryValue × 100
+```
 
-| 항목          | 값               |
-|-------------|-----------------|
-| 한국 거래소      | 빗썸              |
-| 해외 거래소      | 바이낸스 (선물)       |
-| BTC 수량      | 0.5 BTC         |
-| 레버리지        | 1x              |
-| 빗썸 BTC 가격   | 129,555,000 KRW |
-| 바이낸스 BTC 가격 | 89,277.1 USD    |
-| 환율          | 1,432.6         |
-| 진입 프리미엄     | 1.28%           |
+`isProfit`은 프리미엄 증감 부호가 아니라 `totalPnlKrw > 0`을 의미한다. 수수료, 슬리피지, 펀딩비,
+세금은 현재 계산에 포함하지 않으므로 실제 거래 손익과 다를 수 있다.
 
-### 포지션 구성
+## 5. 시세, 환율, 집계
 
-- **한국 거래소**: BTC 현물 매수 (Long)
-- **해외 거래소**: BTC 선물 매도 (Short)
+- Binance/Bithumb 시세는 WebSocket으로 받고 1초 단위로 down-sample한다.
+- USD/KRW는 30분마다 수집하며 DB 저장 성공 뒤 Redis를 갱신한다.
+- Premium은 1초마다 계산한다.
+- seconds 데이터는 minute, hour, day bucket으로 집계한다.
+- 저장 시각은 UTC이며 일 단위 업무 경계/cron은 기본 `Asia/Seoul`이다.
+- 시간 범위는 모두 `[from, to)`이고 손상된 cache row가 있으면 부분 값을 반환하지 않는다.
 
-→ 가격 방향성 중립 (Delta Neutral)
+## 6. 회원 인증
 
----
+- 로그인은 Access Token을 응답 body로, Refresh Token을 HttpOnly cookie로 반환한다.
+- Access Token은 Bearer header로 사용하며 브라우저의 memory/sessionStorage에만 보관한다.
+- Refresh Token은 회전하고 서버에는 원문 대신 HMAC hash와 session family/generation을 저장한다.
+- 한 회원의 새 로그인은 기존 active refresh session을 교체한다.
+- logout은 refresh session과 cookie를 폐기하지만 이미 발급된 Access Token은 만료까지 유효하다.
 
-### 2.3 손익 구조 (PnL Structure)
+## 7. 프리미엄 임계값 알림
 
-포지션의 손익은 **프리미엄 변화량**에 의해 결정된다.
+회원은 MarketPair, 방향(`ABOVE`/`BELOW`), 임계값을 가진 구독을 등록한다. 조건이 맞으면 Batch가
+MySQL `notification_delivery`에 먼저 저장한 후 별도 worker가 이메일을 전송한다.
 
-- 프리미엄 하락 → **이익**
-- 프리미엄 상승 → **손실**
+보장 수준은 **at-least-once**다.
 
-> 단, 가격 자체의 상승/하락은
->
->
-> 현물(Long) ↔ 선물(Short) 구조로 상쇄됨
->
+- 같은 구독 revision/조건/pair/cooldown window의 event는 DB unique key로 한 번만 enqueue한다.
+- row claim은 `FOR UPDATE SKIP LOCKED`와 owner/claim token으로 fencing한다.
+- 전송 실패는 기본 1분, 5분, 30분, 2시간 계열에 jitter를 적용해 재시도하며 최대 5회 후 `FAILED`가 된다.
+- stale `PROCESSING` claim은 회수하고, 원인 해소 뒤 운영자가 actor/reason을 남겨 `FAILED`를 redrive할 수 있다.
+- SMTP가 수락한 뒤 DB `SENT` 반영이 실패하면 같은 메일이 다시 발송될 수 있다. 이메일 exactly-once는
+  보장하지 않는다.
+- SENT payload의 이메일/제목/본문은 기본 30일 후 scrub한다. event/dedupe/audit identity는 보존한다.
 
----
+운영 상세는 [`docs/runbooks/durable-notification-delivery.md`](../../docs/runbooks/durable-notification-delivery.md)를
+따른다.
 
-### 2.4 포지션 매도 (Close Position)
+## 8. 제품 범위와 리스크
 
-포지션 매도는 다음 행위를 의미한다.
-
-- **동일 시점에**
-    - 한국 거래소 BTC 현물 매도
-    - 해외 거래소 BTC 선물 매수
-
-이를 통해 **현재 프리미엄 기준 손익을 확정(realize)** 한다.
-
----
-
-### 2.5 최종 손익 (Net Profit)
-
-최종 손익은 단순 프리미엄 차이뿐 아니라
-
-다음 요소를 모두 반영하여 계산된다.
-
-### 손익 구성 요소
-
-- 프리미엄 변화에 따른 차익
-- 거래 수수료
-    - 한국 거래소 현물 수수료
-    - 해외 거래소 선물 수수료
-- 펀딩비 (Funding Fee)
-- 환율 변동 손익 (옵션)
-
----
-
-## 3. 버전별 트레이딩 모델 (Trading Versions)
-
-### 3.1 Trading V1 – 수동 입력 기반 (MVP 1 완료)
-
-### 특징
-
-- 실시간 프리미엄 계산
-    - 한국 거래소 API (빗썸)
-    - 해외 거래소 API (바이낸스)
-    - 환율 API
-- 회원이 직접 매수/매도 포지션 입력
-    - 포지션 1건 = 한국 long + 해외 short 페어 단일 행 (이슈 #41, V12 마이그레이션)
-    - 도메인 검증: 한국/해외 거래소 region 분리, 수량/가격/환율 양수, 해외 레버리지 1~125
-    - 진입 프리미엄율은 서버가 `Premium.calculatePremiumRate`와 동일 정밀도로 계산
-    - 오픈 엔드포인트 AUTO/MANUAL 분기 (이슈 #42)
-        - AUTO: 진입가/환율/관측시각을 서버가 최신 프리미엄 스냅샷에서 자동 채움 (60초 신선도 검증)
-        - MANUAL: 진입가/환율/관측시각을 사용자가 직접 입력
-    - 프론트엔드 오픈 폼 (이슈 #44): AUTO/MANUAL 모드 토글 (기본 AUTO)
-        - AUTO 입력: 심볼/한국 거래소/한국 수량/해외 거래소/해외 수량/해외 레버리지
-        - MANUAL 입력: AUTO 필드 + 한국 진입가(KRW)/해외 진입가(USD)/환율/관측 시각
-        - 한국(롱) / 해외(숏) 페어 필드를 시각적으로 그룹화하여 페어 트레이딩 구조를 명확히 안내
-        - 스냅샷 부재/오래된 경우 친화 메시지로 안내 ("현재 가격/환율 정보가 없거나 오래되었습니다…")
-- 손익 계산 및 저장
-    - 페어 기반 KRW 손익 (이슈 #43): 한국 long PnL + 해외 short PnL(USD→KRW 환산) 합산
-    - 표시 필드: `koreaPnl`, `foreignPnlKrw`, `totalPnlKrw`, `koreaCurrentValue`, `totalPnlPercent` + 기존 `premiumDiff`
-    - `isProfit`은 `totalPnlKrw > 0` 기준 (실제 KRW 이익 여부)
-    - 프론트엔드 PnL 표시 (이슈 #44)
-        - 목록: `premiumDiff(%p)` + `totalPnlKrw원(totalPnlPercent%)` 2줄, 색상 기준 `totalPnlKrw >= 0`
-        - 상세: 한국/해외 분리 카드 + PnL 카드 헤드라인 = KRW 액수 + 총 PnL%, 한국 PnL / 해외 PnL KRW 환산 분리 표시
-- JWT Stateless 인증 (Access + Refresh Token)
-- Slack 알림 서비스 (배치 에러 알림)
-- DB 쿼리 최적화 (N+1 제거, 복합 인덱스)
-
-### 장점
-
-- 구현 난이도 낮음
-- 초기 MVP 적합
-
-### 한계
-
-- 실계좌 데이터 불일치 가능
-- 사용자 입력 오류 리스크
-
----
-
-### 3.2 Trading V2 – 실계좌 연동
-
-### 특징
-
-- 바이낸스 / 빗썸 API Token 연동
-- 실 거래 내역 기반 포지션 자동 계산
-- 매수/매도 시 자동 정합성 검증
-
-### 추가 고려사항
-
-- API Rate Limit
-- API Key 암호화 저장
-- Read / Trade 권한 분리
-
----
-
-### 3.3 Trading V3 – 자동 매매
-
-### 특징
-
-- 프리미엄이 특정 조건 진입 시
-    - 자동 매수
-    - 자동 매도
-- 사용자 전략 설정 가능
-
-### 예시 전략
-
-- 프리미엄 ≥ 3.0% → 진입
-- 프리미엄 ≤ 0.5% → 청산
-
----
-
-## 4. 차트 (Chart)
-
-### 제공 차트
-
-- 김치 프리미엄 시계열 차트
-    - 1분
-    - 3분
-    - 5분
-    - 10분
-    - 30분
-    - 1시간
-    - 1일
-    - 1주
-
-### 환율 옵션
-
-- 실시간 환율
-- 고정 환율 (사용자 지정)
-
----
-
-## 5. 회원 기능 (Member)
-
-### 제공 정보
-
-- 매수 / 매도 이력
-- 보유 포지션 현황
-- 총 누적 수익률
-- 기간별 수익률
-    - 일간 / 주간 / 월간
-
----
-
-## 6. 리스크 및 유의사항
-
-- 환율 급변 리스크
-- 거래소 간 유동성 차이
-- 펀딩비 급등
-- API 장애
-- 자동 매매 시 슬리피지
-
----
-
-## 7. 향후 확장 아이디어
-
-- ETH, SOL 등 다중 코인 지원
-- 거래소 다각화 (코인원, OKX 등)
-- 포지션 부분 청산
-- 리스크 지표 (VaR, MDD)
-- 백테스트 기능
+- 실제 거래 주문, 거래소 계정 연동, 자동 청산 방지는 현재 범위가 아니다.
+- 레버리지는 수익뿐 아니라 청산 위험을 확대한다.
+- 거래소 장애, WebSocket 지연, FX 지연 시 계산/알림이 늦거나 건너뛸 수 있다.
+- notification은 편의 기능이며 주문/리스크 관리의 유일한 신호로 사용하면 안 된다.
+- 다중 pair 저장 모델은 준비되어 있지만 현재 Batch runtime은 한 configured pair만 수집한다.
+- 현재 운영/스테이징 배포 대상은 없다. `prd` 설정과 배포 런북은 향후 운영 환경을 위한 계약이다.

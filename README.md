@@ -14,7 +14,7 @@
 
 | 영역 | 기술 |
 |------|------|
-| Backend | Kotlin 2.0, Java 21, Spring Boot 3.4 |
+| Backend | Kotlin 2.0, Java 21, Spring Boot 3.5.16 |
 | Frontend | Next.js 16, React 19, shadcn/ui, TradingView Lightweight Charts |
 | Database | MySQL 8 |
 | Cache | Redis 7 + Redisson (Master-Replica) |

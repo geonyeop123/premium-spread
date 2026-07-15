@@ -6,8 +6,8 @@
 
 | Layer | 컨테이너 | Inner Class | 예시 |
 |-------|---------|------------|------|
-| interfaces | `*Request`, `*Response` | 동작 | `PositionRequest.Open` |
-| application | `*Criteria`, `*Result` | 동작 | `PositionCriteria.Open`, `PositionResult.Detail` |
+| interfaces | `*Request`, `*Response` | 동작 | `PositionRequest.OpenAuto` |
+| application | `*Criteria`, `*Result` | 동작 | `PositionCriteria.OpenManual`, `PositionResult.Detail` |
 | domain | `*Command` | 동작 | `PositionCommand.Create` |
 | domain | `*Snapshot` (Read Model) | — | `PremiumSnapshot` (조회 전용, 단독 data class) |
 
@@ -15,7 +15,8 @@
 
 ```kotlin
 class PositionCriteria private constructor() {
-    data class Open(val symbol: String, ...)
+    data class OpenAuto(val symbol: String, ...)
+    data class OpenManual(val symbol: String, ...)
 }
 
 class PositionResult private constructor() {
@@ -31,4 +32,5 @@ class PositionResult private constructor() {
 ## Entity
 
 - prefix/suffix 없음: `Position`, `Ticker`, `Premium`
+- JPA Entity는 `data class`로 만들지 않는다.
 - `@Enumerated(EnumType.STRING)` 필수

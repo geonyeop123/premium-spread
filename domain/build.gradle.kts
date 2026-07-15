@@ -1,0 +1,15 @@
+plugins {
+    id("premiumspread.jpa-library")
+}
+
+dependencies {
+    api("jakarta.persistence:jakarta.persistence-api")
+    implementation("org.springframework:spring-context")
+    implementation("org.springframework:spring-tx")
+    implementation("org.springframework.data:spring-data-commons")
+
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.assertj:assertj-core")
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("io.mockk:mockk-jvm:1.13.3")
+}

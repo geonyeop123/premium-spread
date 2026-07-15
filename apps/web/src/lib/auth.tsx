@@ -1,11 +1,51 @@
 'use client';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { apiClient } from './api';
+import { apiClient, ApiError, setAccessToken } from './api';
 
 interface User {
   id: number;
   email: string;
   nickname: string;
+}
+
+interface LoginResponse extends User {
+  accessToken: string;
+}
+
+interface RefreshResponse {
+  accessToken: string;
+}
+
+let sessionRestoreInFlight: Promise<User> | null = null;
+
+function restoreAuthenticatedUser(): Promise<User> {
+  if (sessionRestoreInFlight) return sessionRestoreInFlight;
+
+  const restore = (async () => {
+    try {
+      return await apiClient<User>('/members/me');
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+
+      setAccessToken(null);
+      const refreshed = await apiClient<RefreshResponse>('/auth/refresh', {
+        method: 'POST',
+      });
+      setAccessToken(refreshed.accessToken);
+      return apiClient<User>('/members/me');
+    }
+  })();
+
+  sessionRestoreInFlight = restore;
+  void restore.then(
+    () => {
+      if (sessionRestoreInFlight === restore) sessionRestoreInFlight = null;
+    },
+    () => {
+      if (sessionRestoreInFlight === restore) sessionRestoreInFlight = null;
+    },
+  );
+  return restore;
 }
 
 interface AuthContextType {
@@ -23,23 +63,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient<User>('/members/me')
+    restoreAuthenticatedUser()
       .then(setUser)
-      .catch(() => setUser(null))
+      .catch(() => {
+        setAccessToken(null);
+        setUser(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
   const login = async (email: string, password: string) => {
-    const user = await apiClient<User>('/members/login', {
+    const result = await apiClient<LoginResponse>('/members/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    setUser(user);
+    setAccessToken(result.accessToken);
+    setUser({ id: result.id, email: result.email, nickname: result.nickname });
   };
 
   const logout = async () => {
-    await apiClient('/members/logout', { method: 'POST' });
-    setUser(null);
+    try {
+      await apiClient<void>('/auth/logout', { method: 'POST' });
+    } finally {
+      setAccessToken(null);
+      setUser(null);
+    }
   };
 
   const register = async (email: string, password: string) => {

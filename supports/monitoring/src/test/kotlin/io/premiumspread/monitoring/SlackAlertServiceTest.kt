@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatCode
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -63,24 +63,24 @@ class SlackAlertServiceTest {
     }
 
     @Test
-    fun `Webhook 호출 실패 시 예외를 던지지 않고 로그만 남긴다`() {
+    fun `Webhook 호출 실패는 상위 bounded adapter가 계측할 수 있게 전달한다`() {
         // given
         mockServer.enqueue(MockResponse().setResponseCode(500).setBody("error"))
 
         // when & then
-        assertThatCode {
+        assertThatThrownBy {
             sut.sendAlert("실패 테스트", AlertService.Severity.WARNING)
-        }.doesNotThrowAnyException()
+        }.isInstanceOf(Exception::class.java)
     }
 
     @Test
-    fun `잘못된 URL이어도 예외를 던지지 않는다`() {
+    fun `연결 실패도 상위 bounded adapter가 계측할 수 있게 전달한다`() {
         // given
         val badService = SlackAlertService("http://localhost:1/invalid", objectMapper)
 
         // when & then
-        assertThatCode {
+        assertThatThrownBy {
             badService.sendAlert("실패 테스트", AlertService.Severity.CRITICAL)
-        }.doesNotThrowAnyException()
+        }.isInstanceOf(Exception::class.java)
     }
 }

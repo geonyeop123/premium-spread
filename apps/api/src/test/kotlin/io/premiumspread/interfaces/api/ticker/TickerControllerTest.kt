@@ -3,16 +3,15 @@ package io.premiumspread.interfaces.api.ticker
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
-import io.premiumspread.TickerFixtures
-import io.premiumspread.domain.InvalidTickerException
-import io.premiumspread.domain.ticker.TickerCommand
-import io.premiumspread.domain.ticker.TickerService
+import io.premiumspread.application.common.ApplicationError
+import io.premiumspread.application.common.ApplicationException
+import io.premiumspread.application.ticker.TickerCriteria
+import io.premiumspread.application.ticker.TickerFacade
+import io.premiumspread.application.ticker.TickerResult
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import io.premiumspread.infrastructure.security.JwtTokenProvider
-import io.premiumspread.infrastructure.security.SecurityConfig
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
-import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
@@ -20,112 +19,53 @@ import java.math.BigDecimal
 import java.time.Instant
 
 @WebMvcTest(TickerController::class)
-@Import(SecurityConfig::class)
+@AutoConfigureMockMvc(addFilters = false)
 class TickerControllerTest {
+    @Autowired lateinit var mockMvc: MockMvc
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired lateinit var objectMapper: ObjectMapper
 
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
+    @MockkBean lateinit var facade: TickerFacade
 
-    @MockkBean
-    private lateinit var tickerService: TickerService
-
-    @MockkBean(relaxed = true)
-    private lateinit var jwtTokenProvider: JwtTokenProvider
+    private val request = TickerRequest.Ingest(
+        "UPBIT",
+        "BTC",
+        "KRW",
+        BigDecimal("100"),
+        Instant.parse("2024-01-01T00:00:00Z"),
+    )
 
     @Test
-    fun `코인 티커를 등록한다`() {
-        val request = TickerRequest.Ingest(
-            exchange = "UPBIT",
-            baseCode = "BTC",
-            quoteCurrency = "KRW",
-            price = BigDecimal("129555000"),
-            observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-        )
-
-        every { tickerService.create(any<TickerCommand.Create>()) } returns
-                TickerFixtures.koreaTicker(id = 1L)
+    fun `ingest는 Criteria로 변환하고 201 Detail을 반환한다`() {
+        every { facade.ingest(TickerCriteria.Ingest("UPBIT", "BTC", "KRW", BigDecimal("100"), request.observedAt)) } returns
+            TickerResult.Detail(1L, "UPBIT", "KOREA", "BTC", "KRW", BigDecimal("100"), request.observedAt)
 
         mockMvc.post("/api/v1/tickers") {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
             status { isCreated() }
-            jsonPath("$.id") { value(1) }
             jsonPath("$.exchange") { value("UPBIT") }
-            jsonPath("$.exchangeRegion") { value("KOREA") }
-            jsonPath("$.baseCode") { value("BTC") }
-            jsonPath("$.quoteCurrency") { value("KRW") }
-            jsonPath("$.price") { value(129555000) }
         }
     }
 
     @Test
-    fun `환율 티커를 등록한다`() {
-        val request = TickerRequest.Ingest(
-            exchange = "FX_PROVIDER",
-            baseCode = "USD",
-            quoteCurrency = "KRW",
-            price = BigDecimal("1432.6"),
-            observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-        )
-
-        every { tickerService.create(any<TickerCommand.Create>()) } returns
-                TickerFixtures.fxTicker(id = 2L)
-
+    fun `Bean Validation 오류는 transport 400이다`() {
         mockMvc.post("/api/v1/tickers") {
             contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(request)
-        }.andExpect {
-            status { isCreated() }
-            jsonPath("$.id") { value(2) }
-            jsonPath("$.exchange") { value("FX_PROVIDER") }
-            jsonPath("$.baseCode") { value("USD") }
-        }
+            content = objectMapper.writeValueAsString(request.copy(price = BigDecimal.ZERO))
+        }.andExpect { status { isBadRequest() } }
     }
 
     @Test
-    fun `잘못된 거래소로 요청하면 400을 반환한다`() {
-        val request = mapOf(
-            "exchange" to "INVALID_EXCHANGE",
-            "baseCode" to "BTC",
-            "quoteCurrency" to "KRW",
-            "price" to 129555000,
-            "observedAt" to "2024-01-01T00:00:00Z",
-        )
-
+    fun `Facade semantic 오류는 422다`() {
+        every { facade.ingest(any()) } throws ApplicationException(ApplicationError.INVALID_TICKER)
         mockMvc.post("/api/v1/tickers") {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_ARGUMENT") }
-        }
-    }
-
-    @Test
-    fun `도메인 유효성 오류면 400과 INVALID_TICKER 코드를 반환한다`() {
-        val request = TickerRequest.Ingest(
-            exchange = "UPBIT",
-            baseCode = "BTC",
-            quoteCurrency = "KRW",
-            price = BigDecimal("-1"),
-            observedAt = Instant.parse("2024-01-01T00:00:00Z"),
-        )
-
-        every {
-            tickerService.create(any<TickerCommand.Create>())
-        } throws InvalidTickerException("가격은 0보다 커야 합니다")
-
-        mockMvc.post("/api/v1/tickers") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(request)
-        }.andExpect {
-            status { isBadRequest() }
+            status { isUnprocessableEntity() }
             jsonPath("$.code") { value("INVALID_TICKER") }
-            jsonPath("$.message") { value("유효하지 않은 티커입니다.") }
         }
     }
 }

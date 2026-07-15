@@ -1,8 +1,6 @@
 package io.premiumspread.interfaces.api.notification
 
 import io.premiumspread.application.notification.NotificationSubscriptionResult
-import io.premiumspread.domain.notification.SubscriptionStatus
-import io.premiumspread.domain.notification.ThresholdDirection
 import java.math.BigDecimal
 
 class NotificationSubscriptionResponse private constructor() {
@@ -10,9 +8,11 @@ class NotificationSubscriptionResponse private constructor() {
     data class Detail(
         val id: Long,
         val symbol: String,
-        val direction: ThresholdDirection,
+        val direction: String,
         val threshold: BigDecimal,
-        val status: SubscriptionStatus,
+        val status: String,
+        val koreaExchange: String,
+        val foreignExchange: String,
     ) {
         companion object {
             fun from(result: NotificationSubscriptionResult.Detail): Detail = Detail(
@@ -21,6 +21,8 @@ class NotificationSubscriptionResponse private constructor() {
                 direction = result.direction,
                 threshold = result.threshold,
                 status = result.status,
+                koreaExchange = result.koreaExchange,
+                foreignExchange = result.foreignExchange,
             )
         }
     }

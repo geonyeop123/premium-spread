@@ -4,6 +4,14 @@ include(
     // apps
     ":apps:api",
     ":apps:batch",
+    // domain
+    ":domain",
+    // infrastructure
+    ":infrastructure:common",
+    ":infrastructure:api",
+    ":infrastructure:batch",
+    // architecture verification
+    ":architecture-tests",
     // modules
     ":modules:jpa",
     ":modules:redis",
@@ -15,27 +23,23 @@ include(
 
 // configurations
 pluginManagement {
-    val kotlinVersion: String by settings
+    includeBuild("build-logic")
+
     val springBootVersion: String by settings
     val springDependencyManagementVersion: String by settings
-    val ktLintPluginVersion: String by settings
 
     repositories {
         maven { url = uri("https://repo.spring.io/milestone") }
         maven { url = uri("https://repo.spring.io/snapshot") }
         gradlePluginPortal()
+        mavenCentral()
     }
 
     resolutionStrategy {
         eachPlugin {
             when (requested.id.id) {
-                "org.jetbrains.kotlin.jvm" -> useVersion(kotlinVersion)
-                "org.jetbrains.kotlin.kapt" -> useVersion(kotlinVersion)
-                "org.jetbrains.kotlin.plugin.spring" -> useVersion(kotlinVersion)
-                "org.jetbrains.kotlin.plugin.jpa" -> useVersion(kotlinVersion)
                 "org.springframework.boot" -> useVersion(springBootVersion)
                 "io.spring.dependency-management" -> useVersion(springDependencyManagementVersion)
-                "org.jlleitschuh.gradle.ktlint" -> useVersion(ktLintPluginVersion)
             }
         }
     }

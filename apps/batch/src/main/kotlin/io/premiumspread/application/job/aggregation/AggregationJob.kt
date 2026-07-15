@@ -10,15 +10,16 @@ class AggregationJob<T>(
     private val reader: (from: Instant, to: Instant) -> T?,
     private val writer: (data: T, from: Instant, to: Instant) -> Unit,
     private val unit: ChronoUnit = ChronoUnit.MINUTES,
-    private val clock: Clock = Clock.systemDefaultZone(),
+    private val clock: Clock,
+    private val windowPolicy: AggregationWindowPolicy,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun run(): JobResult {
         return try {
-            val now = clock.instant()
-            val windowStart = now.minus(1, unit).truncatedTo(unit)
-            val windowEnd = windowStart.plus(1, unit)
+            val window = windowPolicy.previous(clock.instant(), unit)
+            val windowStart = window.from
+            val windowEnd = window.to
 
             val data = reader(windowStart, windowEnd)
 

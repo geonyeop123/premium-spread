@@ -15,11 +15,11 @@ object RedisTtl {
     // Premium 캐시: 5초
     val PREMIUM: Duration = Duration.ofSeconds(5)
 
+    /** Legacy symbol-only premium key를 읽는 cutover window. Writer는 이 key를 갱신하지 않는다. */
+    val PREMIUM_LEGACY_READ_WINDOW: Duration = Duration.ofSeconds(5)
+
     // Premium History: 1시간
     val PREMIUM_HISTORY: Duration = Duration.ofHours(1)
-
-    // Position 캐시: 30초
-    val POSITION: Duration = Duration.ofSeconds(30)
 
     // 초당 데이터 (ZSet): 5분
     val SECONDS_DATA: Duration = Duration.ofMinutes(5)

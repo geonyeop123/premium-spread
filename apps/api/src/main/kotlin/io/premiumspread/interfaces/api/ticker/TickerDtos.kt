@@ -1,15 +1,17 @@
 package io.premiumspread.interfaces.api.ticker
 
-import io.premiumspread.domain.ticker.Ticker
+import io.premiumspread.application.ticker.TickerResult
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
 import java.math.BigDecimal
 import java.time.Instant
 
 class TickerRequest private constructor() {
     data class Ingest(
-        val exchange: String,
-        val baseCode: String,
-        val quoteCurrency: String,
-        val price: BigDecimal,
+        @field:NotBlank val exchange: String,
+        @field:NotBlank val baseCode: String,
+        @field:NotBlank val quoteCurrency: String,
+        @field:Positive val price: BigDecimal,
         val observedAt: Instant,
     )
 }
@@ -25,14 +27,14 @@ class TickerResponse private constructor() {
         val observedAt: Instant,
     ) {
         companion object {
-            fun from(ticker: Ticker): Detail = Detail(
-                id = ticker.id,
-                exchange = ticker.exchange.name,
-                exchangeRegion = ticker.exchangeRegion.name,
-                baseCode = ticker.quote.baseCode,
-                quoteCurrency = ticker.quote.currency.name,
-                price = ticker.price,
-                observedAt = ticker.observedAt,
+            fun from(result: TickerResult.Detail): Detail = Detail(
+                id = result.id,
+                exchange = result.exchange,
+                exchangeRegion = result.exchangeRegion,
+                baseCode = result.baseCode,
+                quoteCurrency = result.quoteCurrency,
+                price = result.price,
+                observedAt = result.observedAt,
             )
         }
     }

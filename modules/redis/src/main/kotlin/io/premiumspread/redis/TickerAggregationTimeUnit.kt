@@ -7,10 +7,7 @@ import java.time.Duration
  *
  * ZSet 저장/조회 시 사용되는 시간 단위별 키 생성 및 TTL 관리
  */
-enum class TickerAggregationTimeUnit(
-    private val keyPrefix: String,
-    val ttl: Duration,
-) {
+enum class TickerAggregationTimeUnit(private val keyPrefix: String, val ttl: Duration) {
     SECONDS("ticker:seconds", RedisTtl.SECONDS_DATA),
     MINUTES("ticker:minutes", RedisTtl.MINUTES_DATA),
     HOURS("ticker:hours", RedisTtl.HOURS_DATA),

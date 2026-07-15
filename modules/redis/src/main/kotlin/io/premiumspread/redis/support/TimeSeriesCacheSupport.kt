@@ -4,7 +4,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple
 import org.springframework.stereotype.Component
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import java.time.Duration
+import java.time.Clock
 import java.time.Instant
 
 /**
@@ -14,9 +16,8 @@ import java.time.Instant
  * 동일 score 중복 방지를 위해 add 전 동일 score 삭제 후 삽입
  */
 @Component
-class TimeSeriesCacheSupport(
-    private val redisTemplate: StringRedisTemplate,
-) {
+@ConditionalOnMissingBean(TimeSeriesCacheSupport::class)
+class TimeSeriesCacheSupport(private val redisTemplate: StringRedisTemplate, private val clock: Clock) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -43,7 +44,7 @@ class TimeSeriesCacheSupport(
         redisTemplate.expire(key, ttl)
 
         // retention 기간 이전 데이터 삭제
-        val cutoff = Instant.now().minus(retentionPeriod).toEpochMilli().toDouble()
+        val cutoff = clock.instant().minus(retentionPeriod).toEpochMilli().toDouble()
         redisTemplate.opsForZSet().removeRangeByScore(key, Double.NEGATIVE_INFINITY, cutoff)
 
         log.debug("Added to ZSet: {} score={}", key, score)
@@ -54,7 +55,7 @@ class TimeSeriesCacheSupport(
      *
      * @param key Redis ZSet 키
      * @param from 시작 시점 (inclusive)
-     * @param to 종료 시점 (inclusive)
+     * @param to 종료 시점 (exclusive)
      * @return (score, value) 튜플 리스트
      */
     fun rangeByTime(
@@ -62,17 +63,16 @@ class TimeSeriesCacheSupport(
         from: Instant,
         to: Instant,
     ): List<TypedTuple<String>> {
+        require(from < to) { "Time-series range must satisfy from < to." }
         return redisTemplate.opsForZSet().rangeByScoreWithScores(
             key,
             from.toEpochMilli().toDouble(),
-            to.toEpochMilli().toDouble(),
+            Math.nextDown(to.toEpochMilli().toDouble()),
         )?.toList() ?: emptyList()
     }
 
     /**
      * TypedTuple에서 timestamp 추출
      */
-    fun extractTimestamp(entry: TypedTuple<String>): Instant? {
-        return entry.score?.toLong()?.let { Instant.ofEpochMilli(it) }
-    }
+    fun extractTimestamp(entry: TypedTuple<String>): Instant? = entry.score?.toLong()?.let { Instant.ofEpochMilli(it) }
 }

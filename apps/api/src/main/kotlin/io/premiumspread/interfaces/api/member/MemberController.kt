@@ -1,8 +1,9 @@
 package io.premiumspread.interfaces.api.member
 
-import io.premiumspread.domain.member.MemberCommand
-import io.premiumspread.domain.member.MemberService
+import io.premiumspread.application.member.MemberCriteria
+import io.premiumspread.application.member.MemberFacade
 import io.premiumspread.interfaces.api.auth.LoginMemberId
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -13,24 +14,21 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/members")
-class MemberController(
-    private val memberService: MemberService,
-) {
+class MemberController(private val memberFacade: MemberFacade) {
 
     @PostMapping("/register")
-    fun register(@RequestBody request: MemberRequest.Register): ResponseEntity<MemberResponse.Detail> {
-        val command = MemberCommand.Register(
+    fun register(@Valid @RequestBody request: MemberRequest.Register): ResponseEntity<MemberResponse.Detail> {
+        val criteria = MemberCriteria.Register(
             email = request.email,
-            rawPassword = request.password,
+            password = request.password,
         )
-        val member = memberService.register(command)
-        return ResponseEntity.status(HttpStatus.CREATED).body(MemberResponse.Detail.from(member))
+        val result = memberFacade.register(criteria)
+        return ResponseEntity.status(HttpStatus.CREATED).body(MemberResponse.Detail.from(result))
     }
 
     @GetMapping("/me")
     fun me(@LoginMemberId memberId: Long): ResponseEntity<MemberResponse.Detail> {
-        val member = memberService.findById(memberId)
-            ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(MemberResponse.Detail.from(member))
+        val result = memberFacade.findMe(MemberCriteria.FindMe(memberId))
+        return ResponseEntity.ok(MemberResponse.Detail.from(result))
     }
 }
