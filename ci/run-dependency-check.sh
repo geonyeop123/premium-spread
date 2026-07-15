@@ -52,9 +52,7 @@ args=(
   --format ALL
   --failOnCVSS 7
   --suppression "${suppression_file}"
+  --nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"
 )
-if [[ -n "${NVD_API_KEY:-}" ]]; then
-  args+=(--nvdApiKey "${NVD_API_KEY}")
-fi
 
 "${scanner}" "${args[@]}"

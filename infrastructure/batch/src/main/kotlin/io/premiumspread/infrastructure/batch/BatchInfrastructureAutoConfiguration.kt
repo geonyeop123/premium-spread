@@ -22,7 +22,10 @@ import io.premiumspread.infrastructure.batch.alert.OperatorAlertExecutorProperti
 import io.premiumspread.infrastructure.batch.cache.FxCacheService
 import io.premiumspread.infrastructure.batch.cache.FxRateReadAdapter
 import io.premiumspread.infrastructure.batch.cache.PremiumAggregateAdapter
+import io.premiumspread.infrastructure.batch.cache.PremiumAggregationCacheOperationsImpl
 import io.premiumspread.infrastructure.batch.cache.PremiumCacheService
+import io.premiumspread.infrastructure.batch.cache.PremiumSecondsCacheOperationsImpl
+import io.premiumspread.infrastructure.batch.cache.PremiumSummaryCacheOperationsImpl
 import io.premiumspread.infrastructure.batch.cache.TickerAggregateAdapter
 import io.premiumspread.infrastructure.batch.cache.TickerCacheService
 import io.premiumspread.infrastructure.batch.cache.TickerReadAdapter
@@ -163,7 +166,10 @@ data class BatchMarketProperties(
 @Import(
     FxCacheService::class,
     PremiumAggregateAdapter::class,
+    PremiumAggregationCacheOperationsImpl::class,
     PremiumCacheService::class,
+    PremiumSecondsCacheOperationsImpl::class,
+    PremiumSummaryCacheOperationsImpl::class,
     TickerAggregateAdapter::class,
     TickerCacheService::class,
     FxRateReadAdapter::class,

@@ -13,6 +13,7 @@ import io.premiumspread.redis.RedisKeyGenerator
 import io.premiumspread.redis.RedisTtl
 import io.premiumspread.redis.support.TimeSeriesCacheSupport
 import org.slf4j.LoggerFactory
+import org.springframework.context.annotation.Primary
 import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple
@@ -91,6 +92,7 @@ interface PremiumSummaryCacheOperations {
 }
 
 @Component
+@Primary
 class PremiumSecondsCacheOperationsImpl(
     private val redisTemplate: StringRedisTemplate,
     private val timeSeriesCache: TimeSeriesCacheSupport,
@@ -185,6 +187,7 @@ class PremiumSecondsCacheOperationsImpl(
 }
 
 @Component
+@Primary
 class PremiumAggregationCacheOperationsImpl(
     private val timeSeriesCache: TimeSeriesCacheSupport,
     private val aggregationCacheReader: PremiumAggregationCacheReader,
@@ -305,6 +308,7 @@ class PremiumAggregationCacheOperationsImpl(
 }
 
 @Component
+@Primary
 class PremiumSummaryCacheOperationsImpl(
     private val redisTemplate: StringRedisTemplate,
     private val clock: Clock,

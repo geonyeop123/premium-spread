@@ -10,6 +10,7 @@ RUN chmod +x gradlew
 # 루트 빌드 파일 (의존성 캐시 레이어)
 COPY build.gradle.kts settings.gradle.kts gradle.properties gradle.lockfile ./
 COPY build-logic build-logic
+COPY config/coverage/exclusions.txt config/coverage/exclusions.txt
 
 # 서브모듈 빌드 파일
 COPY apps/api/build.gradle.kts apps/api/gradle.lockfile apps/api/

@@ -146,9 +146,21 @@ if rg -n 'rm -rf.*dependency-check-data|rm -rf[[:space:]]+"\$\{(tool_dir|depende
   fail "tool bootstrap must never delete cached Dependency-Check data"
 fi
 grep -q 'path: .ci-tools/dependency-check-data' "${quality_workflow}" || fail "NVD data must be cached separately"
-grep -q 'dependency-check-data-${{ runner.os }}' "${quality_workflow}" || fail "NVD data cache key is missing"
+grep -q 'dependency-check-datafeed-v1-${{ runner.os }}' "${quality_workflow}" ||
+  fail "NVD datafeed cache key is missing"
+grep -q 'uses: actions/cache/restore@' "${quality_workflow}" || fail "NVD data cache must have an explicit restore step"
+grep -q 'uses: actions/cache/save@' "${quality_workflow}" || fail "verified NVD data cache must have an explicit save step"
+nvd_scan_line="$(grep -n 'run: bash ci/run-dependency-check.sh' "${quality_workflow}" | cut -d: -f1)"
+nvd_save_line="$(grep -n 'name: Save verified Dependency-Check NVD data' "${quality_workflow}" | cut -d: -f1)"
+[[ -n "${nvd_scan_line}" && -n "${nvd_save_line}" && "${nvd_scan_line}" -lt "${nvd_save_line}" ]] ||
+  fail "NVD data must be saved only after a successful Dependency-Check scan"
 if grep -q '^          path: \.ci-tools$' "${quality_workflow}"; then
   fail "tool installation cache must not absorb the isolated NVD data directory"
+fi
+grep -Fq -- '--nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"' \
+  "${root_dir}/ci/run-dependency-check.sh" || fail "Dependency-Check must use the authoritative NVD static datafeed"
+if rg -n -- '--noupdate|--nvdApiKey' "${root_dir}/ci/run-dependency-check.sh"; then
+  fail "Dependency-Check must neither skip updates nor depend on a runner-specific NVD API key"
 fi
 
 docker_job="$(workflow_job_block docker-build)"
@@ -177,6 +189,10 @@ for dockerfile in "${root_dir}/apps/api/Dockerfile" "${root_dir}/apps/batch/Dock
     fail "container dependency layer must receive the root dependency lock"
   grep -q 'COPY build-logic build-logic' "${dockerfile}" ||
     fail "container dependency layer must receive build-logic lock and verification metadata"
+  coverage_copy_line="$(grep -n 'COPY config/coverage/exclusions.txt config/coverage/exclusions.txt' "${dockerfile}" | cut -d: -f1)"
+  first_gradle_line="$(grep -n 'RUN ./gradlew' "${dockerfile}" | head -n 1 | cut -d: -f1)"
+  [[ -n "${coverage_copy_line}" && "${coverage_copy_line}" -lt "${first_gradle_line}" ]] ||
+    fail "container dependency layer must receive coverage exclusions before Gradle configuration"
   locked_projects=(
     apps/api apps/batch architecture-tests domain
     infrastructure/common infrastructure/api infrastructure/batch

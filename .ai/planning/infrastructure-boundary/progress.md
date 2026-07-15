@@ -310,3 +310,11 @@ commit/push한다.
   실행은 현재 로컬 캐시에 Kotlin Gradle plugin/allopen/noarg 2.0.20 artifact가 없어 materialize 전에 중단됐으며,
   metadata mismatch는 관찰되지 않았다. 추가 다운로드는 하지 않고 후속 커밋의 격리 CI strict 실행을 최종 권위값으로
   사용한다.
+- metadata 후속 후보 `988774a`의 strict Quality Gate run `29385215551`에서 compile/architecture, unit/coverage,
+  API integration, ktlint/detekt가 성공했다. 격리 runner가 추가로 검출한 실패는 (1) Docker dependency layer의 coverage
+  exclusion 파일 누락, (2) 분리한 Premium cache operation 구현체와 facade 사이의 자기주입 순환 참조, (3) 빈 NVD
+  DB를 GitHub 공유 IP에서 API key 없이 초기화할 때 발생한 NVD 429 세 건이다. API/Batch image에는 설정 시점 입력을
+  첫 Gradle 실행 전에 복사하고 이를 contract로 고정했으며, 세 operation 구현체를 auto-configuration에 등록하고
+  명시적 primary로 지정했다. OWASP는
+  fail-open 또는 update 생략 없이 NIST CVE 2.0 static datafeed로 초기 DB를 만들고 완성된 H2 data directory를 다음
+  실행이 복원하도록 cache namespace를 교체했다. 후속 후보 CI에서 세 gate를 다시 판정한다.
