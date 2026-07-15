@@ -43,6 +43,8 @@ data class ExchangeRateClientProperties(
         val attempts = maxRetries.toLong() + 1
         val requestBudget = connectTimeout.plus(readTimeout).multipliedBy(attempts)
         val backoffBudget = maxBackoff.multipliedBy(maxRetries.toLong())
-        return requestBudget.plus(backoffBudget).plusSeconds(1)
+        // Reactor Netty의 최초 event-loop/DNS 초기화는 개별 요청 timeout 밖에서 일어날 수 있다.
+        // 전체 안전장치가 정상적인 retry budget을 먼저 끊지 않도록 고정 초기화 여유를 둔다.
+        return requestBudget.plus(backoffBudget).plusSeconds(5)
     }
 }

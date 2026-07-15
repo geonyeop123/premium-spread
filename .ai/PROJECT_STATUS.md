@@ -1,118 +1,86 @@
 # Project Status
 
-> Last updated: 2026-05-26 (이슈 #57 — WebSocket silent outage 자동 회복: idle-timeout watchdog 추가)
+> Last updated: 2026-07-15, infrastructure boundary refactoring Phase 8 완료 / Phase 9 진행 중
 
 ## Current State
 
-| Module | Status | Notes |
-|--------|--------|-------|
-| apps/api | Active | MVP 1 백엔드 완료, JWT Stateless 인증, DB 쿼리 최적화 (N+1·인덱스·currency 컬럼), 회원 알림 구독 CRUD (이슈 #27), Position 도메인 한국/해외 페어 모델로 재구조화 (이슈 #41), Position 오픈 AUTO/MANUAL 엔드포인트 분기 (이슈 #42), Position PnL 페어 기반 KRW 손익 확장 (이슈 #43) |
-| apps/batch | Active | WebSocket 실시간 시세 수집(Binance/Bithumb) + FX 30분 수집 + 1분/1시간/1일 집계, PremiumUpdatedEvent + 이메일 알림 리스너 (이슈 #27), REST 폴링 코드 제거 완료 (이슈 #32, Epic #28 Phase 4), WebSocket idle-timeout watchdog 자동 회복 (이슈 #57) |
-| apps/web | Active | Next.js 16 + shadcn/ui + TradingView Charts, 대시보드/포지션/인증 UI, Position 오픈 AUTO/MANUAL 폼 분리 + PnL KRW 표시 (이슈 #44) |
-| modules/redis | Active | ZSet 중복 제거 + 캐시 워밍, AggregationTimeUnit(DAYS 추가), TTL 확장 |
-| modules/jpa | Stable | - |
-| supports/logging | Stable | - |
-| supports/monitoring | Active | Slack AlertService (운영자 알람) |
-| supports/email | Active | JavaMail 기반 이메일 발송 (Gmail SMTP) — 이슈 #27 |
+| Module | 상태 | 현재 책임 |
+|---|---|---|
+| `apps:api` | Active | REST interfaces, Application Facade, API 조립 루트(8080/management 9080) |
+| `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
+| `apps:web` | Active | Next.js 대시보드, 인증, position UI |
+| `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V14 |
+| `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
+| `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
+| `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
+| `modules:redis` | Stable | 표준 Redis/Redisson, key/TTL/time-series foundation |
+| `supports:*` | Active | logging, monitoring, email auto-configuration |
+| `architecture-tests` | Active | 모듈/계층/의존 그래프 회귀 방지 |
 
-## Recent Changes
+앱 내부 기술 adapter는 제거됐다. API Controller는 Application Facade 하나를, Batch Scheduler는
+Application Job 하나를 호출한다. Application은 Domain service/port만 의존하고, infrastructure 모듈은
+앱에 역의존하지 않는다.
 
-```text
-fix: WebSocket silent outage 자동 회복 — idle-timeout watchdog 추가 (#57)
-refactor: REST 폴링 수집 코드 및 피처 플래그 제거 (#32)
-docs: Binance miniTicker 주기 정정 + bookTicker 전환 반영 (#51, #52)
-feat: Binance WebSocket bookTicker 전환 + BinanceFlushJob 1초 down-sample (#52)
-feat: Position 프론트엔드 AUTO/MANUAL 폼 분리 + PnL KRW 표시 (#44)
-feat: Position PnL 수식 페어 기반 KRW 손익으로 확장 (#43)
-feat: Position 오픈 AUTO/MANUAL 엔드포인트 분기 (#42)
-feat: Position 도메인 한국/해외 페어 모델로 재구조화 (#41)
-feat: Phase 3 Bithumb WebSocket 1Hz 다운샘플 수집 (#31)
-feat: Phase 2 Binance Futures WebSocket 실시간 수집 (#30)
-feat: Phase 1 WebSocket 공통 인프라 — ConnectionManager + Metrics (#29)
-feat: 회원 프리미엄 임계값 도달 이메일 알림 (이슈 #27)
-chore: 하네스 구성 — 에이전트 8개 + 스킬 9개 + 오케스트레이터
-fix: PremiumControllerE2ETest 에러 메시지 한국어 매핑 반영
-fix: E2E 테스트 JWT 인증 방식으로 마이그레이션
-fix: codex 리뷰 반영 (WU-03 음수 프리미엄 + domain 동등성 테스트)
-fix: origin merge 충돌 해소 + 마이그레이션 V8→V9 재번호
-feat: JWT 인증 전환 — 세션 → Stateless (WU-08)
-fix: DB 쿼리 최적화 — N+1 제거·인덱스·통화 (WU-04)
-feat: 설정 강화 + Slack AlertService 구현 (WU-07)
-fix: 캐시 개선 — ZSet 중복 제거 + 캐시 워밍 (WU-05)
-fix: 인증·예외 보안 강화 (WU-02)
-fix: Batch 계층 정리 — 포지션 의존 제거·락 로그 조정 (WU-06)
-fix: 프리미엄 계산 로직 일원화 (WU-03)
-fix: 환경변수 보안 강화 — API키·Redis 비밀번호 (WU-01)
-```
+## Infrastructure Boundary 진행 상태
 
-## TODO
+- Phase 0~8은 각각 commit/push와 독립 spec/code review를 완료했다.
+- Phase 8 commit은 `efff300`이며 unit/architecture 454, Common integration 14, API integration 118,
+  Batch integration 69가 green이었다.
+- Phase 9는 compiler/test/security/CI quality gate와 문서 SSOT를 구현 중이다.
+- 전체 상세와 Phase별 증거는
+  [`.ai/planning/infrastructure-boundary/progress.md`](planning/infrastructure-boundary/progress.md)에 기록한다.
 
-### Completed
-- [x] 차트 무한스크롤 (드래그로 과거 데이터 조회, 최대 범위: 1m=24h, 1h=30d, 1d=365d)
-- [x] Redis 집계 캐싱 (cache→DB fallback, AggregationTimeUnit.DAYS 추가)
-- [x] WU-01: 환경변수 보안 강화 (API키·Redis 비밀번호 외부화)
-- [x] WU-02: 인증·예외 보안 강화
-- [x] WU-03: 프리미엄 계산 로직 일원화 (batch-domain 불일치 해소, 음수 프리미엄 수정)
-- [x] WU-04: DB 쿼리 최적화 (N+1 제거, 복합 인덱스 추가, ticker 집계 currency 컬럼)
-- [x] WU-05: 캐시 개선 (ZSet 중복 제거 + 캐시 워밍)
-- [x] WU-06: Batch 계층 정리 (포지션 의존 제거·락 로그 조정)
-- [x] WU-07: 설정 강화 + Slack AlertService 구현 (Webhook 기반 알림)
-- [x] WU-08: JWT 인증 전환 (세션 → Stateless, Access/Refresh Token)
-- [x] E2E 테스트 JWT 인증 방식 마이그레이션
-- [x] Flyway 마이그레이션 V8 (position.member_id), V9 (인덱스·currency 컬럼)
-- [x] 이슈 #27: 회원 프리미엄 임계값 도달 이메일 알림 (NotificationSubscription CRUD + 비동기 이벤트 리스너 + supports/email)
+## 기능 상태
 
-- [x] Phase 1 (#29): WebSocket 공통 인프라 — Reactor Netty 기반 `WebSocketConnectionManager`, `WebSocketMetrics` (9종), `HeartbeatPolicy`, `WebSocketConnectionConfig`, 단위 테스트 18개
-- [x] Phase 2 (#30): 바이낸스 Futures WebSocket 실시간 수집 — `BinanceWebSocketClient` + `BinanceTickerIngestion` (CAS accept-equal monotonic + latest 보관), `premium.ingestion.binance.mode` 토글, `TickerIngestionJob` mode 분기 + atomic await
-- [x] 이슈 #52: Binance bookTicker 전환 — `@miniTicker`(실제 2초 주기) → `@bookTicker`(변동 시 실시간 push), 가격 = best bid/ask mid, `BinanceFlushJob`/`BinanceFlushScheduler` 신규 (빗썸 패턴 이식, 1초 down-sample), accept-equal monotonic으로 완화 (#51 문서 오기재 함께 정정)
-- [x] Phase 3 (#31): 빗썸 WebSocket 1Hz down-sample 수집 — `BithumbWebSocketClient` + `BithumbTickerIngestion` (AtomicReference 최신값 유지, same-second 수용), `BithumbFlushJob/Scheduler` (thin entrypoint), `TickerCacheService.saveToSecondsWithScore` (`{epochMs}:{price}` ZSet member 포맷)
-- [x] Phase 4 (#32): REST 폴링 코드 및 피처 플래그 제거 — `TickerScheduler`/`TickerIngestionJob`/`BinanceClient`/`BithumbClient`/`Binance·BithumbResponse`/`IngestionModeConfig` 및 관련 테스트 7개 삭제, `premium.ingestion.*.mode` 피처 플래그 제거(3개 yml). WS 컴포넌트 8개의 `@ConditionalOnProperty`를 `@Profile("!test")`로 교체 (test 프로파일에서 `@PostConstruct` 실 거래소 연결 방지). `WebClientConfig`의 binance/bithumb WebClient 빈 + `RedisKeyGenerator.lockTickerKey`/`RedisTtl.Lock.TICKER_LEASE` 제거. `.ai/rules/batch.md`에 WebSocket ingestion 패턴 6개 항목 명문화
-- [x] 이슈 #41: Position 도메인 한국/해외 페어 모델로 재구조화 — Flyway V12 (단일 거래소 컬럼 → korea_* rename + foreign_* 4개 컬럼 신규), `Position` 엔티티에 한국 long + 해외 short 페어 필드 + `foreignLeverage` (1~125), 도메인 검증 (`koreaExchange.region == KOREA`, `foreignExchange.region == FOREIGN` 및 `FX_PROVIDER` 거절, 수량/가격/환율 양수), `entryPremiumRate` 서버 계산 (`Premium.calculatePremiumRate`와 동일 `DIVISION_SCALE=10`, scale=2), Command/Criteria/Result/Request/Response/Controller 페어 필드로 변환, `POST /api/v1/positions` 페어 본문으로 교체
-- [x] 이슈 #42: Position 오픈 AUTO/MANUAL 엔드포인트 분기 — `POST /api/v1/positions/auto` (서버가 `PremiumService.findLatestSnapshotBySymbol`로 진입가/환율/관측시각 자동 채움, 60초 신선도 검증) + `POST /api/v1/positions/manual` (진입가/환율/관측시각 사용자 입력) 신설, 루트 `POST /api/v1/positions` 제거 (405 응답). `PremiumSnapshotNotAvailableException`/`StalePremiumSnapshotException` 신규 + GlobalExceptionHandler 409 매핑, `HttpRequestMethodNotSupportedException` 405 매핑. DTO `PositionCriteria.Open`/`PositionRequest.Open` → `OpenAuto`+`OpenManual` 분리, Controller 두 엔드포인트로 분기.
-- [x] 이슈 #43: Position PnL 페어 기반 KRW 손익 확장 — `Position.calculatePremiumDiff(currentPremiumRate)` → `Position.calculatePnl(currentKoreaPrice, currentForeignPrice, currentFxRate, currentPremiumRate)` 4-인자 시그니처로 변경 (Position 도메인이 `PremiumSnapshot`에 직접 의존하지 않음). 시세 양수 검증(`require` koreaPrice/foreignPrice/fxRate > 0) 추가로 0 이하 snapshot이 0.00% PnL로 마스킹되는 케이스 차단. `PositionPnl`에 5개 필드 추가 (`koreaPnl`, `foreignPnlKrw`, `totalPnlKrw`, `koreaCurrentValue`, `totalPnlPercent`). `isProfit()` 시맨틱 `premiumDiff < 0` → `totalPnlKrw > 0` 으로 변경 (실제 KRW 이익 여부로 자연화). `PositionFacade.calculatePnl`이 `findLatestSnapshotBySymbol`을 사용하여 snapshot 분해 후 4-인자 전달, `PositionResult.Pnl`/`PositionResponse.Pnl`에 동일 필드 추가. 회귀 테스트 추가 (사용자 예시 0.157/0.15 → +1,808,138원 ≈ 9.73%, 양쪽 손실, isProfit/premiumDiff 부호 불일치, 시세 양수 검증).
-- [x] 이슈 #57: WebSocket silent outage 자동 회복 — `WebSocketConnectionManager`에 idle-timeout watchdog 도입 (`WebSocketConnectionConfig.idleTimeout` 기본 60초, 5초 주기 검사). `firstMessageTimeout`(5s) 발동 시에도 동일한 force-reconnect 경로 진입. `forceReconnectArmed` AtomicBoolean CAS로 stop() cancel과 watchdog cancel을 구분, `connectionGeneration` AtomicLong으로 stale 콜백이 새 연결을 끊는 race 방지. alert delivery는 boundedElastic 스케줄러에서 fire-and-forget — SlackAlertService blocking RestTemplate hang에도 parallel 스케줄러 워커를 점유하지 않고 reconnect timer 정상 동작. 회귀 테스트 5건 추가 (silent outage / zero-message handshake / 정상 운영 / stop 후 잔여 alert 차단 / stale callback race / hung alert under reconnect). `.ai/rules/batch.md §6`을 layered detection 모델로 갱신.
-- [x] 이슈 #44: Position 프론트엔드 AUTO/MANUAL 폼 분리 + PnL KRW 표시 — `OpenPositionForm`에 AUTO/MANUAL 모드 토글 추가 (기본 AUTO). AUTO는 `symbol`/`koreaExchange`/`koreaQuantity`/`foreignExchange`/`foreignQuantity`/`foreignLeverage`만 전송 후 `POST /positions/auto`, MANUAL은 + `koreaEntryPrice`/`foreignEntryPrice`/`entryFxRate`/`entryObservedAt` 전송 후 `POST /positions/manual`. 한국(롱) / 해외(숏) 페어 필드를 시각적으로 그룹화. "현재 데이터 채우기"는 MANUAL 전용 (`premium API`에서 `koreaPrice`/`foreignPrice`/`fxRate`/`observedAt` 자동 입력). 409 응답 (`PREMIUM_SNAPSHOT_NOT_AVAILABLE`/`STALE_PREMIUM_SNAPSHOT`)을 친화적 한국어 메시지("현재 가격/환율 정보가 없거나 오래되었습니다…")로 매핑. `PositionList`의 `Position` 인터페이스를 페어 모델로 교체 (`koreaExchange`/`koreaQuantity`/`koreaEntryPrice`/`foreignExchange`/`foreignQuantity`/`foreignEntryPrice`/`foreignLeverage`), `PnlData`에 `koreaPnl`/`foreignPnlKrw`/`totalPnlKrw`/`koreaCurrentValue`/`totalPnlPercent` 추가. 목록 현재 PnL 칸은 `premiumDiff(%p)` + `totalPnlKrw원(totalPnlPercent%)` 2줄로 표시, 색상 기준은 `totalPnlKrw >= 0`. 상세 페이지(`positions/[id]/page.tsx`)는 한국/해외 분리 카드로 재구성, PnL 카드 헤드라인 = KRW 액수 + 총 PnL%, 한국 PnL / 해외 PnL KRW 환산을 분리 표시.
+- WebSocket Binance/Bithumb 시세 수집과 1초 down-sample
+- USD/KRW 30분 수집, Premium 1초 계산, minute/hour/day 집계
+- canonical `MarketPair` 기반 premium/position/notification 저장·조회
+- Position AUTO/MANUAL 오픈과 KRW 손익 계산
+- JWT Access/rotating Refresh 인증, Redis family/session fencing
+- MySQL durable notification queue, retry/stale recovery/FAILED redrive/PII scrub
+- Redis pair-aware v2 key와 default-pair legacy read cutover
+- DB/Redis/ingestion readiness, Prometheus, correlation ID/masking
+- commit SHA image 배포와 API migration/readiness 선행, 이전 SHA rollback
 
-### Epic #28 — WebSocket 실시간 수집 전환
+## Migration 상태와 소유권
 
-| Phase | 내용 | 상태 |
-|-------|------|------|
-| Phase 1 (#29) | WebSocket 공통 인프라 (ConnectionManager + Metrics) | ✅ 완료 |
-| Phase 2 (#30) | 바이낸스 WebSocket 클라이언트 + REST/WS 모드 토글 | ✅ 완료 |
-| Phase 3 (#31) | 빗썸 WebSocket 클라이언트 + 1Hz 다운샘플 + ZSet 저장 | ✅ 완료 |
-| #51 / #52 | Binance miniTicker 주기 오기재 정정 + bookTicker 전환 + BinanceFlushJob 1초 down-sample | ✅ 완료 |
-| Phase 4 (#32) | REST 폴링 클라이언트 제거 + 피처 플래그 제거 + batch.md 규칙 문서화 | ✅ 완료 |
+| Migration | 내용 | 상태/주의 |
+|---|---|---|
+| V1~V11 | 초기 ticker/premium/position/member/aggregation/notification subscription | immutable 적용 이력 |
+| V12 | `position`을 한국 Long + 해외 Short pair로 재구성 | `TRUNCATE` 포함 immutable 예외; preflight/승인 없이 실행 금지 |
+| V13 | premium snapshot/집계에 MarketPair 컬럼/index/unique 추가 | 기본 BITHUMB/BINANCE backfill, pair-aware 저장 정본 |
+| V14 | 구독 pair/revision/optimistic lock + `notification_delivery` | durable delivery queue 정본 |
 
-### Epic #40 — Position 도메인 페어 모델 + AUTO/MANUAL 분기 + 프론트엔드
+- migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
+- Batch Flyway는 항상 비활성이다.
+- V12 로컬 상태는 `APPLIED`, 운영/스테이징은 존재하지 않아 `NOT_DEPLOYED`다.
+- 향후 새 환경은 `docker/preflight-v12.sh`와
+  [`docs/runbooks/v12-migration.md`](../docs/runbooks/v12-migration.md)를 먼저 수행한다.
+- rollback은 application image만 이전 SHA로 되돌리며 DB down migration을 수행하지 않는다.
 
-| Child | 내용 | 상태 |
-|-------|------|------|
-| #41 | Position 도메인 한국/해외 페어 모델 재구조화 (V12, 엔티티/검증/API) | ✅ 완료 |
-| #42 | 포지션 입력 AUTO/MANUAL 분기 (`/positions/auto` + `/positions/manual`, 60초 신선도 검증, 루트 POST 제거) | ✅ 완료 |
-| #43 | KRW 기반 PnL 확장 (Position.calculatePnl 4-인자 시그니처, PositionPnl 5필드 추가, isProfit 시맨틱 변경) | ✅ 완료 |
-| #44 | 페어 모델 프론트엔드 반영 (AUTO/MANUAL 폼 분리 + PnL 카드 KRW 손익 표시 포함) | ✅ 완료 |
+## Known Issues / Explicit Limits
 
-**Epic #40 — 전체 완료 (2026-05-18)**. 자식 이슈 #41 ~ #44가 모두 완료되어 Position 도메인 페어 모델, AUTO/MANUAL 오픈 분기, KRW 기반 PnL, 프론트엔드 동기화가 모두 정상화됨.
+1. 현재 운영/스테이징 환경은 없다. `prd` profile, deploy workflow, runbook은 향후 환경의 계약이며
+   실제 GitHub required checks와 `production` Environment protection은 외부 repository 설정 증거가 있어야
+   완료로 판정한다.
+2. Batch runtime은 `batch.market`의 한 MarketPair만 수집한다. DB/Redis/API identity는 다중 pair를 구분하지만
+   여러 pair 동시 ingestion은 별도 확장 작업이다.
+3. 이메일 전달은 at-least-once다. SMTP 수락 후 DB mark 실패 시 중복 메일이 가능하다.
+4. logout은 Refresh Token/cookie를 폐기한다. 이미 발급된 Access Token은 TTL까지 유효하다.
+5. V12는 destructive migration이다. 기존 row가 있는 환경은 backup, 업무 mapping 승인, backfill 검증과
+   cutover 없이 자동 실행할 수 없다.
+6. Premium symbol-only legacy Redis key는 기본 pair에서만 최대 5초 read window로 호환한다. writer는 v2 key만
+   쓰므로 legacy key에 의존하는 외부 consumer가 있다면 cutover 전에 제거해야 한다.
+7. Docker app과 local `bootRun`을 동시에 실행하면 8080/8081 port가 충돌한다.
 
-### Pending
-(없음)
+## 운영 정본
 
-## Known Issues
-
-- Batch Docker 컨테이너는 `ZoneId.systemDefault()` = UTC로 동작 (로컬 개발 시 KST와 차이 주의)
-- Docker app-compose로 띄운 컨테이너와 bootRun이 동시 실행되면 포트 충돌 발생
-- **V12 마이그레이션은 dev/local 전용** — `position` 테이블 `TRUNCATE` 포함. staging/prod 배포 시 기존 행을 페어 컬럼으로 채우는 별도 backfill 마이그레이션이 선행되어야 한다 (이슈 #41).
-- **`GET /api/v1/positions/{id}/pnl` 정확성 — 부분 해소 (이슈 #43)** — 이슈 #43에서 `Position.calculatePnl`을 페어 인지 4-인자 시그니처로 교체하고 시세 양수 검증을 추가하여 KRW 기반 손익 수식을 정확히 계산하도록 했다. 다만 `PremiumSnapshot`은 여전히 symbol 단일 기준이므로 Position의 `koreaExchange`/`foreignExchange`와 매칭되는 시세를 보장하지 못한다. dev 환경(거래소 1쌍 운용)에서는 정확하지만, premium 도메인이 다중 거래소 지원으로 확장될 때 완전히 해소된다 (별도 후속 작업).
-- **`PositionPnl.isProfit()` 시맨틱 변경 (이슈 #43)** — `premiumDiff < 0` 기준에서 `totalPnlKrw > 0` 기준으로 변경되었다. 같은 입력 데이터에서 결과 부호가 달라질 수 있는 케이스가 존재한다 (회귀 테스트로 부호 불일치 케이스 단언). 프론트엔드는 이슈 #44에서 신규 필드(`totalPnlKrw`/`totalPnlPercent`)와 함께 동기화되어, 사용자가 보는 손익 부호는 KRW 기준으로 일관된다.
-- **PremiumSnapshot 거래소 매칭 미지원** — AUTO 엔드포인트와 PnL 계산이 사용하는 `PremiumSnapshot`은 symbol 기반이라 요청/Position의 `koreaExchange`/`foreignExchange`와 거래소 일치 여부를 검증하지 못한다 (이슈 #42/#43). premium 도메인이 다중 거래소 지원으로 확장될 때 해소 (별도 후속 작업).
-- ~~**프론트엔드 포지션 오픈/PnL 흐름 미동기화**~~ — 이슈 #44에서 해소 완료 (2026-05-18). `OpenPositionForm`이 AUTO/MANUAL 페어 본문을 전송하고, `PositionList`/상세 페이지가 `koreaPnl`/`foreignPnlKrw`/`totalPnlKrw`/`koreaCurrentValue`/`totalPnlPercent` 신규 필드를 KRW 액수 + 총 PnL% 형태로 표시한다.
-
-## Notes
-
-- FX 캐시 TTL: 31분 (30분 스케줄 + 1분 버퍼)
-- 배치 수집 주기: ticker/premium 1초, FX 30분
-- 집계 주기: 분/시간/일
-- 프론트엔드 API 프록시: `next.config.ts` rewrites (`/api/*` → `localhost:8080`)
-- Docker Compose 분리: `api-compose.yml`, `batch-compose.yml`, `web-compose.yml` (개별 배포 가능)
-- 설계 문서: `.ai/architecture/ARCHITECTURE_DESIGN.md`
-- MVP 1 계획서: `docs/plans/2026-02-26-mvp1-implementation.md`
+- 시스템 구조: [`.ai/architecture/ARCHITECTURE_DESIGN.md`](architecture/ARCHITECTURE_DESIGN.md)
+- 설정/profile: [`docs/runbooks/configuration-profiles.md`](../docs/runbooks/configuration-profiles.md)
+- Redis: [`docs/runbooks/redis-contract.md`](../docs/runbooks/redis-contract.md)
+- Auth: [`docs/runbooks/auth-security.md`](../docs/runbooks/auth-security.md)
+- Notification: [`docs/runbooks/durable-notification-delivery.md`](../docs/runbooks/durable-notification-delivery.md)
+- Migration: [`docs/runbooks/v12-migration.md`](../docs/runbooks/v12-migration.md)
+- Deploy/Rollback: [`docs/runbooks/deployment.md`](../docs/runbooks/deployment.md)
+- Metrics/Alert: [`docs/runbooks/metrics-alerting.md`](../docs/runbooks/metrics-alerting.md)

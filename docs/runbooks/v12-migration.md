@@ -1,7 +1,9 @@
 # V12 Position Migration Runbook
 
 V12는 `position`을 `TRUNCATE`한 뒤 pair 컬럼으로 바꾸므로 일반 배포에서 자동 승인하지 않는다.
-현재 운영/스테이징은 `NOT_DEPLOYED`, 로컬은 `APPLIED`다. 이 문서는 향후 새 환경을 위한 절차다.
+현재 운영/스테이징 환경은 없고 상태는 `NOT_DEPLOYED`, 로컬은 `APPLIED`다. 이 문서는 향후 새 환경을
+위한 preflight/backfill/cutover 절차다. migration file/checksum은 immutable이며 backfill은 V12 파일을
+수정하는 방식이 아니라 검증된 backup과 승인된 mapping으로 별도 수행한다.
 
 ## 상태 판정
 
@@ -36,6 +38,15 @@ V12는 `position`을 `TRUNCATE`한 뒤 pair 컬럼으로 바꾸므로 일반 배
 8. 불일치하면 traffic을 열지 말고 전체 DB backup으로 복원한다. 일치하면 V12 Flyway checksum과
    readiness를 확인한 뒤 API, 마지막으로 Batch를 기동한다.
 9. 승인 플래그를 제거한다. backup table/dump는 retention 만료와 운영 승인 전 삭제하지 않는다.
+
+## Cutover 완료 조건
+
+- V12 Flyway checksum이 `-1352556376`이고 migration history가 success다.
+- 승인 전/backup/backfill 후 row count와 PK 목록 SHA-256이 일치한다.
+- 수량·진입가·환율 합계, FK/NOT NULL, 한국/해외 거래소 region과 sample PnL이 승인 기준과 일치한다.
+- API readiness 후에만 Batch를 시작한다.
+- `MIGRATION_V12_ALLOW_EMPTY`가 제거된 재기동도 `APPLIED`로 통과한다.
+- backup 위치, 복원 rehearsal, 승인자, 실행 SHA와 검증 결과가 change record에 남는다.
 
 수동 `flyway_schema_history` insert/repair로 V12를 건너뛰지 않는다. 실행 로그, backup 위치, checksum,
 row-count 결과와 승인자를 change record에 남긴다.

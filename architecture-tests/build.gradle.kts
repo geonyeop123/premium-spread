@@ -5,12 +5,21 @@ plugins {
     id("premiumspread.kotlin-library")
 }
 
+val architectureTestSourceSet = sourceSets.create("architectureTest") {
+    kotlin.srcDir("src/architectureTest/kotlin")
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += output + compileClasspath
+}
+
+configurations[architectureTestSourceSet.runtimeOnlyConfigurationName]
+    .extendsFrom(configurations.testRuntimeOnly.get())
+
 dependencies {
-    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
-    testImplementation("org.slf4j:slf4j-api:2.0.16")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testImplementation(kotlin("test-junit5"))
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    add(architectureTestSourceSet.implementationConfigurationName, "com.tngtech.archunit:archunit-junit5:1.3.0")
+    add(architectureTestSourceSet.implementationConfigurationName, "org.slf4j:slf4j-api:2.0.16")
+    add(architectureTestSourceSet.implementationConfigurationName, "org.junit.jupiter:junit-jupiter:5.11.4")
+    add(architectureTestSourceSet.implementationConfigurationName, kotlin("test-junit5"))
+    add(architectureTestSourceSet.runtimeOnlyConfigurationName, "org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
 val dependencyGraphSnapshot = layout.buildDirectory.file("architecture/project-dependency-graph.txt")
@@ -145,9 +154,11 @@ val architectureSourceRoots =
         "apps.batch" to project(":apps:batch").layout.projectDirectory.dir("src/main/kotlin"),
     )
 
-tasks.test {
+val architectureTest by tasks.registering(Test::class) {
     dependsOn(writeProjectDependencyGraph)
     dependsOn(architectureTargets.values)
+    testClassesDirs = architectureTestSourceSet.output.classesDirs
+    classpath = architectureTestSourceSet.runtimeClasspath
     systemProperty("architecture.dependency-graph", dependencyGraphSnapshot.get().asFile.absolutePath)
     architectureSourceRoots.forEach { (propertySuffix, sourceRoot) ->
         inputs.dir(sourceRoot)
@@ -163,4 +174,13 @@ tasks.test {
             systemProperty("architecture.target.$propertySuffix", artifacts.single().absolutePath)
         }
     }
+}
+
+tasks.test {
+    description = "Disabled empty compatibility task; architecture sources live in src/architectureTest."
+    enabled = false
+}
+
+tasks.named("check") {
+    dependsOn(architectureTest)
 }

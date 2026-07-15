@@ -1,11 +1,12 @@
 package io.premiumspread.infrastructure.position
 
-import io.premiumspread.PositionFixtures
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
 import io.premiumspread.domain.position.Position
 import io.premiumspread.domain.position.PositionRepository
 import io.premiumspread.domain.position.PositionStatus
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
 import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.premiumspread.utils.DatabaseCleanUp
@@ -21,6 +22,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
 import java.math.BigDecimal
+import java.time.Instant
 
 @Tag("integration")
 @SpringBootTest
@@ -50,10 +52,18 @@ class PositionRepositoryTest @Autowired constructor(
     private fun createPosition(
         symbol: String = "BTC",
     ): Position {
-        return PositionFixtures.openPosition(
+        return Position.create(
             memberId = memberId,
-            symbol = symbol,
-            id = null,
+            symbol = Symbol(symbol),
+            koreaExchange = Exchange.UPBIT,
+            koreaQuantity = BigDecimal("0.5"),
+            koreaEntryPrice = BigDecimal("129555000"),
+            foreignExchange = Exchange.BINANCE,
+            foreignQuantity = BigDecimal("0.5"),
+            foreignEntryPrice = BigDecimal("89500"),
+            foreignLeverage = 1,
+            entryFxRate = BigDecimal("1432.6"),
+            entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
         )
     }
 

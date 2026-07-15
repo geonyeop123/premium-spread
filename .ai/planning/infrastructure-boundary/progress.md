@@ -12,8 +12,9 @@
 | 5. API Facade/인증 세션 | COMPLETE | `78e9239` | `origin/refactor/infrastructure-boundary` | Infrastructure API 29, API unit 78/integration 116, Architecture 17, Web lint/build green, disabled 0 |
 | 6. Batch Port/외부 Adapter | COMPLETE | `193cf35` | `origin/refactor/infrastructure-boundary` | Domain 109, Email 7, Monitoring 7, Infrastructure Batch 34, Batch unit 38/integration 62, Architecture 21 green |
 | 7. Durable Notification Delivery | COMPLETE | `6d46477` | `origin/refactor/infrastructure-boundary` | Domain 114, Email 12, Common unit 40/integration 14, Infrastructure Batch 36, API unit 83/integration 117, Batch unit 52/integration 69, Architecture 21 green |
-| 8. 설정·시간·관측성·배포 | COMPLETE | 다음 Phase 기록 | push 전 | unit 454, Common integration 14, API integration 118, Batch integration 69 green |
-| 9~10 | NOT_STARTED | 없음 | 없음 | Phase 8 commit/push 후 Phase 9 착수 |
+| 8. 설정·시간·관측성·배포 | COMPLETE | `efff300` | `origin/refactor/infrastructure-boundary` | unit 454, Common integration 14, API integration 118, Batch integration 69 green |
+| 9. Quality Gate/CI/문서 SSOT | IN_PROGRESS | 없음 | 없음 | Phase 9 task packet 구현 중 |
+| 10. 최종 E2E/완료 Push | NOT_STARTED | 없음 | 없음 | Phase 9 완료 후 착수 |
 
 ## Phase 0 실행 기록
 
@@ -156,7 +157,7 @@
 - `scheduler/PremiumAggregationScheduler.kt`
 - `scheduler/PremiumScheduler.kt`
 - `scheduler/TickerAggregationScheduler.kt`
-- 위 목록은 `architecture-tests/src/test/resources/batch-phase6-technical-adapter-files.allowlist`와 exact
+- 위 목록은 `architecture-tests/src/architectureTest/resources/batch-phase6-technical-adapter-files.allowlist`와 exact
   일치하며, common concrete adapter와 modules Redis 직접 import가 추가되면 Architecture Test가 실패한다.
 
 ## Phase 5 실행 기록
@@ -262,3 +263,34 @@ commit/push한다.
   production direct-now/`@Value` scan과 `git diff --check`도 성공했다.
 - 최초 묶음 회귀 실행에서 기존 동시 refresh E2E가 한 차례 winner 후속 회전 401을 반환했으나, 해당 경합 테스트를
   clean rerun하고 API 전체 118개를 다시 실행해 모두 성공했다. Phase 9에서 flaky 진단/반복 정책의 입력으로 보존한다.
+
+## Phase 9 실행 기록
+
+- Kotlin/Java warning을 오류로 처리하고 Unit, Architecture, Common/API/Batch Integration을 각각
+  `src/test`, `src/architectureTest`, `src/integrationTest` source set과 timeout이 있는 독립 task로 분리했다.
+  Testcontainers reuse를 끄고 외부 HTTP/WebSocket/SMTP endpoint, 승인 없는 `@Disabled`, 숨은 test retry를 정적
+  gate로 차단했다. 테스트 worker의 비데몬 thread detector는 이름 allowlist 없이 Spring cached context를 실제 close한
+  뒤 검사하며, Batch test context도 class 종료 시 닫아 MockWebServer/Redisson 자원을 회수한다.
+- aggregate JaCoCo와 고정 exclusion allowlist를 구성했다. 로컬 line coverage는 overall 86.22%, Domain 95.56%,
+  Application 93.55%로 각각 70%/85%/80% gate를 통과했다.
+- 14개 Gradle dependency lock, Gradle 8.14.3 distribution checksum, standalone ktlint/detekt/OWASP checksum lock,
+  npm high/critical audit gate와 suppression schema를 추가했다. verification metadata는 offline에서 생성하지 않고
+  후보 SHA CI가 artifact를 생성한 뒤 사람이 검토·커밋해야 다음 strict CI가 진행되는 fail-closed 절차로 고정했다.
+  root resolver는 compile/test/integration/runtime artifact 237개를, build-logic resolver는 자체 compile/test artifact를
+  실제 materialize하며 OWASP는 테스트 의존성을 제외한 API/Batch production runtime 외부 JAR 155개를 검사한다.
+- Quality Gate는 compile/architecture, unit/coverage, API integration, Batch integration, static analysis,
+  dependency/security, Docker build 7개 job을 exact candidate SHA에서 실행한다. 모든 third-party action은 immutable
+  SHA로 고정했고 base image도 digest로 고정했다. Docker job이 생성한 SHA-tagged API/Batch/Web archive를 해당
+  workflow run artifact로 보존하고 Deploy는 재빌드 없이 같은 archive만 load/push한다. Deploy는 동일 SHA의 Quality
+  Gate 성공, `main` push, `production` environment 승인 없이는 실행되지 않는다.
+- 구조/도메인/개발 규칙 SSOT와 Auth, Redis, durable notification, V12, 배포/rollback, metric/alert runbook을
+  현재 코드에 맞췄으며 문서 path/placeholder 계약 검사가 통과했다.
+- 로컬 최종 검증은 Unit 431, Architecture 25, Common Integration 14, API Integration 120,
+  Batch Integration 69가 failure/error/skip 0으로 green이다. migration gate, test isolation/coverage exclusion,
+  CI/deploy/documentation contract, Web Node 20 `npm ci`/lint/production build와 npm high/critical 0건도 통과했다.
+- 최초 독립 spec/code review에서 확인한 metadata runtime 누락, OWASP scan/cache, required 계약 미연결,
+  source set 분리, thread lifecycle, endpoint allowlist, deploy 재빌드 문제를 모두 보완했다. 최종 독립 spec/code
+  재리뷰는 각각 BLOCKER 0 / MAJOR 0 / MINOR 0이다.
+- 저장소 기본 branch는 `dev`이고 `main` branch, branch protection, `production` Environment는 현재 없다.
+  운영/스테이징도 `NOT_DEPLOYED`이므로 외부 보호 설정 완료를 주장하지 않는다. 후보 SHA push 후 verification metadata
+  검토 커밋과 strict GitHub Quality Gate 결과를 Phase 9 최종 증거로 추가한다.

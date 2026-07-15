@@ -25,6 +25,7 @@ class WebSocketConnectionManagerRegressionTest {
     private lateinit var registry: SimpleMeterRegistry
     private lateinit var metrics: WebSocketMetrics
     private lateinit var alerts: ConcurrentLinkedQueue<OperatorAlertMessage>
+    private lateinit var serverSockets: ConcurrentLinkedQueue<WebSocket>
     private lateinit var operatorAlert: OperatorAlert
     private var manager: WebSocketConnectionManager? = null
 
@@ -35,14 +36,15 @@ class WebSocketConnectionManagerRegressionTest {
         registry = SimpleMeterRegistry()
         metrics = WebSocketMetrics(registry, Clock.systemUTC())
         alerts = ConcurrentLinkedQueue()
+        serverSockets = ConcurrentLinkedQueue()
         operatorAlert = OperatorAlert(alerts::add)
     }
 
     @AfterEach
     fun tearDown() {
         manager?.stop()
-        Thread.sleep(300)
-        runCatching { server.shutdown() }
+        serverSockets.forEach { socket -> socket.close(1000, "test complete") }
+        server.shutdown()
         registry.close()
     }
 
@@ -56,7 +58,9 @@ class WebSocketConnectionManagerRegressionTest {
             onMessage = received::add,
         ).also { it.start() }
 
-        await().atMost(Duration.ofSeconds(3)).untilAsserted {
+        // CI에서 전체 모듈 테스트가 병렬로 실행되면 WebSocket 핸드셰이크가 늦어질 수 있다.
+        // 메시지 개수 조건은 유지하되 관찰 창만 넉넉히 잡아 시간 의존적인 실패를 피한다.
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
             assertThat(received).contains("ticker")
             assertThat(messageCount()).isEqualTo(1.0)
             assertThat(connectionState()).isEqualTo(1.0)
@@ -185,6 +189,10 @@ class WebSocketConnectionManagerRegressionTest {
     fun `client ping heartbeat is emitted while connected`() {
         val pings = ConcurrentLinkedQueue<String>()
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                serverSockets.add(webSocket)
+            }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
                 pings.add(text)
             }
@@ -252,6 +260,7 @@ class WebSocketConnectionManagerRegressionTest {
     fun `continuous messages below idle timeout do not trigger watchdog`() {
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                serverSockets.add(webSocket)
                 Thread {
                     repeat(10) { index ->
                         Thread.sleep(60)
@@ -278,6 +287,7 @@ class WebSocketConnectionManagerRegressionTest {
         server.enqueue(webSocketResponse())
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                serverSockets.add(webSocket)
                 Thread {
                     repeat(20) { index ->
                         Thread.sleep(60)
@@ -394,6 +404,7 @@ class WebSocketConnectionManagerRegressionTest {
     private fun webSocketResponse(onOpen: ((WebSocket) -> Unit)? = null): MockResponse =
         MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                serverSockets.add(webSocket)
                 onOpen?.invoke(webSocket)
             }
         })

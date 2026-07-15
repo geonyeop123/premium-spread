@@ -76,7 +76,12 @@ class ExchangeRateClient(
 
         return exchangeRateWebClient.get()
             .uri("/v6/{apiKey}/pair/{base}/{quote}", properties.apiKey, base, quote)
-            .exchangeToMono { response -> response.toResponseMono() }
+            .exchangeToMono { response ->
+                // Start the body deadline after response headers arrive. Applying timeout
+                // around the whole exchange also measures one-time Netty initialization and
+                // can fail before a request reaches the server on a cold JVM.
+                response.toResponseMono().timeout(properties.readTimeout)
+            }
             .retryWhen(retry)
             .block(properties.overallDeadline())
             ?: throw ExchangeRateApiException("Exchange rate API returned an empty response")

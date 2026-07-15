@@ -12,6 +12,7 @@ import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
+import org.junit.jupiter.api.RepeatedTest
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -240,9 +241,9 @@ class MemberControllerE2ETest @Autowired constructor(
             assertThat(refresh(winner).response.status).isEqualTo(200)
         }
 
-        @Test
+        @RepeatedTest(3)
         fun `동시 refresh는 하나만 성공하고 승자 session은 유지된다`() {
-            createMember(email = "concurrent@example.com")
+            val member = createMember(email = "concurrent@example.com")
             val original = loginRefreshCookie("concurrent@example.com", "password123")
             val executor = Executors.newFixedThreadPool(2)
             val start = CountDownLatch(1)
@@ -262,9 +263,27 @@ class MemberControllerE2ETest @Autowired constructor(
                 val winner = results.single { it.response.status == 200 }
                     .response.getCookie(REFRESH_COOKIE_NAME)
                 assertThat(winner).isNotNull
-                assertThat(refresh(requireNotNull(winner)).response.status).isEqualTo(200)
+                val winnerFollowUp = refresh(requireNotNull(winner))
+                assertThat(winnerFollowUp.response.status)
+                    .withFailMessage { refreshSessionDiagnostics(member.id, winnerFollowUp.response.status) }
+                    .isEqualTo(200)
             } finally {
                 executor.shutdownNow()
+            }
+        }
+
+        private fun refreshSessionDiagnostics(memberId: Long, status: Int): String {
+            val key = "auth:refresh:{$memberId}"
+            val state = redisTemplate.opsForHash<String, String>().entries(key)
+            return buildString {
+                append("winner refresh failed: status=").append(status)
+                append(", keyPresent=").append(state.isNotEmpty())
+                append(", generation=").append(state["generation"] ?: "missing")
+                append(", currentProofPresent=")
+                    .append(state["currentHash"] != null && state["currentJti"] != null)
+                append(", previousProofPresent=")
+                    .append(state["previousHash"] != null && state["previousJti"] != null)
+                append(", ttlMs=").append(redisTemplate.getExpire(key, TimeUnit.MILLISECONDS))
             }
         }
 

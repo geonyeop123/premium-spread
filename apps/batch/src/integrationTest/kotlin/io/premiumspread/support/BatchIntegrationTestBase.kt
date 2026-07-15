@@ -11,12 +11,14 @@ import org.springframework.context.annotation.Import
 import org.springframework.data.redis.connection.RedisConnection
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.ActiveProfiles
 
 @Tag("integration")
 @SpringBootTest
 @ActiveProfiles("test")
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, BatchTestConfig::class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 abstract class BatchIntegrationTestBase {
 
     @Autowired

@@ -1,5 +1,32 @@
 # Durable notification delivery 운영 런북
 
+## 상태와 기본 retry 정책
+
+```text
+PENDING → PROCESSING → SENT
+              ├──────→ PENDING(next_attempt_at + backoff)
+              └──────→ FAILED(max attempts)
+FAILED  ──manual redrive(actor/reason)──→ PENDING
+stale PROCESSING ──recovery──→ PENDING
+```
+
+| 설정 | 기본값 |
+|---|---:|
+| poll interval | 5초 |
+| claim batch / concurrency | 10 / 2 |
+| hard send deadline | 30초 |
+| stale threshold | 5분 |
+| max attempts | 5 |
+| retry delays | 1분, 5분, 30분, 2시간(마지막 값을 반복 사용) |
+| retry jitter | 10% |
+| dedupe cooldown window | 1시간 |
+| SENT PII retention | 30일 |
+
+`ceil(batchSize / concurrency) × hardSendDeadline + dbQueueSafetyMargin < staleThreshold`를 startup에서
+검증한다. poller는 실제 concurrency permit을 확보한 수만큼만 claim하며, 각 row에는 worker ID와 별도 UUID
+claim token을 저장한다. mark sent/retry/failed는 둘이 모두 일치해야 성공하므로 stale owner가 새 claim 상태를
+바꿀 수 없다.
+
 ## 보장 수준과 중복 가능성
 
 알림은 MySQL `notification_delivery` 큐를 기준으로 **at-least-once** 전달한다. `event_key`
@@ -58,6 +85,13 @@ redrive는 HTTP endpoint로 노출하지 않는다. 장애 원인이 해소되�
 확인한 후, 인증된 offline MySQL CLI에서 다음 transaction을 실행한다. `actor`는 운영자
 식별자나 변경 티켓 ID, `reason`은 장애 원인과 재처리 근거를 써야 하며 빈 값을
 허용하지 않는다.
+
+다음 조건을 모두 만족할 때만 redrive한다.
+
+1. 현재 상태가 `FAILED`이고 PII가 scrub되지 않았다.
+2. SMTP credential/network/quota 같은 원인이 해소됐다.
+3. 중복 메일 가능성을 운영자가 검토하고 change/ticket 승인을 받았다.
+4. actor와 reason이 개인 식별 가능한 운영자/티켓으로 남는다.
 
 ```sql
 START TRANSACTION;

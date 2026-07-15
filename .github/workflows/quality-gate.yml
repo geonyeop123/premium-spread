@@ -1,0 +1,324 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - refactor/infrastructure-boundary
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.event.inputs.sha || github.sha }}
+  cancel-in-progress: true
+
+env:
+  TARGET_SHA: ${{ github.event.inputs.sha || github.sha }}
+
+jobs:
+  compile-architecture:
+    name: 1. Compile + architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact candidate SHA
+        run: bash ci/verify-target-sha.sh
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+      - name: Detect committed dependency verification metadata
+        id: verification-metadata
+        run: |
+          if [[ -f gradle/verification-metadata.xml && -f build-logic/gradle/verification-metadata.xml ]]; then
+            echo "committed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "committed=false" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Bootstrap dependency verification metadata in the isolated runner
+        if: steps.verification-metadata.outputs.committed == 'false'
+        run: |
+          ./gradlew resolveVerificationArtifacts --write-verification-metadata sha256 --no-daemon
+          ./gradlew -p build-logic resolveVerificationArtifacts --write-verification-metadata sha256 --no-daemon
+      - name: Publish candidate-bound verification metadata for review
+        if: steps.verification-metadata.outputs.committed == 'false'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gradle-verification-metadata-${{ env.TARGET_SHA }}
+          path: |
+            gradle/verification-metadata.xml
+            build-logic/gradle/verification-metadata.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Require metadata review and a follow-up commit
+        if: steps.verification-metadata.outputs.committed == 'false'
+        run: |
+          echo "::error::Review the candidate-bound verification metadata artifacts, commit both approved XML files, and rerun this SHA gate."
+          exit 1
+      - name: Compile without warnings and verify architecture boundaries
+        run: ./gradlew compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions :build-logic:test --dependency-verification strict --no-daemon
+      - name: Verify repository quality and documentation contracts
+        run: |
+          bash ci/quality-gate-contract-test.sh
+          bash ci/local-offline-contract-test.sh
+          bash docs/check-documentation.sh
+          bash docker/deploy-contract-test.sh
+
+  unit-coverage:
+    name: 2. Unit + coverage
+    needs: compile-architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact candidate SHA
+        run: bash ci/verify-target-sha.sh
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+      - name: Run unit tests and enforce coverage thresholds
+        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification --dependency-verification strict --no-daemon
+      - name: Publish unit and coverage evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unit-coverage-${{ env.TARGET_SHA }}
+          path: |
+            **/build/reports/tests/test/**
+            build/reports/jacoco/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  api-integration:
+    name: 3. API integration
+    needs: compile-architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact candidate SHA
+        run: bash ci/verify-target-sha.sh
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+      - name: Run API integration tests in an isolated runner
+        env:
+          TESTCONTAINERS_REUSE_ENABLE: 'false'
+        run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest --dependency-verification strict --no-daemon
+      - name: Publish API integration evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: api-integration-${{ env.TARGET_SHA }}
+          path: |
+            infrastructure/common/build/reports/tests/integrationTest/**
+            apps/api/build/reports/tests/integrationTest/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  batch-integration:
+    name: 4. Batch integration
+    needs: compile-architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact candidate SHA
+        run: bash ci/verify-target-sha.sh
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+      - name: Run Batch integration tests in an isolated runner
+        env:
+          TESTCONTAINERS_REUSE_ENABLE: 'false'
+        run: ./gradlew :apps:batch:integrationTest --dependency-verification strict --no-daemon
+      - name: Publish Batch integration evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: batch-integration-${{ env.TARGET_SHA }}
+          path: apps/batch/build/reports/tests/integrationTest/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  static-analysis:
+    name: 5. ktlint + detekt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact candidate SHA
+        run: bash ci/verify-target-sha.sh
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Cache checksum-verified standalone tools
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            .ci-tools/downloads
+            .ci-tools/ktlint.jar
+            .ci-tools/detekt-cli.jar
+            .ci-tools/dependency-check
+          key: quality-tools-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}
+      - name: Bootstrap standalone tools
+        run: bash ci/bootstrap-quality-tools.sh --verify-checksums
+      - name: ktlint
+        run: java -jar .ci-tools/ktlint.jar '**/src/**/*.kt' '!**/build/**'
+      - name: detekt
+        run: >-
+          java -jar .ci-tools/detekt-cli.jar
+          --input apps,architecture-tests,domain,infrastructure,modules,supports
+          --config config/detekt/detekt.yml
+          --baseline config/detekt/baseline.xml
+          --excludes '**/build/**,**/.gradle/**'
+          --report html:build/reports/detekt.html
+          --report sarif:build/reports/detekt.sarif
+      - name: Publish static-analysis evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: static-analysis-${{ env.TARGET_SHA }}
+          path: build/reports/detekt.*
+          if-no-files-found: warn
+          retention-days: 14
+
+  dependency-security:
+    name: 6. Dependency + security scan
+    needs: compile-architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact candidate SHA
+        run: bash ci/verify-target-sha.sh
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install locked web dependencies
+        run: npm --prefix apps/web ci --include=optional
+      - name: Lint web sources from the locked dependency graph
+        run: npm --prefix apps/web run lint
+      - name: Audit the complete web lockfile at high severity
+        run: bash ci/run-npm-audit.sh
+      - name: Cache checksum-verified dependency-check
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            .ci-tools/downloads
+            .ci-tools/ktlint.jar
+            .ci-tools/detekt-cli.jar
+            .ci-tools/dependency-check
+          key: quality-tools-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}
+      - name: Restore isolated Dependency-Check NVD data
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .ci-tools/dependency-check-data
+          key: dependency-check-data-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            dependency-check-data-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}-
+      - name: Bootstrap standalone security scanner
+        run: bash ci/bootstrap-quality-tools.sh --verify-checksums
+      - name: Stage strict-verified production runtime dependencies
+        run: ./gradlew prepareDependencyCheckInput --dependency-verification strict --no-daemon
+      - name: OWASP Dependency-Check (CVSS 7+ fails)
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: bash ci/run-dependency-check.sh
+      - name: Publish security evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-security-${{ env.TARGET_SHA }}
+          path: build/reports/dependency-check/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  docker-build:
+    name: 7. Docker image build
+    needs: compile-architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - name: Verify exact candidate SHA
+        run: bash ci/verify-target-sha.sh
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Prepare immutable image archive directory
+        run: mkdir -p "${RUNNER_TEMP}/docker-images"
+      - name: Build API image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: ghcr.io/${{ github.repository }}/api:${{ env.TARGET_SHA }}
+          outputs: type=docker,dest=${{ runner.temp }}/docker-images/api.tar
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build Batch image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: apps/batch/Dockerfile
+          push: false
+          tags: ghcr.io/${{ github.repository }}/batch:${{ env.TARGET_SHA }}
+          outputs: type=docker,dest=${{ runner.temp }}/docker-images/batch.tar
+          cache-from: type=gha,scope=batch
+          cache-to: type=gha,mode=max,scope=batch
+      - name: Build Web image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          tags: ghcr.io/${{ github.repository }}/web:${{ env.TARGET_SHA }}
+          outputs: type=docker,dest=${{ runner.temp }}/docker-images/web.tar
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: Publish candidate-bound Docker image archives
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-images-${{ env.TARGET_SHA }}
+          path: ${{ runner.temp }}/docker-images/*.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

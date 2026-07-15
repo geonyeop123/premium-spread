@@ -64,11 +64,11 @@ class ExchangeRateClientTest {
                 MockResponse()
                     .setHeader("Content-Type", "application/json")
                     .setBody("{}")
-                    .setBodyDelay(500, TimeUnit.MILLISECONDS),
+                    .setBodyDelay(2, TimeUnit.SECONDS),
             )
         }
 
-        assertThatThrownBy { client(maxRetries = 1, readTimeout = Duration.ofMillis(50)).fetchConfiguredRate() }
+        assertThatThrownBy { client(maxRetries = 1, readTimeout = Duration.ofMillis(200)).fetchConfiguredRate() }
             .isInstanceOf(Exception::class.java)
         assertThat(server.requestCount).isEqualTo(2)
     }

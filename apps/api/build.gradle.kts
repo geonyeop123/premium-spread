@@ -2,6 +2,23 @@ plugins {
     id("premiumspread.spring-boot-application")
 }
 
+val integrationTestSourceSet = sourceSets.create("integrationTest") {
+    kotlin.srcDir("src/integrationTest/kotlin")
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += output + compileClasspath
+}
+
+kotlin {
+    target.compilations.named("integrationTest") {
+        associateWith(target.compilations.getByName("main"))
+    }
+}
+
+configurations[integrationTestSourceSet.implementationConfigurationName]
+    .extendsFrom(configurations.testImplementation.get())
+configurations[integrationTestSourceSet.runtimeOnlyConfigurationName]
+    .extendsFrom(configurations.testRuntimeOnly.get())
+
 tasks.named<Test>("test") {
     useJUnitPlatform {
         // 기본 테스트 실행 시 integration 태그 제외
@@ -16,6 +33,8 @@ tasks.register<Test>("integrationTest") {
     useJUnitPlatform {
         includeTags("integration")
     }
+    testClassesDirs = integrationTestSourceSet.output.classesDirs
+    classpath = integrationTestSourceSet.runtimeClasspath
     shouldRunAfter(tasks.named("test"))
 }
 

@@ -2,6 +2,23 @@ plugins {
     id("premiumspread.spring-library")
 }
 
+val integrationTestSourceSet = sourceSets.create("integrationTest") {
+    kotlin.srcDir("src/integrationTest/kotlin")
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += output + compileClasspath
+}
+
+kotlin {
+    target.compilations.named("integrationTest") {
+        associateWith(target.compilations.getByName("main"))
+    }
+}
+
+configurations[integrationTestSourceSet.implementationConfigurationName]
+    .extendsFrom(configurations.testImplementation.get())
+configurations[integrationTestSourceSet.runtimeOnlyConfigurationName]
+    .extendsFrom(configurations.testRuntimeOnly.get())
+
 tasks.named<Test>("test") {
     useJUnitPlatform {
         excludeTags("integration")
@@ -14,6 +31,8 @@ tasks.register<Test>("integrationTest") {
     useJUnitPlatform {
         includeTags("integration")
     }
+    testClassesDirs = integrationTestSourceSet.output.classesDirs
+    classpath = integrationTestSourceSet.runtimeClasspath
     shouldRunAfter(tasks.named("test"))
 }
 

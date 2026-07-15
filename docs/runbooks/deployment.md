@@ -1,5 +1,16 @@
 # Commit image 배포·복구 런북
 
+## 소유권
+
+- Flyway 파일/adapter owner: `infrastructure:common`
+- runtime migration owner: API 하나(`spring.flyway.enabled=true`)
+- Batch: migration 금지(`spring.flyway.enabled=false`)
+- 배포/rollback owner: GitHub `production` Environment 승인자와 해당 change 담당자
+
+V12는 destructive immutable 예외, V13은 premium MarketPair backfill/index, V14는 notification pair/revision과
+durable delivery queue다. 배포 전에 `:infrastructure:common:verifyMigrations`와 V12 preflight를 실행한다.
+migration 파일을 수정하거나 `flyway_schema_history`를 수동 repair해 배포를 통과시키지 않는다.
+
 ## 불변 배포 단위
 
 운영 배포 단위는 Git branch나 서버 source tree가 아니라 workflow를 시작한 40자리 commit SHA다.
@@ -54,6 +65,10 @@ incident로 전환한다.
 migration은 최소 한 배포 동안 이전 application image와 호환되어야 한다. 호환되지 않는 migration은
 별도 expand/contract 배포로 나눈다. 첫 배포처럼 이전 성공 SHA가 없는 경우 자동 rollback이 불가능하므로
 사전에 한 개 이상의 검증 image를 pull하고 state를 확립해야 한다.
+
+V12 cutover/backfill 도중 검증이 실패한 경우 application image rollback으로 해결하지 않는다. traffic을 닫은
+상태를 유지하고 검증된 전체 DB backup으로 복원한 뒤 Flyway history와 row/hash/합계를 다시 대조한다. V13/V14
+적용 뒤 image rollback은 이전 image가 추가 column/table을 무시하는 호환 범위에서만 허용한다.
 
 상태 확인:
 

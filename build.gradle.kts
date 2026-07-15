@@ -1,4 +1,12 @@
 import org.gradle.api.Project.DEFAULT_VERSION
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.testing.Test
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+import org.gradle.testing.jacoco.tasks.JacocoReport
+import java.math.BigDecimal
 /** --- configuration functions --- */
 fun getGitHash(): String {
     return runCatching {
@@ -11,9 +19,33 @@ fun getGitHash(): String {
 /** --- project configurations --- */
 plugins {
     base
-    id("org.jetbrains.kotlin.jvm") apply false
-    id("org.jetbrains.kotlin.plugin.jpa") apply false
+    jacoco
 }
+
+jacoco {
+    toolVersion = providers.gradleProperty("jacocoVersion").get()
+}
+
+val coverageExclusions =
+    layout.projectDirectory.file("config/coverage/exclusions.txt").asFile
+        .readLines()
+        .map(String::trim)
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+val approvedCoverageExclusions =
+    setOf(
+        "**/generated/**",
+        "**/*Generated*.*",
+        "**/PremiumSpreadApplication*.*",
+        "**/PremiumSpreadBatchApplication*.*",
+        "**/config/**",
+        "**/*Configuration*.*",
+        "**/*AutoConfiguration*.*",
+        "**/*Properties*.*",
+        "**/*Dto*.*",
+        "**/*Dtos*.*",
+        "**/interfaces/api/**/*Request*.*",
+        "**/interfaces/api/**/*Response*.*",
+    )
 
 allprojects {
     val projectGroup: String by project
@@ -22,5 +54,284 @@ allprojects {
 
     repositories {
         mavenCentral()
+    }
+
+    dependencyLocking {
+        lockAllConfigurations()
+    }
+}
+
+val coverageProjects =
+    subprojects.filter { candidate ->
+        candidate.layout.projectDirectory.dir("src/main/kotlin").asFile.isDirectory
+    }
+val domainCoverageProjects = listOf(project(":domain"))
+val applicationCoverageProjects = listOf(project(":apps:api"), project(":apps:batch"))
+
+fun classDirectoriesOf(
+    projects: Iterable<Project>,
+    includes: List<String> = emptyList(),
+) =
+    files(
+        projects.map { candidate ->
+            candidate.fileTree(candidate.layout.buildDirectory.dir("classes/kotlin/main")) {
+                exclude(coverageExclusions)
+                if (includes.isNotEmpty()) {
+                    include(includes)
+                }
+            }
+        },
+    )
+
+fun sourceDirectoriesOf(projects: Iterable<Project>) =
+    files(projects.map { it.layout.projectDirectory.dir("src/main/kotlin") })
+
+fun externalArtifactsOf(
+    projects: Iterable<Project>,
+    configurationNames: Set<String>,
+): List<ResolvedArtifactResult> =
+    projects.flatMap { candidate ->
+        candidate.configurations
+            .filter { configuration ->
+                configuration.isCanBeResolved && configuration.name in configurationNames
+            }.flatMap { configuration ->
+                configuration.incoming.artifactView {
+                    componentFilter { identifier -> identifier is ModuleComponentIdentifier }
+                }.artifacts.artifacts
+            }
+    }
+
+fun ResolvedArtifactResult.stableCoordinate(): String {
+    val component = id.componentIdentifier as ModuleComponentIdentifier
+    return "${component.group}:${component.module}:${component.version}:${file.name}"
+}
+
+val aggregateExecutionData =
+    files(
+        coverageProjects.map { candidate ->
+            candidate.fileTree(candidate.layout.buildDirectory.dir("jacoco")) {
+                include("*.exec")
+            }
+        },
+    )
+
+val unitTest by tasks.registering {
+    group = "verification"
+    description = "Runs unit tests without architecture or Docker-backed integration tests."
+    dependsOn(coverageProjects.map { "${it.path}:test" })
+}
+
+val architectureTest by tasks.registering {
+    group = "verification"
+    description = "Runs the independent architecture verification suite."
+    dependsOn(":architecture-tests:architectureTest")
+}
+
+val verifyTestIsolationPolicy by tasks.registering {
+    group = "verification"
+    description = "Verifies timeout, thread-leak detection, Testcontainers isolation, and no hidden retry policy."
+    doLast {
+        val testTasks = allprojects.flatMap { it.tasks.withType(Test::class.java).toList() }
+        check(testTasks.isNotEmpty()) { "No Test tasks found" }
+        testTasks.forEach { testTask ->
+            check(testTask.timeout.orNull != null) { "${testTask.path} must define a task timeout" }
+            check(testTask.systemProperties["premiumspread.test.leak-detection"] == "true") {
+                "${testTask.path} must enable non-daemon thread leak detection"
+            }
+            check(testTask.systemProperties["testcontainers.reuse.enable"] == "false") {
+                "${testTask.path} must disable Testcontainers reuse for isolated CI execution"
+            }
+        }
+        check(allprojects.none { it.plugins.hasPlugin("org.gradle.test-retry") }) {
+            "Test retry is forbidden because it can hide flaky or leaked-resource failures"
+        }
+    }
+}
+
+val verifyCoverageExclusions by tasks.registering {
+    group = "verification"
+    description = "Rejects coverage exclusion expansion beyond generated, wiring, and DTO-only code."
+    inputs.file(layout.projectDirectory.file("config/coverage/exclusions.txt"))
+    doLast {
+        check(coverageExclusions.toSet() == approvedCoverageExclusions) {
+            "Coverage exclusions changed without an explicit gate review. " +
+                "Expected $approvedCoverageExclusions but found ${coverageExclusions.toSet()}"
+        }
+    }
+}
+
+val jacocoTestReport by tasks.registering(JacocoReport::class) {
+    group = "verification"
+    description = "Generates aggregate unit-test coverage for all production modules."
+    dependsOn(unitTest)
+    executionData.setFrom(aggregateExecutionData)
+    classDirectories.setFrom(classDirectoriesOf(coverageProjects))
+    sourceDirectories.setFrom(sourceDirectoriesOf(coverageProjects))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+}
+
+fun registerCoverageGate(
+    name: String,
+    description: String,
+    projects: Iterable<Project>,
+    minimumRatio: String,
+    includes: List<String> = emptyList(),
+) =
+    tasks.register<JacocoCoverageVerification>(name) {
+        group = "verification"
+        this.description = description
+        dependsOn(unitTest)
+        executionData.setFrom(aggregateExecutionData)
+        classDirectories.setFrom(classDirectoriesOf(projects, includes))
+        sourceDirectories.setFrom(sourceDirectoriesOf(projects))
+        violationRules {
+            rule {
+                limit {
+                    counter = "LINE"
+                    value = "COVEREDRATIO"
+                    minimum = BigDecimal(minimumRatio)
+                }
+            }
+        }
+    }
+
+val jacocoOverallCoverageVerification =
+    registerCoverageGate(
+        name = "jacocoOverallCoverageVerification",
+        description = "Enforces 70% aggregate line coverage.",
+        projects = coverageProjects,
+        minimumRatio = "0.70",
+    )
+val jacocoDomainCoverageVerification =
+    registerCoverageGate(
+        name = "jacocoDomainCoverageVerification",
+        description = "Enforces 85% Domain line coverage.",
+        projects = domainCoverageProjects,
+        minimumRatio = "0.85",
+    )
+val jacocoApplicationCoverageVerification =
+    registerCoverageGate(
+        name = "jacocoApplicationCoverageVerification",
+        description = "Enforces 80% Application line coverage.",
+        projects = applicationCoverageProjects,
+        minimumRatio = "0.80",
+        includes = listOf("io/premiumspread/application/**"),
+    )
+
+val jacocoTestCoverageVerification by tasks.registering {
+    group = "verification"
+    description = "Enforces overall, Domain, and Application aggregate coverage gates."
+    dependsOn(
+        jacocoOverallCoverageVerification,
+        jacocoDomainCoverageVerification,
+        jacocoApplicationCoverageVerification,
+    )
+}
+
+tasks.named("check") {
+    dependsOn(
+        architectureTest,
+        jacocoTestCoverageVerification,
+        verifyTestIsolationPolicy,
+        verifyCoverageExclusions,
+    )
+}
+
+tasks.register("resolveAndLockAll") {
+    group = "build setup"
+    description = "Resolves every resolvable configuration; run with --write-locks after dependency review."
+    notCompatibleWithConfigurationCache("Resolves dependency configurations for lock generation")
+    doLast {
+        allprojects.forEach { candidate ->
+            candidate.configurations
+                .filter { it.isCanBeResolved }
+                // Kotlin's IDE metadata views request classifier artifacts that are not
+                // build/test inputs and are intentionally absent from the offline cache.
+                .filterNot { it.name.endsWith("DependenciesMetadata") }
+                .filterNot {
+                    it.name == "kotlinKlibCommonizerClasspath" ||
+                        it.name == "kotlinNativeBundleConfiguration"
+                }
+                .forEach { configuration ->
+                    // Resolve the dependency graph rather than every artifact. This writes
+                    // locks without downloading optional classifiers/native bundles.
+                    configuration.incoming.resolutionResult.allComponents.size
+                }
+        }
+    }
+}
+
+tasks.register("resolveVerificationArtifacts") {
+    group = "build setup"
+    description = "Materializes external compile/test/integration/runtime artifacts for verification metadata bootstrap."
+    val manifestFile = layout.buildDirectory.file("reports/dependency-verification/resolved-artifacts.txt")
+    outputs.file(manifestFile)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val configurationNames =
+            setOf(
+                "compileClasspath",
+                "runtimeClasspath",
+                "testCompileClasspath",
+                "testRuntimeClasspath",
+                "integrationTestCompileClasspath",
+                "integrationTestRuntimeClasspath",
+                "architectureTestCompileClasspath",
+                "architectureTestRuntimeClasspath",
+                "productionRuntimeClasspath",
+                "kotlinCompilerClasspath",
+                "kotlinCompilerPluginClasspath",
+                "jacocoAgent",
+                "jacocoAnt",
+            )
+        val artifacts =
+            externalArtifactsOf(allprojects, configurationNames)
+                .associateBy { artifact -> artifact.stableCoordinate() }
+                .toSortedMap()
+        check(artifacts.isNotEmpty()) { "No external verification artifacts were resolved" }
+        artifacts.values.forEach { artifact ->
+            check(artifact.file.isFile) { "Artifact was not materialized: ${artifact.stableCoordinate()}" }
+        }
+        manifestFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(artifacts.keys.joinToString(separator = "\n", postfix = "\n"))
+        }
+    }
+}
+
+tasks.register("prepareDependencyCheckInput") {
+    group = "verification"
+    description = "Copies API/Batch production runtime external JARs for deterministic OWASP scanning."
+    val outputDirectory = layout.buildDirectory.dir("dependency-check-input")
+    outputs.dir(outputDirectory)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val runtimeProjects = listOf(project(":apps:api"), project(":apps:batch"))
+        val artifacts =
+            externalArtifactsOf(runtimeProjects, setOf("runtimeClasspath", "productionRuntimeClasspath"))
+                .filter { artifact -> artifact.file.extension == "jar" }
+                .associateBy { artifact -> artifact.stableCoordinate() }
+                .toSortedMap()
+        check(artifacts.isNotEmpty()) { "No API/Batch production runtime JARs were resolved" }
+
+        val output = outputDirectory.get().asFile
+        delete(output)
+        output.mkdirs()
+        val manifest =
+            artifacts.map { (coordinate, artifact) ->
+                val component = artifact.id.componentIdentifier as ModuleComponentIdentifier
+                val destinationName =
+                    "${component.group}__${component.module}__${component.version}__${artifact.file.name}"
+                        .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                artifact.file.copyTo(output.resolve(destinationName), overwrite = false)
+                "$coordinate=$destinationName"
+            }
+        output.resolve("manifest.txt").writeText(manifest.joinToString(separator = "\n", postfix = "\n"))
     }
 }

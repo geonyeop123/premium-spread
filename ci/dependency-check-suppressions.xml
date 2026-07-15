@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+      Suppressions are exceptional. Every entry must include notes containing:
+      reason=<why it is a false positive or accepted risk>; owner=<team/person>;
+      expires=<YYYY-MM-DD>. The CI contract rejects entries missing those fields.
+    -->
+</suppressions>

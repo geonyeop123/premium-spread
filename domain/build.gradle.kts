@@ -1,6 +1,5 @@
 plugins {
-    id("premiumspread.spring-library")
-    id("org.jetbrains.kotlin.plugin.jpa")
+    id("premiumspread.jpa-library")
 }
 
 dependencies {
