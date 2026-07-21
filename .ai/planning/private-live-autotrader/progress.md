@@ -5,8 +5,8 @@
 
 ## 프로그램 상태
 
-- 현재 Phase: `-1`
-- 현재 판정: `IN_PROGRESS`
+- 현재 Phase: `-1 완료, 다음 0`
+- 현재 판정: `PHASE_MINUS_1_VERIFIED`
 - feature branch: `feat/private-live-autotrader`
 - worktree: `/mnt/c/Users/yeop/IdeaProjects/premium-spread-private-live-autotrader`
 - Draft PR: `https://github.com/geonyeop123/premium-spread/pull/63`
@@ -129,3 +129,17 @@ Quality Gate job 결과로 판정한다.
 - Task 5 Spec Review: PASS — HIGH/MEDIUM/LOW 0
 - Task 5 Code Review: PASS — HIGH/MEDIUM/LOW 0
 - 새 PR Quality Gate: remediation commit push 전이므로 PENDING
+
+### Phase -1 원격 acceptance GREEN — 2026-07-21
+
+- remediation commit: `f40d4b2ba66d64904158eaabbfa99450e3052339`
+- PR run: `29790214157`
+- 1. Compile + architecture: SUCCESS
+- 2. Unit + coverage: SUCCESS
+- 3. API integration: SUCCESS
+- 4. Batch integration: SUCCESS
+- 5. ktlint + detekt: SUCCESS
+- 6. Dependency + security scan: SUCCESS
+- 7. Docker image build: SUCCESS
+- 결과: `7/7 SUCCESS`, Phase -1 DoD `VERIFIED`
+- 실제 host/activation: NOT_RUN

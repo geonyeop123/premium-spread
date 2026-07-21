@@ -309,6 +309,25 @@ Task 5 Code Review: PASS, HIGH/MEDIUM/LOW 0
 remediation commit PR retry: PENDING
 ```
 
+### 원격 acceptance GREEN — 2026-07-21
+
+```text
+commit: f40d4b2ba66d64904158eaabbfa99450e3052339
+run: 29790214157
+result: SUCCESS
+
+1. Compile + architecture: SUCCESS
+2. Unit + coverage: SUCCESS
+3. API integration: SUCCESS
+4. Batch integration: SUCCESS
+5. ktlint + detekt: SUCCESS
+6. Dependency + security scan: SUCCESS
+7. Docker image build: SUCCESS
+
+total: 7/7 SUCCESS
+actual host/activation: NOT_RUN
+```
+
 ## 변경 요청
 
 > 동결 후 기준을 바꿔야 할 때만 작성. 사람이 승인하기 전까지 구현을 중단한다.
@@ -322,10 +341,10 @@ remediation commit PR retry: PENDING
 
 ```text
 DoD VERDICT: private-live-autotrader-phase-minus-1
-  T1/T2 자동:      0/4 PASS
+  T1/T2 자동:      4/4 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    0건 대기
-  => FAILED
+  => VERIFIED
 ```
 
 **사람 확인이 필요한 항목**
