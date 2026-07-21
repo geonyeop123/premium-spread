@@ -66,7 +66,8 @@ loopback으로 제한하고 nginx application ingress에는 노출하지 않는�
 - issuer/audience/TTL/clock skew는 명시해야 한다.
 - refresh cookie는 `secure=true`여야 한다.
 - CORS origin은 한 개 이상 명시하며 wildcard를 금지한다.
-- 비밀값은 GitHub Environment/secret manager에서 주입하고 repository/compose/server image에 저장하지 않는다.
+- 비밀값은 `operator-controlled host secret source`에서 runtime에 주입하고 repository, compose, server image 또는
+  배포 bundle에 저장하지 않는다. CI는 이 값을 공급하거나 host에 전달하지 않는다.
 
 ## 변경 검증
 

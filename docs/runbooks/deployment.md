@@ -1,11 +1,11 @@
-# Commit image 배포·복구 런북
+# Commit image host-local 배포·복구 런북
 
 ## 소유권
 
 - Flyway 파일/adapter owner: `infrastructure:common`
 - runtime migration owner: API 하나(`spring.flyway.enabled=true`)
 - Batch: migration 금지(`spring.flyway.enabled=false`)
-- 배포/rollback owner: GitHub `production` Environment 승인자와 해당 change 담당자
+- 배포/rollback owner: validation/PRIVATE_LIVE host의 operator
 
 V12는 destructive immutable 예외, V13은 premium MarketPair backfill/index, V14는 notification pair/revision과
 durable delivery queue다. 배포 전에 `:infrastructure:common:verifyMigrations`와 V12 preflight를 실행한다.
@@ -13,9 +13,9 @@ migration 파일을 수정하거나 `flyway_schema_history`를 수동 repair해 
 
 ## 불변 배포 단위
 
-운영 배포 단위는 Git branch나 서버 source tree가 아니라 workflow를 시작한 40자리 commit SHA다.
-CI가 test와 `docker/deploy-contract-test.sh`를 통과한 뒤 아래 세 이미지를 같은 SHA tag로 GHCR에
-push한다.
+운영 배포 단위는 Git branch나 서버 source tree가 아니라 green `Quality Gate artifact`가 가리키는 정확한 40자리
+`github.sha`다. Quality Gate는 아래 세 이미지를 같은 commit tag로 build하되 registry로 push하지 않고
+`docker-images-${{ github.sha }}` archive로 보존한다. 각 image의 `OCI revision` label도 같은 `github.sha`여야 한다.
 
 ```text
 ghcr.io/<owner>/<repository>/api:<commit-sha>
@@ -23,22 +23,30 @@ ghcr.io/<owner>/<repository>/batch:<commit-sha>
 ghcr.io/<owner>/<repository>/web:<commit-sha>
 ```
 
-운영 서버는 GitHub Actions가 전송한 compose와 deploy script만 실행한다. 서버에서 `git pull`,
-Gradle/npm build, mutable `latest` tag 사용을 금지한다.
+Quality Gate summary의 run ID, commit과 `artifact ID`를 함께 확인해 artifact 이름, image tag와 OCI revision이 같은
+commit을 가리키는지 대조한다. operator는 검증된 archive를 확보해 load하고 host에서만 사용할 수 있는 registry
+credential로 선택한 registry에 같은 SHA tag를 publish한다. 같은 commit의 compose와 `docker/deploy.sh`로 구성한
+operator-owned 배포 bundle을 host에 배치한다. 서버에서 `git pull`, Gradle/npm build, mutable `latest` tag 사용을 금지한다.
 
-## Production Environment secrets
+실제 ReleaseCandidate는 green Quality Gate 중 정확히 `event=push`, `branch=dev`인 merged `dev` push run만 허용한다.
+pull_request artifact는 배포 후보가 아니다. PR artifact는 변경 검토를 위한 review evidence로만 사용한다.
 
-GitHub `production` Environment에 보호 규칙과 승인자를 설정하고 다음 값은 Environment secret 또는
-조직의 secret manager에서만 공급한다. 저장소, compose, AMI, 서버 `.env`에 값을 기록하지 않는다.
+## Host secret source
 
-- 접속/registry: `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`, `REGISTRY_USERNAME`, `REGISTRY_TOKEN`
+runtime 값은 operator가 관리하는 `host secret source`에서 배포 직전에 환경변수로 주입한다. 저장소, Quality Gate
+artifact, image 또는 배포 bundle에는 값을 기록하지 않는다. 구체적인 host 보관 수단은 환경 owner가 선택하며 Phase -1은
+새 secret manager를 요구하거나 구성하지 않는다.
+
+- registry: host-local `REGISTRY_USERNAME`, `REGISTRY_TOKEN`
 - DB/Redis: `MYSQL_ROOT_PASSWORD`, `MYSQL_USER`, `MYSQL_PWD`, `REDIS_PASSWORD`
 - 인증: `JWT_SECRET_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE`, token expiry/clock skew,
   `AUTH_REFRESH_HMAC_KEY`, `AUTH_CORS_ALLOWED_ORIGINS`
-- 외부 연동: `EXCHANGE_RATE_API_KEY`, `SLACK_WEBHOOK_URL`, 필요 시 SMTP credential
+- 외부 연동: `EXCHANGE_RATE_API_KEY`, 필요 시 exchange/SMTP/Slack credential
 
-기능 flag인 `NOTIFICATION_EMAIL_ENABLED`, 일회성 승인인 `MIGRATION_V12_ALLOW_EMPTY`는
-Environment variable로 관리한다. V12 승인은 해당 배포가 끝나면 즉시 `false`로 되돌린다.
+기능 flag인 `NOTIFICATION_EMAIL_ENABLED`, 일회성 승인인 `MIGRATION_V12_ALLOW_EMPTY`도 같은 host source에서
+주입한다. V12 승인은 해당 배포가 끝나면 즉시 `false`로 되돌린다.
+GitHub Actions에는 production 또는 exchange credential을 제공하지 않는다. host SSH와 runtime secret 전달은
+Actions의 책임이 아니다.
 
 ## 배포 순서
 

@@ -4,24 +4,15 @@ on:
   pull_request:
   push:
     branches:
+      - dev
       - main
-      - refactor/infrastructure-boundary
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: Commit SHA to verify
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: quality-gate-${{ github.event.inputs.sha || github.sha }}
+  group: quality-gate-${{ github.sha }}
   cancel-in-progress: true
-
-env:
-  TARGET_SHA: ${{ github.event.inputs.sha || github.sha }}
 
 jobs:
   compile-architecture:
@@ -31,11 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ env.TARGET_SHA }}
           fetch-depth: 2
           persist-credentials: false
-      - name: Verify exact candidate SHA
-        run: bash ci/verify-target-sha.sh
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -46,52 +34,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
         with:
           cache-disabled: ${{ steps.bootstrap-request.outputs.requested == 'true' }}
-      - name: Generate candidate-bound dependency locks and SHA-256 metadata
+      - name: Generate dependency locks and SHA-256 metadata for review
         if: steps.bootstrap-request.outputs.requested == 'true'
-        run: >-
-          bash ci/generate-dependency-bootstrap.sh
-          "${{ steps.bootstrap-request.outputs.target_sha }}"
-          build/reports/dependency-bootstrap-review
+        run: bash ci/generate-dependency-bootstrap.sh build/reports/dependency-bootstrap-review
       - name: Publish dependency bootstrap review bundle
         if: steps.bootstrap-request.outputs.requested == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dependency-bootstrap-${{ env.TARGET_SHA }}-for-${{ steps.bootstrap-request.outputs.target_sha }}
+          name: dependency-bootstrap-review-${{ github.sha }}
           path: build/reports/dependency-bootstrap-review/**
           if-no-files-found: error
           retention-days: 14
       - name: Require dependency bootstrap review and marker removal
         if: steps.bootstrap-request.outputs.requested == 'true'
         run: |
-          echo "::error::Review dependency-bootstrap-${TARGET_SHA}-for-${{ steps.bootstrap-request.outputs.target_sha }}, commit only approved generated files, and remove ci/dependency-bootstrap-request."
-          exit 1
-      - name: Detect committed dependency verification metadata
-        id: verification-metadata
-        run: |
-          if [[ -f gradle/verification-metadata.xml && -f build-logic/gradle/verification-metadata.xml ]]; then
-            echo "committed=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "committed=false" >> "${GITHUB_OUTPUT}"
-          fi
-      - name: Bootstrap dependency verification metadata in the isolated runner
-        if: steps.verification-metadata.outputs.committed == 'false'
-        run: |
-          ./gradlew resolveVerificationArtifacts --write-verification-metadata sha256 --no-daemon
-          ./gradlew -p build-logic resolveVerificationArtifacts --write-verification-metadata sha256 --no-daemon
-      - name: Publish candidate-bound verification metadata for review
-        if: steps.verification-metadata.outputs.committed == 'false'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: gradle-verification-metadata-${{ env.TARGET_SHA }}
-          path: |
-            gradle/verification-metadata.xml
-            build-logic/gradle/verification-metadata.xml
-          if-no-files-found: error
-          retention-days: 14
-      - name: Require metadata review and a follow-up commit
-        if: steps.verification-metadata.outputs.committed == 'false'
-        run: |
-          echo "::error::Review the candidate-bound verification metadata artifacts, commit both approved XML files, and rerun this SHA gate."
+          echo "::error::Review dependency-bootstrap-review-${GITHUB_SHA}, commit only approved generated files, and remove ci/dependency-bootstrap-request."
           exit 1
       - name: Compile without warnings and verify architecture boundaries
         run: ./gradlew compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions :build-logic:test --dependency-verification strict --no-daemon
@@ -109,10 +66,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ env.TARGET_SHA }}
-      - name: Verify exact candidate SHA
-        run: bash ci/verify-target-sha.sh
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -124,7 +77,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: unit-coverage-${{ env.TARGET_SHA }}
+          name: unit-coverage-${{ github.sha }}
           path: |
             **/build/reports/tests/test/**
             build/reports/jacoco/**
@@ -138,10 +91,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ env.TARGET_SHA }}
-      - name: Verify exact candidate SHA
-        run: bash ci/verify-target-sha.sh
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -155,7 +104,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: api-integration-${{ env.TARGET_SHA }}
+          name: api-integration-${{ github.sha }}
           path: |
             infrastructure/common/build/reports/tests/integrationTest/**
             apps/api/build/reports/tests/integrationTest/**
@@ -169,10 +118,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ env.TARGET_SHA }}
-      - name: Verify exact candidate SHA
-        run: bash ci/verify-target-sha.sh
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -186,7 +131,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: batch-integration-${{ env.TARGET_SHA }}
+          name: batch-integration-${{ github.sha }}
           path: apps/batch/build/reports/tests/integrationTest/**
           if-no-files-found: warn
           retention-days: 14
@@ -198,10 +143,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ env.TARGET_SHA }}
-      - name: Verify exact candidate SHA
-        run: bash ci/verify-target-sha.sh
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -232,7 +173,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: static-analysis-${{ env.TARGET_SHA }}
+          name: static-analysis-${{ github.sha }}
           path: build/reports/detekt.*
           if-no-files-found: warn
           retention-days: 14
@@ -244,10 +185,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ env.TARGET_SHA }}
-      - name: Verify exact candidate SHA
-        run: bash ci/verify-target-sha.sh
       - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
@@ -297,7 +234,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dependency-security-${{ env.TARGET_SHA }}
+          name: dependency-security-${{ github.sha }}
           path: build/reports/dependency-check/**
           if-no-files-found: warn
           retention-days: 14
@@ -307,12 +244,10 @@ jobs:
     needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ env.TARGET_SHA }}
-      - name: Verify exact candidate SHA
-        run: bash ci/verify-target-sha.sh
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       - name: Prepare immutable image archive directory
         run: mkdir -p "${RUNNER_TEMP}/docker-images"
@@ -322,7 +257,8 @@ jobs:
           context: .
           file: apps/api/Dockerfile
           push: false
-          tags: ghcr.io/${{ github.repository }}/api:${{ env.TARGET_SHA }}
+          tags: ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           outputs: type=docker,dest=${{ runner.temp }}/docker-images/api.tar
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
@@ -332,7 +268,8 @@ jobs:
           context: .
           file: apps/batch/Dockerfile
           push: false
-          tags: ghcr.io/${{ github.repository }}/batch:${{ env.TARGET_SHA }}
+          tags: ghcr.io/${{ github.repository }}/batch:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           outputs: type=docker,dest=${{ runner.temp }}/docker-images/batch.tar
           cache-from: type=gha,scope=batch
           cache-to: type=gha,mode=max,scope=batch
@@ -342,15 +279,24 @@ jobs:
           context: .
           file: apps/web/Dockerfile
           push: false
-          tags: ghcr.io/${{ github.repository }}/web:${{ env.TARGET_SHA }}
+          tags: ghcr.io/${{ github.repository }}/web:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           outputs: type=docker,dest=${{ runner.temp }}/docker-images/web.tar
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
-      - name: Publish candidate-bound Docker image archives
+      - name: Publish Docker image archives
+        id: docker-archives
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: docker-images-${{ env.TARGET_SHA }}
+          name: docker-images-${{ github.sha }}
           path: ${{ runner.temp }}/docker-images/*.tar
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+      - name: Record Docker artifact provenance
+        run: |
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "commit=${GITHUB_SHA}"
+            echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"
+          } >> "${GITHUB_STEP_SUMMARY}"

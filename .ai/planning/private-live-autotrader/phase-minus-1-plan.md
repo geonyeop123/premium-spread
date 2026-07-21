@@ -66,7 +66,7 @@ repository 파일을 갱신하지 않는다.
 
 **제외:** workflow wiring, deploy 파일, 문서, dependency version 변경, commit/push.
 
-- [ ] **Step 1: 새 marker behavioral contract를 먼저 작성한다**
+- [x] **Step 1: 새 marker behavioral contract를 먼저 작성한다**
 
   request fixture의 exact bytes를 다음 한 줄과 LF로 고정한다.
 
@@ -78,13 +78,13 @@ repository 파일을 갱신하지 않는다.
   `120000`/CRLF/추가 줄/다른 값 → non-zero를 각각 실행한다. parent SHA, fingerprint, expiry와 marker-only commit fixture는
   제거한다.
 
-- [ ] **Step 2: 기존 구현에서 RED를 확인한다**
+- [x] **Step 2: 기존 구현에서 RED를 확인한다**
 
   Run: `bash ci/dependency-bootstrap-contract-test.sh`
 
   Expected: 기존 validator가 `pull_request`를 거절하거나 여섯 줄 legacy marker를 요구해 non-zero.
 
-- [ ] **Step 3: marker validator를 최소 구현한다**
+- [x] **Step 3: marker validator를 최소 구현한다**
 
   핵심 계약은 아래와 동일해야 한다.
 
@@ -101,7 +101,7 @@ repository 파일을 갱신하지 않는다.
 
   marker가 없을 때 regular/symlink 검사 전에 `requested=false`로 exit 0 해야 한다.
 
-- [ ] **Step 4: generator에서 target SHA 인자를 제거한다**
+- [x] **Step 4: generator에서 target SHA 인자를 제거한다**
 
   첫 인자를 review directory로 바꾸고 `HEAD^`, 40-hex 검증을 삭제한다.
 
@@ -113,7 +113,7 @@ repository 파일을 갱신하지 않는다.
   root/build-logic Gradle 명령의 `--write-locks`, `--write-verification-metadata sha256`, `--refresh-dependencies`,
   `--no-daemon`과 마지막 output validator 호출은 유지한다.
 
-- [ ] **Step 5: review artifact에서 custom checksum bundle을 제거한다**
+- [x] **Step 5: review artifact에서 custom checksum bundle을 제거한다**
 
   16개 generated file allowlist, resolved-artifact manifest, XML SHA-256/trusted-key 검증은 유지한다. output directory에는
   `files/`, 두 resolved manifest와 `review.patch`만 생성한다. 아래 두 동작은 삭제한다.
@@ -123,7 +123,7 @@ repository 파일을 갱신하지 않는다.
   SHA256SUMS 생성
   ```
 
-- [ ] **Step 6: output과 generator behavioral contract를 갱신한다**
+- [x] **Step 6: output과 generator behavioral contract를 갱신한다**
 
   valid fixture에서 `files/gradle.lockfile`, `review.patch`, 두 manifest가 존재하고 `SHA256SUMS` 및
   `request-marker.txt`가 존재하지 않는지 검사한다. non-allowlisted path, non-SHA256/trusted-key, checksum 없는 artifact는
@@ -142,7 +142,7 @@ repository 파일을 갱신하지 않는다.
   log에서 root/build-logic 두 호출과 `--write-locks`, `--write-verification-metadata sha256`, `--refresh-dependencies`,
   `--no-daemon`을 검사한다. review directory의 allowlisted files/patch/manifests 존재와 custom checksum bundle 부재도 검사한다.
 
-- [ ] **Step 7: legacy fingerprint script를 삭제하고 direct verification을 실행한다**
+- [x] **Step 7: legacy fingerprint script를 삭제하고 direct verification을 실행한다**
 
   Run: `bash ci/dependency-bootstrap-contract-test.sh`
 
@@ -165,7 +165,7 @@ repository 파일을 갱신하지 않는다.
 
 **제외:** host provisioning, registry login/push 구현, Quality Gate 변경, 문서, commit/push.
 
-- [ ] **Step 1: deploy contract를 host-local 기준으로 먼저 변경한다**
+- [x] **Step 1: deploy contract를 host-local 기준으로 먼저 변경한다**
 
   workflow parser와 `publish-images` assertions를 삭제하고 다음 negative contract를 추가한다.
 
@@ -178,17 +178,17 @@ repository 파일을 갱신하지 않는다.
   port, monitoring image digest와 compose config 검증은 유지한다. `docker/deploy.sh`와 Quality Gate 양쪽에 `git pull` 또는
   server-side build가 없어야 한다.
 
-- [ ] **Step 2: workflow가 남은 상태에서 RED를 확인한다**
+- [x] **Step 2: workflow가 남은 상태에서 RED를 확인한다**
 
   Run: `bash docker/deploy-contract-test.sh`
 
   Expected: `.github/workflows/deploy.yml` 존재 assertion으로 non-zero.
 
-- [ ] **Step 3: deploy workflow를 삭제한다**
+- [x] **Step 3: deploy workflow를 삭제한다**
 
   `.github/workflows/deploy.yml` 전체를 삭제한다. 대체 workflow, reusable workflow, runner 설정은 만들지 않는다.
 
-- [ ] **Step 4: host-local direct verification을 실행한다**
+- [x] **Step 4: host-local direct verification을 실행한다**
 
   Run: `bash docker/deploy-contract-test.sh`
 
@@ -212,7 +212,7 @@ repository 파일을 갱신하지 않는다.
 
 **제외:** job 수/Gradle exact command/Action pin/quality tool lock 변경, 신규 workflow, runtime 코드, 문서, commit/push.
 
-- [ ] **Step 1: 새 Quality Gate contract를 먼저 작성한다**
+- [x] **Step 1: 새 Quality Gate contract를 먼저 작성한다**
 
   contract가 다음을 검증하게 바꾼다.
 
@@ -231,13 +231,13 @@ repository 파일을 갱신하지 않는다.
   기존 Action pin, strict Gradle, NVD, Dockerfile/lock/materializer 검증은 유지한다. legacy deploy workflow helper와 후반 publish
   assertions는 삭제한다.
 
-- [ ] **Step 2: 기존 workflow에서 RED를 확인한다**
+- [x] **Step 2: 기존 workflow에서 RED를 확인한다**
 
   Run: `bash ci/quality-gate-contract-test.sh`
 
   Expected: manual trigger/stale branch/custom target SHA 또는 deploy workflow 존재 assertion으로 non-zero.
 
-- [ ] **Step 3: event와 checkout을 GitHub 기본 ref로 전환한다**
+- [x] **Step 3: event와 checkout을 GitHub 기본 ref로 전환한다**
 
   workflow 상단은 다음 구조로 고정한다.
 
@@ -260,7 +260,7 @@ repository 파일을 갱신하지 않는다.
   `workflow_dispatch`, 전역 `env.TARGET_SHA`, 7개 checkout의 `with.ref`, 7개 exact verifier step을 제거하고
   `ci/verify-target-sha.sh`를 삭제한다.
 
-- [ ] **Step 4: dependency bootstrap wiring을 새 signature로 변경한다**
+- [x] **Step 4: dependency bootstrap wiring을 새 signature로 변경한다**
 
   marker validator는 그대로 `GITHUB_OUTPUT`을 받고 generator는 review directory만 받는다.
 
@@ -274,12 +274,12 @@ repository 파일을 갱신하지 않는다.
   committed verification metadata가 없을 때 자동 생성하는 별도 fallback step과 artifact는 삭제한다. normal run은 committed
   metadata로 strict Gradle command를 실행한다.
 
-- [ ] **Step 5: 모든 evidence artifact name을 github.sha로 전환한다**
+- [x] **Step 5: 모든 evidence artifact name을 github.sha로 전환한다**
 
   unit, API integration, Batch integration, static analysis, dependency security, Docker archive와 dependency bootstrap review의
   이름이 `${{ github.sha }}`를 사용해야 한다. 사용자 입력, parent SHA 또는 fingerprint를 이름에 넣지 않는다.
 
-- [ ] **Step 6: Docker tag, OCI revision과 artifact ID를 결속한다**
+- [x] **Step 6: Docker tag, OCI revision과 artifact ID를 결속한다**
 
   API/Batch/Web build 각각에 다음 tag와 label을 설정한다.
 
@@ -308,7 +308,7 @@ repository 파일을 갱신하지 않는다.
 
   이는 플랫폼이 제공한 ID를 기록할 뿐 자체 digest를 계산하지 않는다.
 
-- [ ] **Step 7: Quality Gate contract를 GREEN으로 만든다**
+- [x] **Step 7: Quality Gate contract를 GREEN으로 만든다**
 
   Run: `bash ci/quality-gate-contract-test.sh`
 
@@ -326,47 +326,54 @@ repository 파일을 갱신하지 않는다.
 
 - Modify: `docs/runbooks/deployment.md`
 - Modify: `docs/runbooks/configuration-profiles.md`
+- Modify: `docs/runbooks/auth-security.md`
+- Modify: `docs/runbooks/v12-migration.md`
 - Modify: `docs/deploy/aws-setup.md`
+- Modify: `deploy/README.md`
 - Modify: `.ai/PROJECT_STATUS.md`
 - Modify: `.ai/planning/private-live-autotrader/progress.md`
 
-**허용 write scope:** 위 다섯 문서만 수정한다.
+**허용 write scope:** 위 여덟 문서만 수정한다.
 
 **제외:** 역사 문서 `docs/superpowers/plans/2026-07-14-*`, master plan/design/DoD 기준 변경, code/workflow/script 수정,
 실제 host/secret 설정, commit/push.
 
-- [ ] **Step 1: 기존 문서에서 AC4 RED를 확인한다**
+- [x] **Step 1: 기존 문서에서 AC4 RED를 확인한다**
 
-  Run: `bash -c 'bash docs/check-documentation.sh && rg -Fq "GitHub Actions에는 exchange credential을 제공하지 않는다" .ai/planning/private-live-autotrader/progress.md && for value in "host-local" "Quality Gate artifact" "github.sha" "OCI revision" "artifact ID" "host secret source" "GitHub Actions에는 production 또는 exchange credential을 제공하지 않는다"; do rg -Fq "$value" docs/runbooks/deployment.md; done && rg -Fq "operator-controlled host secret source" docs/runbooks/configuration-profiles.md && rg -Fq "runtime service account" docs/deploy/aws-setup.md && rg -Fq "operator-owned command" docs/deploy/aws-setup.md && rg -Fq "deploy workflow는 제거" .ai/PROJECT_STATUS.md && rg -Fq "기존 GitHub-hosted Quality Gate만" .ai/PROJECT_STATUS.md && rg -Fq "NOT_DEPLOYED" .ai/PROJECT_STATUS.md && for task in 1 2 3; do rg -Fq "Task ${task} direct verification: PASS" .ai/planning/private-live-autotrader/progress.md && rg -Fq "Task ${task} Spec Review: PASS" .ai/planning/private-live-autotrader/progress.md && rg -Fq "Task ${task} Code Review: PASS" .ai/planning/private-live-autotrader/progress.md; done && rg -Fq "실제 host/activation: NOT_RUN" .ai/planning/private-live-autotrader/progress.md && ! rg -n "GitHub.*production.*Environment|EC2_SSH_KEY|Deploy workflow" docs/runbooks/deployment.md docs/runbooks/configuration-profiles.md docs/deploy/aws-setup.md'`
+  Run: `bash -c 'bash docs/check-documentation.sh && rg -Fq "GitHub Actions에는 exchange credential을 제공하지 않는다" .ai/planning/private-live-autotrader/progress.md && for value in "host-local" "Quality Gate artifact" "github.sha" "OCI revision" "artifact ID" "host secret source" "GitHub Actions에는 production 또는 exchange credential을 제공하지 않는다"; do rg -Fq "$value" docs/runbooks/deployment.md; done && rg -Fq "operator-controlled host secret source" docs/runbooks/configuration-profiles.md && rg -Fq "operator-controlled host secret source" docs/runbooks/auth-security.md && rg -Fq "MIGRATION_V12_ALLOW_EMPTY=true bash docker/deploy.sh" docs/runbooks/v12-migration.md && rg -Fq "runtime service account" docs/deploy/aws-setup.md && rg -Fq "operator-owned command" docs/deploy/aws-setup.md && rg -Fq "/usr/local/lib/docker/cli-plugins/docker-compose" docs/deploy/aws-setup.md && rg -Fq "docker compose version" docs/deploy/aws-setup.md && rg -Fq "DEPRECATED" deploy/README.md && rg -Fq "docker/deploy.sh" deploy/README.md && rg -Fq "deploy workflow는 제거" .ai/PROJECT_STATUS.md && rg -Fq "기존 GitHub-hosted Quality Gate만" .ai/PROJECT_STATUS.md && rg -Fq "NOT_DEPLOYED" .ai/PROJECT_STATUS.md && for task in 1 2 3; do rg -Fq "Task ${task} direct verification: PASS" .ai/planning/private-live-autotrader/progress.md && rg -Fq "Task ${task} Spec Review: PASS" .ai/planning/private-live-autotrader/progress.md && rg -Fq "Task ${task} Code Review: PASS" .ai/planning/private-live-autotrader/progress.md; done && rg -Fq "실제 host/activation: NOT_RUN" .ai/planning/private-live-autotrader/progress.md && ! rg -n "GitHub.*production.*Environment|EC2_SSH_KEY|Deploy workflow" docs/runbooks/deployment.md docs/runbooks/configuration-profiles.md docs/runbooks/auth-security.md docs/deploy/aws-setup.md && ! rg -n "\\./deploy/deploy\\.sh" docs/runbooks/v12-migration.md deploy/README.md && ! rg -n "git clone -b prd|docker compose .*--build" deploy/README.md'`
 
   Expected: 기존 runbook의 GitHub production workflow/secret 문장 또는 새 evidence field 부재로 non-zero.
 
-- [ ] **Step 2: deployment runbook의 owner와 공급 경계를 바꾼다**
+- [x] **Step 2: deployment runbook의 owner와 공급 경계를 바꾼다**
 
   owner를 PRIVATE_LIVE/validation host의 operator로 바꾼다. GitHub `production` Environment, EC2 SSH secret, workflow가 bundle을
   전송·image를 push한다는 문장을 제거한다. Quality Gate의 green artifact와 `github.sha`/OCI revision/artifact ID를 확인한 뒤
   operator가 archive를 확보·load하고 host registry credential로 publish하며, host secret source에서 runtime 값을 주입해
-  `docker/deploy.sh`를 실행한다고 기록한다. GitHub Actions에는 production/exchange credential을 제공하지 않는다고 명시한다.
+  `docker/deploy.sh`를 실행한다고 기록한다. 배포 후보는 `event=push`, `branch=dev`인 green Quality Gate run으로 제한하고
+  `pull_request` artifact는 review evidence일 뿐 배포 후보가 아니라고 명시한다. GitHub Actions에는 production/exchange
+  credential을 제공하지 않는다고 명시한다.
 
-- [ ] **Step 3: profile 및 AWS host setup 문서를 host-local로 바꾼다**
+- [x] **Step 3: profile, 인증, migration 및 host setup 문서를 host-local로 바꾼다**
 
   `prd`는 승인된 commit-tag image와 operator-controlled host secret source를 사용한다고 기록한다. `EC2_SSH_KEY`, GitHub
-  Environment secret/approval, Deploy workflow 지시를 삭제한다. host runtime UID가 operator-owned command/bundle/secret을
-  수정하지 못하는 권한 경계를 넣되 새 KMS/HSM/TOTP/runner를 요구하지 않는다.
+  Environment secret/approval, Deploy workflow 지시를 삭제한다. Auth와 V12 runbook도 같은 host secret source와
+  `docker/deploy.sh`를 정본으로 사용한다. AWS setup은 실제 `docker compose` CLI plugin 설치를 안내한다. legacy
+  `deploy/README.md`는 서버 source pull/build 절차를 폐기하고 정본 runbook으로 연결한다. host runtime UID가
+  operator-owned command/bundle/secret을 수정하지 못하는 권한 경계를 넣되 새 KMS/HSM/TOTP/runner를 요구하지 않는다.
 
-- [ ] **Step 4: Project Status와 progress를 갱신한다**
+- [x] **Step 4: Project Status와 progress를 갱신한다**
 
   `.ai/PROJECT_STATUS.md`의 현재 미배포 상태를 유지하면서 deploy workflow가 제거됐고 기존 GitHub-hosted Quality Gate만
   남았다고 기록한다. `progress.md`에는 Task 1~3 direct verification, review verdict와 Phase acceptance 전 상태를 append한다.
   실행하지 않은 실제 host/activation은 `NOT_RUN`으로 기록한다.
 
-- [ ] **Step 5: 문서 semantic contract를 GREEN으로 만든다**
+- [x] **Step 5: 문서 semantic contract를 GREEN으로 만든다**
 
   Run: `bash docs/check-documentation.sh`
 
   Expected: documentation check passed, exit 0.
 
-  Run: `bash -c 'rg -Fq "GitHub Actions에는 exchange credential을 제공하지 않는다" .ai/planning/private-live-autotrader/progress.md && for value in "host-local" "Quality Gate artifact" "github.sha" "OCI revision" "artifact ID" "host secret source" "GitHub Actions에는 production 또는 exchange credential을 제공하지 않는다"; do rg -Fq "$value" docs/runbooks/deployment.md; done && rg -Fq "operator-controlled host secret source" docs/runbooks/configuration-profiles.md && rg -Fq "runtime service account" docs/deploy/aws-setup.md && rg -Fq "operator-owned command" docs/deploy/aws-setup.md && rg -Fq "deploy workflow는 제거" .ai/PROJECT_STATUS.md && rg -Fq "기존 GitHub-hosted Quality Gate만" .ai/PROJECT_STATUS.md && rg -Fq "NOT_DEPLOYED" .ai/PROJECT_STATUS.md && for task in 1 2 3; do rg -Fq "Task ${task} direct verification: PASS" .ai/planning/private-live-autotrader/progress.md && rg -Fq "Task ${task} Spec Review: PASS" .ai/planning/private-live-autotrader/progress.md && rg -Fq "Task ${task} Code Review: PASS" .ai/planning/private-live-autotrader/progress.md; done && rg -Fq "실제 host/activation: NOT_RUN" .ai/planning/private-live-autotrader/progress.md && ! rg -n "GitHub.*production.*Environment|EC2_SSH_KEY|Deploy workflow" docs/runbooks/deployment.md docs/runbooks/configuration-profiles.md docs/deploy/aws-setup.md'`
+  Run: `docs/dod/private-live-autotrader-phase-minus-1.dod.md`의 최신 `AC4 semantic command` 전체를 실행한다.
 
   Expected: exit 0.
 

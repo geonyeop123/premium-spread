@@ -56,3 +56,62 @@ Node 20을 사용하는 Draft PR의 기존 Quality Gate가 Phase acceptance의 W
 
 Phase -1 구현·review·검증 결과와 acceptance commit/push는 이 아래에 append한다.
 
+### Task 1~3 direct/review 결과 — 2026-07-20
+
+- Task 1 direct verification: PASS — `bash ci/dependency-bootstrap-contract-test.sh`, exit 0,
+  `dependency bootstrap behavioral contracts verified`
+- Task 1 Spec Review: PASS — open finding 0
+- Task 1 Code Review: PASS — HIGH/MEDIUM 0, LOW test gap 3건은 비차단
+- Task 2 direct verification: PASS — `bash docker/deploy-contract-test.sh`, exit 0, `deploy contracts verified`
+- Task 2 Spec Review: PASS — open finding 0
+- Task 2 Code Review: PASS — HIGH/MEDIUM 0, LOW test gap 3건은 비차단
+- Task 3 direct verification: PASS — `bash ci/quality-gate-contract-test.sh`, exit 0,
+  `quality gate and supply-chain contracts verified`
+- Task 3 Spec Review: PASS — HIGH/MEDIUM/LOW 0
+- Task 3 Code Review: PASS — HIGH/MEDIUM/LOW 0, review mutation 11개를 모두 fail-closed로 탐지
+
+### 실제 운영 상태 — 2026-07-20
+
+- 실제 host/activation: NOT_RUN
+- Phase -1 범위에서는 실제 host, secret manager, runner 또는 activation을 구성하지 않는다.
+
+### Task 4 direct/review 결과 — 2026-07-20
+
+- Task 4 direct verification: PASS — documentation check, 확장 AC4 semantic contract와 `git diff --check`, 모두 exit 0
+- Task 4 Spec Review: PASS — HIGH/MEDIUM/LOW 0
+- Task 4 Code Review: PASS — 초기 MEDIUM 3건과 후속 migration 순서 MEDIUM 1건을 수정한 뒤 HIGH/MEDIUM/LOW 0
+- 실제 host/activation: NOT_RUN
+
+### Phase -1 로컬 acceptance — 2026-07-20
+
+| 명령 | 결과 |
+|---|---|
+| `./gradlew compileKotlin test architectureTest --offline --no-daemon` | PASS, exit 0, `BUILD SUCCESSFUL in 1m 13s`, 67 tasks |
+| `npm --prefix apps/web ci --include=optional` | PASS, exit 0, 706 packages; audit moderate 2건은 기존 기준선과 동일 |
+| `npm --prefix apps/web run lint` | PASS, exit 0 |
+| `npm --prefix apps/web run build` | 환경 BLOCKED, exit 1; Node 18.20.8은 Next.js 요구 `>=20.9.0` 미충족 |
+| Quality/dependency/deploy/documentation contracts + shell syntax + `git diff --check` | PASS, exit 0 |
+
+Web build는 green으로 기록하지 않는다. Phase acceptance commit을 push한 뒤 Node 20을 사용하는 Draft PR `#63`의 7개
+Quality Gate job 결과로 판정한다.
+
+### 동결 변경 재승인 — 2026-07-21
+
+- Holistic Spec Review: 동결 AC4의 5→8문서 범위 확장에 대한 사용자 명시적 재승인 전까지 FAIL
+- Holistic Code Review: PR artifact 오승격 가능성 MEDIUM 1건을 merged `dev`의 `event=push`, `branch=dev` 경계로 수정
+- Holistic Code Re-review: PASS — HIGH/MEDIUM 0
+- 사용자 재승인: `승인`
+
+### 재승인 후 acceptance 재검증 — 2026-07-21
+
+| 명령 | 결과 |
+|---|---|
+| `./gradlew compileKotlin test architectureTest --offline --no-daemon` | PASS, exit 0, `BUILD SUCCESSFUL in 24s`, 67 tasks |
+| `npm --prefix apps/web ci --include=optional` | PASS, exit 0, 706 packages; 현재 advisory snapshot 1 low·2 moderate, lockfile 변경 없음 |
+| `npm --prefix apps/web run lint` | PASS, exit 0 |
+| `npm --prefix apps/web run build` | 환경 BLOCKED, exit 1; Node 18.20.8은 Next.js 요구 `>=20.9.0` 미충족 |
+| AC1~AC4 contract, 전체 shell syntax와 `git diff --check` | PASS, exit 0 |
+
+- Final Spec/DoD Re-review: PASS — HIGH/MEDIUM/LOW 0
+- Final Code Re-review: PASS — HIGH/MEDIUM 0, 기존 README의 개발용 `--build` 안내 LOW는 Phase 0 후속
+- PR #63 Node 20 Quality Gate: acceptance commit push 전이므로 PENDING

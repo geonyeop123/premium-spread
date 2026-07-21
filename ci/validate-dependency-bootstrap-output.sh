@@ -80,10 +80,4 @@ for path in "${generated_files[@]}"; do
 done
 install -m 0644 "${root_manifest}" "${review_dir}/root-resolved-artifacts.txt"
 install -m 0644 "${build_logic_manifest}" "${review_dir}/build-logic-resolved-artifacts.txt"
-install -m 0644 ci/dependency-bootstrap-request "${review_dir}/request-marker.txt"
 git diff --binary HEAD -- "${generated_files[@]}" > "${review_dir}/review.patch"
-(
-  cd "${review_dir}"
-  find files -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
-  sha256sum review.patch root-resolved-artifacts.txt build-logic-resolved-artifacts.txt request-marker.txt
-) > "${review_dir}/SHA256SUMS"

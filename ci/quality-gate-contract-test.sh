@@ -15,18 +15,18 @@ workflow_job_block() {
   local job="$1"
   awk -v job="${job}" '
     $0 == "  " job ":" { inside = 1 }
-    inside && $0 ~ /^  [a-z0-9-]+:$/ && $0 != "  " job ":" { exit }
+    inside && $0 ~ /^  [^[:space:]#][^:]*:$/ && $0 != "  " job ":" { exit }
     inside { print }
   ' "${quality_workflow}"
 }
 
-deploy_workflow_job_block() {
-  local job="$1"
-  awk -v job="${job}" '
-    $0 == "  " job ":" { inside = 1 }
-    inside && $0 ~ /^  [a-z0-9-]+:$/ && $0 != "  " job ":" { exit }
+yaml_top_level_block() {
+  local key="$1"
+  awk -v key="${key}" '
+    $0 == key ":" { inside = 1; next }
+    inside && $0 ~ /^[^[:space:]]/ { exit }
     inside { print }
-  ' "${deploy_workflow}"
+  ' "${quality_workflow}"
 }
 
 workflow_step_block() {
@@ -36,6 +36,18 @@ workflow_step_block() {
     inside && $0 ~ /^      - (name: |uses: )/ && $0 != "      - name: " step { exit }
     inside { print }
   ' "${quality_workflow}"
+}
+
+workflow_job_step_block() {
+  local job="$1"
+  local step="$2"
+  local job_block
+  job_block="$(workflow_job_block "${job}")"
+  awk -v step="${step}" '
+    $0 == "      - name: " step { inside = 1 }
+    inside && $0 ~ /^      - (name: |uses: )/ && $0 != "      - name: " step { exit }
+    inside { print }
+  ' <<< "${job_block}"
 }
 
 gradle_task_block() {
@@ -61,48 +73,96 @@ for script in "${root_dir}"/ci/*.sh; do
 done
 
 [[ -f "${quality_workflow}" ]] || fail "quality-gate.yml is missing"
-grep -q 'pull_request:' "${quality_workflow}" || fail "pull request trigger is required"
-grep -q 'refactor/infrastructure-boundary' "${quality_workflow}" || fail "refactor branch push trigger is required"
-grep -q 'workflow_dispatch:' "${quality_workflow}" || fail "manual SHA trigger is required"
-grep -q 'description: Commit SHA to verify' "${quality_workflow}" || fail "manual dispatch must accept an explicit SHA"
-grep -q 'TARGET_SHA:.*github.event.inputs.sha.*github.sha' "${quality_workflow}" || fail "all triggers must resolve an explicit candidate SHA"
-[[ "$(grep -c 'run: bash ci/verify-target-sha.sh' "${quality_workflow}")" -eq 7 ]] ||
-  fail "all seven required jobs must validate checkout HEAD against the candidate SHA"
-grep -q '\^\[0-9a-fA-F\]{40}\$' "${root_dir}/ci/verify-target-sha.sh" || fail "manual candidate SHA must be 40-hex"
-grep -q 'git rev-parse HEAD' "${root_dir}/ci/verify-target-sha.sh" || fail "checked out HEAD must be verified"
+[[ ! -e "${deploy_workflow}" && ! -L "${deploy_workflow}" ]] ||
+  fail "secret-bearing deploy workflow must not exist"
+
+trigger_block="$(yaml_top_level_block on)"
+expected_trigger_block=$'  pull_request:\n  push:\n    branches:\n      - dev\n      - main'
+[[ "${trigger_block}" == "${expected_trigger_block}" ]] ||
+  fail "Quality Gate trigger block must be exactly pull_request and push branches dev/main"
+
+if rg -q 'workflow_dispatch|refactor/infrastructure-boundary|TARGET_SHA|verify-target-sha' "${quality_workflow}"; then
+  fail "manual, stale-branch and custom target SHA paths must not exist"
+fi
+[[ ! -e "${root_dir}/ci/verify-target-sha.sh" && ! -L "${root_dir}/ci/verify-target-sha.sh" ]] ||
+  fail "custom target SHA verifier must be deleted"
+[[ "$(grep -Ec '^[[:space:]]+ref:' "${quality_workflow}" || true)" -eq 0 ]] ||
+  fail "checkout ref overrides must not exist"
+grep -Fq 'group: quality-gate-${{ github.sha }}' "${quality_workflow}" ||
+  fail "concurrency must use the event github.sha"
+
+permissions_block="$(yaml_top_level_block permissions)"
+[[ "$(grep -c '^permissions:$' "${quality_workflow}")" -eq 1 ]] ||
+  fail "Quality Gate must define exactly one top-level permissions block"
+[[ "${permissions_block}" == "  contents: read" ]] || fail "Quality Gate permissions must be contents: read only"
+if grep -Eq '^[[:space:]]+permissions:' "${quality_workflow}"; then
+  fail "job and nested permission overrides are forbidden"
+fi
+if rg -q '\$\{\{[[:space:]]*secrets\.|^[[:space:]]+contents:[[:space:]]+write|^[[:space:]]+id-token:' \
+  "${quality_workflow}"; then
+  fail "Quality Gate must not consume secrets or request contents-write/id-token permissions"
+fi
+if rg -qi 'packages:|workflow_run|ssh-action|scp-action|EC2_SSH_KEY' "${quality_workflow}"; then
+  fail "Quality Gate must not publish packages, deploy over SSH, or consume workflow_run"
+fi
+docker_job="$(workflow_job_block docker-build)"
+expected_build_record_env=$'    env:\n      DOCKER_BUILD_RECORD_UPLOAD: '\''false'\'''
+grep -Fq "${expected_build_record_env}" <<< "${docker_job}" ||
+  fail "docker-build job must disable the default Docker build record artifact"
 
 compile_job="$(workflow_job_block compile-architecture)"
-grep -q 'fetch-depth: 2' <<< "${compile_job}" || fail "dependency bootstrap validation requires the candidate parent"
 grep -q 'persist-credentials: false' <<< "${compile_job}" || fail "compile checkout must not retain push credentials"
-grep -q 'id: bootstrap-request' <<< "${compile_job}" || fail "compile job must validate the dependency bootstrap marker"
+bootstrap_condition="        if: steps.bootstrap-request.outputs.requested == 'true'"
+for bootstrap_step_name in \
+  "Generate dependency locks and SHA-256 metadata for review" \
+  "Publish dependency bootstrap review bundle" \
+  "Require dependency bootstrap review and marker removal"; do
+  bootstrap_step="$(workflow_job_step_block compile-architecture "${bootstrap_step_name}")"
+  [[ -n "${bootstrap_step}" ]] || fail "compile job is missing bootstrap step: ${bootstrap_step_name}"
+  [[ "$(grep -Fxc "${bootstrap_condition}" <<< "${bootstrap_step}")" -eq 1 ]] ||
+    fail "bootstrap step must use the exact requested condition: ${bootstrap_step_name}"
+  [[ "$(grep -Ec '^        if:' <<< "${bootstrap_step}")" -eq 1 ]] ||
+    fail "bootstrap step must define exactly one condition: ${bootstrap_step_name}"
+done
+[[ "$(grep -c 'id: bootstrap-request' <<< "${compile_job}")" -eq 1 ]] ||
+  fail "compile job must validate the dependency bootstrap marker exactly once"
 grep -Fq 'bash ci/check-dependency-bootstrap-request.sh "${GITHUB_OUTPUT}"' <<< "${compile_job}" ||
   fail "dependency bootstrap marker must use the fail-closed validator"
+[[ "$(grep -Fc 'bash ci/check-dependency-bootstrap-request.sh "${GITHUB_OUTPUT}"' "${quality_workflow}")" -eq 1 ]] ||
+  fail "dependency bootstrap validator must be wired exactly once"
 grep -Fq "cache-disabled: \${{ steps.bootstrap-request.outputs.requested == 'true' }}" <<< "${compile_job}" ||
   fail "dependency bootstrap generation must not restore or save Gradle caches"
-grep -q 'bash ci/generate-dependency-bootstrap.sh' <<< "${compile_job}" ||
-  fail "dependency bootstrap must use the allowlisted generation script"
-grep -Fq 'name: dependency-bootstrap-${{ env.TARGET_SHA }}-for-${{ steps.bootstrap-request.outputs.target_sha }}' \
-  <<< "${compile_job}" || fail "dependency bootstrap artifact must bind request and dependency SHAs"
-grep -q 'Require dependency bootstrap review and marker removal' <<< "${compile_job}" ||
-  fail "dependency bootstrap must fail pending artifact review"
+grep -Fq 'run: bash ci/generate-dependency-bootstrap.sh build/reports/dependency-bootstrap-review' <<< "${compile_job}" ||
+  fail "dependency bootstrap generator must receive only the review directory"
+[[ "$(grep -Fc 'bash ci/generate-dependency-bootstrap.sh build/reports/dependency-bootstrap-review' "${quality_workflow}")" -eq 1 ]] ||
+  fail "dependency bootstrap generator must be wired exactly once"
+grep -Fq 'name: dependency-bootstrap-review-${{ github.sha }}' <<< "${compile_job}" ||
+  fail "dependency bootstrap review artifact must use github.sha"
+bootstrap_review_step="$(workflow_job_step_block compile-architecture "Require dependency bootstrap review and marker removal")"
+grep -Eq '^[[:space:]]+exit 1$' <<< "${bootstrap_review_step}" ||
+  fail "dependency bootstrap marker run must fail pending review"
+if rg -q 'id: verification-metadata|steps\.verification-metadata|gradle-verification-metadata|Bootstrap dependency verification metadata|Require metadata review and a follow-up commit' \
+  "${quality_workflow}"; then
+  fail "legacy missing-metadata bootstrap fallback must not exist"
+fi
 
 bootstrap_validator="${root_dir}/ci/check-dependency-bootstrap-request.sh"
 bootstrap_generator="${root_dir}/ci/generate-dependency-bootstrap.sh"
 bootstrap_output_validator="${root_dir}/ci/validate-dependency-bootstrap-output.sh"
-fingerprint_script="${root_dir}/ci/dependency-fingerprint.sh"
 for bootstrap_script in \
-  "${bootstrap_validator}" "${bootstrap_generator}" "${bootstrap_output_validator}" "${fingerprint_script}"; do
+  "${bootstrap_validator}" "${bootstrap_generator}" "${bootstrap_output_validator}"; do
   [[ -f "${bootstrap_script}" ]] || fail "missing dependency bootstrap script: ${bootstrap_script}"
   grep -q 'set -euo pipefail' "${bootstrap_script}" || fail "dependency bootstrap scripts must fail closed"
 done
-grep -q 'GITHUB_EVENT_NAME.*push' "${bootstrap_validator}" || fail "bootstrap marker must be restricted to push events"
-grep -q 'refs/heads/refactor/infrastructure-boundary' "${bootstrap_validator}" ||
-  fail "bootstrap marker must be restricted to the refactor branch"
-grep -q 'target_sha.*revision_line\[1\]' "${bootstrap_validator}" ||
-  fail "bootstrap target must be the marker commit parent"
-grep -q 'changed_paths\[0\].*marker' "${bootstrap_validator}" ||
-  fail "bootstrap marker commit must contain no other changes"
-grep -q 'timedelta(hours=48)' "${bootstrap_validator}" || fail "bootstrap marker expiry must be limited to 48 hours"
+grep -q 'GITHUB_EVENT_NAME.*pull_request' "${bootstrap_validator}" ||
+  fail "bootstrap marker must be restricted to pull_request events"
+grep -Fq "expected='request=gradle-dependency-bootstrap-v1'" "${bootstrap_validator}" ||
+  fail "bootstrap marker must use the fixed v1 request"
+grep -q 'cmp -s' "${bootstrap_validator}" || fail "bootstrap marker must use byte-safe exact comparison"
+if rg -q 'TARGET_SHA|target_sha|dependency_fingerprint|SHA256SUMS' \
+  "${bootstrap_validator}" "${bootstrap_generator}" "${bootstrap_output_validator}"; then
+  fail "dependency bootstrap scripts must not use custom target or checksum bundle paths"
+fi
 grep -q 'resolveAndLockAll resolveVerificationArtifacts' "${bootstrap_generator}" ||
   fail "bootstrap must generate both locks and verification metadata"
 grep -q 'compileKotlin architectureTest' "${bootstrap_generator}" ||
@@ -133,20 +193,52 @@ grep -q 'each artifact must use SHA-256 and no other trust mechanism' "${bootstr
 grep -q 'trusted-keys' "${bootstrap_output_validator}" ||
   fail "bootstrap output validation must reject alternate trusted-key paths"
 bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"
-grep -q '^permissions:$' "${quality_workflow}" && grep -q '^  contents: read$' "${quality_workflow}" ||
-  fail "quality workflow token must remain read-only"
 
 expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-build)
-for job in "${expected_jobs[@]}"; do
-  grep -q "^  ${job}:$" "${quality_workflow}" || fail "required job ${job} is missing"
-done
-actual_jobs="$(grep -Ec '^  (compile-architecture|unit-coverage|api-integration|batch-integration|static-analysis|dependency-security|docker-build):$' "${quality_workflow}")"
-[[ "${actual_jobs}" -eq 7 ]] || fail "quality gate must define exactly seven required job IDs"
+jobs_block="$(yaml_top_level_block jobs)"
+mapfile -t actual_jobs < <(
+  awk '/^  [^[:space:]#][^:]*:$/ { value = $0; sub(/^  /, "", value); sub(/:$/, "", value); print value }' \
+    <<< "${jobs_block}"
+)
+[[ "${actual_jobs[*]}" == "${expected_jobs[*]}" ]] ||
+  fail "Quality Gate job IDs must be exactly the seven required jobs in order"
 
-while IFS= read -r use; do
-  ref="${use##*@}"
-  [[ "${ref}" =~ ^[0-9a-f]{40}$ ]] || fail "action is not SHA-pinned: ${use}"
-done < <(rg -o 'uses: [^ ]+@[^ ]+' "${root_dir}/.github/workflows")
+upload_step_names=(
+  'Publish dependency bootstrap review bundle'
+  'Publish unit and coverage evidence'
+  'Publish API integration evidence'
+  'Publish Batch integration evidence'
+  'Publish static-analysis evidence'
+  'Publish security evidence'
+  'Publish Docker image archives'
+)
+upload_artifact_names=(
+  'dependency-bootstrap-review-${{ github.sha }}'
+  'unit-coverage-${{ github.sha }}'
+  'api-integration-${{ github.sha }}'
+  'batch-integration-${{ github.sha }}'
+  'static-analysis-${{ github.sha }}'
+  'dependency-security-${{ github.sha }}'
+  'docker-images-${{ github.sha }}'
+)
+upload_action_line='        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2'
+for index in "${!upload_step_names[@]}"; do
+  upload_step="$(workflow_step_block "${upload_step_names[${index}]}")"
+  [[ -n "${upload_step}" ]] || fail "Quality Gate is missing upload step: ${upload_step_names[${index}]}"
+  [[ "$(grep -Fxc "${upload_action_line}" <<< "${upload_step}")" -eq 1 ]] ||
+    fail "upload step must use the pinned upload-artifact action: ${upload_step_names[${index}]}"
+  [[ "$(grep -Fxc "          name: ${upload_artifact_names[${index}]}" <<< "${upload_step}")" -eq 1 ]] ||
+    fail "upload step has the wrong exact artifact name: ${upload_step_names[${index}]}"
+done
+[[ "$(grep -c 'uses: actions/upload-artifact@' "${quality_workflow}")" -eq 7 ]] ||
+  fail "Quality Gate must publish exactly seven review/evidence artifacts"
+
+mapfile -t action_uses < <(rg --no-filename '^[[:space:]]*(-[[:space:]]+)?uses:' "${root_dir}/.github/workflows")
+[[ "${#action_uses[@]}" -gt 0 ]] || fail "Quality Gate must use pinned actions"
+action_use_pattern='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40}([[:space:]]+#[^[:cntrl:]]*)?$'
+for action_use in "${action_uses[@]}"; do
+  [[ "${action_use}" =~ ${action_use_pattern} ]] || fail "action use is not owner/action@40hex: ${action_use}"
+done
 
 grep -q 'bash ci/bootstrap-quality-tools.sh --verify-checksums' "${quality_workflow}" || fail "checksum bootstrap is required"
 grep -q 'detekt-cli.jar' "${quality_workflow}" || fail "standalone detekt is required"
@@ -160,24 +252,8 @@ grep -q 'npm --prefix apps/web run lint' "${quality_workflow}" || fail "locked w
 grep -q 'npm --prefix apps/web ci --include=optional' "${quality_workflow}" || fail "web install must include locked native optional dependencies"
 grep -q 'npm ci --include=optional' "${root_dir}/apps/web/Dockerfile" || fail "web image must include locked native optional dependencies"
 
-grep -q 'id: verification-metadata' "${quality_workflow}" || fail "compile job must detect committed verification metadata"
-[[ "$(grep -c "if: steps.verification-metadata.outputs.committed == 'false'" "${quality_workflow}")" -eq 3 ]] ||
-  fail "missing metadata must have bootstrap, artifact publication, and fail-closed steps"
-[[ "$(grep -c 'resolveVerificationArtifacts --write-verification-metadata sha256 --no-daemon' "${quality_workflow}")" -eq 2 ]] ||
-  fail "root and build-logic verification metadata must both be generated by isolated CI resolvers"
-grep -q './gradlew -p build-logic resolveVerificationArtifacts --write-verification-metadata sha256 --no-daemon' \
-  "${quality_workflow}" || fail "build-logic requires its own verification artifact resolver"
 grep -q 'tasks.register("resolveVerificationArtifacts")' "${root_dir}/build-logic/build.gradle.kts" ||
   fail "build-logic verification artifact resolver task is missing"
-grep -q 'name: gradle-verification-metadata-${{ env.TARGET_SHA }}' "${quality_workflow}" ||
-  fail "verification metadata artifact must be bound to the immutable candidate SHA"
-grep -q 'gradle/verification-metadata.xml && -f build-logic/gradle/verification-metadata.xml' "${quality_workflow}" ||
-  fail "root and build-logic verification metadata must both be committed"
-grep -q '^            gradle/verification-metadata.xml' "${quality_workflow}" || fail "root verification metadata must be published"
-grep -q '^            build-logic/gradle/verification-metadata.xml' "${quality_workflow}" ||
-  fail "build-logic verification metadata must be published"
-grep -q 'Require metadata review and a follow-up commit' "${quality_workflow}" || fail "bootstrap run must require review and a follow-up commit"
-grep -q 'exit 1' "${quality_workflow}" || fail "uncommitted verification metadata must fail closed"
 for dependent_job in unit-coverage api-integration batch-integration static-analysis dependency-security docker-build; do
   job_line="$(grep -n "^  ${dependent_job}:$" "${quality_workflow}" | cut -d: -f1)"
   sed -n "${job_line},$((job_line + 5))p" "${quality_workflow}" | grep -q 'needs: compile-architecture' ||
@@ -245,16 +321,30 @@ fi
 grep -q 'path: .ci-tools/dependency-check-data' "${quality_workflow}" || fail "NVD data must be cached separately"
 grep -q 'dependency-check-datafeed-v1-${{ runner.os }}' "${quality_workflow}" ||
   fail "NVD datafeed cache key is missing"
-grep -q 'uses: actions/cache/restore@' "${quality_workflow}" || fail "NVD data cache must have an explicit restore step"
-grep -q 'uses: actions/cache/save@' "${quality_workflow}" || fail "verified NVD data cache must have an explicit save step"
-nvd_update_step="$(workflow_step_block "Update Dependency-Check NVD data")"
-nvd_save_step="$(workflow_step_block "Save verified Dependency-Check NVD data")"
-nvd_scan_step="$(workflow_step_block "OWASP Dependency-Check (CVSS 7+ fails)")"
+dependency_security_job="$(workflow_job_block dependency-security)"
+for nvd_step_name in \
+  "Restore isolated Dependency-Check NVD data" \
+  "Update Dependency-Check NVD data" \
+  "Save verified Dependency-Check NVD data" \
+  "OWASP Dependency-Check (CVSS 7+ fails)"; do
+  [[ "$(grep -Fxc "      - name: ${nvd_step_name}" <<< "${dependency_security_job}")" -eq 1 ]] ||
+    fail "NVD step must exist exactly once inside dependency-security: ${nvd_step_name}"
+done
+nvd_restore_step="$(workflow_job_step_block dependency-security "Restore isolated Dependency-Check NVD data")"
+nvd_update_step="$(workflow_job_step_block dependency-security "Update Dependency-Check NVD data")"
+nvd_save_step="$(workflow_job_step_block dependency-security "Save verified Dependency-Check NVD data")"
+nvd_scan_step="$(workflow_job_step_block dependency-security "OWASP Dependency-Check (CVSS 7+ fails)")"
+grep -q 'uses: actions/cache/restore@' <<< "${nvd_restore_step}" || fail "NVD data cache must have an explicit restore step"
 grep -Fxq '        run: bash ci/update-dependency-check-data.sh' <<< "${nvd_update_step}" ||
   fail "NVD update step must execute the fail-closed updater directly"
 grep -Fxq '        run: bash ci/run-dependency-check.sh' <<< "${nvd_scan_step}" ||
   fail "NVD scan step must execute the fail-closed scanner directly"
-if rg -n 'continue-on-error|always\(\)' <<< "${nvd_update_step}${nvd_save_step}${nvd_scan_step}"; then
+for fail_closed_step in "${nvd_update_step}" "${nvd_scan_step}"; do
+  if grep -Eq '^        (if|continue-on-error):' <<< "${fail_closed_step}"; then
+    fail "NVD update and scan steps must not be conditionally skipped or ignore failures"
+  fi
+done
+if rg -q 'continue-on-error|always\(\)' <<< "${nvd_update_step}${nvd_save_step}${nvd_scan_step}"; then
   fail "NVD update, cache save and scan steps must not override normal failure propagation"
 fi
 grep -Fxq '        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3' \
@@ -263,12 +353,13 @@ grep -Fxq '          path: .ci-tools/dependency-check-data' <<< "${nvd_save_step
   fail "verified NVD cache save step must write only the isolated data directory"
 grep -Fxq '          key: dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('"'"'ci/quality-tools.lock'"'"') }}-${{ github.run_id }}' \
   <<< "${nvd_save_step}" || fail "verified NVD cache save key must be immutable per run"
-nvd_update_line="$(grep -n 'run: bash ci/update-dependency-check-data.sh' "${quality_workflow}" | cut -d: -f1)"
-nvd_save_line="$(grep -n 'name: Save verified Dependency-Check NVD data' "${quality_workflow}" | cut -d: -f1)"
-nvd_scan_line="$(grep -n 'run: bash ci/run-dependency-check.sh' "${quality_workflow}" | cut -d: -f1)"
-[[ -n "${nvd_update_line}" && -n "${nvd_save_line}" && -n "${nvd_scan_line}" &&
-  "${nvd_update_line}" -lt "${nvd_save_line}" && "${nvd_save_line}" -lt "${nvd_scan_line}" ]] ||
-  fail "NVD data must be saved after a successful update and before the fail-closed scan"
+nvd_restore_line="$(grep -nF '      - name: Restore isolated Dependency-Check NVD data' <<< "${dependency_security_job}" | cut -d: -f1)"
+nvd_update_line="$(grep -nF '      - name: Update Dependency-Check NVD data' <<< "${dependency_security_job}" | cut -d: -f1)"
+nvd_save_line="$(grep -nF '      - name: Save verified Dependency-Check NVD data' <<< "${dependency_security_job}" | cut -d: -f1)"
+nvd_scan_line="$(grep -nF '      - name: OWASP Dependency-Check (CVSS 7+ fails)' <<< "${dependency_security_job}" | cut -d: -f1)"
+[[ "${nvd_restore_line}" -lt "${nvd_update_line}" && "${nvd_update_line}" -lt "${nvd_save_line}" &&
+  "${nvd_save_line}" -lt "${nvd_scan_line}" ]] ||
+  fail "NVD steps must stay in restore, update, save, scan order inside dependency-security"
 if grep -q '^          path: \.ci-tools$' "${quality_workflow}"; then
   fail "tool installation cache must not absorb the isolated NVD data directory"
 fi
@@ -300,15 +391,42 @@ docker_job="$(workflow_job_block docker-build)"
 [[ "$(grep -c 'outputs: type=docker,dest=${{ runner.temp }}/docker-images/' <<< "${docker_job}")" -eq 3 ]] ||
   fail "Docker job must export API, Batch and Web as loadable archives"
 for component in api batch web; do
-  grep -Fq "tags: ghcr.io/\${{ github.repository }}/${component}:\${{ env.TARGET_SHA }}" <<< "${docker_job}" ||
-    fail "Docker ${component} archive must carry the immutable candidate tag"
-  grep -Fq "outputs: type=docker,dest=\${{ runner.temp }}/docker-images/${component}.tar" <<< "${docker_job}" ||
+  case "${component}" in
+    api) image_step="$(workflow_job_step_block docker-build "Build API image")" ;;
+    batch) image_step="$(workflow_job_step_block docker-build "Build Batch image")" ;;
+    web) image_step="$(workflow_job_step_block docker-build "Build Web image")" ;;
+  esac
+  grep -Fxq "          tags: ghcr.io/\${{ github.repository }}/${component}:\${{ github.sha }}" <<< "${image_step}" ||
+    fail "Docker ${component} archive must carry the event github.sha tag"
+  grep -Fxq '          labels: org.opencontainers.image.revision=${{ github.sha }}' <<< "${image_step}" ||
+    fail "Docker ${component} image must carry the standard OCI revision"
+  grep -Fxq "          outputs: type=docker,dest=\${{ runner.temp }}/docker-images/${component}.tar" <<< "${image_step}" ||
     fail "Docker ${component} archive output is missing"
 done
-grep -Fq 'name: docker-images-${{ env.TARGET_SHA }}' <<< "${docker_job}" ||
-  fail "Docker archives must be uploaded as a candidate-SHA artifact"
-grep -Fq 'path: ${{ runner.temp }}/docker-images/*.tar' <<< "${docker_job}" ||
+docker_archive_step="$(workflow_job_step_block docker-build "Publish Docker image archives")"
+grep -Fxq '        id: docker-archives' <<< "${docker_archive_step}" || fail "Docker archive upload step must expose a stable ID"
+grep -Fxq "${upload_action_line}" <<< "${docker_archive_step}" || fail "Docker archives must use pinned upload-artifact"
+grep -Fxq '          name: docker-images-${{ github.sha }}' <<< "${docker_archive_step}" ||
+  fail "Docker archives must use the event github.sha"
+grep -Fxq '          path: ${{ runner.temp }}/docker-images/*.tar' <<< "${docker_archive_step}" ||
   fail "Docker archive artifact path is missing"
+docker_provenance_step="$(workflow_job_step_block docker-build "Record Docker artifact provenance")"
+[[ "$(grep -Fxc '      - name: Publish Docker image archives' <<< "${docker_job}")" -eq 1 ]] ||
+  fail "Docker archive upload step must exist exactly once"
+[[ "$(grep -Fxc '      - name: Record Docker artifact provenance' <<< "${docker_job}")" -eq 1 ]] ||
+  fail "Docker provenance summary step must exist exactly once"
+docker_upload_line="$(grep -nF '      - name: Publish Docker image archives' <<< "${docker_job}" | cut -d: -f1)"
+docker_summary_line="$(grep -nF '      - name: Record Docker artifact provenance' <<< "${docker_job}" | cut -d: -f1)"
+[[ "${docker_upload_line}" -lt "${docker_summary_line}" ]] ||
+  fail "Docker archive upload must complete before provenance is recorded"
+grep -Fq 'echo "run_id=${GITHUB_RUN_ID}"' <<< "${docker_provenance_step}" ||
+  fail "Docker provenance summary must record github.run_id"
+grep -Fq 'echo "commit=${GITHUB_SHA}"' <<< "${docker_provenance_step}" ||
+  fail "Docker provenance summary must record github.sha"
+grep -Fq 'echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"' <<< "${docker_provenance_step}" ||
+  fail "Docker provenance summary must record the platform artifact ID"
+grep -Fq '} >> "${GITHUB_STEP_SUMMARY}"' <<< "${docker_provenance_step}" ||
+  fail "Docker provenance must be written to GITHUB_STEP_SUMMARY"
 for dockerfile in "${root_dir}/apps/api/Dockerfile" "${root_dir}/apps/batch/Dockerfile"; do
   gradle_lines="$(grep 'RUN ./gradlew' "${dockerfile}")"
   [[ -n "${gradle_lines}" ]] || fail "${dockerfile} must contain Gradle build steps"
@@ -395,28 +513,6 @@ detekt_locked="$(awk -F'|' '$1 == "detekt" { print $2 }' "${tool_lock}")"
   fail "ktlint version must have one value across gradle.properties and the checksum lock"
 [[ -n "${detekt_property}" && "${detekt_property}" == "${detekt_locked}" ]] ||
   fail "detekt version must have one value across gradle.properties and the checksum lock"
-
-publish_job="$(deploy_workflow_job_block publish-images)"
-grep -q 'workflow_run:' "${deploy_workflow}" || fail "deploy must consume the completed quality workflow"
-grep -q 'github.event.workflow_run.conclusion == .success.' <<< "${publish_job}" || fail "deploy must require successful quality gate"
-grep -q 'github.event.workflow_run.head_branch == .main.' <<< "${publish_job}" || fail "deploy must accept protected main only"
-grep -q 'github.event.workflow_run.event == .push.' <<< "${publish_job}" || fail "deploy must accept main push only"
-grep -q 'environment: production' "${deploy_workflow}" || fail "deploy must use the approval-protected production environment"
-grep -Fq 'DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}' "${deploy_workflow}" ||
-  fail "deploy SHA must be the exact successful workflow head SHA"
-grep -q '^  actions: read$' "${deploy_workflow}" || fail "deploy needs read access to Quality Gate artifacts"
-if grep -q 'DEPLOY_SHA:.*||' "${deploy_workflow}"; then
-  fail "deploy SHA must not have a fallback"
-fi
-grep -Fq 'name: docker-images-${{ env.DEPLOY_SHA }}' <<< "${publish_job}" || fail "deploy must download the exact candidate artifact"
-grep -Fq 'run-id: ${{ github.event.workflow_run.id }}' <<< "${publish_job}" || fail "deploy artifact must come from the successful workflow run"
-grep -q 'docker load --input' <<< "${publish_job}" || fail "deploy promotion must load the verified image archive"
-grep -q 'docker push "${image}"' <<< "${publish_job}" || fail "deploy promotion must push the loaded verified image"
-if rg -n 'docker/build-push-action|docker build|setup-buildx-action' "${deploy_workflow}"; then
-  fail "deploy must promote Quality Gate archives without rebuilding"
-fi
-[[ "$(grep -c 'run: bash ci/verify-target-sha.sh' "${deploy_workflow}")" -eq 2 ]] ||
-  fail "image publication and deployment must both verify the quality-gated SHA"
 
 if rg -n 'org\.jlleitschuh\.gradle\.ktlint|io\.gitlab\.arturbosch\.detekt|org\.owasp\.dependencycheck' \
   "${root_dir}" --glob '*.gradle' --glob '*.gradle.kts' --glob 'settings.gradle*'; then
