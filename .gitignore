@@ -39,6 +39,9 @@ out/
 ### Kotlin ###
 .kotlin
 
+### Git worktrees ###
+.worktrees/
+
 ### Environment ###
 .env
 logs/

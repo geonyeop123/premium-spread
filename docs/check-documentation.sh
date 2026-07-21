@@ -53,12 +53,12 @@ for path in "${required_paths[@]}"; do
   test -e "$path" || { echo "documented path does not exist: $path" >&2; exit 1; }
 done
 
-if rg -n -i '\b(TBD|TODO|FIXME|XXX)\b' "${authoritative_files[@]}"; then
+if grep -Ein '\b(TBD|TODO|FIXME|XXX)\b' "${authoritative_files[@]}"; then
   echo "unresolved documentation placeholder found" >&2
   exit 1
 fi
 
-if rg -n 'PremiumUpdatedEvent|PremiumThresholdNotificationListener|NotificationCooldownStore|apps/(api|batch)/src/main/kotlin/.*/(infrastructure|cache|repository|client)/|Facade.{0,20}(optional|생략 가능)' \
+if grep -En 'PremiumUpdatedEvent|PremiumThresholdNotificationListener|NotificationCooldownStore|apps/(api|batch)/src/main/kotlin/.*/(infrastructure|cache|repository|client)/|Facade.{0,20}(optional|생략 가능)' \
   "${authoritative_files[@]}"; then
   echo "stale architecture description found" >&2
   exit 1
@@ -79,7 +79,7 @@ for file in "${authoritative_files[@]}"; do
       echo "broken Markdown link: $file -> $target" >&2
       exit 1
     fi
-  done < <(rg -o '\[[^]]+\]\([^)]+\)' "$file" || true)
+  done < <(grep -Eo '\[[^]]+\]\([^)]+\)' "$file" || true)
 done
 
 echo "documentation check passed (${#authoritative_files[@]} files, ${#required_paths[@]} required paths)"

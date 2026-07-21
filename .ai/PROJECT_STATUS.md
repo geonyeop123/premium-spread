@@ -1,6 +1,6 @@
 # Project Status
 
-> Last updated: 2026-07-15, infrastructure boundary refactoring Phase 9 구현/CI 완료 / Phase 10 마감
+> Last updated: 2026-07-20, PRIVATE LIVE Phase -1 CI/host-local 배포 경계 전환 중
 
 ## Current State
 
@@ -34,6 +34,15 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - 전체 상세와 Phase별 증거는 [진행 문서](planning/infrastructure-boundary/progress.md), 완료 조건별 판정은
   [결과 문서](../docs/superpowers/plans/2026-07-14-infrastructure-boundary-refactoring-result.md)에 기록한다.
 
+## PRIVATE LIVE Phase -1 상태
+
+- secret-bearing deploy workflow는 제거했고 기존 GitHub-hosted Quality Gate만 CI 경계로 유지한다.
+- Quality Gate는 `github.sha`로 묶인 image archive와 provenance evidence까지만 만들며 production/exchange credential을
+  받거나 host 배포를 수행하지 않는다.
+- 배포 owner는 validation/PRIVATE_LIVE host의 operator다. 검증 artifact, host registry credential, host secret source와
+  `docker/deploy.sh` 실행을 host-local 경계에서 관리한다.
+- Phase -1은 실제 host, secret 또는 activation을 구성하지 않았다. 운영/스테이징 배포 상태는 `NOT_DEPLOYED`다.
+
 ## 기능 상태
 
 - WebSocket Binance/Bithumb 시세 수집과 1초 down-sample
@@ -64,9 +73,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 
 ## Known Issues / Explicit Limits
 
-1. 현재 운영/스테이징 환경은 없다. `prd` profile, deploy workflow, runbook은 향후 환경의 계약이며
-   실제 GitHub required checks와 `production` Environment protection은 외부 repository 설정 증거가 있어야
-   완료로 판정한다.
+1. 현재 운영/스테이징 환경은 없다. `prd` profile과 host-local runbook은 향후 환경의 계약이며 실제 host 배포와
+   activation은 별도 operator 실행 증거가 있어야 완료로 판정한다.
 2. Batch runtime은 `batch.market`의 한 MarketPair만 수집한다. DB/Redis/API identity는 다중 pair를 구분하지만
    여러 pair 동시 ingestion은 별도 확장 작업이다.
 3. 이메일 전달은 at-least-once다. SMTP 수락 후 DB mark 실패 시 중복 메일이 가능하다.

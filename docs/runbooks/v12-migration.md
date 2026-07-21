@@ -19,7 +19,7 @@ V12는 `position`을 `TRUNCATE`한 뒤 pair 컬럼으로 바꾸므로 일반 배
 1. `position` row가 0인지 read-only 계정으로 재확인한다.
 2. 배포 change/ticket에 승인자와 시간을 기록한다.
 3. `.env` 파일은 false로 유지하고 해당 실행에만
-   `MIGRATION_V12_ALLOW_EMPTY=true ./deploy/deploy.sh`처럼 process env로 전달한다.
+   `MIGRATION_V12_ALLOW_EMPTY=true bash docker/deploy.sh`로 process env를 전달한다.
 4. Flyway V12 success/checksum `-1352556376`와 API readiness를 확인한다.
 5. 즉시 플래그를 제거하고 재기동해 `APPLIED` 경로로 통과하는지 확인한다.
 

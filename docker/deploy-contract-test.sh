@@ -3,7 +3,7 @@ set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 app_compose="${root_dir}/docker/app-compose.yml"
-workflow="${root_dir}/.github/workflows/deploy.yml"
+deploy_workflow="${root_dir}/.github/workflows/deploy.yml"
 quality_workflow="${root_dir}/.github/workflows/quality-gate.yml"
 deploy_script="${root_dir}/docker/deploy.sh"
 monitoring_compose="${root_dir}/docker/monitoring-compose.yml"
@@ -22,16 +22,8 @@ quality_job_block() {
   ' "${quality_workflow}"
 }
 
-deploy_job_block() {
-  local job="$1"
-  awk -v job="${job}" '
-    $0 == "  " job ":" { inside = 1 }
-    inside && $0 ~ /^  [a-z0-9-]+:$/ && $0 != "  " job ":" { exit }
-    inside { print }
-  ' "${workflow}"
-}
-
 bash -n "${deploy_script}"
+[[ ! -e "${deploy_workflow}" ]] || fail "secret-bearing deploy workflow must not exist"
 
 [[ "$(grep -c 'image:.*DEPLOY_SHA' "${app_compose}")" -eq 3 ]] ||
   fail "api, batch and web images must use DEPLOY_SHA"
@@ -51,34 +43,16 @@ fi
 grep -q 'condition: service_healthy' "${app_compose}" ||
   fail "batch/nginx must wait for API health"
 
-if grep -Eq 'git pull|docker compose .*--build' "${workflow}" "${deploy_script}"; then
+if grep -Eq 'git pull|docker compose .*--build' "${quality_workflow}" "${deploy_script}"; then
   fail "deployment must not pull source or build on the server"
 fi
 api_job="$(quality_job_block api-integration)"
 batch_job="$(quality_job_block batch-integration)"
-docker_job="$(quality_job_block docker-build)"
-publish_job="$(deploy_job_block publish-images)"
 grep -Fq 'run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest --dependency-verification strict --no-daemon' <<< "${api_job}" ||
   fail "Quality Gate API job must run exact strict API/common integration tasks"
 grep -Fq 'run: ./gradlew :apps:batch:integrationTest --dependency-verification strict --no-daemon' <<< "${batch_job}" ||
   fail "Quality Gate Batch job must run exact strict Batch integration task"
 
-grep -q 'workflow_run:' "${workflow}" || fail "deploy must be triggered by a completed Quality Gate"
-grep -q "github.event.workflow_run.conclusion == 'success'" <<< "${publish_job}" || fail "deploy requires a successful gate"
-grep -q "github.event.workflow_run.head_branch == 'main'" <<< "${publish_job}" || fail "deploy accepts main only"
-grep -q "github.event.workflow_run.event == 'push'" <<< "${publish_job}" || fail "deploy accepts protected main push only"
-grep -Fq 'DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}' "${workflow}" || fail "deploy must use the exact verified SHA"
-if grep -q 'DEPLOY_SHA:.*||' "${workflow}"; then
-  fail "deploy SHA fallback is forbidden"
-fi
-grep -Fq 'name: docker-images-${{ env.TARGET_SHA }}' <<< "${docker_job}" || fail "Quality Gate must publish candidate image archives"
-grep -Fq 'name: docker-images-${{ env.DEPLOY_SHA }}' <<< "${publish_job}" || fail "deploy must select the exact candidate artifact"
-grep -Fq 'run-id: ${{ github.event.workflow_run.id }}' <<< "${publish_job}" || fail "deploy must download from the successful gate run"
-grep -q 'docker load --input' <<< "${publish_job}" || fail "deploy must load verified archives"
-grep -q 'docker push "${image}"' <<< "${publish_job}" || fail "deploy must promote loaded images"
-if rg -n 'docker/build-push-action|docker build|setup-buildx-action' "${workflow}"; then
-  fail "deploy must not rebuild Quality Gate images"
-fi
 grep -q 'rollback' "${deploy_script}" || fail "automatic rollback is required"
 grep -q 'wait_healthy api' "${deploy_script}" || fail "API readiness gate is required"
 grep -q 'wait_http http://127.0.0.1/ "public ingress"' "${deploy_script}" ||
