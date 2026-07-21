@@ -278,6 +278,37 @@ Final Code Re-review: PASS, HIGH/MEDIUM 0
 PR #63 Node 20 Quality Gate: acceptance commit push 전이므로 PENDING
 ```
 
+### 원격 acceptance RED와 Task 5 remediation — 2026-07-21
+
+```text
+[REMOTE RED]
+commit: c6fec014da4afeb5e356da9d89e6607e0d20db0c
+run: 29789180354
+job: 88507065048 (1. Compile + architecture)
+result: failure
+failed step: Verify repository quality and documentation contracts
+cause: ci/quality-gate-contract-test.sh: rg: command not found
+dependent jobs: 6 SKIPPED
+
+[LOCAL RED]
+$ bash -c 'rg() { return 127; }; export -f rg; bash ci/quality-gate-contract-test.sh'
+exit 1
+quality gate contract failed: Quality Gate must use pinned actions
+
+[GREEN]
+$ ! grep -En '\brg\b' ci/quality-gate-contract-test.sh docs/check-documentation.sh
+exit 0
+
+$ bash -c 'rg() { return 127; }; export -f rg; bash ci/quality-gate-contract-test.sh && bash docs/check-documentation.sh'
+exit 0
+quality gate and supply-chain contracts verified
+documentation check passed (20 files, 15 required paths)
+
+Task 5 Spec Review: PASS, HIGH/MEDIUM/LOW 0
+Task 5 Code Review: PASS, HIGH/MEDIUM/LOW 0
+remediation commit PR retry: PENDING
+```
+
 ## 변경 요청
 
 > 동결 후 기준을 바꿔야 할 때만 작성. 사람이 승인하기 전까지 구현을 중단한다.

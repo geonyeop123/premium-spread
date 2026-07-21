@@ -115,3 +115,17 @@ Quality Gate job 결과로 판정한다.
 - Final Spec/DoD Re-review: PASS — HIGH/MEDIUM/LOW 0
 - Final Code Re-review: PASS — HIGH/MEDIUM 0, 기존 README의 개발용 `--build` 안내 LOW는 Phase 0 후속
 - PR #63 Node 20 Quality Gate: acceptance commit push 전이므로 PENDING
+
+### 원격 acceptance RED와 Task 5 remediation — 2026-07-21
+
+- acceptance commit: `c6fec014da4afeb5e356da9d89e6607e0d20db0c`, push 완료
+- PR run: `29789180354`, Compile + architecture job `88507065048`
+- 원격 결과: FAIL — repository contract step에서 `rg: command not found`, 이후 6개 job은 dependency 때문에 SKIPPED
+- root cause: GitHub-hosted runner가 제공하지 않는 ripgrep을 contract script 두 곳이 암묵적으로 요구
+- 수정: runner package/Action을 추가하지 않고 `ci/quality-gate-contract-test.sh`, `docs/check-documentation.sh`를 기본
+  `grep`/`find`로 의미 보존 이식
+- Task 5 direct verification: PASS — shadow `rg=127`과 일반 환경에서 quality/docs/dependency/deploy contract, syntax,
+  `git diff --check` 모두 exit 0
+- Task 5 Spec Review: PASS — HIGH/MEDIUM/LOW 0
+- Task 5 Code Review: PASS — HIGH/MEDIUM/LOW 0
+- 새 PR Quality Gate: remediation commit push 전이므로 PENDING

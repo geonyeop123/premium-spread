@@ -377,6 +377,45 @@ repository 파일을 갱신하지 않는다.
 
   Expected: exit 0.
 
+## Task 5: GitHub-hosted runner 기본 도구 호환성 복구
+
+**Covered DoD:** 회귀 방어선 R3, R4와 Phase acceptance 원격 검증
+
+**Files:**
+
+- Modify: `ci/quality-gate-contract-test.sh`
+- Modify: `docs/check-documentation.sh`
+
+**허용 write scope:** 위 두 contract script만 수정한다.
+
+**제외:** runner package 설치, 신규 Action/workflow/job, contract 의미·검사 대상 완화, runtime 코드, commit/push.
+
+- [x] **Step 1: 원격 및 로컬에서 숨은 ripgrep 의존성 RED를 확인한다**
+
+  Remote: PR #63 Quality Gate run `29789180354`, job `88507065048`.
+
+  Expected: `rg: command not found` 뒤 Quality Gate contract exit 1.
+
+  Run: `bash -c 'rg() { return 127; }; export -f rg; bash ci/quality-gate-contract-test.sh'`
+
+  Expected: `quality gate contract failed: Quality Gate must use pinned actions`, exit 1.
+
+- [x] **Step 2: contract script를 runner 기본 grep/find 도구로 이식한다**
+
+  `rg`의 extended-regex, filename suppression, recursive glob 의미를 각각 `grep -E`, `grep -h`, 명시적 file glob으로 보존한다.
+  forbidden-pattern 검사는 command-not-found를 success로 오판하지 않아야 하고 documentation link 추출도 동일한 Markdown link
+  집합을 검사해야 한다.
+
+- [x] **Step 3: ripgrep이 없는 환경을 포함해 GREEN을 확인한다**
+
+  Run: `! grep -En '\\brg\\b' ci/quality-gate-contract-test.sh docs/check-documentation.sh`
+
+  Run: `bash -c 'rg() { return 127; }; export -f rg; bash ci/quality-gate-contract-test.sh && bash docs/check-documentation.sh'`
+
+  Run: `bash ci/quality-gate-contract-test.sh && bash docs/check-documentation.sh && bash -n ci/quality-gate-contract-test.sh && bash -n docs/check-documentation.sh && git diff --check`
+
+  Expected: 각 명령 exit 0.
+
 ## Phase acceptance verification
 
 모든 Task의 Spec Review와 Code Review가 닫힌 뒤 controller가 worktree에서 순서대로 실행한다.
@@ -419,3 +458,6 @@ PR: #63 Draft 유지
 
 dependency bootstrap marker가 있는 의도된 red run은 acceptance가 아니다. 이 Phase에는 dependency 변경이 없으므로 marker를
 commit하지 않는다.
+
+원격 acceptance 실패를 수정하는 경우 controller는 독립 review와 로컬 재검증 후 별도 remediation commit
+`fix: CI 계약 검사의 runner 도구 의존성 제거`를 push하고 새 PR run 전체를 다시 확인한다.

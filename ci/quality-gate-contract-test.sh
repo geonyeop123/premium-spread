@@ -81,7 +81,7 @@ expected_trigger_block=$'  pull_request:\n  push:\n    branches:\n      - dev\n 
 [[ "${trigger_block}" == "${expected_trigger_block}" ]] ||
   fail "Quality Gate trigger block must be exactly pull_request and push branches dev/main"
 
-if rg -q 'workflow_dispatch|refactor/infrastructure-boundary|TARGET_SHA|verify-target-sha' "${quality_workflow}"; then
+if grep -Eq 'workflow_dispatch|refactor/infrastructure-boundary|TARGET_SHA|verify-target-sha' "${quality_workflow}"; then
   fail "manual, stale-branch and custom target SHA paths must not exist"
 fi
 [[ ! -e "${root_dir}/ci/verify-target-sha.sh" && ! -L "${root_dir}/ci/verify-target-sha.sh" ]] ||
@@ -98,11 +98,11 @@ permissions_block="$(yaml_top_level_block permissions)"
 if grep -Eq '^[[:space:]]+permissions:' "${quality_workflow}"; then
   fail "job and nested permission overrides are forbidden"
 fi
-if rg -q '\$\{\{[[:space:]]*secrets\.|^[[:space:]]+contents:[[:space:]]+write|^[[:space:]]+id-token:' \
+if grep -Eq '\$\{\{[[:space:]]*secrets\.|^[[:space:]]+contents:[[:space:]]+write|^[[:space:]]+id-token:' \
   "${quality_workflow}"; then
   fail "Quality Gate must not consume secrets or request contents-write/id-token permissions"
 fi
-if rg -qi 'packages:|workflow_run|ssh-action|scp-action|EC2_SSH_KEY' "${quality_workflow}"; then
+if grep -Eqi 'packages:|workflow_run|ssh-action|scp-action|EC2_SSH_KEY' "${quality_workflow}"; then
   fail "Quality Gate must not publish packages, deploy over SSH, or consume workflow_run"
 fi
 docker_job="$(workflow_job_block docker-build)"
@@ -141,7 +141,7 @@ grep -Fq 'name: dependency-bootstrap-review-${{ github.sha }}' <<< "${compile_jo
 bootstrap_review_step="$(workflow_job_step_block compile-architecture "Require dependency bootstrap review and marker removal")"
 grep -Eq '^[[:space:]]+exit 1$' <<< "${bootstrap_review_step}" ||
   fail "dependency bootstrap marker run must fail pending review"
-if rg -q 'id: verification-metadata|steps\.verification-metadata|gradle-verification-metadata|Bootstrap dependency verification metadata|Require metadata review and a follow-up commit' \
+if grep -Eq 'id: verification-metadata|steps\.verification-metadata|gradle-verification-metadata|Bootstrap dependency verification metadata|Require metadata review and a follow-up commit' \
   "${quality_workflow}"; then
   fail "legacy missing-metadata bootstrap fallback must not exist"
 fi
@@ -159,7 +159,7 @@ grep -q 'GITHUB_EVENT_NAME.*pull_request' "${bootstrap_validator}" ||
 grep -Fq "expected='request=gradle-dependency-bootstrap-v1'" "${bootstrap_validator}" ||
   fail "bootstrap marker must use the fixed v1 request"
 grep -q 'cmp -s' "${bootstrap_validator}" || fail "bootstrap marker must use byte-safe exact comparison"
-if rg -q 'TARGET_SHA|target_sha|dependency_fingerprint|SHA256SUMS' \
+if grep -Eq 'TARGET_SHA|target_sha|dependency_fingerprint|SHA256SUMS' \
   "${bootstrap_validator}" "${bootstrap_generator}" "${bootstrap_output_validator}"; then
   fail "dependency bootstrap scripts must not use custom target or checksum bundle paths"
 fi
@@ -184,7 +184,7 @@ for bootstrap_invocation in \
   [[ "$(grep -c -- '--refresh-dependencies' <<< "${bootstrap_invocation}")" -eq 1 ]] ||
     fail "each bootstrap invocation must refresh cached metadata exactly once"
 done
-if rg -n -- '--dependency-verification[= ]off|--write-verification-metadata (md5|sha1)|git (commit|push)' \
+if grep -En -- '--dependency-verification[= ]off|--write-verification-metadata (md5|sha1)|git (commit|push)' \
   "${bootstrap_generator}" "${bootstrap_validator}" "${bootstrap_output_validator}"; then
   fail "bootstrap must not disable verification or mutate the remote repository"
 fi
@@ -233,7 +233,11 @@ done
 [[ "$(grep -c 'uses: actions/upload-artifact@' "${quality_workflow}")" -eq 7 ]] ||
   fail "Quality Gate must publish exactly seven review/evidence artifacts"
 
-mapfile -t action_uses < <(rg --no-filename '^[[:space:]]*(-[[:space:]]+)?uses:' "${root_dir}/.github/workflows")
+mapfile -d '' -t workflow_files < <(
+  find "${root_dir}/.github/workflows" -maxdepth 1 -type f \
+    \( -name '*.yml' -o -name '*.yaml' \) -print0
+)
+mapfile -t action_uses < <(grep -hE '^[[:space:]]*(-[[:space:]]+)?uses:' "${workflow_files[@]}")
 [[ "${#action_uses[@]}" -gt 0 ]] || fail "Quality Gate must use pinned actions"
 action_use_pattern='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40}([[:space:]]+#[^[:cntrl:]]*)?$'
 for action_use in "${action_uses[@]}"; do
@@ -263,7 +267,7 @@ while IFS= read -r gradle_command; do
   [[ "${gradle_command}" == *"--write-verification-metadata"* ]] && continue
   [[ "${gradle_command}" == *"--dependency-verification strict"* ]] ||
     fail "committed-metadata Gradle gate is not explicitly strict: ${gradle_command}"
-done < <(rg 'run: ./gradlew' "${quality_workflow}")
+done < <(grep -E 'run: ./gradlew' "${quality_workflow}")
 
 api_job="$(workflow_job_block api-integration)"
 batch_job="$(workflow_job_block batch-integration)"
@@ -314,7 +318,7 @@ grep -q -- '--data "${data_dir}"' "${root_dir}/ci/run-dependency-check.sh" ||
   fail "Dependency-Check must use its isolated NVD data directory"
 grep -q 'dependency_data_dir=.*dependency-check-data' "${root_dir}/ci/bootstrap-quality-tools.sh" ||
   fail "bootstrap must create a separate dependency data directory"
-if rg -n 'rm -rf.*dependency-check-data|rm -rf[[:space:]]+"\$\{(tool_dir|dependency_data_dir)\}"' \
+if grep -En 'rm -rf.*dependency-check-data|rm -rf[[:space:]]+"\$\{(tool_dir|dependency_data_dir)\}"' \
   "${root_dir}/ci/bootstrap-quality-tools.sh"; then
   fail "tool bootstrap must never delete cached Dependency-Check data"
 fi
@@ -344,7 +348,7 @@ for fail_closed_step in "${nvd_update_step}" "${nvd_scan_step}"; do
     fail "NVD update and scan steps must not be conditionally skipped or ignore failures"
   fi
 done
-if rg -q 'continue-on-error|always\(\)' <<< "${nvd_update_step}${nvd_save_step}${nvd_scan_step}"; then
+if grep -Eq 'continue-on-error|always\(\)' <<< "${nvd_update_step}${nvd_save_step}${nvd_scan_step}"; then
   fail "NVD update, cache save and scan steps must not override normal failure propagation"
 fi
 grep -Fxq '        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3' \
@@ -380,10 +384,10 @@ grep -q -- '--updateonly' "${root_dir}/ci/update-dependency-check-data.sh" ||
   fail "Dependency-Check data must be updated independently before scanning"
 grep -q -- '--noupdate' "${root_dir}/ci/run-dependency-check.sh" ||
   fail "Dependency-Check scan must read the database completed by the update step"
-if rg -n -- '--nvdApiKey|--noupdate|\|\|[[:space:]]*true' "${root_dir}/ci/update-dependency-check-data.sh"; then
+if grep -En -- '--nvdApiKey|--noupdate|\|\|[[:space:]]*true' "${root_dir}/ci/update-dependency-check-data.sh"; then
   fail "Dependency-Check update must neither skip nor hide authoritative datafeed failures"
 fi
-if rg -n -- '--nvdApiKey|--updateonly|\|\|[[:space:]]*true' "${root_dir}/ci/run-dependency-check.sh"; then
+if grep -En -- '--nvdApiKey|--updateonly|\|\|[[:space:]]*true' "${root_dir}/ci/run-dependency-check.sh"; then
   fail "Dependency-Check scan must not update data, use a runner-specific API key, or hide failures"
 fi
 
@@ -514,8 +518,14 @@ detekt_locked="$(awk -F'|' '$1 == "detekt" { print $2 }' "${tool_lock}")"
 [[ -n "${detekt_property}" && "${detekt_property}" == "${detekt_locked}" ]] ||
   fail "detekt version must have one value across gradle.properties and the checksum lock"
 
-if rg -n 'org\.jlleitschuh\.gradle\.ktlint|io\.gitlab\.arturbosch\.detekt|org\.owasp\.dependencycheck' \
-  "${root_dir}" --glob '*.gradle' --glob '*.gradle.kts' --glob 'settings.gradle*'; then
+mapfile -d '' -t gradle_files < <(
+  find "${root_dir}" \
+    \( -type d \( -name .git -o -name .gradle -o -name build -o -name node_modules \) -prune \) -o \
+    \( -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name 'settings.gradle*' \) -print0 \)
+)
+if [[ "${#gradle_files[@]}" -gt 0 ]] &&
+  grep -En 'org\.jlleitschuh\.gradle\.ktlint|io\.gitlab\.arturbosch\.detekt|org\.owasp\.dependencycheck' \
+    "${gradle_files[@]}"; then
   fail "CI-only quality/security tools must not participate in Gradle resolution"
 fi
 
