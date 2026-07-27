@@ -26,6 +26,23 @@ Phase 진입 시 확정되는 후보이며, 한 Phase가 복수 slug로 나뉠 �
 | 3 | Phase 2 SIMULATION + PAPER | `private-live-autotrader-phase-2` | `MARKET_ECONOMICS_READY` | 〃 | `STAGE_A_SOFTWARE_COMPLETE` |
 | 4 | Phase 3 PRIVATE LIVE Capability | `private-live-autotrader-phase-3` | `STAGE_A_SOFTWARE_COMPLETE` | 〃 | `PRIVATE_LIVE_CODE_READY` |
 
+software Phase만으로는 프로그램이 정의된 최종 상태에 도달하지 못한다. `design.md` §4.3·§4.4·§9가 요구하는 gate도
+각각 실행 단위를 갖는다. 이들은 코드 산출물이 아니라 gate 판정과 evidence를 산출하며, 전이 선언 권한은 사용자에게 있다.
+
+| # | 실행 단위 | 진입 상태 | owner | 산출물 | 종료 판정 |
+|---|---|---|---|---|---|
+| C | Collection 시작 | `P1-O1` 최소 수집 계약 확정 | owner + Phase 1 agent | `ECG-1`~`ECG-3` 충족 근거, `ECG-5` 적격성 판정, `ECG-4` 시작 시점 기록 | `COLLECTION_IN_PROGRESS` |
+| A1 | Candidate gate | `EVIDENCE_PENDING` + 승인된 viability policy | owner | `ACT-1` 항목별 판정, `ECO-5`·`SAFE-7` 정책 승인 기록 | `CANDIDATE_APPROVED` 또는 `CANDIDATE_REJECTED` |
+| A2 | Account gate | `CANDIDATE_APPROVED` + `PRIVATE_LIVE_CODE_READY` | owner | read-only reconcile 결과, credential·egress·configuration snapshot 승인 | account readiness 승인 |
+| A3 | Canary gate | A2 통과 | owner | 실계정 SHADOW 결과, leg별 provider 검증 단계 판정, preflight 기록 | `ACTIVATION_IN_PROGRESS` |
+| A4 | LIMITED gate | canary 완료 | owner | 외부 statement 대조, unresolved order·residual exposure 부재 확인 | bounded LIMITED 승인 |
+| Z1 | Active closure | bounded LIMITED 수행 완료 | owner | `DONE-1`~`DONE-6` 판정과 redacted evidence | `PRIVATE_LIVE_ACTIVE_COMPLETE` + `PROGRAM_COMPLETED` |
+| Z2 | NO_GO closure | owner 종결 결정 또는 `NOGO-0` 재평가 결과 | owner | `NOGO-1`~`NOGO-4` 확인 기록 | `PROGRAM_TERMINATED_NO_GO` |
+
+각 gate 실행 단위는 진입 전에 자신의 판정 기준을 `docs/work/{gate-slug}/dod.md`로 동결하고, 판정 결과와 evidence는
+`progress.md`에 append한다. gate는 T3·T4 증거를 다루므로 software DoD의 T1·T2와 섞지 않는다. 어느 항목이라도
+`UNKNOWN`·만료·불일치이면 그 전이와 이후 전이를 차단한다.
+
 완료된 실행 단위는 다음과 같다. 산출물은 동결 증거이므로 경로를 옮기지 않는다.
 
 | 실행 단위 | slug | 산출 문서 | 상태 |
@@ -60,9 +77,11 @@ Phase마다 반복하며, 이 문서는 그 반복의 진입 조건만 고정한
       생성한다. 동결된 Phase -1 산출물과 그 검증 명령이 참조하는 경로는 이동하지 않는다.
       → 명령: `bash docs/check-documentation.sh`
       → 예상: `exit 0`, `documentation check passed`
-- [ ] **T7. 외부 스펙 리뷰 (`feature-workflow` ⑥)** — `codex-spec-review`로 `design.md` + `plan.md`를 리뷰하고
-      ACCEPT/REBUT 루프를 닫는다. 현재까지의 리뷰는 모두 Claude 세션이므로 외부 관점이 비어 있다.
-      → 예상: open finding 0 또는 반영 후 재검토
+- [x] **T7. 외부 스펙 리뷰 (`feature-workflow` ⑥)** — `codex-spec-review` 1라운드 완료. critical 1·high 5·medium 2를
+      받아 REBUT 없이 전부 ACCEPT하고 반영했다.
+      → 산출: `SAFE-10`, `LIVE-11`, `PROM-4`, `P3-O17`~`P3-O19`, `ACTIVATION_RECOVERY_ONLY`, gate 실행 단위 표
+      → 증거: `progress.md` "Codex 외부 스펙 리뷰"
+      → 남은 것: 동일 adversarial 시나리오로 재검토(2라운드) 미실행
 - [ ] **T8. 사용자 리뷰와 DoD 동결 (`feature-workflow` ⑦)** — 문서 3종을 공유해 승인받고 `dod.md`를
       `status: FROZEN` + `frozen_at`으로 전이한다. 동결 전에는 Phase 0으로 진행하지 않는다.
 - [x] **T9. 프로젝트 문서 최신화 (`feature-workflow` ⑪-a)** — `.ai/PROJECT_STATUS.md`에 프로그램 상태와 문서 경로

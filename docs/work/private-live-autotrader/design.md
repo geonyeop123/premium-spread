@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1라운드 반영 (critical 1, high 5, medium 2)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -171,24 +171,35 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   결과를 하나의 승인 대상으로 결합한다.
 - `PROM-2` Backtest 결과만으로 PAPER, SHADOW 또는 PRIVATE LIVE에 자동 승격하지 않는다.
 - `PROM-3` holdout 결과를 본 뒤 기준을 유리하게 바꾸는 것을 방지하기 위해 viability policy를 평가 전에 승인한다.
+- `PROM-4` holdout을 반복 소비해 사실상 학습 데이터로 만드는 것을 금지한다. candidate family와 parameter 범위는 holdout
+  공개 전에 동결하며, 결과를 본 뒤의 수정본은 새 untouched 또는 forward 증거를 요구하거나 사전 승인된 multiple-testing
+  정책 아래에서만 평가한다.
 
 ### 2.5 실행 안전
 
 - `SAFE-1` 각 경제적 실행 의도는 안정적으로 식별하며 시스템 스스로 유발하는 중복 제출을 방지한다. 모든 외부 제출은
-  해당 의도를 durable하게 기록한 뒤에만 수행한다. 외부 결과가 불명확하거나 중복 효과가 의심되면 성공으로 단정하지 않고
-  이를 탐지·노출하며, reconcile과 복구 전에는 신규 exposure를 허용하지 않는다.
+  해당 의도를 durable하게 기록한 뒤에만 수행하고, 제출 권한은 그 시점의 authorization epoch에 결합한다. epoch이 바뀌거나
+  중단이 선언되면 아직 전송되지 않은 intent는 무효가 되며 뒤늦게 전송될 수 없다.
 - `SAFE-2` 양 leg의 부분 체결과 실패는 잔여 exposure로 관찰되고 승인된 복구 정책 밖에서 자동 확대되지 않는다.
 - `SAFE-3` 데이터, account, order 또는 position 상태를 신뢰할 수 없으면 신규 exposure를 fail-closed한다.
 - `SAFE-4` 실제 fee와 funding을 포함한 거래소 statement와 내부 ledger의 차이를 탐지한다.
 - `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다.
 - `SAFE-6` 정상 중단, 긴급 중단과 수동 거래소 fallback을 구분한다. 긴급 중단은 Web, API, 알림과 분석 저장소의 가용성과
   무관하게 실행 runtime의 host-local 경로만으로 성립해야 하며, 중단 자체가 실패하면 그 사실을 fail-closed로 드러낸다.
+  중단 latch는 재시작을 견딘다. 중단은 미전송 intent 무효화와 거래소에 남아 있는 exposure-increasing 주문의 취소·종료
+  확인을 마치기 전까지 성공으로 간주하지 않으며, 확인 전 상태는 halt 완료가 아니라 recovery-required로 유지한다.
 - `SAFE-7` margin 적정성을 지속적으로 관찰하고 위험 상태에서는 신규 exposure를 차단한다. 거래소가 수행한 liquidation,
-  ADL 또는 강제 감축은 설명되지 않은 account drift로 탐지하며 내부 전략 결과로 조용히 흡수하지 않는다.
+  ADL 또는 강제 감축은 설명되지 않은 account drift로 탐지하며 내부 전략 결과로 조용히 흡수하지 않는다. 신규 차단만으로는
+  이미 열린 헤지 leg를 보호하지 못하므로, 사전 승인된 liquidation headroom과 stress 기준을 두고 그 기준을 침범하면
+  exposure-increasing 주문 취소와 승인된 범위의 bounded paired reduction 또는 즉시 owner fallback을 수행한다. 자동 이체가
+  없으므로 collateral 보충은 owner의 수동 절차이며 그 lead time을 headroom 기준에 반영한다.
 - `SAFE-8` fail-closed, unresolved order, 설명되지 않은 residual exposure, reconcile mismatch와 halt 같은 안전 중요 전이는
   owner가 능동적으로 인지할 수 있어야 하며 조회 화면에만 의존하지 않는다.
 - `SAFE-9` 양 leg의 가용 자본과 margin이 의도한 헤지를 성립시키지 못하면 신규 진입을 fail-closed한다. 자본 부족을 이유로
   한쪽 leg만 실행해 비헤지 노출을 만들지 않는다.
+- `SAFE-10` 실제 거래소 제출의 결과가 불명확하거나 중복 효과가 의심되면 성공으로 단정하지 않고 이를 탐지·노출하며,
+  reconcile과 복구 전에는 신규 exposure를 허용하지 않는다. 이 요구는 외부 전송 상태를 갖는 실행에만 적용하며 `ARCH-11`에
+  따라 공통 경제 엔진의 필수 상태로 끌어올리지 않는다.
 
 ### 2.6 PRIVATE LIVE 안전 경계
 
@@ -202,11 +213,16 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   중단 요청은 편의 경로이며 `SAFE-6`의 host-local 중단을 대체하지 않는다.
 - `LIVE-7` 기존 회원 가입과 인증 기능은 유지할 수 있지만 일반 회원은 자동매매 surface와 owner binding에 접근할 수 없다.
 - `LIVE-8` risk budget과 활성화 조건은 실행 중 임의로 완화할 수 없다. 승인 범위는 최소한 자본·notional·leverage,
-  신규·누적 exposure, residual delta, 손실과 market/account freshness를 다룬다.
+  신규·누적 exposure, residual delta, 손실과 market/account freshness를 다룬다. budget 사용량은 체결된 결과만이 아니라
+  working, unresolved, partial과 아직 전송되지 않은 durable intent의 최악 전량 체결을 예약해 계산한다. risk 검증, 예약과
+  intent 생성은 어떤 동시 실행 순서에서도 승인 한도를 넘을 수 없다.
 - `LIVE-9` 실제 계정과 주문을 사용하지 않는 fake·recorded 검증이 real protocol보다 먼저 통과해야 한다.
 - `LIVE-10` activation authorization이나 그 근거 evidence가 만료·불일치하거나 해당 candidate가 `CANDIDATE_REJECTED`가
-  되면 신규 exposure를 차단하고 activation을 pending 상태로 되돌린다. 기존 exposure의 안전한 청산과 reconcile은 계속할
-  수 있어야 한다.
+  되면 신규 exposure를 차단하고 activation을 `ACTIVATION_RECOVERY_ONLY`로 되돌린다. 기존 exposure의 안전한 청산과
+  reconcile은 계속할 수 있어야 한다.
+- `LIVE-11` 신규 진입 권한과 복구 권한을 분리한다. `ACTIVATION_RECOVERY_ONLY`에서 허용되는 제출은 실제 fill 기준으로
+  gross·net exposure와 residual delta를 단조 감소시키는 cancel, hedge와 unwind로 한정하며, 이 범위를 벗어난 주문을
+  복구로 분류해 gate를 우회하지 않는다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
 
 ## 3. 목표 아키텍처
 
@@ -316,6 +332,7 @@ Software milestone과 다음 상태축은 서로 독립적으로 기록한다.
 | activation | `ACTIVATION_NOT_STARTED` | 실제 계정과 주문을 사용하는 전이를 시작하지 않음 |
 | activation | `ACTIVATION_PENDING` | 순차 gate·사용자 승인·유효한 evidence를 기다리며 신규 exposure가 비활성화됨 |
 | activation | `ACTIVATION_IN_PROGRESS` | 승인된 canary 또는 bounded LIMITED를 수행 중이며 현재 risk 경계가 적용됨 |
+| activation | `ACTIVATION_RECOVERY_ONLY` | 신규 진입은 차단되고 `LIVE-11`의 노출 감소 제출만 허용되는 복구 구간 |
 | activation | `PRIVATE_LIVE_ACTIVE_COMPLETE` | 승인된 candidate가 제한된 실제 실행과 대조 증거를 통과 |
 | program | `PROGRAM_IN_PROGRESS` | 프로그램이 개시됐고 아직 완료·종결되지 않음. 특정 Phase나 gate의 진행 가능 여부는 각 진입 조건이 결정한다 |
 | program | `PROGRAM_COMPLETED` | bounded LIMITED라는 V1 제품 종점과 정본 동기화를 완료 |
@@ -359,6 +376,7 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 1. `ACT-1` Candidate readiness — production credential 전에 평가
    - 승인된 viability policy와 전략·데이터 증거
    - `ECO-5`의 자본 소진·재배치 산출과 그에 따른 운영 가능 cycle 범위
+   - `SAFE-7`의 liquidation headroom·stress 기준과 breach 시 대응 정책
    - 선택된 runtime, storage, network, alert와 복구 방식
    - 운영비, 거래 자본과 허용 손실에 대한 owner 승인
    - 현재 법률·세무·거래소 자격과 필요한 전문가 확인
@@ -367,6 +385,8 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
    - credential의 최소 권한과 withdrawal/transfer 불가
    - 거래소 API 키에 적용할 고정 egress 경계와 접근 제한
    - credential rotation과 즉시 폐기 절차, owner가 단독으로 수행 가능한지 확인
+   - 주문 의미와 margin 귀속을 바꾸는 account·symbol configuration의 승인된 snapshot. 최소한 position mode, margin type,
+     multi-assets 여부, leverage와 auto-add-margin 성격의 설정을 포함하며, 승인 범위와 다르면 activation을 통과시키지 않는다
    - 기존 order, position, balance와 전략 기준선 reconcile
 3. `ACT-3` Canary readiness — 첫 실제 주문 전에 평가
    - 승인된 candidate와 실제 read-only account 상태로 수행한 SHADOW
@@ -528,7 +548,8 @@ evidence 없이는 진행하지 않는다.
 - `P3-O2` account, balance, fee, funding, order와 position의 read-only reconcile이 가능하다.
 - `P3-O3` SHADOW가 read-only account 상태로 decision과 intent를 생성하되 주문 제출은 구조적으로 비활성화한다. code-ready
   판정은 fake·recorded account로 검증하고 실제 계정 SHADOW는 `ACT-3`에서 수행한다.
-- `P3-O4` 실제 제출은 명시적 activation, 현재 risk budget과 신뢰 가능한 market/account 상태를 요구한다.
+- `P3-O4` 실제 제출은 명시적 activation, 현재 risk budget과 신뢰 가능한 market/account 상태를 요구하며 제출 권한은
+  `SAFE-1`의 authorization epoch에 결합된다.
 - `P3-O5` self-induced duplicate, 응답 불명, private event gap, partial fill과 restart를 탐지하고 복구할 수 있다. 모든
   제출은 `SAFE-1`에 따라 durable intent 기록 이후에만 수행하며 재시작이 미해결 제출을 지운 것처럼 보이게 하지 않는다.
 - `P3-O6` margin 위험과 거래소 강제 감축을 관찰하고 설명되지 않은 변화를 fail-closed한다.
@@ -540,11 +561,18 @@ evidence 없이는 진행하지 않는다.
 - `P3-O11` default build/config/deploy는 실제 주문을 만들지 않는다.
 - `P3-O12` V1 single-owner와 single-account-pair 범위가 강제되며 다른 회원이나 account가 자동매매 권한을 얻지 않는다.
 - `P3-O13` LIVE execution과 reconcile record가 `ARCH-9`의 정본 identity를 보존한다.
-- `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 신규 exposure를 차단하되 기존 exposure의
-  청산과 reconcile을 계속할 수 있다.
+- `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 신규 exposure를 차단하고
+  `ACTIVATION_RECOVERY_ONLY`로 전이하되, `LIVE-11`이 허용하는 노출 감소 제출로 기존 exposure의 청산과 reconcile을
+  계속할 수 있다. 이 구간에서 노출을 늘리는 제출은 복구로 분류하지 않는다.
 - `P3-O15` leg별 provider 검증 단계가 구분된다. fake·recorded harness는 두 leg 모두 갖추고, 실자금 없이 real protocol을
   시험할 수 있는 leg는 그 경로를 준비하되 기본 build/CI 경로에는 포함하지 않는다.
 - `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단된다.
+- `P3-O17` 승인된 account·symbol configuration snapshot을 보관하고 exposure-increasing 제출 직전에 drift를 검증한다.
+  drift가 있으면 제출을 차단하고 activation 근거를 무효로 처리한다.
+- `P3-O18` risk budget이 in-flight 제출의 최악 전량 체결을 예약하며, 동시 실행 worker가 경쟁해도 승인 한도를 넘는
+  제출이 만들어지지 않는다.
+- `P3-O19` 중단과 activation 강등이 미전송 intent를 무효화하고 거래소에 남은 exposure-increasing 주문의 취소와 종료
+  확인까지 수행하며, 확인 전에는 recovery-required 상태를 유지한다.
 
 **종료 조건**
 
@@ -621,6 +649,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   CI 경로에는 포함하지 않으며 leg별 적용 여부는 `ACT-3`에서 판정한다.
 - 시간은 주입된 Clock 또는 명시적 Instant를 사용한다.
 - no-lookahead, duplicate, partial, restart, stale/gap과 reconcile mismatch에 대한 negative 검증을 포함한다.
+- 동시 intent가 승인된 risk budget을 초과하지 않는지, 중단·강등 이후 미전송 intent와 거래소 대기 주문이 실행되지
+  않는지, 복구 구간의 제출이 노출을 늘리지 않는지를 negative 검증으로 포함한다.
 - 성능 수치는 host와 workload가 정의된 T3에서만 판정한다.
 - migration 검증은 `STORE-5`와 `STORE-6`을 acceptance 대상으로 포함한다.
 
@@ -647,12 +677,14 @@ artifact와 도구 구성은 Phase 설계가 현재 CI를 기준으로 결정한
 | `ECO-5` | Phase 1, Phase 2, Candidate Gate | Phase 1 exit, Stage A exit와 `ACT-1` |
 | `DATA-1`~`DATA-5` | Phase 1, Evidence Collection Gate | Phase 1 exit와 `COLLECTION_READY` |
 | `DATA-6` | Phase 1, Candidate Gate | Phase 1 exit와 `ACT-1` |
-| `PROM-1`~`PROM-3` | Phase 2, Candidate Gate | Stage A exit와 `ACT-1` |
+| `PROM-1`~`PROM-4` | Phase 2, Candidate Gate | Stage A exit와 `ACT-1` |
 | `SAFE-1`~`SAFE-3` | Phase 2, Phase 3 | Stage A exit와 LIVE code-ready |
+| `SAFE-10` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
 | `SAFE-4`~`SAFE-8` | Phase 3, Activation Gate | LIVE code-ready와 해당 activation evidence |
 | `SAFE-9` | Phase 2, Phase 3 | Stage A exit와 LIVE code-ready |
 | `LIVE-1`~`LIVE-9` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
 | `LIVE-10` | Phase 3, Activation Gate | LIVE code-ready와 activation 갱신·만료 판정 |
+| `LIVE-11` | Phase 3, Activation Gate | LIVE code-ready와 복구 구간 권한 판정 |
 | `ARCH-1`~`ARCH-2` | Phase 1 | `MARKET_ECONOMICS_READY` |
 | `ARCH-3` | Phase 1, Phase 2 | Market & Economics와 Stage A exit |
 | `ARCH-4` | Phase 2 | `STAGE_A_SOFTWARE_COMPLETE` |
@@ -677,7 +709,7 @@ artifact와 도구 구성은 Phase 설계가 현재 CI를 기준으로 결정한
 | `P0-O1`~`P0-O5` | Phase 0 | `FOUNDATION_ALIGNED` |
 | `P1-O1`~`P1-O8` | Phase 1 | `MARKET_ECONOMICS_READY` |
 | `P2-O1`~`P2-O10` | Phase 2 | `STAGE_A_SOFTWARE_COMPLETE` |
-| `P3-O1`~`P3-O16` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
+| `P3-O1`~`P3-O19` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
 | `QUAL-1` | 모든 software Phase | 각 Phase의 merged verification |
 | `NOGO-0` | Program 재평가 | 승인된 재평가 시점의 계속·축소·종결 결정 |
 | `DONE-1`~`DONE-6` | Activation과 program completion | `PROGRAM_COMPLETED` |

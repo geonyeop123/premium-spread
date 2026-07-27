@@ -118,6 +118,27 @@
 
 - 열린 Review C finding: `0` — 사용자 승인 대기
 
+### Codex 외부 스펙 리뷰 — 2026-07-27
+
+- 대상: `docs/work/private-live-autotrader/design.md`와 `plan.md`, 커밋 `660f9ca` 기준
+- 방식: codex `adversarial-review` 1라운드, Codex session `019fa26a-b22e-7272-913d-ed92259ffa13`
+- 판정: `needs-attention` / NO-SHIP — critical 1, high 5, medium 2
+- REBUT 0건. 8건 모두 문서 원문과 대조해 실재하는 허점으로 확인하고 ACCEPT했다.
+
+| 이슈 | 지적 | 반영 |
+|---|---|---|
+| ISSUE-1 (critical) | 중단·강등이 미전송 intent와 거래소 대기 주문을 fence하지 않음 | `SAFE-1` epoch fence, `SAFE-6` halt 완결·recovery-required, `P3-O4`, `P3-O19` |
+| ISSUE-2 (high) | `P3-O4`(activation 필요)와 `P3-O14`(만료 후 청산) 권한 모순 | `ACTIVATION_RECOVERY_ONLY` 상태, `LIVE-11`, `LIVE-10`·`P3-O14` 수정 |
+| ISSUE-3 (high) | 위험 margin에서 기존 short 보호 수단 부재 | `SAFE-7`에 headroom·stress 기준과 breach 대응, `ACT-1` 승인 항목 |
+| ISSUE-4 (high) | Binance account configuration이 activation 대상에 미결합 | `ACT-2` configuration snapshot, `P3-O17` drift 검증 |
+| ISSUE-5 (high) | risk budget이 in-flight 제출을 예약하지 않아 동시 초과 가능 | `LIVE-8` 예약 규칙, `P3-O18`, §7.2 negative 검증 |
+| ISSUE-6 (high) | plan이 code-ready에서 끝나 activation·종결 실행 단위 없음 | `plan.md` §1에 gate 실행 단위 표(C·A1~A4·Z1·Z2) 추가 |
+| ISSUE-7 (medium) | holdout 반복 소비 경로가 열려 있음 | `PROM-4` 신설 |
+| ISSUE-8 (medium) | `SAFE-1` 전체를 Phase 2에 배정해 `ARCH-11`과 충돌 | `SAFE-1`을 mode-neutral로 축소하고 외부 제출 책임을 `SAFE-10`으로 분리 |
+
+- Codex 권고에 따라 `dod.md`는 `DRAFT`를 유지하고 `MASTER_SPEC_APPROVED`로 전이하지 않는다.
+- 재검토(2라운드)는 미실행이므로 `AC7`은 계속 대기다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

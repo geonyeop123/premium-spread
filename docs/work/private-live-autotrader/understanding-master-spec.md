@@ -8,6 +8,7 @@
 
 - PRIVATE LIVE 자동매매 프로그램의 마스터 계획을 **상세 구현 계획에서 상위 specification으로 재작성**하고, 저장소 실제 코드와 대조한 독립 리뷰(Review C)의 blocker 3·major 7·minor 7을 반영했다.
 - 반영 결과로 requirement ID 8개(`ECO-5`, `SAFE-9`, `ECG-5`, `P1-O8`, `P2-O10`, `P3-O15`, `P3-O16`, `NOGO-0`)를 신설했고 기존 ID는 하나도 삭제하지 않았다.
+- 이어서 첫 외부 관점 리뷰(codex adversarial review)에서 critical 1·high 5·medium 2를 받아 REBUT 없이 전부 반영했고, 그 결과 ID 6개(`SAFE-10`, `LIVE-11`, `PROM-4`, `P3-O17`~`P3-O19`)와 activation 상태 `ACTIVATION_RECOVERY_ONLY`를 추가로 신설했다.
 - 프로그램 문서를 `feature-workflow` 산출물 계약(`docs/work/{slug}/design·plan·dod`)으로 정렬했다. 코드 변경은 없다.
 
 ## 2. 왜
@@ -30,6 +31,7 @@
 | DoD 계약서 신설 | AC1~AC8, 실행 가능한 검증 명령과 증거 로그, `status: DRAFT` | `docs/work/private-live-autotrader/dod.md` |
 | 상태축 SSOT | 스펙의 현재값 중복 기록 제거, `progress.md`가 5축 현재값 단독 소유 | `progress.md`, `design.md` §0.1·§4.2 |
 | 프로젝트 문서 최신화 | 프로그램 상태 절 신설, 문서 경로 규칙 반영 | `.ai/PROJECT_STATUS.md`, `CLAUDE.md` |
+| Codex 리뷰 반영 | halt fence·복구 권한·margin headroom·config drift·budget 예약·holdout 재사용 금지, gate 실행 단위 표 | `design.md`, `plan.md` |
 
 신설 ID와 대응 관계는 다음과 같다.
 
@@ -109,12 +111,12 @@ git diff --quiet HEAD -- docs/dod/private-live-autotrader-phase-minus-1.dod.md &
 bash docs/check-documentation.sh && git diff --check
 ```
 
-기대 결과는 각각 `defined=115 dangling=[]`, `intact`, `documentation check passed (20 files, 15 required paths)`이며 모두 exit 0이다. AC2~AC4의 명령과 증거 로그는 [`dod.md`](dod.md)에 있다.
+기대 결과는 각각 `defined=121 dangling=[]`, `intact`, `documentation check passed (20 files, 15 required paths)`이며 모두 exit 0이다. AC2~AC4의 명령과 증거 로그는 [`dod.md`](dod.md)에 있다.
 
 ## 7. 후속·리스크·함정
 
 - **아직 승인 전이다.** `dod.md`는 `status: DRAFT`이고 판정은 `AWAITING_HUMAN`이다. 사용자 승인과 `frozen_at` 기입 전에는 Phase 0을 시작하지 않는다.
-- **외부 관점 리뷰가 비어 있다.** Review A·B·C 모두 Claude 세션이다. `feature-workflow` ⑥ `codex-spec-review`는 미수행이며 이것이 현재 가장 큰 검증 공백이다.
+- **Codex 외부 리뷰 1라운드를 반영했고 2라운드는 남아 있다.** critical 1·high 5·medium 2를 REBUT 없이 전부 수용해 halt fence(`SAFE-1`·`SAFE-6`), 복구 전용 권한(`LIVE-11`·`ACTIVATION_RECOVERY_ONLY`), margin headroom(`SAFE-7`), account configuration drift(`ACT-2`·`P3-O17`), budget 예약(`LIVE-8`·`P3-O18`), holdout 재사용 금지(`PROM-4`), `SAFE-1`/`SAFE-10` 분리, gate 실행 단위 표를 추가했다. Codex가 권고한 동일 시나리오 재검토는 아직 실행하지 않았다.
 - **동결 DoD의 dangling 참조**: `docs/dod/private-live-autotrader-phase-minus-1.dod.md`의 `source:`가 존재하지 않는 경로와 사라진 `§7`을 가리킨다. 수정하려면 재승인이 필요하다.
 - **로컬 `dev`가 뒤처져 있다.** 로컬 `dev`는 `b877d42`(PR #62), `origin/dev`는 `15cc02f`(PR #63)다. `git diff dev...HEAD` 같은 명령은 PR #63 내용까지 포함하니 비교 기준을 `origin/dev`로 잡아야 한다.
 - **함정 — 문서 경로**: 마스터 스펙을 `.ai/planning/.../task_plan.md`에서 찾으면 없다. `docs/work/private-live-autotrader/design.md`가 정본이고, 상태축 현재값만 `progress.md`가 소유한다. 이 둘을 헷갈려 스펙에 현재 상태를 다시 적으면 `AC3`가 깨진다.

@@ -127,9 +127,11 @@ echo 'frozen artifacts intact'
 
 - GREEN: `documentation check passed (20 files, 15 required paths)`, `git diff --check` exit 0
 
-### AC7 — 대기
+### AC7 — 대기 (1라운드 완료)
 
-- `codex-spec-review` 미실행. Review A·B·C는 모두 Claude 세션이므로 외부 관점 리뷰가 비어 있다.
+- 2026-07-27 codex `adversarial-review` 1라운드: `needs-attention`, critical 1 · high 5 · medium 2
+- REBUT 0건, 8건 전부 ACCEPT하고 `design.md`·`plan.md`에 반영 (상세는 `progress.md` "Codex 외부 스펙 리뷰")
+- Codex가 동일 adversarial 시나리오의 재검토를 권고했고 그 2라운드는 미실행이므로 open finding 0을 아직 선언하지 않는다.
 
 ### AC8 — 대기
 
