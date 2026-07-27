@@ -38,7 +38,7 @@
 
 | 영역 | 변경 | 핵심 파일 |
 |---|---|---|
-| 프로그램 계획 | SIMULATION, PAPER를 필수 검증 단계로 유지하면서 gated PRIVATE_LIVE까지 가는 Phase -1~10 계획, 모듈 경계, 상태 모델과 완료 조건을 정의했다. | [마스터 계획](../../../.ai/planning/private-live-autotrader/task_plan.md), [Phase -1 설계](../../../.ai/planning/private-live-autotrader/phase-minus-1-design.md), [Phase -1 실행 계획](../../../.ai/planning/private-live-autotrader/phase-minus-1-plan.md) |
+| 프로그램 계획 | SIMULATION, PAPER를 필수 검증 단계로 유지하면서 gated PRIVATE_LIVE까지 가는 Phase -1~10 계획, 모듈 경계, 상태 모델과 완료 조건을 정의했다. | [마스터 계획](design.md), [Phase -1 설계](../../../.ai/planning/private-live-autotrader/phase-minus-1-design.md), [Phase -1 실행 계획](../../../.ai/planning/private-live-autotrader/phase-minus-1-plan.md) |
 | 완료 계약과 증거 | Phase -1 수용기준 4개와 RED/GREEN, 리뷰, 로컬·원격 검증 증거를 동결했다. | [DoD](../../dod/private-live-autotrader-phase-minus-1.dod.md), [진행 기록](../../../.ai/planning/private-live-autotrader/progress.md) |
 | Quality Gate | trigger를 `pull_request`, `dev`/`main` push로 제한했다. artifact name, image tag, OCI revision과 summary의 commit을 `github.sha`로 맞추고 platform artifact ID를 기록한다. | [quality-gate.yml](../../../.github/workflows/quality-gate.yml), [quality-gate-contract-test.sh](../../../ci/quality-gate-contract-test.sh) |
 | 과한 custom 추적 제거 | `workflow_dispatch` SHA 입력, `TARGET_SHA`, checkout ref override, target verifier, dependency fingerprint와 review bundle의 `SHA256SUMS`를 삭제했다. | 삭제된 `ci/verify-target-sha.sh`, 삭제된 `ci/dependency-fingerprint.sh`, [bootstrap output validator](../../../ci/validate-dependency-bootstrap-output.sh) |

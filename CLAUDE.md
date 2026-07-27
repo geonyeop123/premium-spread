@@ -50,4 +50,5 @@ SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun & # Batch 서버 (808
 | `.ai/PROJECT_STATUS.md` | 현재 상태, TODO, 진행 상황 |
 | `.ai/architecture/ARCHITECTURE_DESIGN.md` | 시스템 아키텍처, 데이터 흐름 |
 | `.ai/context/project-overview.md` | 비즈니스 도메인 설명 |
-| `.ai/planning/` | 작업별 계획 문서 디렉터리 |
+| `.ai/planning/` | 작업별 계획 문서 디렉터리 (진행 기록과 완료된 작업의 동결 산출물) |
+| `docs/work/{slug}/` | `feature-workflow` 산출물 — `design.md`, `plan.md`, `dod.md`, `understanding.md` |
