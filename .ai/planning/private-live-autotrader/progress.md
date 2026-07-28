@@ -180,6 +180,21 @@
   GREEN으로 복귀시켰다.
 - 3라운드는 미실행이며 `AC7` 수렴 판정은 그 결과로 내린다.
 
+### Codex 외부 스펙 리뷰 3라운드와 반영 — 2026-07-28
+
+- job `review-ms4f9k83-ftwqh0`, session `019fa7f1-1c6d-7e12-bad4-5574ec6056b3`, 1분 22초, 판정 `needs-attention`
+- 결과: critical 0 · high 2. 추이는 1R 8건(critical 1) → 2R 2건(critical 1) → 3R 2건(critical 0)이다.
+
+| 이슈 | 지적 | 반영 |
+|---|---|---|
+| high | `LIVE-11`이 gross·net·residual 전부 단조 감소를 요구해, 한 leg만 체결된 상태의 평탄화 hedge(gross는 늘고 net·residual은 주는 행위)를 금지하는 자기모순 | 위험 벡터별 기준으로 재정의: net·residual 증가 금지, gross 증가는 체결된 leg 평탄화 hedge에만 미헤지 수량 상한·budget 예약·완료 조건부 허용. §4.3 행과 `P3-O14` 정합 |
+| high | `SAFE-1`에 "모든 외부 제출은 durable 기록 뒤" 순서 계약이 남아 Phase 2 배정이 §8.1 기준으로 여전히 부정직 | `SAFE-11`을 신설해 외부 제출 순서를 Phase 3 전용으로 분리하고 `SAFE-1`은 의도 식별·중복 방지·epoch 무효화의 mode-neutral 계약으로 축소. `P3-O5` 참조와 §8·§8.1 예시 갱신 |
+
+- 두 지적 모두 1·2라운드 수정이 남긴 2차 결함이다. 특히 `LIVE-11`은 1라운드에서 신설한 문장 자체의 논리 오류였고,
+  `SAFE-1` 분리는 1라운드 ISSUE-8을 반쪽만 해소한 상태였다.
+- §8.1 정직성 표가 두 번째 지적의 판단 근거로 실제 인용됐다. 구조 보강이 리뷰어의 판정 기준으로 기능하고 있다.
+- 반영 후 자동 수용기준 8개(AC1~AC6, AC9, AC10) 전부 PASS, ID 122개, dangling 0건.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

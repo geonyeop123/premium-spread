@@ -196,7 +196,13 @@ CHECK
     (미전송 / 거래소 잔존 / 응답 불명)으로 재작성, `P3-O19` 확장
   - high: §4.3 권한 표에 program 축이 없어 `PROGRAM_TERMINATION_PENDING`에서도 신규 진입이 허용됨 → program 축 행과
     원자적 전이 규칙 추가, §9.4 interlock 명시
-- 두 지적 모두 REBUT 없이 반영했다. `AC7`의 수렴 기준(재검토 critical·high 0)은 3라운드에서 판정한다.
+- 두 지적 모두 REBUT 없이 반영했다.
+- 2026-07-28 3라운드(job `review-ms4f9k83-ftwqh0`, session `019fa7f1-1c6d-7e12-bad4-5574ec6056b3`): `needs-attention`,
+  critical 0 · high 2. 심각도는 내려갔으나 수렴 기준 미달이다.
+  - high: `LIVE-11`이 gross·net·residual 전부의 단조 감소를 요구해 한 leg만 체결된 상태의 평탄화 hedge를 금지하는
+    자기모순 → 위험 벡터별 기준으로 재정의(net·residual 증가 금지, gross 증가는 체결 leg 평탄화 hedge에 상한·예약 조건부 허용)
+  - high: `SAFE-1`에 외부 제출 순서 계약이 남아 Phase 2 배정이 여전히 부정직 → `SAFE-11`로 분리해 Phase 3 전용화
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3R 2건(critical 0). 2·3라운드 지적은 모두 직전 수정이 남긴 2차 결함이다.
 
 ### AC9 — 2026-07-28
 

@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1·2라운드 반영 (1R critical 1·high 5·medium 2, 2R critical 1·high 1)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~3라운드 반영 (1R 8건, 2R 2건, 3R 2건)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -177,9 +177,9 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 
 ### 2.5 실행 안전
 
-- `SAFE-1` 각 경제적 실행 의도는 안정적으로 식별하며 시스템 스스로 유발하는 중복 제출을 방지한다. 모든 외부 제출은
-  해당 의도를 durable하게 기록한 뒤에만 수행하고, 제출 권한은 그 시점의 authorization epoch에 결합한다. epoch이 바뀌거나
-  중단이 선언되면 아직 전송되지 않은 intent는 무효가 되며 뒤늦게 전송될 수 없다.
+- `SAFE-1` 각 경제적 실행 의도는 안정적으로 식별하며 시스템 스스로 유발하는 중복 제출을 방지한다. 실행 권한은 그
+  시점의 authorization epoch에 결합하고, epoch이 바뀌거나 중단이 선언되면 아직 전송되지 않은 intent는 무효가 되어
+  뒤늦게 실행될 수 없다. 이 계약은 실행 mode와 무관하며 모의 체결에서도 관찰된다.
 - `SAFE-2` 양 leg의 부분 체결과 실패는 잔여 exposure로 관찰되고 승인된 복구 정책 밖에서 자동 확대되지 않는다.
 - `SAFE-3` 데이터, account, order 또는 position 상태를 신뢰할 수 없으면 신규 exposure를 fail-closed한다.
 - `SAFE-4` 실제 fee와 funding을 포함한 거래소 statement와 내부 ledger의 차이를 탐지한다.
@@ -200,6 +200,8 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   owner가 능동적으로 인지할 수 있어야 하며 조회 화면에만 의존하지 않는다.
 - `SAFE-9` 양 leg의 가용 자본과 margin이 의도한 헤지를 성립시키지 못하면 신규 진입을 fail-closed한다. 자본 부족을 이유로
   한쪽 leg만 실행해 비헤지 노출을 만들지 않는다.
+- `SAFE-11` 실제 거래소 제출은 해당 intent의 durable 기록이 커밋된 뒤에만 수행한다. 이 순서 계약은 외부 전송 상태를
+  갖는 실행에만 적용한다.
 - `SAFE-10` 실제 거래소 제출의 결과가 불명확하거나 중복 효과가 의심되면 성공으로 단정하지 않고 이를 탐지·노출하며,
   reconcile과 복구 전에는 신규 exposure를 허용하지 않는다. 이 요구는 외부 전송 상태를 갖는 실행에만 적용하며 `ARCH-11`에
   따라 공통 경제 엔진의 필수 상태로 끌어올리지 않는다.
@@ -223,9 +225,11 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `LIVE-10` activation authorization이나 그 근거 evidence가 만료·불일치하거나 해당 candidate가 `CANDIDATE_REJECTED`가
   되면 신규 exposure를 차단하고 activation을 `ACTIVATION_RECOVERY_ONLY`로 되돌린다. 기존 exposure의 안전한 청산과
   reconcile은 계속할 수 있어야 한다.
-- `LIVE-11` 신규 진입 권한과 복구 권한을 분리한다. `ACTIVATION_RECOVERY_ONLY`에서 허용되는 제출은 실제 fill 기준으로
-  gross·net exposure와 residual delta를 단조 감소시키는 cancel, hedge와 unwind로 한정하며, 이 범위를 벗어난 주문을
-  복구로 분류해 gate를 우회하지 않는다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
+- `LIVE-11` 신규 진입 권한과 복구 권한을 분리한다. `ACTIVATION_RECOVERY_ONLY`에서 허용 여부는 단일 지표가 아니라
+  위험 벡터별로 판정한다. 실제 fill 기준으로 net exposure와 residual delta는 증가할 수 없다. gross exposure 증가는
+  이미 체결된 한쪽 leg를 평탄화하기 위한 hedge에만, 그 leg의 미헤지 수량을 상한으로, budget 예약과 완료 조건을 갖춰
+  허용한다. cancel과 unwind는 언제나 허용한다. 새 경제적 기회를 취하는 제출은 어떤 지표가 개선되더라도 복구로
+  분류하지 않는다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
 
 ## 3. 목표 아키텍처
 
@@ -361,7 +365,7 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 | `ACTIVATION_NOT_STARTED` | 불가 | 해당 없음 | 생성하지 않음 | 가능 |
 | `ACTIVATION_PENDING` | 불가 | 해당 없음 (열린 exposure가 있으면 `ACTIVATION_RECOVERY_ONLY`가 옳은 상태) | 무효 | 가능 |
 | `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | 가능 | 현재 epoch에서만 유효 | 가능 |
-| `ACTIVATION_RECOVERY_ONLY` | 불가 | `LIVE-11` 범위(노출 단조 감소)만 가능 | 무효 | 가능 |
+| `ACTIVATION_RECOVERY_ONLY` | 불가 | `LIVE-11` 범위만 가능 (cancel·unwind 상시, 체결된 leg 평탄화 hedge는 상한 안에서) | 무효 | 가능 |
 | `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | 잔여 정리 범위만 가능 | 무효 | 가능 |
 | `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | 정리 범위만 가능 | 무효 | 가능 |
 | `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | 없음 | 가능 |
@@ -577,7 +581,7 @@ evidence 없이는 진행하지 않는다.
 - `P3-O4` 실제 제출은 명시적 activation, 현재 risk budget과 신뢰 가능한 market/account 상태를 요구하며 제출 권한은
   `SAFE-1`의 authorization epoch에 결합된다.
 - `P3-O5` self-induced duplicate, 응답 불명, private event gap, partial fill과 restart를 탐지하고 복구할 수 있다. 모든
-  제출은 `SAFE-1`에 따라 durable intent 기록 이후에만 수행하며 재시작이 미해결 제출을 지운 것처럼 보이게 하지 않는다.
+  제출은 `SAFE-11`에 따라 durable intent 기록 이후에만 수행하며 재시작이 미해결 제출을 지운 것처럼 보이게 하지 않는다.
 - `P3-O6` margin 위험과 거래소 강제 감축을 관찰하고 설명되지 않은 변화를 fail-closed한다.
 - `P3-O7` 정상 중단과 긴급 중단이 신규 exposure를 차단하고 기존 exposure의 상태를 드러낸다. 긴급 중단은 `SAFE-6`에 따라
   Web/API/알림/분석 저장소가 불가용해도 host-local로 성립하며 중단 실패 자체가 관찰된다.
@@ -588,8 +592,8 @@ evidence 없이는 진행하지 않는다.
 - `P3-O12` V1 single-owner와 single-account-pair 범위가 강제되며 다른 회원이나 account가 자동매매 권한을 얻지 않는다.
 - `P3-O13` LIVE execution과 reconcile record가 `ARCH-9`의 정본 identity를 보존한다.
 - `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 신규 exposure를 차단하고
-  `ACTIVATION_RECOVERY_ONLY`로 전이하되, `LIVE-11`이 허용하는 노출 감소 제출로 기존 exposure의 청산과 reconcile을
-  계속할 수 있다. 이 구간에서 노출을 늘리는 제출은 복구로 분류하지 않는다.
+  `ACTIVATION_RECOVERY_ONLY`로 전이하되, `LIVE-11`이 위험 벡터별로 허용하는 제출로 기존 exposure의 청산과 reconcile을
+  계속할 수 있다. 한 leg만 체결된 상태의 평탄화 hedge가 차단되어 비헤지 노출이 방치되지 않아야 한다.
 - `P3-O15` leg별 provider 검증 단계가 구분된다. fake·recorded harness는 두 leg 모두 갖추고, 실자금 없이 real protocol을
   시험할 수 있는 leg는 그 경로를 준비하되 기본 build/CI 경로에는 포함하지 않는다.
 - `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단된다.
@@ -706,7 +710,7 @@ artifact와 도구 구성은 Phase 설계가 현재 CI를 기준으로 결정한
 | `DATA-6` | Phase 1, Candidate Gate | Phase 1 exit와 `ACT-1` |
 | `PROM-1`~`PROM-4` | Phase 2, Candidate Gate | Stage A exit와 `ACT-1` |
 | `SAFE-1`~`SAFE-3` | Phase 2, Phase 3 | Stage A exit와 LIVE code-ready |
-| `SAFE-10` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
+| `SAFE-10`~`SAFE-11` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
 | `SAFE-4`~`SAFE-8` | Phase 3, Activation Gate | LIVE code-ready와 해당 activation evidence |
 | `SAFE-9` | Phase 2, Phase 3 | Stage A exit와 LIVE code-ready |
 | `LIVE-1`~`LIVE-9` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
@@ -756,8 +760,9 @@ ID를 어느 Phase에 배정하기 전에 그 Phase의 실행 모드에서 해�
 | Phase 3 | SHADOW와 기본 비활성 LIVE 코드 | 외부 protocol·계정·전송 상태를 fake·recorded로 재현한 계약 | 실제 activation 판정, 실자금·실계정 증거 |
 | Gate (`ECG`·`ACT`·`DONE`·`NOGO`) | 실제 환경·계정·자금과 사용자 승인 | T3·T4 증거와 승인 판정 | software DoD의 T1·T2로 대체 |
 
-`SAFE-1`과 `SAFE-10`의 분리가 이 검사의 적용 예다. 의도 식별·중복 방지·durable 기록은 PAPER에서도 관찰되지만 실제 제출
-결과의 불명확성은 Phase 3에서만 관찰되므로 서로 다른 ID로 둔다.
+`SAFE-1`, `SAFE-11`과 `SAFE-10`의 분리가 이 검사의 적용 예다. 의도 식별·중복 방지·epoch 무효화는 모의 체결에서도
+관찰되므로 Phase 2에 배정하지만, 외부 제출 전 durable 기록 순서(`SAFE-11`)와 제출 결과의 불명확성(`SAFE-10`)은 실제
+전송 상태가 있어야 관찰되므로 Phase 3에만 배정한다.
 
 SaaS와 다중 tenant 요구는 이 표의 미할당 항목이 아니라 명시적 비범위이며 별도 프로그램 승인 없이는 추가하지 않는다.
 
