@@ -225,13 +225,17 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `LIVE-10` activation authorization이나 그 근거 evidence가 만료·불일치하거나 해당 candidate가 `CANDIDATE_REJECTED`가
   되면 신규 exposure를 차단하고 activation을 `ACTIVATION_RECOVERY_ONLY`로 되돌린다. 기존 exposure의 안전한 청산과
   reconcile은 계속할 수 있어야 한다.
-- `LIVE-11` 신규 진입 권한과 복구 권한을 분리한다. `ACTIVATION_RECOVERY_ONLY`에서 허용 여부는 단일 지표가 아니라
-  위험 벡터별로 판정한다. 실제 fill 기준으로 net exposure와 residual delta는 증가할 수 없다. gross exposure 증가는
-  이미 체결된 한쪽 leg를 평탄화하기 위한 hedge에만, 그 leg의 미헤지 수량을 상한으로, budget 예약과 완료 조건을 갖춰
-  허용한다. 단 `SAFE-7`의 headroom·stress 기준 침범, 거래소의 liquidation·ADL·강제 감축, 설명되지 않은 account drift가
-  활성인 동안에는 이 gross 증가 예외를 금지하고 bounded paired reduction 또는 owner fallback만 허용한다. 예외는 reconcile과
-  headroom 회복이 확인된 뒤에 다시 열린다. cancel과 unwind는 언제나 허용한다. 새 경제적 기회를 취하는 제출은 어떤 지표가
-  개선되더라도 복구로 분류하지 않는다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
+- `LIVE-11` 신규 진입 권한과 복구 권한을 분리하고, 복구 권한은 여기서 한 번만 정의한다. 어떤 상태에서 복구가 허용되는지는
+  §4.3이 정하고, **무엇이 복구인지는 이 항목이 정한다.** 다른 항목과 표는 아래 집합 이름을 참조하며 조건을 다시 서술하지
+  않는다.
+  - `RECOVERY-A` (상시 허용): cancel과 unwind. 실제 fill 기준으로 gross·net exposure와 residual delta 중 어느 것도
+    증가시키지 않는다.
+  - `RECOVERY-B` (조건부 허용): 이미 체결된 한쪽 leg를 평탄화하는 hedge. net exposure와 residual delta를 줄이는 대신
+    gross exposure 증가를 허용하되, 상한은 그 leg의 미헤지 수량이며 budget 예약과 완료 조건을 갖춘다.
+  - `RECOVERY-B` 차단 조건: `SAFE-7`의 headroom·stress 기준 침범, 거래소의 liquidation·ADL·강제 감축, 설명되지 않은
+    account drift 중 하나라도 활성이면 `RECOVERY-B`를 금지하고 `RECOVERY-A`와 owner fallback만 허용한다. reconcile과
+    headroom 회복이 확인되면 다시 열린다.
+  - 어떤 상태에서도 새 경제적 기회를 취하는 제출은 복구가 아니다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
 
 ## 3. 목표 아키텍처
 
@@ -366,16 +370,18 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 |---|---|---|---|---|
 | `ACTIVATION_NOT_STARTED` | 불가 | 해당 없음 | 생성하지 않음 | 가능 |
 | `ACTIVATION_PENDING` | 불가 | 해당 없음 (열린 exposure가 있으면 `ACTIVATION_RECOVERY_ONLY`가 옳은 상태) | 무효 | 가능 |
-| `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | 가능 | 현재 epoch에서만 유효 | 가능 |
-| `ACTIVATION_RECOVERY_ONLY` | 불가 | `LIVE-11` 범위만 가능 (cancel·unwind 상시, 체결된 leg 평탄화 hedge는 상한 안에서. `SAFE-7` breach·강제 감축·account drift 중에는 hedge 금지, paired reduction 또는 owner fallback만) | 무효 | 가능 |
-| `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | 잔여 정리 범위만 가능 | 무효 | 가능 |
-| `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | 정리 범위만 가능 | 무효 | 가능 |
+| `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 현재 epoch에서만 유효 | 가능 |
+| `ACTIVATION_RECOVERY_ONLY` | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
+| `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
+| `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
 | `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | 없음 | 가능 |
-| halt latch 활성 (상태축과 직교) | 불가 | recovery-required 해소 절차 범위만 가능 | 무효 | 가능 |
+| halt latch 활성 (상태축과 직교) | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
 
 - 제출 권한을 부여하거나 제한하는 계약을 새로 만들면 이 표에 반영한다. 표에 나타나지 않는 권한은 존재하지 않는 것으로 본다.
 - 개별 ID 문장과 이 표가 어긋나면 그 자체가 결함이며 승인 전에 해소한다. 구현이 둘 중 하나를 임의로 선택하지 않는다.
 - halt latch는 activation 상태와 직교한다. 두 조건이 동시에 적용되면 더 제한적인 쪽을 따른다.
+- 복구 열의 모든 값은 `LIVE-11`이 정의한 집합 이름을 참조한다. 상태 행마다 허용 조건을 다시 서술하지 않으며,
+  집합 정의가 바뀌면 모든 상태에 동시에 적용된다. 종결 상태도 이 정의를 상속하며 더 넓은 "정리 범위"를 갖지 않는다.
 - program 축이 종결 방향이면 activation 축보다 우선한다. `PROGRAM_TERMINATION_PENDING` 진입은 activation을
   `ACTIVATION_RECOVERY_ONLY`로 전이시키는 것과 하나의 원자적 전이이며, epoch 무효화·미전송 intent 폐기·
   exposure-increasing 주문 취소를 진입 조건으로 포함한다. 종결 선언과 제출 차단 사이에 신규 진입이 생길 수 있는
@@ -585,7 +591,7 @@ evidence 없이는 진행하지 않는다.
 - `P3-O5` self-induced duplicate, 응답 불명, private event gap, partial fill과 restart를 탐지하고 복구할 수 있다. 모든
   제출은 `SAFE-11`에 따라 durable intent 기록 이후에만 수행하며 재시작이 미해결 제출을 지운 것처럼 보이게 하지 않는다.
 - `P3-O6` margin 위험과 거래소 강제 감축을 관찰하고 설명되지 않은 변화를 fail-closed한다. 이 상태가 활성인 동안에는
-  복구 경로의 gross 증가 hedge가 거부되고 bounded paired reduction 또는 owner fallback만 진행된다.
+  `RECOVERY-B`가 거부되고 `RECOVERY-A` 또는 owner fallback만 진행된다.
 - `P3-O7` 정상 중단과 긴급 중단이 신규 exposure를 차단하고 기존 exposure의 상태를 드러낸다. 긴급 중단은 `SAFE-6`에 따라
   Web/API/알림/분석 저장소가 불가용해도 host-local로 성립하며 중단 실패 자체가 관찰된다.
 - `P3-O8` 실제 provider protocol은 recorded/fake 검증으로 회귀 가능하며 test와 CI는 실제 거래소에 연결하지 않는다.
@@ -595,9 +601,9 @@ evidence 없이는 진행하지 않는다.
 - `P3-O12` V1 single-owner와 single-account-pair 범위가 강제되며 다른 회원이나 account가 자동매매 권한을 얻지 않는다.
 - `P3-O13` LIVE execution과 reconcile record가 `ARCH-9`의 정본 identity를 보존한다.
 - `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 신규 exposure를 차단하고
-  `ACTIVATION_RECOVERY_ONLY`로 전이하되, `LIVE-11`이 위험 벡터별로 허용하는 제출로 기존 exposure의 청산과 reconcile을
-  계속할 수 있다. 한 leg만 체결된 상태의 평탄화 hedge가 차단되어 비헤지 노출이 방치되지 않아야 하며, 반대로 `SAFE-7`
-  breach와 강제 감축 중에는 그 hedge가 거부되고 `P3-O6`의 경로만 열린다.
+  `ACTIVATION_RECOVERY_ONLY`로 전이하되, `RECOVERY-A`와 조건을 만족하는 `RECOVERY-B`로 기존 exposure의 청산과 reconcile을
+  계속할 수 있다. 한 leg만 체결된 상태에서 `RECOVERY-B`가 조건 없이 차단되어 비헤지 노출이 방치되지 않아야 하며, 차단
+  조건이 활성일 때는 `RECOVERY-B`가 거부되고 `P3-O6`의 경로만 열린다.
 - `P3-O15` leg별 provider 검증 단계가 구분된다. fake·recorded harness는 두 leg 모두 갖추고, 실자금 없이 real protocol을
   시험할 수 있는 leg는 그 경로를 준비하되 기본 build/CI 경로에는 포함하지 않는다.
 - `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단된다.
@@ -687,7 +693,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   않는지, 전송 후 응답 불명 intent가 terminal 결론 전에 halt 성공으로 처리되지 않는지, 종결 선언 직후 신규 진입이
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
-  경로를 failure matrix에 포함한다.
+  경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
+  판정한다.
 - 성능 수치는 host와 workload가 정의된 T3에서만 판정한다.
 - migration 검증은 `STORE-5`와 `STORE-6`을 acceptance 대상으로 포함한다.
 
@@ -807,8 +814,9 @@ LIMITED가 이 프로그램의 V1 성공 종점이다. `PROGRAM_COMPLETED`는 �
 
 전략 경제성, 데이터 품질, 법률·거래소 자격, 환경 비용 또는 실제 검증이 허용 범위를 충족하지 못하면 사용자는 종결을
 결정할 수 있다. 열린 위험이나 정리 작업이 남아 있으면 먼저 `PROGRAM_TERMINATION_PENDING`으로 전이한다. 이 전이는
-§4.3에 따라 activation을 `ACTIVATION_RECOVERY_ONLY`로 함께 내리며, `NOGO-1`의 credential·activation 폐기는 종결
-시점의 최종 조건이지 진입 시점의 유일한 차단 수단이 아니다.
+§4.3에 따라 activation을 `ACTIVATION_RECOVERY_ONLY`로 함께 내리며, 종결 중 허용되는 제출도 `LIVE-11`의 `RECOVERY-A`와
+`RECOVERY-B` 정의를 그대로 상속한다. `NOGO-1`의 credential·activation 폐기는 종결 시점의 최종 조건이지 진입 시점의
+유일한 차단 수단이 아니다.
 
 이 상태는 LIVE 제품 성공이 아니지만 다음을 만족하는 안전한 프로그램 종료다.
 
