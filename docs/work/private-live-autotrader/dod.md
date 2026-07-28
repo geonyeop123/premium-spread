@@ -39,7 +39,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC10 | §8이 계약을 배정한 모든 범위(Phase 0~3, Gate)가 §8.1 정직성 표에 판정 행을 갖는다. | 반복 발생한 배정 정직성 결함(codex ISSUE-8)의 재발 차단 | T1 | 아래 `AC10 command` | exit 0, `missing=[]` |
 | AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-A`/`RECOVERY-B`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
 | AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
-| AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
+| AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
 
 ### AC1 command
 
@@ -209,7 +209,7 @@ sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
 block = sec.split('| 권한 회수 트리거 |')[1].split('\n\n')[0]
 rows = [l for l in block.splitlines() if l.startswith('|') and not l.startswith('|---')]
 bad = [l.split('|')[1].strip() for l in rows if '필수' not in l.split('|')[4]]
-missing = [r for r in ['SAFE-6', 'LIVE-10', 'SAFE-7', 'SAFE-9', 'SAFE-3', 'SAFE-10'] if f'`{r}`' not in block]
+missing = [r for r in ['SAFE-6', 'LIVE-10', 'SAFE-7', 'SAFE-9', 'SAFE-3', 'SAFE-10', 'P3-O17'] if f'`{r}`' not in block]
 print(f'rows={len(rows)} without_fence={bad} missing_sources={missing}')
 sys.exit(1 if bad or missing else 0)
 CHECK
@@ -291,7 +291,10 @@ CHECK
   - high: 7라운드에 만든 트리거 표가 스스로 "전체 목록"이라 선언했는데 `SAFE-10`(응답 불명·중복 의심)이 빠졌고 `AC13`도
     이를 요구하지 않았다 → 차단 계약을 전수 조사해 `SAFE-10`을 추가하고, 트리거 판별 기준(권한 회수 vs 범위 제약)과
     비트리거 예시(`LIVE-8`·`SAFE-2`)를 명시, `AC13` 필수 출처 확장
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~8R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
+- 2026-07-28 9라운드: `needs-attention`, critical 0 · high 1.
+  - high: `P3-O17`(configuration drift)도 권한 회수 경로인데 트리거 목록과 `AC13`에 없음 → 트리거로 등재하고 판별 기준에
+    "Phase outcome과 gate 항목도 대상"을 추가, `P3-O17` 본문에 epoch 무효화·`FENCE`·전이를 명시, `AC13` 확장
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~9R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 

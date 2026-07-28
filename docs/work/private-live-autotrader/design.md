@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~8라운드 반영 (8 → 2 → 2 → 1 → 1 → 1 → 1 → 1건)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~9라운드 반영 (8 → 2 → 2 → 1 → 1 → 1 → 1 → 1 → 1건)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -403,9 +403,10 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 | 헤지를 지지하지 못하는 자본·margin 상태 | `SAFE-9` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
 | 데이터·account·order·position 상태 불신 | `SAFE-3` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
 | 제출 결과 불명 또는 중복 효과 의심 | `SAFE-10` | `ACTIVATION_RECOVERY_ONLY` | 필수 (`FENCE-3` 포함) |
+| 승인된 account·symbol configuration snapshot과의 drift | `P3-O17`, `LIVE-10` 경로 | `ACTIVATION_RECOVERY_ONLY` | 필수 |
 
-트리거 판별 기준은 **제출 권한 자체를 회수하는가**이다. 승인된 권한 안에서 행동을 제약하기만 하는 계약은 트리거가
-아니다. 예를 들어 `LIVE-8`의 budget 한도와 `SAFE-2`의 복구 정책 밖 자동 확대 금지는 권한을 유지한 채 범위를 제한하므로
+트리거 판별 기준은 **제출 권한 자체를 회수하는가**이다. §2의 안전 불변식뿐 아니라 Phase outcome과 gate 항목도 이 기준을
+만족하면 트리거이며 반드시 이 표에 등재한다. 승인된 권한 안에서 행동을 제약하기만 하는 계약은 트리거가 아니다. 예를 들어 `LIVE-8`의 budget 한도와 `SAFE-2`의 복구 정책 밖 자동 확대 금지는 권한을 유지한 채 범위를 제한하므로
 목록에 넣지 않는다. 반대로 권한을 회수하는 계약을 새로 만들면 반드시 이 표에 추가한다.
 
 - 신규 제출을 차단하는 모든 전이는 진입 시 `SAFE-6`의 `FENCE`를 원자적으로 수행한다. 어느 전이든 fence를 생략하거나
@@ -640,7 +641,8 @@ evidence 없이는 진행하지 않는다.
 - `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단되고, 그 차단이 `FENCE`를 동반한
   전이로 수행되어 이미 만들어진 intent가 남아 실행되지 않는다.
 - `P3-O17` 승인된 account·symbol configuration snapshot을 보관하고 exposure-increasing 제출 직전에 drift를 검증한다.
-  drift가 있으면 제출을 차단하고 activation 근거를 무효로 처리한다.
+  drift가 있으면 §4.3의 권한 회수 트리거로서 epoch을 무효화하고 `FENCE`를 동반해 `ACTIVATION_RECOVERY_ONLY`로 전이하며
+  activation 근거를 무효로 처리한다. 당면 제출 하나만 거부하고 이미 승인된 intent나 거래소 대기 주문을 남기지 않는다.
 - `P3-O18` risk budget이 in-flight 제출의 최악 전량 체결을 예약하며, 동시 실행 worker가 경쟁해도 승인 한도를 넘는
   제출이 만들어지지 않는다.
 - `P3-O19` 중단, activation 강등과 `PROGRAM_TERMINATION_PENDING` 진입이 모두 `FENCE-1`~`FENCE-3`을 종결시키며, 확인 전에는

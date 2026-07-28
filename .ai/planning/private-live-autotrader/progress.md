@@ -253,6 +253,17 @@
   명시해 같은 부류의 재발을 막았다. `SAFE-10` 본문에도 문제된 intent 하나만 막고 다른 intent를 계속 제출하게 두지
   않는다는 조건을 넣었다. `AC13` 필수 출처를 확장했다.
 
+### Codex 외부 스펙 리뷰 9라운드와 반영 — 2026-07-28
+
+- 판정 `needs-attention`, critical 0 · high 1. 추이는 8 → 2 → 2 → 1 → 1 → 1 → 1 → 1 → 1이다.
+- 지적: `P3-O17`(승인된 account·symbol configuration snapshot의 drift)이 제출을 차단하고 activation 근거를 무효화하므로
+  §4.3 기준상 권한 회수 경로인데 트리거 표와 `AC13`에 없다. drift 시 당면 제출만 거부하고 이미 승인된 intent나 거래소
+  대기 주문이 남으면 표가 막으려던 stale-authority race가 재현된다.
+- 8라운드 전수 조사가 §2 안전 불변식만 훑고 Phase outcome 구간을 빠뜨린 것이 원인이었다.
+- 반영: 트리거 표에 configuration drift 행을 추가하고, 판별 기준에 "Phase outcome과 gate 항목도 이 기준을 만족하면
+  트리거"라는 문장을 넣었다. `P3-O17` 본문에 epoch 무효화·`FENCE` 동반 전이·당면 제출만 거부 금지를 명시하고 `AC13`
+  필수 출처를 확장했다. 트리거는 8개가 됐다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
