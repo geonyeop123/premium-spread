@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~6라운드 반영 (8 → 2 → 2 → 1 → 1 → 1건)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~7라운드 반영 (8 → 2 → 2 → 1 → 1 → 1 → 1건)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -181,7 +181,8 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   시점의 authorization epoch에 결합하고, epoch이 바뀌거나 중단이 선언되면 아직 전송되지 않은 intent는 무효가 되어
   뒤늦게 실행될 수 없다. 이 계약은 실행 mode와 무관하며 모의 체결에서도 관찰된다.
 - `SAFE-2` 양 leg의 부분 체결과 실패는 잔여 exposure로 관찰되고 승인된 복구 정책 밖에서 자동 확대되지 않는다.
-- `SAFE-3` 데이터, account, order 또는 position 상태를 신뢰할 수 없으면 신규 exposure를 fail-closed한다.
+- `SAFE-3` 데이터, account, order 또는 position 상태를 신뢰할 수 없으면 신규 exposure를 fail-closed한다. 이 차단은
+  §4.3의 권한 회수 트리거이므로 `FENCE`를 동반한 상태 전이로 수행한다.
 - `SAFE-4` 실제 fee와 funding을 포함한 거래소 statement와 내부 ledger의 차이를 탐지한다.
 - `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다.
 - `SAFE-6` 정상 중단, 긴급 중단과 수동 거래소 fallback을 구분한다. 긴급 중단은 Web, API, 알림과 분석 저장소의 가용성과
@@ -198,12 +199,14 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `SAFE-7` margin 적정성을 지속적으로 관찰하고 위험 상태에서는 신규 exposure를 차단한다. 거래소가 수행한 liquidation,
   ADL 또는 강제 감축은 설명되지 않은 account drift로 탐지하며 내부 전략 결과로 조용히 흡수하지 않는다. 신규 차단만으로는
   이미 열린 헤지 leg를 보호하지 못하므로, 사전 승인된 liquidation headroom과 stress 기준을 두고 그 기준을 침범하면
-  exposure-increasing 주문 취소와 승인된 범위의 bounded paired reduction 또는 즉시 owner fallback을 수행한다. 자동 이체가
+  §4.3의 권한 회수 트리거로서 `FENCE`를 동반한 상태 전이를 수행하고, 승인된 범위의 bounded paired reduction 또는 즉시
+  owner fallback으로 대응한다. 예약된 budget은 `FENCE` 완료까지 유지한다. 자동 이체가
   없으므로 collateral 보충은 owner의 수동 절차이며 그 lead time을 headroom 기준에 반영한다.
 - `SAFE-8` fail-closed, unresolved order, 설명되지 않은 residual exposure, reconcile mismatch와 halt 같은 안전 중요 전이는
   owner가 능동적으로 인지할 수 있어야 하며 조회 화면에만 의존하지 않는다.
 - `SAFE-9` 양 leg의 가용 자본과 margin이 의도한 헤지를 성립시키지 못하면 신규 진입을 fail-closed한다. 자본 부족을 이유로
-  한쪽 leg만 실행해 비헤지 노출을 만들지 않는다.
+  한쪽 leg만 실행해 비헤지 노출을 만들지 않는다. 이미 승인된 intent가 남아 있을 수 있으므로 이 차단도 §4.3의 권한 회수
+  트리거로서 `FENCE`를 동반한 상태 전이로 수행한다.
 - `SAFE-11` 실제 거래소 제출은 해당 intent의 durable 기록이 커밋된 뒤에만 수행한다. 이 순서 계약은 외부 전송 상태를
   갖는 실행에만 적용한다.
 - `SAFE-10` 실제 거래소 제출의 결과가 불명확하거나 중복 효과가 의심되면 성공으로 단정하지 않고 이를 탐지·노출하며,
@@ -386,6 +389,18 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 - 제출 권한을 부여하거나 제한하는 계약을 새로 만들면 이 표에 반영한다. 표에 나타나지 않는 권한은 존재하지 않는 것으로 본다.
 - 개별 ID 문장과 이 표가 어긋나면 그 자체가 결함이며 승인 전에 해소한다. 구현이 둘 중 하나를 임의로 선택하지 않는다.
 - halt latch는 activation 상태와 직교한다. 두 조건이 동시에 적용되면 더 제한적인 쪽을 따른다.
+제출 권한을 회수하는 트리거는 상태 전이뿐 아니라 guard 조건에서도 발생한다. 아래가 전체 목록이며, 모든 트리거는
+`FENCE`를 동반한 상태로 원자적으로 전이한다. 목록에 없는 경로가 권한을 회수하면 그 자체가 결함이다.
+
+| 권한 회수 트리거 | 정의 위치 | 전이 대상 | `FENCE` |
+|---|---|---|---|
+| 정상·긴급 중단 | `SAFE-6` | halt latch 활성 | 필수 |
+| activation·evidence 만료, candidate reject | `LIVE-10` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
+| 프로그램 종결 결정 | §9.4 | `PROGRAM_TERMINATION_PENDING` | 필수 |
+| margin headroom·stress 침범, liquidation·ADL·강제 감축, 설명되지 않은 account drift | `SAFE-7` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
+| 헤지를 지지하지 못하는 자본·margin 상태 | `SAFE-9` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
+| 데이터·account·order·position 상태 불신 | `SAFE-3` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
+
 - 신규 제출을 차단하는 모든 전이는 진입 시 `SAFE-6`의 `FENCE`를 원자적으로 수행한다. 어느 전이든 fence를 생략하거나
   더 약한 절차로 대체하지 않으며, fence 완료 전에는 그 상태가 성립했다고 보지 않는다.
 - 복구 열의 모든 값은 `LIVE-11`이 정의한 집합 이름을 참조한다. 상태 행마다 허용 조건을 다시 서술하지 않으며,
@@ -599,7 +614,8 @@ evidence 없이는 진행하지 않는다.
 - `P3-O5` self-induced duplicate, 응답 불명, private event gap, partial fill과 restart를 탐지하고 복구할 수 있다. 모든
   제출은 `SAFE-11`에 따라 durable intent 기록 이후에만 수행하며 재시작이 미해결 제출을 지운 것처럼 보이게 하지 않는다.
 - `P3-O6` margin 위험과 거래소 강제 감축을 관찰하고 설명되지 않은 변화를 fail-closed한다. 이 상태가 활성인 동안에는
-  `RECOVERY-B`가 거부되고 `RECOVERY-A` 또는 owner fallback만 진행된다.
+  `RECOVERY-B`가 거부되고 `RECOVERY-A` 또는 owner fallback만 진행된다. 이 전이도 `FENCE`를 동반하며 사전 승인된 intent나
+  응답 불명 제출이 뒤늦게 진입으로 확정되지 않는다.
 - `P3-O7` 정상 중단과 긴급 중단이 신규 exposure를 차단하고 기존 exposure의 상태를 드러낸다. 긴급 중단은 `SAFE-6`에 따라
   Web/API/알림/분석 저장소가 불가용해도 host-local로 성립하며 중단 실패 자체가 관찰된다.
 - `P3-O8` 실제 provider protocol은 recorded/fake 검증으로 회귀 가능하며 test와 CI는 실제 거래소에 연결하지 않는다.
@@ -614,7 +630,8 @@ evidence 없이는 진행하지 않는다.
   조건이 활성일 때는 `RECOVERY-B`가 거부되고 `P3-O6`의 경로만 열린다.
 - `P3-O15` leg별 provider 검증 단계가 구분된다. fake·recorded harness는 두 leg 모두 갖추고, 실자금 없이 real protocol을
   시험할 수 있는 leg는 그 경로를 준비하되 기본 build/CI 경로에는 포함하지 않는다.
-- `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단된다.
+- `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단되고, 그 차단이 `FENCE`를 동반한
+  전이로 수행되어 이미 만들어진 intent가 남아 실행되지 않는다.
 - `P3-O17` 승인된 account·symbol configuration snapshot을 보관하고 exposure-increasing 제출 직전에 drift를 검증한다.
   drift가 있으면 제출을 차단하고 activation 근거를 무효로 처리한다.
 - `P3-O18` risk budget이 in-flight 제출의 최악 전량 체결을 예약하며, 동시 실행 worker가 경쟁해도 승인 한도를 넘는
@@ -702,7 +719,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. 만료·candidate reject가 거래소 대기 진입 주문 또는 응답 불명 제출과 경합하는 경우도 negative 사례로 포함한다.
+  판정한다. 만료·candidate reject가 거래소 대기 진입 주문 또는 응답 불명 제출과 경합하는 경우, 그리고 margin·자본·데이터
+  guard가 이미 승인된 intent나 응답 불명 제출과 동시에 발생하는 경우도 negative 사례로 포함한다.
 - 성능 수치는 host와 workload가 정의된 T3에서만 판정한다.
 - migration 검증은 `STORE-5`와 `STORE-6`을 acceptance 대상으로 포함한다.
 
