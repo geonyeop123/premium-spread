@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~7라운드 반영 (8 → 2 → 2 → 1 → 1 → 1 → 1건)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~8라운드 반영 (8 → 2 → 2 → 1 → 1 → 1 → 1 → 1건)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -210,6 +210,8 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `SAFE-11` 실제 거래소 제출은 해당 intent의 durable 기록이 커밋된 뒤에만 수행한다. 이 순서 계약은 외부 전송 상태를
   갖는 실행에만 적용한다.
 - `SAFE-10` 실제 거래소 제출의 결과가 불명확하거나 중복 효과가 의심되면 성공으로 단정하지 않고 이를 탐지·노출하며,
+  §4.3의 권한 회수 트리거로서 `FENCE`를 동반한 전이를 수행한다. 특히 `FENCE-3`으로 해당 제출의 terminal 결론을 얻기
+  전에는 복구 판단이나 새 권한 부여를 하지 않으며, 문제된 intent 하나만 막고 다른 intent가 계속 제출되게 두지 않는다.
   reconcile과 복구 전에는 신규 exposure를 허용하지 않는다. 이 요구는 외부 전송 상태를 갖는 실행에만 적용하며 `ARCH-11`에
   따라 공통 경제 엔진의 필수 상태로 끌어올리지 않는다.
 
@@ -400,6 +402,11 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 | margin headroom·stress 침범, liquidation·ADL·강제 감축, 설명되지 않은 account drift | `SAFE-7` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
 | 헤지를 지지하지 못하는 자본·margin 상태 | `SAFE-9` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
 | 데이터·account·order·position 상태 불신 | `SAFE-3` | `ACTIVATION_RECOVERY_ONLY` | 필수 |
+| 제출 결과 불명 또는 중복 효과 의심 | `SAFE-10` | `ACTIVATION_RECOVERY_ONLY` | 필수 (`FENCE-3` 포함) |
+
+트리거 판별 기준은 **제출 권한 자체를 회수하는가**이다. 승인된 권한 안에서 행동을 제약하기만 하는 계약은 트리거가
+아니다. 예를 들어 `LIVE-8`의 budget 한도와 `SAFE-2`의 복구 정책 밖 자동 확대 금지는 권한을 유지한 채 범위를 제한하므로
+목록에 넣지 않는다. 반대로 권한을 회수하는 계약을 새로 만들면 반드시 이 표에 추가한다.
 
 - 신규 제출을 차단하는 모든 전이는 진입 시 `SAFE-6`의 `FENCE`를 원자적으로 수행한다. 어느 전이든 fence를 생략하거나
   더 약한 절차로 대체하지 않으며, fence 완료 전에는 그 상태가 성립했다고 보지 않는다.
@@ -720,7 +727,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
   판정한다. 만료·candidate reject가 거래소 대기 진입 주문 또는 응답 불명 제출과 경합하는 경우, 그리고 margin·자본·데이터
-  guard가 이미 승인된 intent나 응답 불명 제출과 동시에 발생하는 경우도 negative 사례로 포함한다.
+  guard가 이미 승인된 intent나 응답 불명 제출과 동시에 발생하는 경우, 응답 불명·중복 의심이 탐지된 뒤 다른 intent가
+  계속 제출되지 않는지도 negative 사례로 포함한다.
 - 성능 수치는 host와 workload가 정의된 T3에서만 판정한다.
 - migration 검증은 `STORE-5`와 `STORE-6`을 acceptance 대상으로 포함한다.
 
