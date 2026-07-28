@@ -154,6 +154,16 @@
 - §4에 절이 추가되어 collection gate가 §4.3→§4.4, activation gate가 §4.4→§4.5로 이동했고 문서 간 상호 참조 8건을
   함께 갱신했다.
 
+### Codex 외부 스펙 리뷰 2라운드 — 2026-07-28 (미완료)
+
+- job `review-ms4196fk-jpdfh6`, session `019fa68a-0aca-7693-b943-39f1f33b0c44`, 12분 44초 수행 후 실패
+- 실패 원인: codex 사용 한도 초과 (`Turn failed`). 한도 해제 예정 2026-08-03
+- 실패 전까지 수행한 것: 대상 문서와 `584b6f4` diff 대조, `660f9ca` 이전 버전 비교,
+  `bash docs/check-documentation.sh && git diff --check origin/dev...HEAD` (exit 0)
+- 실패한 turn의 최종 출력에 `Verdict: approve`와 `No material findings`가 있으나 이는 fallback이며 수렴 근거가 아니다.
+  summary가 미래형("재검토하겠습니다")으로 남아 판정이 산출되지 않았음을 드러낸다.
+- 판정: `AC7` 미충족 유지. 재검토는 한도 해제 후 동일 프롬프트로 재실행한다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

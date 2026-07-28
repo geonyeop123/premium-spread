@@ -174,11 +174,16 @@ CHECK
 
 - GREEN: `documentation check passed (20 files, 15 required paths)`, `git diff --check` exit 0
 
-### AC7 — 대기 (1라운드 완료)
+### AC7 — 대기 (1라운드 완료, 2라운드 도구 차단)
 
 - 2026-07-27 codex `adversarial-review` 1라운드: `needs-attention`, critical 1 · high 5 · medium 2
 - REBUT 0건, 8건 전부 ACCEPT하고 `design.md`·`plan.md`에 반영 (상세는 `progress.md` "Codex 외부 스펙 리뷰")
-- Codex가 동일 adversarial 시나리오의 재검토를 권고했고 그 2라운드는 미실행이므로 open finding 0을 아직 선언하지 않는다.
+- 2026-07-28 2라운드(job `review-ms4196fk-jpdfh6`, session `019fa68a-0aca-7693-b943-39f1f33b0c44`)는 **미완료**다.
+  12분 44초 동안 문서·diff·문서계약 검사를 수행한 뒤 codex 사용 한도로 `Turn failed`했고 한도 해제 예정은 2026-08-03이다.
+- **주의**: 실패한 turn의 출력에 `Verdict: approve`, `No material findings`가 찍혀 있으나 이는 fallback이다. summary가
+  미래형 문장("재검토하겠습니다")으로 남아 있어 리뷰가 판정을 산출하지 못했음을 보여준다. 이 출력을 수렴 근거로
+  인용하지 않는다.
+- 따라서 `AC7`의 수렴 기준(재검토 critical·high 0)은 아직 충족되지 않았다.
 
 ### AC9 — 2026-07-28
 

@@ -82,7 +82,8 @@ Phase마다 반복하며, 이 문서는 그 반복의 진입 조건만 고정한
       → 산출: `SAFE-10`, `LIVE-11`, `PROM-4`, `P3-O17`~`P3-O19`, `ACTIVATION_RECOVERY_ONLY`, gate 실행 단위 표
       → 증거: `progress.md` "Codex 외부 스펙 리뷰"
       → 구조 보강: 재발 부류를 §4.3 권한 표와 §8.1 정직성 표로 전환하고 `AC9`·`AC10`으로 기계 검사 등재
-      → 남은 것: 동일 adversarial 시나리오 재검토(2라운드)에서 critical·high 0 확인
+      → 2라운드 시도: 2026-07-28 codex 사용 한도로 미완료(`Turn failed`), 한도 해제 2026-08-03
+      → 남은 것: 한도 해제 후 재실행해 critical·high 0 확인
 - [ ] **T8. 사용자 리뷰와 DoD 동결 (`feature-workflow` ⑦)** — 문서 3종을 공유해 승인받고 `dod.md`를
       `status: FROZEN` + `frozen_at`으로 전이한다. 동결 전에는 Phase 0으로 진행하지 않는다.
 - [x] **T9. 프로젝트 문서 최신화 (`feature-workflow` ⑪-a)** — `.ai/PROJECT_STATUS.md`에 프로그램 상태와 문서 경로
