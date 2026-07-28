@@ -82,8 +82,8 @@ Phase마다 반복하며, 이 문서는 그 반복의 진입 조건만 고정한
       → 산출: `SAFE-10`, `LIVE-11`, `PROM-4`, `P3-O17`~`P3-O19`, `ACTIVATION_RECOVERY_ONLY`, gate 실행 단위 표
       → 증거: `progress.md` "Codex 외부 스펙 리뷰"
       → 구조 보강: 재발 부류를 §4.3 권한 표와 §8.1 정직성 표로 전환하고 `AC9`·`AC10`으로 기계 검사 등재
-      → 2라운드: critical 1·high 1 반영. 3라운드: critical 0·high 2 반영 (추이 8 → 2 → 2, 심각도 하락)
-      → 남은 것: 4라운드에서 critical·high 0 확인
+      → 라운드별 지적: 1R 8건 → 2R 2건 → 3R 2건 → 4R 1건, critical은 2R 이후 0. 전부 REBUT 없이 반영
+      → 남은 것: 5라운드에서 critical·high 0 확인
 - [ ] **T8. 사용자 리뷰와 DoD 동결 (`feature-workflow` ⑦)** — 문서 3종을 공유해 승인받고 `dod.md`를
       `status: FROZEN` + `frozen_at`으로 전이한다. 동결 전에는 Phase 0으로 진행하지 않는다.
 - [x] **T9. 프로젝트 문서 최신화 (`feature-workflow` ⑪-a)** — `.ai/PROJECT_STATUS.md`에 프로그램 상태와 문서 경로

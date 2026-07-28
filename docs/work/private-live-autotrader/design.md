@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~3라운드 반영 (1R 8건, 2R 2건, 3R 2건)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~4라운드 반영 (8 → 2 → 2 → 1건)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -228,8 +228,10 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `LIVE-11` 신규 진입 권한과 복구 권한을 분리한다. `ACTIVATION_RECOVERY_ONLY`에서 허용 여부는 단일 지표가 아니라
   위험 벡터별로 판정한다. 실제 fill 기준으로 net exposure와 residual delta는 증가할 수 없다. gross exposure 증가는
   이미 체결된 한쪽 leg를 평탄화하기 위한 hedge에만, 그 leg의 미헤지 수량을 상한으로, budget 예약과 완료 조건을 갖춰
-  허용한다. cancel과 unwind는 언제나 허용한다. 새 경제적 기회를 취하는 제출은 어떤 지표가 개선되더라도 복구로
-  분류하지 않는다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
+  허용한다. 단 `SAFE-7`의 headroom·stress 기준 침범, 거래소의 liquidation·ADL·강제 감축, 설명되지 않은 account drift가
+  활성인 동안에는 이 gross 증가 예외를 금지하고 bounded paired reduction 또는 owner fallback만 허용한다. 예외는 reconcile과
+  headroom 회복이 확인된 뒤에 다시 열린다. cancel과 unwind는 언제나 허용한다. 새 경제적 기회를 취하는 제출은 어떤 지표가
+  개선되더라도 복구로 분류하지 않는다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
 
 ## 3. 목표 아키텍처
 
@@ -365,7 +367,7 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 | `ACTIVATION_NOT_STARTED` | 불가 | 해당 없음 | 생성하지 않음 | 가능 |
 | `ACTIVATION_PENDING` | 불가 | 해당 없음 (열린 exposure가 있으면 `ACTIVATION_RECOVERY_ONLY`가 옳은 상태) | 무효 | 가능 |
 | `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | 가능 | 현재 epoch에서만 유효 | 가능 |
-| `ACTIVATION_RECOVERY_ONLY` | 불가 | `LIVE-11` 범위만 가능 (cancel·unwind 상시, 체결된 leg 평탄화 hedge는 상한 안에서) | 무효 | 가능 |
+| `ACTIVATION_RECOVERY_ONLY` | 불가 | `LIVE-11` 범위만 가능 (cancel·unwind 상시, 체결된 leg 평탄화 hedge는 상한 안에서. `SAFE-7` breach·강제 감축·account drift 중에는 hedge 금지, paired reduction 또는 owner fallback만) | 무효 | 가능 |
 | `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | 잔여 정리 범위만 가능 | 무효 | 가능 |
 | `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | 정리 범위만 가능 | 무효 | 가능 |
 | `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | 없음 | 가능 |
@@ -582,7 +584,8 @@ evidence 없이는 진행하지 않는다.
   `SAFE-1`의 authorization epoch에 결합된다.
 - `P3-O5` self-induced duplicate, 응답 불명, private event gap, partial fill과 restart를 탐지하고 복구할 수 있다. 모든
   제출은 `SAFE-11`에 따라 durable intent 기록 이후에만 수행하며 재시작이 미해결 제출을 지운 것처럼 보이게 하지 않는다.
-- `P3-O6` margin 위험과 거래소 강제 감축을 관찰하고 설명되지 않은 변화를 fail-closed한다.
+- `P3-O6` margin 위험과 거래소 강제 감축을 관찰하고 설명되지 않은 변화를 fail-closed한다. 이 상태가 활성인 동안에는
+  복구 경로의 gross 증가 hedge가 거부되고 bounded paired reduction 또는 owner fallback만 진행된다.
 - `P3-O7` 정상 중단과 긴급 중단이 신규 exposure를 차단하고 기존 exposure의 상태를 드러낸다. 긴급 중단은 `SAFE-6`에 따라
   Web/API/알림/분석 저장소가 불가용해도 host-local로 성립하며 중단 실패 자체가 관찰된다.
 - `P3-O8` 실제 provider protocol은 recorded/fake 검증으로 회귀 가능하며 test와 CI는 실제 거래소에 연결하지 않는다.
@@ -593,7 +596,8 @@ evidence 없이는 진행하지 않는다.
 - `P3-O13` LIVE execution과 reconcile record가 `ARCH-9`의 정본 identity를 보존한다.
 - `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 신규 exposure를 차단하고
   `ACTIVATION_RECOVERY_ONLY`로 전이하되, `LIVE-11`이 위험 벡터별로 허용하는 제출로 기존 exposure의 청산과 reconcile을
-  계속할 수 있다. 한 leg만 체결된 상태의 평탄화 hedge가 차단되어 비헤지 노출이 방치되지 않아야 한다.
+  계속할 수 있다. 한 leg만 체결된 상태의 평탄화 hedge가 차단되어 비헤지 노출이 방치되지 않아야 하며, 반대로 `SAFE-7`
+  breach와 강제 감축 중에는 그 hedge가 거부되고 `P3-O6`의 경로만 열린다.
 - `P3-O15` leg별 provider 검증 단계가 구분된다. fake·recorded harness는 두 leg 모두 갖추고, 실자금 없이 real protocol을
   시험할 수 있는 leg는 그 경로를 준비하되 기본 build/CI 경로에는 포함하지 않는다.
 - `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단된다.
@@ -681,7 +685,9 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
 - no-lookahead, duplicate, partial, restart, stale/gap과 reconcile mismatch에 대한 negative 검증을 포함한다.
 - 동시 intent가 승인된 risk budget을 초과하지 않는지, 중단·강등 이후 미전송 intent와 거래소 대기 주문이 실행되지
   않는지, 전송 후 응답 불명 intent가 terminal 결론 전에 halt 성공으로 처리되지 않는지, 종결 선언 직후 신규 진입이
-  생기지 않는지, 복구 구간의 제출이 노출을 늘리지 않는지를 negative 검증으로 포함한다.
+  생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
+  leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
+  경로를 failure matrix에 포함한다.
 - 성능 수치는 host와 workload가 정의된 T3에서만 판정한다.
 - migration 검증은 `STORE-5`와 `STORE-6`을 acceptance 대상으로 포함한다.
 

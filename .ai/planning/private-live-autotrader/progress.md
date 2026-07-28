@@ -195,6 +195,16 @@
 - §8.1 정직성 표가 두 번째 지적의 판단 근거로 실제 인용됐다. 구조 보강이 리뷰어의 판정 기준으로 기능하고 있다.
 - 반영 후 자동 수용기준 8개(AC1~AC6, AC9, AC10) 전부 PASS, ID 122개, dangling 0건.
 
+### Codex 외부 스펙 리뷰 4라운드와 반영 — 2026-07-28
+
+- job `review-ms4fekup-6zyy5k`, session `019fa7f4-affb-70d3-bf7a-64fe3e9b7133`, 판정 `needs-attention`, critical 0 · high 1
+- 지적: 3라운드에서 연 `LIVE-11`의 gross 증가 hedge 예외에 `SAFE-7` 우선순위가 없다. 거래소가 short leg를 강제 감축한
+  뒤 복구 로직이 long을 헤지하려고 short를 재진입하면 margin 위기를 악화시키고 `SAFE-7`의 fallback 경로를 우회한다.
+- 반영: `SAFE-7` breach, liquidation·ADL·강제 감축, 설명되지 않은 account drift가 활성인 동안 gross 증가 예외를 금지하고
+  bounded paired reduction 또는 owner fallback만 허용하도록 `LIVE-11`을 수정했다. §4.3 RECOVERY_ONLY 행, `P3-O6`,
+  `P3-O14`를 같은 우선순위로 정렬하고 §7.2 failure matrix에 "강제 감축 후 단일 leg 상태에서 복구 hedge 거부" 경로를 넣었다.
+- 추이: 8 → 2 → 2 → 1건, critical은 2라운드 이후 0이다. 2라운드부터의 지적은 모두 직전 수정이 만든 이음새다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

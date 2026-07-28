@@ -202,7 +202,14 @@ CHECK
   - high: `LIVE-11`이 gross·net·residual 전부의 단조 감소를 요구해 한 leg만 체결된 상태의 평탄화 hedge를 금지하는
     자기모순 → 위험 벡터별 기준으로 재정의(net·residual 증가 금지, gross 증가는 체결 leg 평탄화 hedge에 상한·예약 조건부 허용)
   - high: `SAFE-1`에 외부 제출 순서 계약이 남아 Phase 2 배정이 여전히 부정직 → `SAFE-11`로 분리해 Phase 3 전용화
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3R 2건(critical 0). 2·3라운드 지적은 모두 직전 수정이 남긴 2차 결함이다.
+- 2026-07-28 4라운드(job `review-ms4fekup-6zyy5k`, session `019fa7f4-affb-70d3-bf7a-64fe3e9b7133`): `needs-attention`,
+  critical 0 · high 1.
+  - high: 3라운드에서 연 `LIVE-11`의 gross 증가 hedge 예외가 `SAFE-7` breach·강제 감축보다 우선순위가 없어, 거래소가
+    short leg를 강제 감축한 뒤 복구 로직이 short를 재진입해 margin 위기를 악화시킬 수 있음 → 해당 상태가 활성인 동안
+    gross 증가 예외를 금지하고 bounded paired reduction 또는 owner fallback만 허용하도록 `LIVE-11`·§4.3·`P3-O6`·`P3-O14`를
+    정렬하고 §7.2 failure matrix에 해당 경로를 추가
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3R 2건(critical 0) → 4R 1건(critical 0). 2라운드 이후 지적은 모두
+  직전 수정이 만든 이음새이며 건수와 심각도가 함께 내려가고 있다.
 
 ### AC9 — 2026-07-28
 
