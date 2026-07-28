@@ -26,7 +26,7 @@ Phase 진입 시 확정되는 후보이며, 한 Phase가 복수 slug로 나뉠 �
 | 3 | Phase 2 SIMULATION + PAPER | `private-live-autotrader-phase-2` | `MARKET_ECONOMICS_READY` | 〃 | `STAGE_A_SOFTWARE_COMPLETE` |
 | 4 | Phase 3 PRIVATE LIVE Capability | `private-live-autotrader-phase-3` | `STAGE_A_SOFTWARE_COMPLETE` | 〃 | `PRIVATE_LIVE_CODE_READY` |
 
-software Phase만으로는 프로그램이 정의된 최종 상태에 도달하지 못한다. `design.md` §4.3·§4.4·§9가 요구하는 gate도
+software Phase만으로는 프로그램이 정의된 최종 상태에 도달하지 못한다. `design.md` §4.4·§4.5·§9가 요구하는 gate도
 각각 실행 단위를 갖는다. 이들은 코드 산출물이 아니라 gate 판정과 evidence를 산출하며, 전이 선언 권한은 사용자에게 있다.
 
 | # | 실행 단위 | 진입 상태 | owner | 산출물 | 종료 판정 |
@@ -81,7 +81,8 @@ Phase마다 반복하며, 이 문서는 그 반복의 진입 조건만 고정한
       받아 REBUT 없이 전부 ACCEPT하고 반영했다.
       → 산출: `SAFE-10`, `LIVE-11`, `PROM-4`, `P3-O17`~`P3-O19`, `ACTIVATION_RECOVERY_ONLY`, gate 실행 단위 표
       → 증거: `progress.md` "Codex 외부 스펙 리뷰"
-      → 남은 것: 동일 adversarial 시나리오로 재검토(2라운드) 미실행
+      → 구조 보강: 재발 부류를 §4.3 권한 표와 §8.1 정직성 표로 전환하고 `AC9`·`AC10`으로 기계 검사 등재
+      → 남은 것: 동일 adversarial 시나리오 재검토(2라운드)에서 critical·high 0 확인
 - [ ] **T8. 사용자 리뷰와 DoD 동결 (`feature-workflow` ⑦)** — 문서 3종을 공유해 승인받고 `dod.md`를
       `status: FROZEN` + `frozen_at`으로 전이한다. 동결 전에는 Phase 0으로 진행하지 않는다.
 - [x] **T9. 프로젝트 문서 최신화 (`feature-workflow` ⑪-a)** — `.ai/PROJECT_STATUS.md`에 프로그램 상태와 문서 경로
@@ -98,5 +99,5 @@ Phase마다 반복하며, 이 문서는 그 반복의 진입 조건만 고정한
 
 - Phase별 클래스·필드·endpoint·table 이름과 migration 번호
 - Phase별 PR 개수와 순서 — `design.md` §6.2가 Phase agent에 위임한다
-- 장기 증거 수집의 환경·비용 선택 — `design.md` §4.3의 gate가 소유한다
-- activation 정책값(기간, 표본 수, 허용 손실) — `design.md` §4.4가 사용자 승인으로 고정한다
+- 장기 증거 수집의 환경·비용 선택 — `design.md` §4.4의 gate가 소유한다
+- activation 정책값(기간, 표본 수, 허용 손실) — `design.md` §4.5가 사용자 승인으로 고정한다

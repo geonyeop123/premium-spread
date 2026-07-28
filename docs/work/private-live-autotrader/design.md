@@ -298,7 +298,7 @@ V1은 한 명의 owner가 운영할 수 있는 최소 구조를 우선한다. �
 - 상시 staging과 자체 CI runner
 
 운영환경, object storage, registry, alert transport와 backup 방식은 비용·복구 가능성·현재 인프라를 함께 검토한 후 선택한다.
-환경 선택은 §4.4가 요구하는 고정 egress 경계와 `SAFE-6`의 host-local 중단 가능성을 제약 조건으로 포함한다. 이를 만족하지
+환경 선택은 §4.5가 요구하는 고정 egress 경계와 `SAFE-6`의 host-local 중단 가능성을 제약 조건으로 포함한다. 이를 만족하지
 못하는 환경은 activation 직전이 아니라 선택 시점에 배제한다. 선택되지 않은 외부 환경은 code Phase의 실패가 아니라
 activation gate의 `PENDING`이다.
 
@@ -349,7 +349,24 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 `PROGRAM_COMPLETED`는 승인된 bounded LIMITED까지를 V1 성공으로 정의하며, 그보다 큰 위험 범위는 이 프로그램의 숨은 다음
 단계가 아니다. 활성 activation의 근거 candidate가 reject되면 `LIVE-10`을 따른다.
 
-### 4.3 Evidence Collection Readiness Gate
+### 4.3 상태별 허용 행위
+
+상태 정의가 늘어날수록 개별 계약 문장끼리 권한이 어긋나기 쉽다. 제출 권한은 아래 표를 단일 대조표로 삼는다.
+
+| 상태 | 신규 exposure 제출 | 노출 감소 제출 (cancel·hedge·unwind) | 미전송 intent | reconcile·관찰 |
+|---|---|---|---|---|
+| `ACTIVATION_NOT_STARTED` | 불가 | 해당 없음 | 생성하지 않음 | 가능 |
+| `ACTIVATION_PENDING` | 불가 | 해당 없음 (열린 exposure가 있으면 `ACTIVATION_RECOVERY_ONLY`가 옳은 상태) | 무효 | 가능 |
+| `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | 가능 | 현재 epoch에서만 유효 | 가능 |
+| `ACTIVATION_RECOVERY_ONLY` | 불가 | `LIVE-11` 범위(노출 단조 감소)만 가능 | 무효 | 가능 |
+| `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | 잔여 정리 범위만 가능 | 무효 | 가능 |
+| halt latch 활성 (상태축과 직교) | 불가 | recovery-required 해소 절차 범위만 가능 | 무효 | 가능 |
+
+- 제출 권한을 부여하거나 제한하는 계약을 새로 만들면 이 표에 반영한다. 표에 나타나지 않는 권한은 존재하지 않는 것으로 본다.
+- 개별 ID 문장과 이 표가 어긋나면 그 자체가 결함이며 승인 전에 해소한다. 구현이 둘 중 하나를 임의로 선택하지 않는다.
+- halt latch는 activation 상태와 직교한다. 두 조건이 동시에 적용되면 더 제한적인 쪽을 따른다.
+
+### 4.4 Evidence Collection Readiness Gate
 
 장기 data/evidence 수집은 다음 조건을 충족해 `COLLECTION_READY`가 된 뒤에만 시작할 수 있다.
 
@@ -369,7 +386,7 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 진행할 수 있다. 단, `COLLECTION_IN_PROGRESS` 전 데이터는 장기 실제 증거 기간에 산입하지 않는다. 수집 시작 후의 gap과
 보존 실패는 미리 승인한 정책에 따라 해당 candidate evidence의 `PENDING` 또는 `FAIL`로 평가한다.
 
-### 4.4 Activation Gate
+### 4.5 Activation Gate
 
 외부 gate는 한 번에 평가하지 않고 권한과 위험이 증가하는 전이마다 순서대로 평가한다.
 
@@ -472,7 +489,7 @@ Termination:  owner NO_GO → PROGRAM_TERMINATION_PENDING
 - `P1-O1` 실행 가능성을 평가할 수 있는 market observation과 provenance가 정의된다. 이 정의는 장기 수집을 시작할 수 있는
   최소 수집 계약을 포함한다. 최소 수집 계약은 두 leg의 가격 의미를 서로 비교 가능하게 맞추고, 호가와 수량을 어느
   수준까지 관측·보존할지와 그 수준이 이후 체결 모의와 slippage 주장을 어디까지 지지하는지를 명시한다. 이 계약은 Phase 1의
-  첫 산출물로 다루며 확정 즉시 §4.3의 collection readiness 평가 대상이 된다.
+  첫 산출물로 다루며 확정 즉시 §4.4의 collection readiness 평가 대상이 된다.
 - `P1-O2` 원본의 지속 보존, normalized dataset과 realtime 입력의 책임이 구분된다.
 - `P1-O3` 누락·지연·clock·backfill과 합성 데이터가 품질 상태로 드러난다.
 - `P1-O4` replay input이 bounded하게 소비되고 동일 입력의 경제 결과가 재현된다.
@@ -577,7 +594,7 @@ evidence 없이는 진행하지 않는다.
 **종료 조건**
 
 실제 credential 없이 전체 LIVE 경계와 failure/reconcile 계약을 검증해 `PRIVATE_LIVE_CODE_READY`를 선언할 수 있다.
-실제 주문과 위험 범위 확대는 각각 해당되는 §4.4의 선행 gate와 별도 사용자 승인을 통과하기 전까지 불가능해야 한다.
+실제 주문과 위험 범위 확대는 각각 해당되는 §4.5의 선행 gate와 별도 사용자 승인을 통과하기 전까지 불가능해야 한다.
 
 **이 Phase가 선결정하지 않는 것**
 
@@ -715,6 +732,23 @@ artifact와 도구 구성은 Phase 설계가 현재 CI를 기준으로 결정한
 | `DONE-1`~`DONE-6` | Activation과 program completion | `PROGRAM_COMPLETED` |
 | `NOGO-1`~`NOGO-4` | Program termination | `PROGRAM_TERMINATED_NO_GO` |
 
+### 8.1 Phase 정직성 검사
+
+ID를 어느 Phase에 배정하기 전에 그 Phase의 실행 모드에서 해당 계약을 **관찰할 수 있는지** 확인한다. 관찰할 수 없는
+요소가 섞여 있으면 ID를 배정하지 않고 분리한다. 관찰 불가한 계약을 배정하면 그 Phase는 공허하게 PASS하거나
+`ARCH-11`을 어기고 LIVE 전송 상태를 조기에 도입하게 되며, 두 경우 모두 Phase DoD와 gate 판정이 거짓이 된다.
+
+| Phase | 실행 모드 | 관찰 가능한 계약 | 배정할 수 없는 계약 |
+|---|---|---|---|
+| Phase 0 | 실행 없음, 문서·표현·identity 정렬 | 의미·표현 일관성, identity 판정, 기존 자산의 한계 | 체결, 외부 제출, 계정 상태 |
+| Phase 1 | 데이터·경제 계산, 주문 없음 | 관측·provenance·품질·재현성, 경제 계산과 비용 분해 | 체결 결과, 주문 전송, 계정 reconcile |
+| Phase 2 | SIMULATION/PAPER, 모의 체결 | mode-neutral 실행 의미(의도 식별, 중복 방지, 잔여 노출, 자본 제약) | 실제 외부 제출 결과, 응답 불명 reconcile, 계정 drift |
+| Phase 3 | SHADOW와 기본 비활성 LIVE 코드 | 외부 protocol·계정·전송 상태를 fake·recorded로 재현한 계약 | 실제 activation 판정, 실자금·실계정 증거 |
+| Gate (`ECG`·`ACT`·`DONE`·`NOGO`) | 실제 환경·계정·자금과 사용자 승인 | T3·T4 증거와 승인 판정 | software DoD의 T1·T2로 대체 |
+
+`SAFE-1`과 `SAFE-10`의 분리가 이 검사의 적용 예다. 의도 식별·중복 방지·durable 기록은 PAPER에서도 관찰되지만 실제 제출
+결과의 불명확성은 Phase 3에서만 관찰되므로 서로 다른 ID로 둔다.
+
 SaaS와 다중 tenant 요구는 이 표의 미할당 항목이 아니라 명시적 비범위이며 별도 프로그램 승인 없이는 추가하지 않는다.
 
 ## 9. 전체 완료 조건
@@ -733,7 +767,7 @@ Phase 3의 필수 outcome과 종료 조건이 merged 결과에서 충족되면 `
 
 `PRIVATE_LIVE_ACTIVE_COMPLETE`는 software commit만으로 선언할 수 없다. 동일한 승인 candidate에 대해 다음이 확인돼야 한다.
 
-- `DONE-1` §4.4에서 LIMITED 완료까지 적용되는 모든 gate가 PASS이고 UNKNOWN 또는 만료가 없다.
+- `DONE-1` §4.5에서 LIMITED 완료까지 적용되는 모든 gate가 PASS이고 UNKNOWN 또는 만료가 없다.
 - `DONE-2` 제한된 실제 실행이 승인된 risk budget 안에서 수행됐다.
 - `DONE-3` 주문, fill, fee, funding, balance와 position의 내부·외부 기록이 대조됐다.
 - `DONE-4` unresolved order와 설명되지 않은 residual exposure가 없다.

@@ -18,7 +18,7 @@
 재작성본은 Claude 독립 리뷰 A·B를 거쳐 승인 대기 상태였는데, 이번에 **저장소의 실제 코드·스키마와 대조**하는 관점(Review C)에서 다시 검토하자 문서 내부적으로는 정합적이지만 현실과 어긋나는 계약 세 가지가 드러났다.
 
 1. **정본 identity가 거래 범위를 표현하지 못함** — `ARCH-9`이 `MarketPair(symbol, koreaExchange, foreignExchange)`를 정본으로 못박았는데, 제품 범위(§1.2)의 해외 leg는 Binance USDT 선형 perpetual이다. `Exchange` enum에는 instrument 축이 없어 spot과 perpetual이 같은 `BTC:BITHUMB:BINANCE` 키로 붕괴한다. 실제로 batch는 이미 `wss://fstream.binance.com`(USD-M 선물)을 쓰고 있고 그 사실은 config URL에만 존재한다.
-2. **장기 증거 clock이 사실상 0에서 재시작** — `Ticker`는 단일 `price`만 보존하고, 한국 leg는 Bithumb 24H ticker의 체결가, 해외 leg는 bookTicker의 **best bid/ask mid**다. 두 leg의 가격 의미가 다르고 호가 수량이 없어 기존 이력은 `DATA-3`(당시 실제 거래 가능한 가격·수량)을 소급 충족할 수 없다. §4.3은 `COLLECTION_IN_PROGRESS` 이전 데이터를 증거 기간에 산입하지 않는다고 이미 규정했지만, 그 규칙이 일정에 미치는 영향은 문서 어디에도 없었다.
+2. **장기 증거 clock이 사실상 0에서 재시작** — `Ticker`는 단일 `price`만 보존하고, 한국 leg는 Bithumb 24H ticker의 체결가, 해외 leg는 bookTicker의 **best bid/ask mid**다. 두 leg의 가격 의미가 다르고 호가 수량이 없어 기존 이력은 `DATA-3`(당시 실제 거래 가능한 가격·수량)을 소급 충족할 수 없다. §4.4(재작성 당시 §4.3)는 `COLLECTION_IN_PROGRESS` 이전 데이터를 증거 기간에 산입하지 않는다고 이미 규정했지만, 그 규칙이 일정에 미치는 영향은 문서 어디에도 없었다.
 3. **자동 이체가 없는 구조의 자본 소진** — §1.2가 거래소 간 자동 송금을 배제했는데, spot long / perp short 헤지는 cycle마다 두 leg의 손익이 서로 다른 통화·계정에서 반대 부호로 실현된다. 반복하면 한쪽 자본이 마르고 수동 재배치가 강제된다. `ECO-1`은 재배치 *비용*만 언급했을 뿐 실행 가능성 제약으로 다루지 않았다.
 
 ## 3. 무엇을 바꿨나

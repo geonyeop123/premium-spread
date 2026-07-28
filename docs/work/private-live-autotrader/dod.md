@@ -33,8 +33,10 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC4 | `docs/work/{slug}/`에 workflow 산출물 5종이 존재하고 상대 링크가 모두 실재 파일을 가리킨다. | 사용자: "feature-workflow에서 생성하는 문서처럼 재구성" | T1 | 아래 `AC4 command` | exit 0, `missing=[] broken_links=[]` |
 | AC5 | 동결된 Phase -1 DoD가 변경되지 않고 그 검증 명령이 참조하는 경로가 유지된다. | Phase -1 DoD "Evidence 기록 소유권" | T1 | 아래 `AC5 command` | exit 0, `frozen artifacts intact` |
 | AC6 | 저장소 문서 계약과 whitespace 계약이 유지된다. | 기존 repository gate | T1 | `bash docs/check-documentation.sh && git diff --check` | exit 0, `documentation check passed` |
-| AC7 | 외부 관점 스펙 리뷰(`codex-spec-review`)의 open finding이 0이다. | `feature-workflow` ⑥ | T4 | `codex-spec-review` 실행 후 verdict 기록 | open finding 0 또는 반영 완료 |
+| AC7 | 외부 관점 스펙 리뷰가 수렴한다. 동일 렌즈 재검토에서 critical·high가 0이고, 제품·아키텍처 / 추적성 / 코드 대조 / 실행 안전 네 렌즈를 각각 1회 이상 통과했다. | `feature-workflow` ⑥, 사용자: "2번으로 가자" | T4 | `codex-spec-review` 재실행 후 verdict 기록 | 재검토 critical·high 0 |
 | AC8 | 사용자가 `design.md`·`plan.md`·`dod.md`를 승인하고 이 계약서가 `FROZEN`으로 전이한다. | `feature-workflow` ⑦ | T4 | 사용자 승인 기록 | `status: FROZEN` + `frozen_at` 기입 |
+| AC9 | §4.2가 정의한 모든 activation 상태가 §4.3 권한 표에 행으로 존재하고, 권한 표에 상태축 밖의 상태가 없다. | 반복 발생한 권한 모순(codex ISSUE-2)의 재발 차단 | T1 | 아래 `AC9 command` | exit 0, `missing=[] undefined_in_axis=[]` |
+| AC10 | §8이 계약을 배정한 모든 범위(Phase 0~3, Gate)가 §8.1 정직성 표에 판정 행을 갖는다. | 반복 발생한 배정 정직성 결함(codex ISSUE-8)의 재발 차단 | T1 | 아래 `AC10 command` | exit 0, `missing=[]` |
 
 ### AC1 command
 
@@ -94,6 +96,51 @@ test -f .ai/planning/private-live-autotrader/phase-minus-1-plan.md &&
 echo 'frozen artifacts intact'
 ```
 
+### AC9 command
+
+`design.md`의 §4.2 activation 상태 집합과 §4.3 권한 표의 행 집합이 정확히 일치하는지 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import re, sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+axes = d.split('### 4.2 독립 상태축')[1].split('### 4.3')[0]
+states = {m.group(1) for line in axes.splitlines() if line.startswith('| activation |')
+          for m in [re.search(r'\| activation \| `([A-Z_]+)`', line)] if m}
+auth = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+covered = set(re.findall(r'^\| `([A-Z_]+)`', auth, re.M))
+missing, extra = sorted(states - covered), sorted(covered - states)
+print(f'missing={missing} undefined_in_axis={extra}')
+sys.exit(1 if missing or extra else 0)
+CHECK
+```
+
+### AC10 command
+
+§8 traceability 표가 배정한 모든 범위가 §8.1 정직성 표에 판정 행을 갖는지 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import re, sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+table = d.split('## 8. 요구사항 Traceability')[1].split('### 8.1')[0]
+assigned = set()
+for line in table.splitlines():
+    if line.startswith('|') and '`' in line:
+        scope = line.split('|')[2]
+        for ph in re.findall(r'Phase (\d)', scope):
+            assigned.add(f'Phase {ph}')
+        if re.search(r'[Gg]ate', scope):
+            assigned.add('Gate')
+honesty = d.split('### 8.1 Phase 정직성 검사')[1].split('SaaS와 다중')[0]
+rows = {m.group(1) for line in honesty.splitlines()
+        for m in [re.match(r'\| (Phase \d|Gate)', line)] if m}
+missing = sorted(assigned - rows)
+print(f'assigned={sorted(assigned)} rows={sorted(rows)} missing={missing}')
+sys.exit(1 if missing else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -133,6 +180,17 @@ echo 'frozen artifacts intact'
 - REBUT 0건, 8건 전부 ACCEPT하고 `design.md`·`plan.md`에 반영 (상세는 `progress.md` "Codex 외부 스펙 리뷰")
 - Codex가 동일 adversarial 시나리오의 재검토를 권고했고 그 2라운드는 미실행이므로 open finding 0을 아직 선언하지 않는다.
 
+### AC9 — 2026-07-28
+
+- GREEN: `activation_states=5 covered=5 missing=[] undefined_in_axis=[]`, exit 0
+- 변형 검증(RED): §4.2에 `ACTIVATION_SUSPENDED`를 추가하고 §4.3 권한 표에는 넣지 않은 변형본에서
+  `missing=['ACTIVATION_SUSPENDED']`, exit 1. 검사가 실제로 누락을 탐지한다.
+
+### AC10 — 2026-07-28
+
+- GREEN: `assigned=['Gate', 'Phase 0', 'Phase 1', 'Phase 2', 'Phase 3'] missing=[]`, exit 0
+- 변형 검증(RED): §8.1 정직성 표에서 Phase 2 행을 삭제한 변형본에서 `missing=['Phase 2']`, exit 1
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -141,15 +199,15 @@ echo 'frozen artifacts intact'
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      6/6 PASS
+  T1/T2 자동:      8/8 PASS
   T3 기록 제출:    0건
-  T4 사람 확인:    2건 대기 (AC7 외부 스펙 리뷰, AC8 사용자 승인)
+  T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN
 ```
 
 **사람 확인이 필요한 항목**
 
-- AC7 — `codex-spec-review` 실행과 ACCEPT/REBUT 루프 종료
+- AC7 — `codex-spec-review` 재검토에서 critical·high 0 확인
 - AC8 — 사용자 승인 후 `status: FROZEN`, `frozen_at` 기입
 
 ## Evidence 기록 소유권
