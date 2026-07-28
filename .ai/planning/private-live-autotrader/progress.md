@@ -164,6 +164,22 @@
   summary가 미래형("재검토하겠습니다")으로 남아 판정이 산출되지 않았음을 드러낸다.
 - 판정: `AC7` 미충족 유지. 재검토는 한도 해제 후 동일 프롬프트로 재실행한다.
 
+### Codex 외부 스펙 리뷰 2라운드 재시도와 반영 — 2026-07-28
+
+- 앞선 실패는 사용 한도였고 재시도 전 최소 probe(`PROBE_OK`)로 한도 해제를 확인한 뒤 동일 프롬프트로 재실행했다.
+- job `review-ms4f357a-2sbu1x`, session `019fa7ec-8e79-7750-bfae-02424aaa105f`, 판정 `needs-attention`
+- 결과: critical 1 · high 1 — 1라운드 8건 대비 2건으로 감소했고 둘 다 1라운드 수정 영역의 2차 공백이었다.
+
+| 이슈 | 지적 | 반영 |
+|---|---|---|
+| critical | halt 완료가 "전송 후 응답 불명·거래소 ID 미확정" intent를 fence하지 않아 epoch 변경 뒤 주문이 생성될 수 있음 | `SAFE-6`을 미전송 / 거래소 잔존 / 응답 불명 세 집합으로 재작성하고 client order identifier로 terminal 결론을 얻기 전 halt 성공·budget 해제 금지, `P3-O19` 확장 |
+| high | §4.3 권한 표에 program 축이 없어 `PROGRAM_TERMINATION_PENDING`에서도 신규 진입 허용 | program 축 2행 추가, 종결 방향이 activation보다 우선하고 pending 진입이 `ACTIVATION_RECOVERY_ONLY` 전이와 원자적임을 명시, §9.4 interlock |
+
+- 이 high 지적은 전날 추가한 §4.3 대조표가 없었으면 드러나지 않았을 누락이다. 구조 보강이 의도대로 작동했다.
+- 반영 과정에서 `AC9`가 실제로 RED를 냈고(`undefined_in_axis`에 program 상태 2건), 검사를 축 전체 대조로 확장한 뒤
+  GREEN으로 복귀시켰다.
+- 3라운드는 미실행이며 `AC7` 수렴 판정은 그 결과로 내린다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

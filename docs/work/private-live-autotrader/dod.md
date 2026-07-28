@@ -98,19 +98,26 @@ echo 'frozen artifacts intact'
 
 ### AC9 command
 
-`design.md`의 §4.2 activation 상태 집합과 §4.3 권한 표의 행 집합이 정확히 일치하는지 검사한다.
+§4.2의 모든 activation 상태가 §4.3 권한 표에 존재하고, 권한 표의 모든 행이 §4.2에 정의된 상태인지 검사한다.
+activation 축은 전건 필수이며, 다른 축(program 등)은 표에 올릴 수 있지만 §4.2에 없는 상태를 만들 수는 없다.
 
 ```bash
 python3 - <<'CHECK'
 import re, sys, pathlib
 d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
 axes = d.split('### 4.2 독립 상태축')[1].split('### 4.3')[0]
-states = {m.group(1) for line in axes.splitlines() if line.startswith('| activation |')
-          for m in [re.search(r'\| activation \| `([A-Z_]+)`', line)] if m}
+all_states, activation = set(), set()
+for line in axes.splitlines():
+    m = re.match(r'\| (\w[\w /]*) \| `([A-Z_]+)`', line)
+    if not m:
+        continue
+    all_states.add(m.group(2))
+    if m.group(1).strip() == 'activation':
+        activation.add(m.group(2))
 auth = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
 covered = set(re.findall(r'^\| `([A-Z_]+)`', auth, re.M))
-missing, extra = sorted(states - covered), sorted(covered - states)
-print(f'missing={missing} undefined_in_axis={extra}')
+missing, extra = sorted(activation - covered), sorted(covered - all_states)
+print(f'activation={len(activation)} covered={len(covered)} missing={missing} undefined_in_axis={extra}')
 sys.exit(1 if missing or extra else 0)
 CHECK
 ```
@@ -174,7 +181,7 @@ CHECK
 
 - GREEN: `documentation check passed (20 files, 15 required paths)`, `git diff --check` exit 0
 
-### AC7 — 대기 (1라운드 완료, 2라운드 도구 차단)
+### AC7 — 대기 (1·2라운드 완료, 수렴 미확정)
 
 - 2026-07-27 codex `adversarial-review` 1라운드: `needs-attention`, critical 1 · high 5 · medium 2
 - REBUT 0건, 8건 전부 ACCEPT하고 `design.md`·`plan.md`에 반영 (상세는 `progress.md` "Codex 외부 스펙 리뷰")
@@ -183,13 +190,24 @@ CHECK
 - **주의**: 실패한 turn의 출력에 `Verdict: approve`, `No material findings`가 찍혀 있으나 이는 fallback이다. summary가
   미래형 문장("재검토하겠습니다")으로 남아 있어 리뷰가 판정을 산출하지 못했음을 보여준다. 이 출력을 수렴 근거로
   인용하지 않는다.
-- 따라서 `AC7`의 수렴 기준(재검토 critical·high 0)은 아직 충족되지 않았다.
+- 2026-07-28 재시도(job `review-ms4f357a-2sbu1x`, session `019fa7ec-8e79-7750-bfae-02424aaa105f`)는 정상 완료했다.
+  결과는 `needs-attention`, critical 1 · high 1로 1라운드의 8건에서 2건으로 감소했다.
+  - critical: halt 완료 조건이 "전송 후 응답 불명·거래소 ID 미확정" intent를 fence하지 않음 → `SAFE-6`을 세 집합
+    (미전송 / 거래소 잔존 / 응답 불명)으로 재작성, `P3-O19` 확장
+  - high: §4.3 권한 표에 program 축이 없어 `PROGRAM_TERMINATION_PENDING`에서도 신규 진입이 허용됨 → program 축 행과
+    원자적 전이 규칙 추가, §9.4 interlock 명시
+- 두 지적 모두 REBUT 없이 반영했다. `AC7`의 수렴 기준(재검토 critical·high 0)은 3라운드에서 판정한다.
 
 ### AC9 — 2026-07-28
 
-- GREEN: `activation_states=5 covered=5 missing=[] undefined_in_axis=[]`, exit 0
+- GREEN(초기): `activation_states=5 covered=5 missing=[] undefined_in_axis=[]`, exit 0
 - 변형 검증(RED): §4.2에 `ACTIVATION_SUSPENDED`를 추가하고 §4.3 권한 표에는 넣지 않은 변형본에서
   `missing=['ACTIVATION_SUSPENDED']`, exit 1. 검사가 실제로 누락을 탐지한다.
+- RED(실사용): Codex 2라운드 반영으로 §4.3에 program 축 행을 추가하자
+  `undefined_in_axis=['PROGRAM_TERMINATED_NO_GO', 'PROGRAM_TERMINATION_PENDING']`, exit 1로 검사가 걸렸다.
+- 검사 확장: activation 축은 전건 필수, 다른 축은 §4.2에 정의된 상태만 허용하도록 명령을 갱신했다.
+- GREEN(확장 후): `activation=5 covered=7 missing=[] undefined_in_axis=[]`, exit 0
+- 변형 재검증(RED): 존재하지 않는 `ACTIVATION_GHOST` 행을 넣은 변형본에서 `undefined_in_axis=['ACTIVATION_GHOST']`, exit 1
 
 ### AC10 — 2026-07-28
 

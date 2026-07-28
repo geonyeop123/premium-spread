@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1라운드 반영 (critical 1, high 5, medium 2)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1·2라운드 반영 (1R critical 1·high 5·medium 2, 2R critical 1·high 1)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -186,8 +186,11 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다.
 - `SAFE-6` 정상 중단, 긴급 중단과 수동 거래소 fallback을 구분한다. 긴급 중단은 Web, API, 알림과 분석 저장소의 가용성과
   무관하게 실행 runtime의 host-local 경로만으로 성립해야 하며, 중단 자체가 실패하면 그 사실을 fail-closed로 드러낸다.
-  중단 latch는 재시작을 견딘다. 중단은 미전송 intent 무효화와 거래소에 남아 있는 exposure-increasing 주문의 취소·종료
-  확인을 마치기 전까지 성공으로 간주하지 않으며, 확인 전 상태는 halt 완료가 아니라 recovery-required로 유지한다.
+  중단 latch는 재시작을 견딘다. 중단이 다뤄야 하는 집합은 세 가지다. 아직 전송하지 않은 intent는 무효화하고, 거래소에
+  남아 있는 exposure-increasing 주문은 취소·종료 확인하며, **전송을 시작했으나 응답이 불명이고 거래소 주문 식별자가
+  확정되지 않은 intent**는 자체 client order identifier로 조회해 terminal 결론을 얻는다. 세 집합이 모두 종결되기 전에는
+  중단을 성공으로 간주하지 않고 예약된 budget도 해제하지 않으며, 확인 전 상태는 halt 완료가 아니라 recovery-required로
+  유지한다.
 - `SAFE-7` margin 적정성을 지속적으로 관찰하고 위험 상태에서는 신규 exposure를 차단한다. 거래소가 수행한 liquidation,
   ADL 또는 강제 감축은 설명되지 않은 account drift로 탐지하며 내부 전략 결과로 조용히 흡수하지 않는다. 신규 차단만으로는
   이미 열린 헤지 leg를 보호하지 못하므로, 사전 승인된 liquidation headroom과 stress 기준을 두고 그 기준을 침범하면
@@ -360,11 +363,17 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 | `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | 가능 | 현재 epoch에서만 유효 | 가능 |
 | `ACTIVATION_RECOVERY_ONLY` | 불가 | `LIVE-11` 범위(노출 단조 감소)만 가능 | 무효 | 가능 |
 | `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | 잔여 정리 범위만 가능 | 무효 | 가능 |
+| `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | 정리 범위만 가능 | 무효 | 가능 |
+| `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | 없음 | 가능 |
 | halt latch 활성 (상태축과 직교) | 불가 | recovery-required 해소 절차 범위만 가능 | 무효 | 가능 |
 
 - 제출 권한을 부여하거나 제한하는 계약을 새로 만들면 이 표에 반영한다. 표에 나타나지 않는 권한은 존재하지 않는 것으로 본다.
 - 개별 ID 문장과 이 표가 어긋나면 그 자체가 결함이며 승인 전에 해소한다. 구현이 둘 중 하나를 임의로 선택하지 않는다.
 - halt latch는 activation 상태와 직교한다. 두 조건이 동시에 적용되면 더 제한적인 쪽을 따른다.
+- program 축이 종결 방향이면 activation 축보다 우선한다. `PROGRAM_TERMINATION_PENDING` 진입은 activation을
+  `ACTIVATION_RECOVERY_ONLY`로 전이시키는 것과 하나의 원자적 전이이며, epoch 무효화·미전송 intent 폐기·
+  exposure-increasing 주문 취소를 진입 조건으로 포함한다. 종결 선언과 제출 차단 사이에 신규 진입이 생길 수 있는
+  구간을 두지 않는다.
 
 ### 4.4 Evidence Collection Readiness Gate
 
@@ -588,8 +597,8 @@ evidence 없이는 진행하지 않는다.
   drift가 있으면 제출을 차단하고 activation 근거를 무효로 처리한다.
 - `P3-O18` risk budget이 in-flight 제출의 최악 전량 체결을 예약하며, 동시 실행 worker가 경쟁해도 승인 한도를 넘는
   제출이 만들어지지 않는다.
-- `P3-O19` 중단과 activation 강등이 미전송 intent를 무효화하고 거래소에 남은 exposure-increasing 주문의 취소와 종료
-  확인까지 수행하며, 확인 전에는 recovery-required 상태를 유지한다.
+- `P3-O19` 중단과 activation 강등이 `SAFE-6`의 세 집합(미전송, 거래소 잔존 주문, 전송 후 응답 불명)을 모두 종결시키며,
+  확인 전에는 recovery-required 상태를 유지한다. `PROGRAM_TERMINATION_PENDING` 진입도 같은 경로를 원자적으로 수행한다.
 
 **종료 조건**
 
@@ -667,7 +676,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
 - 시간은 주입된 Clock 또는 명시적 Instant를 사용한다.
 - no-lookahead, duplicate, partial, restart, stale/gap과 reconcile mismatch에 대한 negative 검증을 포함한다.
 - 동시 intent가 승인된 risk budget을 초과하지 않는지, 중단·강등 이후 미전송 intent와 거래소 대기 주문이 실행되지
-  않는지, 복구 구간의 제출이 노출을 늘리지 않는지를 negative 검증으로 포함한다.
+  않는지, 전송 후 응답 불명 intent가 terminal 결론 전에 halt 성공으로 처리되지 않는지, 종결 선언 직후 신규 진입이
+  생기지 않는지, 복구 구간의 제출이 노출을 늘리지 않는지를 negative 검증으로 포함한다.
 - 성능 수치는 host와 workload가 정의된 T3에서만 판정한다.
 - migration 검증은 `STORE-5`와 `STORE-6`을 acceptance 대상으로 포함한다.
 
@@ -785,7 +795,9 @@ LIMITED가 이 프로그램의 V1 성공 종점이다. `PROGRAM_COMPLETED`는 �
   계속하지 않는다.
 
 전략 경제성, 데이터 품질, 법률·거래소 자격, 환경 비용 또는 실제 검증이 허용 범위를 충족하지 못하면 사용자는 종결을
-결정할 수 있다. 열린 위험이나 정리 작업이 남아 있으면 먼저 `PROGRAM_TERMINATION_PENDING`으로 전이한다.
+결정할 수 있다. 열린 위험이나 정리 작업이 남아 있으면 먼저 `PROGRAM_TERMINATION_PENDING`으로 전이한다. 이 전이는
+§4.3에 따라 activation을 `ACTIVATION_RECOVERY_ONLY`로 함께 내리며, `NOGO-1`의 credential·activation 폐기는 종결
+시점의 최종 조건이지 진입 시점의 유일한 차단 수단이 아니다.
 
 이 상태는 LIVE 제품 성공이 아니지만 다음을 만족하는 안전한 프로그램 종료다.
 
