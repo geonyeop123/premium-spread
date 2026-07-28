@@ -38,6 +38,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC9 | §4.2가 정의한 모든 activation 상태가 §4.3 권한 표에 행으로 존재하고, 권한 표에 상태축 밖의 상태가 없다. | 반복 발생한 권한 모순(codex ISSUE-2)의 재발 차단 | T1 | 아래 `AC9 command` | exit 0, `missing=[] undefined_in_axis=[]` |
 | AC10 | §8이 계약을 배정한 모든 범위(Phase 0~3, Gate)가 §8.1 정직성 표에 판정 행을 갖는다. | 반복 발생한 배정 정직성 결함(codex ISSUE-8)의 재발 차단 | T1 | 아래 `AC10 command` | exit 0, `missing=[]` |
 | AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-A`/`RECOVERY-B`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
+| AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
 
 ### AC1 command
 
@@ -172,6 +173,29 @@ sys.exit(1 if bad else 0)
 CHECK
 ```
 
+### AC12 command
+
+§4.3에서 신규 제출이 `불가`인 모든 행이 진입 시 `FENCE`를 수행하는지 검사한다. 특정 전이만 더 약한 절차를 쓰면 실패한다.
+
+```bash
+python3 - <<'CHECK'
+import re, sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+auth = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+bad = []
+for line in auth.splitlines():
+    if not line.startswith('|') or line.startswith('|---') or '| 신규 exposure 제출 |' in line:
+        continue
+    cols = [c.strip() for c in line.strip('|').split('|')]
+    if len(cols) < 5:
+        continue
+    if '불가' in cols[1] and not (cols[3].startswith('`FENCE`') or cols[3].startswith('해당 없음')):
+        bad.append(f'{cols[0]} -> {cols[3][:30]}')
+print(f'unfenced_blocking_rows={bad}')
+sys.exit(1 if bad else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -236,8 +260,13 @@ CHECK
   - high: §4.3의 `PROGRAM_TERMINATION_PENDING` 행이 "정리 범위"라는 자유 서술이어서 `LIVE-11`의 위험 벡터와 `SAFE-7`
     우선순위를 상속하지 않음 → 개별 행 패치 대신 **복구 권한을 `LIVE-11`에서 한 번만 정의**하고 모든 상태 행이
     `RECOVERY-A`/`RECOVERY-B` 집합 이름을 참조하도록 구조를 바꿨다.
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3R 2건 → 4R 1건 → 5R 1건. critical은 2라운드 이후 0이며 3~5라운드
-  지적은 모두 같은 매듭(복구 권한 의미)의 다른 표면이었다. 5라운드에서 그 매듭 자체를 단일 정의로 접었다.
+- 2026-07-28 6라운드: `needs-attention`, critical 0 · high 1.
+  - high: `LIVE-10` 강등(만료·candidate reject)이 halt·종결과 달리 거래소 대기 주문을 fence하지 않아, 강등 직후 기존
+    진입 주문이 체결될 수 있음 → `SAFE-6`의 세 집합 종결을 `FENCE`(`FENCE-1`~`FENCE-3`)로 명명해 한 번만 정의하고
+    `LIVE-10`·`P3-O14`·`P3-O19`·§4.3의 모든 차단 전이가 이를 참조하도록 구조화, `AC12`로 기계 검사
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3R 2건 → 4R 1건 → 5R 1건 → 6R 1건. critical은 2라운드 이후 0이다.
+  3~6라운드 지적은 모두 "저하 상태에서 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고,
+  5·6라운드에서 각각 복구 권한과 fence를 단일 정의로 접어 개별 패치 루프를 끝냈다.
 
 ### AC9 — 2026-07-28
 
@@ -262,6 +291,11 @@ CHECK
 - GREEN: 두 행을 집합 참조로 통일한 뒤 `freeform_recovery_rows=[]`, exit 0
 - 변형 검증(RED): `PROGRAM_TERMINATION_PENDING` 행을 "정리 범위만 가능"으로 되돌린 변형본에서 해당 행이 탐지됨, exit 1
 
+### AC12 — 2026-07-28
+
+- GREEN: `unfenced_blocking_rows=[]`, exit 0
+- 변형 검증(RED): `ACTIVATION_RECOVERY_ONLY` 행의 fence를 "미전송 무효"로 되돌린 변형본에서 해당 행 탐지, exit 1
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -270,7 +304,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      9/9 PASS
+  T1/T2 자동:      10/10 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN

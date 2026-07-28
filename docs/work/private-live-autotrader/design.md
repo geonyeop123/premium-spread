@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~4라운드 반영 (8 → 2 → 2 → 1건)
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~6라운드 반영 (8 → 2 → 2 → 1 → 1 → 1건)
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -186,11 +186,15 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다.
 - `SAFE-6` 정상 중단, 긴급 중단과 수동 거래소 fallback을 구분한다. 긴급 중단은 Web, API, 알림과 분석 저장소의 가용성과
   무관하게 실행 runtime의 host-local 경로만으로 성립해야 하며, 중단 자체가 실패하면 그 사실을 fail-closed로 드러낸다.
-  중단 latch는 재시작을 견딘다. 중단이 다뤄야 하는 집합은 세 가지다. 아직 전송하지 않은 intent는 무효화하고, 거래소에
-  남아 있는 exposure-increasing 주문은 취소·종료 확인하며, **전송을 시작했으나 응답이 불명이고 거래소 주문 식별자가
-  확정되지 않은 intent**는 자체 client order identifier로 조회해 terminal 결론을 얻는다. 세 집합이 모두 종결되기 전에는
-  중단을 성공으로 간주하지 않고 예약된 budget도 해제하지 않으며, 확인 전 상태는 halt 완료가 아니라 recovery-required로
-  유지한다.
+  중단 latch는 재시작을 견딘다. 이때 수행하는 세 집합 종결을 `FENCE`라 하고 여기서 한 번만 정의한다. 강등·중단·종결
+  전이는 모두 이 정의를 참조하며 조건을 다시 서술하지 않는다.
+  - `FENCE-1` 아직 전송하지 않은 intent를 무효화한다.
+  - `FENCE-2` 거래소에 남아 있는 exposure-increasing 주문을 취소하고 종료를 확인한다.
+  - `FENCE-3` 전송을 시작했으나 응답이 불명이고 거래소 주문 식별자가 확정되지 않은 intent를 자체 client order
+    identifier로 조회해 terminal 결론을 얻는다.
+
+  `FENCE`가 완료되기 전에는 그 전이를 성립으로 간주하지 않고 예약된 budget도 해제하지 않으며, 상태는 recovery-required로
+  유지한다. `FENCE` 이후에 제출할 수 있는 것은 그 전이가 허용하는 권한으로 새로 만든 intent뿐이다.
 - `SAFE-7` margin 적정성을 지속적으로 관찰하고 위험 상태에서는 신규 exposure를 차단한다. 거래소가 수행한 liquidation,
   ADL 또는 강제 감축은 설명되지 않은 account drift로 탐지하며 내부 전략 결과로 조용히 흡수하지 않는다. 신규 차단만으로는
   이미 열린 헤지 leg를 보호하지 못하므로, 사전 승인된 liquidation headroom과 stress 기준을 두고 그 기준을 침범하면
@@ -223,8 +227,10 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   intent 생성은 어떤 동시 실행 순서에서도 승인 한도를 넘을 수 없다.
 - `LIVE-9` 실제 계정과 주문을 사용하지 않는 fake·recorded 검증이 real protocol보다 먼저 통과해야 한다.
 - `LIVE-10` activation authorization이나 그 근거 evidence가 만료·불일치하거나 해당 candidate가 `CANDIDATE_REJECTED`가
-  되면 신규 exposure를 차단하고 activation을 `ACTIVATION_RECOVERY_ONLY`로 되돌린다. 기존 exposure의 안전한 청산과
-  reconcile은 계속할 수 있어야 한다.
+  되면 신규 exposure를 차단하고 activation을 `ACTIVATION_RECOVERY_ONLY`로 되돌린다. 이 강등은 `SAFE-6`의 `FENCE`를
+  원자적으로 수행하며, `FENCE`가 끝나기 전에는 복구 구간이 성립했다고 보지 않는다. 만료·reject 시점에 이미 거래소에서
+  대기 중이던 진입 주문이 그 뒤에 체결되어 노출이 늘어나는 경로를 허용하지 않는다. 기존 exposure의 안전한 청산과
+  reconcile은 `FENCE` 이후 복구 권한으로 계속할 수 있어야 한다.
 - `LIVE-11` 신규 진입 권한과 복구 권한을 분리하고, 복구 권한은 여기서 한 번만 정의한다. 어떤 상태에서 복구가 허용되는지는
   §4.3이 정하고, **무엇이 복구인지는 이 항목이 정한다.** 다른 항목과 표는 아래 집합 이름을 참조하며 조건을 다시 서술하지
   않는다.
@@ -366,20 +372,22 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 
 상태 정의가 늘어날수록 개별 계약 문장끼리 권한이 어긋나기 쉽다. 제출 권한은 아래 표를 단일 대조표로 삼는다.
 
-| 상태 | 신규 exposure 제출 | 노출 감소 제출 (cancel·hedge·unwind) | 미전송 intent | reconcile·관찰 |
+| 상태 | 신규 exposure 제출 | 노출 감소 제출 (cancel·hedge·unwind) | 진입 시 fence | reconcile·관찰 |
 |---|---|---|---|---|
-| `ACTIVATION_NOT_STARTED` | 불가 | 해당 없음 | 생성하지 않음 | 가능 |
-| `ACTIVATION_PENDING` | 불가 | 해당 없음 (열린 exposure가 있으면 `ACTIVATION_RECOVERY_ONLY`가 옳은 상태) | 무효 | 가능 |
-| `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 현재 epoch에서만 유효 | 가능 |
-| `ACTIVATION_RECOVERY_ONLY` | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
-| `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
-| `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
-| `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | 없음 | 가능 |
-| halt latch 활성 (상태축과 직교) | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 무효 | 가능 |
+| `ACTIVATION_NOT_STARTED` | 불가 | 해당 없음 | 해당 없음 | 가능 |
+| `ACTIVATION_PENDING` | 불가 | 해당 없음 (열린 exposure가 있으면 `ACTIVATION_RECOVERY_ONLY`가 옳은 상태) | `FENCE` | 가능 |
+| `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 해당 없음 (현재 epoch 유효) | 가능 |
+| `ACTIVATION_RECOVERY_ONLY` | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 |
+| `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 |
+| `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 |
+| `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | `FENCE` | 가능 |
+| halt latch 활성 (상태축과 직교) | 불가 | `RECOVERY-A` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 |
 
 - 제출 권한을 부여하거나 제한하는 계약을 새로 만들면 이 표에 반영한다. 표에 나타나지 않는 권한은 존재하지 않는 것으로 본다.
 - 개별 ID 문장과 이 표가 어긋나면 그 자체가 결함이며 승인 전에 해소한다. 구현이 둘 중 하나를 임의로 선택하지 않는다.
 - halt latch는 activation 상태와 직교한다. 두 조건이 동시에 적용되면 더 제한적인 쪽을 따른다.
+- 신규 제출을 차단하는 모든 전이는 진입 시 `SAFE-6`의 `FENCE`를 원자적으로 수행한다. 어느 전이든 fence를 생략하거나
+  더 약한 절차로 대체하지 않으며, fence 완료 전에는 그 상태가 성립했다고 보지 않는다.
 - 복구 열의 모든 값은 `LIVE-11`이 정의한 집합 이름을 참조한다. 상태 행마다 허용 조건을 다시 서술하지 않으며,
   집합 정의가 바뀌면 모든 상태에 동시에 적용된다. 종결 상태도 이 정의를 상속하며 더 넓은 "정리 범위"를 갖지 않는다.
 - program 축이 종결 방향이면 activation 축보다 우선한다. `PROGRAM_TERMINATION_PENDING` 진입은 activation을
@@ -600,7 +608,7 @@ evidence 없이는 진행하지 않는다.
 - `P3-O11` default build/config/deploy는 실제 주문을 만들지 않는다.
 - `P3-O12` V1 single-owner와 single-account-pair 범위가 강제되며 다른 회원이나 account가 자동매매 권한을 얻지 않는다.
 - `P3-O13` LIVE execution과 reconcile record가 `ARCH-9`의 정본 identity를 보존한다.
-- `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 신규 exposure를 차단하고
+- `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 `FENCE`를 수행하며 신규 exposure를 차단하고
   `ACTIVATION_RECOVERY_ONLY`로 전이하되, `RECOVERY-A`와 조건을 만족하는 `RECOVERY-B`로 기존 exposure의 청산과 reconcile을
   계속할 수 있다. 한 leg만 체결된 상태에서 `RECOVERY-B`가 조건 없이 차단되어 비헤지 노출이 방치되지 않아야 하며, 차단
   조건이 활성일 때는 `RECOVERY-B`가 거부되고 `P3-O6`의 경로만 열린다.
@@ -611,8 +619,8 @@ evidence 없이는 진행하지 않는다.
   drift가 있으면 제출을 차단하고 activation 근거를 무효로 처리한다.
 - `P3-O18` risk budget이 in-flight 제출의 최악 전량 체결을 예약하며, 동시 실행 worker가 경쟁해도 승인 한도를 넘는
   제출이 만들어지지 않는다.
-- `P3-O19` 중단과 activation 강등이 `SAFE-6`의 세 집합(미전송, 거래소 잔존 주문, 전송 후 응답 불명)을 모두 종결시키며,
-  확인 전에는 recovery-required 상태를 유지한다. `PROGRAM_TERMINATION_PENDING` 진입도 같은 경로를 원자적으로 수행한다.
+- `P3-O19` 중단, activation 강등과 `PROGRAM_TERMINATION_PENDING` 진입이 모두 `FENCE-1`~`FENCE-3`을 종결시키며, 확인 전에는
+  recovery-required 상태를 유지한다. 만료·reject가 거래소 대기 주문이나 응답 불명 제출과 경합해도 노출이 늘지 않는다.
 
 **종료 조건**
 
@@ -694,7 +702,7 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다.
+  판정한다. 만료·candidate reject가 거래소 대기 진입 주문 또는 응답 불명 제출과 경합하는 경우도 negative 사례로 포함한다.
 - 성능 수치는 host와 workload가 정의된 T3에서만 판정한다.
 - migration 검증은 `STORE-5`와 `STORE-6`을 acceptance 대상으로 포함한다.
 
