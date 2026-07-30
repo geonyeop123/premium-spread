@@ -37,7 +37,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC8 | 사용자가 `design.md`·`plan.md`·`dod.md`를 승인하고 이 계약서가 `FROZEN`으로 전이한다. | `feature-workflow` ⑦ | T4 | 사용자 승인 기록 | `status: FROZEN` + `frozen_at` 기입 |
 | AC9 | §4.2가 정의한 모든 activation 상태가 §4.3 권한 표에 행으로 존재하고, 권한 표에 상태축 밖의 상태가 없다. | 반복 발생한 권한 모순(codex ISSUE-2)의 재발 차단 | T1 | 아래 `AC9 command` | exit 0, `missing=[] undefined_in_axis=[]` |
 | AC10 | §8이 계약을 배정한 모든 범위(Phase 0~3, Gate)가 §8.1 정직성 표에 판정 행을 갖는다. | 반복 발생한 배정 정직성 결함(codex ISSUE-8)의 재발 차단 | T1 | 아래 `AC10 command` | exit 0, `missing=[]` |
-| AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-0`/`RECOVERY-A`/`RECOVERY-B`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
+| AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-0`/`RECOVERY-A`/`RECOVERY-B`/`RECOVERY-C`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
 | AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
 | AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
 | AC14 | 권한 회수 트리거 표의 모든 행이 지속·주기 감시와 재시작 재평가를 포함한 탐지 경로를 갖는다. | 시점 검사만 있고 지속 감시가 없어 생기는 TOCTOU 부류(codex 10R) 차단 | T1 | 아래 `AC14 command` | exit 0, `incomplete_detection=[]` |
@@ -175,7 +175,7 @@ for line in state_table.splitlines():
     cols = [c.strip() for c in line.strip('|').split('|')]
     if len(cols) < 5:
         continue
-    if not (re.search(r'RECOVERY-[0AB]', cols[2]) or cols[2].startswith('해당 없음')):
+    if not (re.search(r'RECOVERY-[0ABC]', cols[2]) or cols[2].startswith('해당 없음')):
         bad.append(f'{cols[0]} -> {cols[2][:30]}')
 print(f'freeform_recovery_rows={bad}')
 sys.exit(1 if bad else 0)
@@ -499,7 +499,12 @@ CHECK
     해소는 `RESUME` 선행조건으로 이동
   - medium: owner가 "사후 인지와 RESUME에서만 관여"한다는 규칙이 owner의 중단·NO_GO 선언과 충돌 → owner는 외부 트리거를
     발행하고 전이 실행은 runtime이 즉시 수행하는 역할 분리로 §4.2·§4.3·§9.4·plan Z2를 정렬
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16R high 1 → 17R high 1·medium 1.
+- 2026-07-30 18라운드: `needs-attention`, critical 0 · high 1.
+  - high: `RECOVERY-A`가 fill마다 모든 지표 비증가를 요구해, 두 거래소의 비원자적 순차 청산에서 먼저 체결된 leg가
+    residual을 일시 증가시키므로 완전 헤지 포지션의 청산을 시작조차 할 수 없음 → `RECOVERY-C`(bounded paired reduction)를
+    신설해 사전 승인 한도·예약 안에서 일시적 증가를 허용하고 전체 위험 감소를 검증하도록 정의. `SAFE-7`의 breach 대응
+    용어도 여기에 통일
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16R high 1 → 17R 2건 → 18R high 1.
   critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.

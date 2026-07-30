@@ -380,6 +380,22 @@
     수행한다는 역할 분리를 명시했다. plan의 Z2 행도 "owner의 종결 트리거 발행, 전이 실행은 runtime"으로 맞췄다.
 - `AC20`으로 완료 기준과 역할 분리를 기계 검사한다. 자동 수용기준 18개.
 
+### Codex 외부 스펙 리뷰 18라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1. 도메인 관점의 지적이었다.
+- 지적: `RECOVERY-A`는 실제 fill마다 gross·net exposure와 residual delta가 모두 증가하지 않을 것을 요구한다. 그러나
+  서로 다른 거래소의 spot long과 perpetual short를 청산할 때 원자적 동시 체결은 불가능하므로 어느 leg가 먼저 체결돼도
+  residual delta가 일시적으로 증가한다. 따라서 완전히 헤지된 포지션은 `RECOVERY-A`로 첫 청산을 시작할 수 없고,
+  `RECOVERY-B`는 이미 한쪽이 평탄화된 뒤의 hedge만 다루며 margin·drift 중에는 금지된다. 17라운드에서 확정한 "FENCE 후
+  노출을 줄인다"는 목표와 정면으로 충돌한다.
+- 반영: `RECOVERY-C`(bounded paired reduction)를 `LIVE-11`에 신설했다. 헤지된 pair의 순차 청산에서 먼저 체결된 leg로
+  인한 일시적 residual·gross 증가를 사전 승인된 worst-case 한도와 budget 예약 안에서 허용하되 완료 시 전체 위험 감소를
+  검증하며, 어느 leg가 먼저 체결되거나 부분 체결·재시작이 겹쳐도 종료할 수 있어야 한다. `RECOVERY-A`는 단일 leg의
+  비증가 제출로 범위를 좁혔다.
+- `SAFE-7`이 breach 대응으로 요구하던 "bounded paired reduction"을 `RECOVERY-C`로 용어 통일했고, §4.3의 모든 복구 열과
+  `P3-O6`에 `RECOVERY-C`를 상시 허용으로 반영했다. §7.2에 leg 체결 순서·부분 체결·재시작 조합의 청산 완료 검증을 넣었다.
+- `AC11` 정규식을 네 집합으로 확장했다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
