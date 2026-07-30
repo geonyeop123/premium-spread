@@ -280,6 +280,22 @@
 - 부작용 처리: 트리거 표가 §4.3에 추가되면서 `AC11` 파서가 두 표를 구분하지 못해 오탐했다. 이것도 부류(표 파싱 검사의
   범위 미지정)로 보고 `AC11`·`AC12`를 상태 표로 명시 한정한 뒤 변형본으로 탐지력을 재확인했다.
 
+### Codex 외부 스펙 리뷰 11라운드와 부류 스윕 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `LIVE-10`은 근거 만료·불일치·candidate reject 때 `ACTIVATION_RECOVERY_ONLY`로 내리지만, 거기서 다시
+  `ACTIVATION_IN_PROGRESS`로 돌아가는 전이가 없다. §10의 재승인 요구만으로는 구현이 기존 승인이나 단순 상태 변경으로
+  주문을 재개하는 것을 막지 못한다.
+- 부류 도출: "상태 전이의 회수 방향만 정의하고 복귀·해제 조건이 비어 있는 계약".
+- 스윕 결과: 저하·종결 상태 어느 것도 복귀 조건이 없었다. `CANDIDATE_REJECTED`의 "새 candidate로 재시도 가능"이 유일한
+  언급이었고 halt latch 해제 조건, 종결 상태의 되돌림 가능 여부도 정의되지 않았다.
+- 반영: `LIVE-12`로 `RESUME`을 단일 정의했다. `FENCE-1`~`FENCE-3` terminal 확인과 전체 reconcile, 활성 트리거 전부 해소와
+  원인 재평가, 무효화된 evidence·ACT gate·configuration snapshot 재승인, owner 명시 재개 승인, 새 authorization epoch
+  발급을 모두 원자적 선행조건으로 요구하며 재시작이나 동시 재개 요청이 우회할 수 없다. 종결 상태는 `RESUME` 대상이
+  아니며 §10의 프로그램 재개 승인을 따르고, `CANDIDATE_REJECTED` 이후 새 candidate는 `ACT-1`부터 다시 통과한다.
+- 상태 표에 재개 조건 열을 신설하고 halt latch가 스스로 풀리지 않음을 명시했다. `AC15`로 기계 검사한다.
+- 지적 1건에 대해 같은 부류 3건(halt latch 해제, 종결 되돌림, candidate 재시도 경로)을 함께 정의했다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

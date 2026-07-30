@@ -41,6 +41,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
 | AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
 | AC14 | 권한 회수 트리거 표의 모든 행이 지속·주기 감시와 재시작 재평가를 포함한 탐지 경로를 갖는다. | 시점 검사만 있고 지속 감시가 없어 생기는 TOCTOU 부류(codex 10R) 차단 | T1 | 아래 `AC14 command` | exit 0, `incomplete_detection=[]` |
+| AC15 | 신규 제출이 차단된 모든 상태가 재개 조건(`RESUME` 또는 최초 gate)을 명시한다. | 회수만 정의하고 재개를 비워 두는 부류(codex 11R) 차단 | T1 | 아래 `AC15 command` | exit 0, `missing_resume=[]` |
 
 ### AC1 command
 
@@ -242,6 +243,30 @@ sys.exit(1 if bad else 0)
 CHECK
 ```
 
+### AC15 command
+
+권한이 회수된 상태가 되돌아오는 경로를 명시하는지 검사한다. 회수 조건만 있고 재개 조건이 비면 실패한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+st = sec.split('| 상태 | 신규 exposure 제출 |')[1].split('\n\n')[0]
+bad = []
+for line in st.splitlines():
+    if not line.startswith('|') or line.startswith('|---'):
+        continue
+    c = [x.strip() for x in line.strip('|').split('|')]
+    if len(c) < 6:
+        bad.append((c[0], 'no-resume-column')); continue
+    if '불가' in c[1] and not ('RESUME' in c[5] or 'ACT-' in c[5]):
+        bad.append((c[0], c[5][:25]))
+print(f'missing_resume={bad}')
+sys.exit(1 if bad else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -326,7 +351,13 @@ CHECK
   - 부류 대응: 트리거 표에 탐지 경로 열을 신설해 8개 전부에 지속·주기 감시와 재시작 재평가를 요구하고, 점검-전송 사이
     변화를 막는 상태 version 결속 규칙을 추가. 스윕에서 `LIVE-10`·`SAFE-9`·`SAFE-3`의 같은 부류 결함 3건을 함께 수정.
     `AC14`로 기계 검사
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~10R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
+- 2026-07-30 11라운드: `needs-attention`, critical 0 · high 1.
+  - high: `ACTIVATION_RECOVERY_ONLY`에서 `ACTIVATION_IN_PROGRESS`로 돌아가는 재개 전이가 정의되지 않아 stale 근거로
+    재활성화될 수 있음
+  - 부류 대응: "회수만 정의하고 재개가 빈 상태" 부류로 보고 전 상태를 스윕한 결과 저하·종결 상태 전부에 복귀 조건이
+    없었다. `LIVE-12`로 `RESUME`(FENCE terminal 확인·전체 reconcile·트리거 해소·evidence/configuration 재승인·owner
+    재승인·새 epoch)을 단일 정의하고 상태 표에 재개 조건 열을 신설, `AC15`로 기계 검사
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~11R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -376,6 +407,13 @@ CHECK
 - 부류 스윕 결과: 10라운드 지적은 `P3-O17` 하나였지만 같은 부류를 훑자 `LIVE-10`과 `SAFE-9`는 탐지 시점 자체가 없었고
   `SAFE-3`도 지속 감시가 명시되지 않았다. 네 계약을 함께 고쳤다.
 
+### AC15 — 2026-07-30
+
+- GREEN: `missing_resume=[]`, exit 0
+- 부류 스윕: 11라운드 지적은 `ACTIVATION_RECOVERY_ONLY` 하나였지만, 확인 결과 저하·종결 상태 전부에 복귀·해제 조건이
+  없었다. halt latch 해제, `PROGRAM_TERMINATION_PENDING`의 재개 불가 명시, `CANDIDATE_REJECTED` 이후 `ACT-1` 재통과까지
+  함께 정의했다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -384,7 +422,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      12/12 PASS
+  T1/T2 자동:      13/13 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN
