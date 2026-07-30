@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~18라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~19라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -268,7 +268,7 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
     어느 leg가 먼저 체결되거나 부분 체결·재시작이 발생해도 종료할 수 있어야 하며, 잔여 leg 정리는 같은 요청의 일부로
     이어진다. `SAFE-7`이 breach 대응으로 요구하는 bounded paired reduction이 이 집합이다.
   - `RECOVERY-B` 차단 조건: `SAFE-7`의 headroom·stress 기준 침범, 거래소의 liquidation·ADL·강제 감축, 설명되지 않은
-    account drift 중 하나라도 활성이면 `RECOVERY-B`를 금지하고 `RECOVERY-A`와 owner fallback만 허용한다. reconcile과
+    account drift 중 하나라도 활성이면 `RECOVERY-B`를 금지하고 `RECOVERY-A`·`RECOVERY-C`와 owner fallback만 허용한다. reconcile과
     headroom 회복이 확인되면 다시 열린다.
   - 어떤 상태에서도 새 경제적 기회를 취하는 제출은 복구가 아니다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
 
@@ -697,9 +697,10 @@ evidence 없이는 진행하지 않는다.
 - `P3-O12` V1 single-owner와 single-account-pair 범위가 강제되며 다른 회원이나 account가 자동매매 권한을 얻지 않는다.
 - `P3-O13` LIVE execution과 reconcile record가 `ARCH-9`의 정본 identity를 보존한다.
 - `P3-O14` activation authorization·evidence 만료 또는 candidate reject 시 `FENCE`를 수행하며 신규 exposure를 차단하고
-  `ACTIVATION_RECOVERY_ONLY`로 전이하되, `RECOVERY-A`와 조건을 만족하는 `RECOVERY-B`로 기존 exposure의 청산과 reconcile을
-  계속할 수 있다. 한 leg만 체결된 상태에서 `RECOVERY-B`가 조건 없이 차단되어 비헤지 노출이 방치되지 않아야 하며, 차단
-  조건이 활성일 때는 `RECOVERY-B`가 거부되고 `P3-O6`의 경로만 열린다.
+  `ACTIVATION_RECOVERY_ONLY`로 전이하되, §4.3이 그 상태에 허용한 복구 집합으로 기존 exposure의 청산과 reconcile을
+  계속할 수 있다. 허용 범위는 `LIVE-11`의 단일 정의를 따르며 여기서 다시 열거하지 않는다. 완전히 헤지된 pair는
+  `RECOVERY-C`로, 한 leg만 체결된 상태는 조건을 만족하는 `RECOVERY-B`로 정리할 수 있어야 하고, 차단 조건이 활성일 때는
+  `RECOVERY-B`가 거부되고 `P3-O6`의 경로만 열린다.
 - `P3-O15` leg별 provider 검증 단계가 구분된다. fake·recorded harness는 두 leg 모두 갖추고, 실자금 없이 real protocol을
   시험할 수 있는 leg는 그 경로를 준비하되 기본 build/CI 경로에는 포함하지 않는다.
 - `P3-O16` 자본 부족으로 헤지가 성립하지 않는 상태에서 `SAFE-9`에 따라 신규 진입이 차단되고, 그 차단이 `FENCE`를 동반한
@@ -924,8 +925,8 @@ LIMITED가 이 프로그램의 V1 성공 종점이다. `PROGRAM_COMPLETED`는 �
 
 전략 경제성, 데이터 품질, 법률·거래소 자격, 환경 비용 또는 실제 검증이 허용 범위를 충족하지 못하면 사용자는 종결을
 결정할 수 있다. 열린 위험이나 정리 작업이 남아 있으면 먼저 `PROGRAM_TERMINATION_PENDING`으로 전이한다. 이 전이는
-§4.3에 따라 activation을 `ACTIVATION_RECOVERY_ONLY`로 함께 내리며, 종결 중 허용되는 제출도 `LIVE-11`의 `RECOVERY-A`와
-`RECOVERY-B` 정의를 그대로 상속한다. `NOGO-1`의 credential·activation 폐기는 종결 시점의 최종 조건이지 진입 시점의
+§4.3에 따라 activation을 `ACTIVATION_RECOVERY_ONLY`로 함께 내리며, 종결 중 허용되는 제출도 §4.3의 해당 상태 행과 `LIVE-11`의 복구 집합 정의를
+그대로 상속하며 별도로 열거하지 않는다. `NOGO-1`의 credential·activation 폐기는 종결 시점의 최종 조건이지 진입 시점의
 유일한 차단 수단이 아니다.
 
 이 상태는 LIVE 제품 성공이 아니지만 다음을 만족하는 안전한 프로그램 종료다.
