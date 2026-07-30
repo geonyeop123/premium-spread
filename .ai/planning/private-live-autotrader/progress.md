@@ -452,6 +452,20 @@
     새 authorization epoch 전 자동 복구·`RESUME` 금지, 뒤늦은 체결의 중복·상충 탐지를 요구한다. 세 표현을 한 용어로 통일했다.
 - `AC24`로 `FENCE-2` 범위와 fallback 정의·용어를 기계 검사한다. 자동 수용기준 22개, requirement ID 128개.
 
+### Codex 외부 스펙 리뷰 23라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `LIVE-13`은 수동 체결·취소의 durable 기록과 거래소 대조를 요구하지만, 각 조치와 그 결과를 fallback 이전의 특정
+  전략 노출에 연결하거나 외부 항목으로 분류하는 계약이 없다. `SAFE-5`는 동시에 수동 거래의 자동 흡수를 금지하므로,
+  구현은 수동 hedge를 전략 ledger에 흡수해 `SAFE-5`를 어기거나, 기존 전략 노출을 미설명 drift로 남겨 reconcile·`RESUME`을
+  모호하게 만들 수밖에 없다. fallback이 `SAFE-3` 활성 중 유일한 경로라 영향이 크다.
+- 부류 도출: "외부·수동 기원 변화의 귀속 경계가 없는 계약". 스윕 결과 거래소 강제 감축·liquidation·ADL(`SAFE-7`)도
+  "조용히 흡수하지 않는다"고만 하고 귀속 절차가 없었다.
+- 반영: `SAFE-5`를 귀속 절차의 단일 정의로 확장했다. 외부·수동 기원 변화는 owner 확인 매핑이 있을 때만 특정 전략 노출에
+  귀속하고 매핑은 durable하게 기록하며, 매핑되지 않은 것은 `unmanaged`로 분류해 전략 ledger 밖에 둔다. reconcile은 매핑된
+  노출만 종결시키고, `unmanaged`가 남아 있으면 별도 해소나 새 승인 baseline 전까지 `RESUME`을 차단한다.
+- `LIVE-13`과 `SAFE-7`이 이 절차를 참조하고 `LIVE-12`의 `RESUME` 선행조건에 `unmanaged` 부재를 추가했다. `AC25`로 기계 검사.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

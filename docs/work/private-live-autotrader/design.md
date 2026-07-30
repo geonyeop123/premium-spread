@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~22라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~23라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -185,7 +185,13 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   fail-closed한다. 이 차단은
   §4.3의 권한 회수 트리거이므로 `FENCE`를 동반한 상태 전이로 수행한다.
 - `SAFE-4` 실제 fee와 funding을 포함한 거래소 statement와 내부 ledger의 차이를 탐지한다.
-- `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다.
+- `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다. 외부·수동 기원의 모든
+  변화(owner의 fallback 조치, 수동 거래, 거래소의 강제 감축·liquidation·ADL, 자금 이동)는 다음 귀속 절차를 따른다.
+  - 각 주문·체결·잔고 변화를 fallback 이전의 특정 전략 노출에 매핑하려면 owner 확인이 필요하다. 매핑은 durable하게
+    기록한다.
+  - 매핑되지 않은 것은 `unmanaged`로 분류해 전략 ledger 밖에 두고, 전략 노출을 대신 상계하지 않는다.
+  - reconcile은 매핑된 전략 노출만 종결시킨다. `unmanaged` 항목이 남아 있으면 별도로 해소하거나 새 승인으로 명시적
+    baseline을 잡기 전까지 `LIVE-12`의 `RESUME`을 차단한다.
 - `SAFE-6` 정상 중단, 긴급 중단과 `LIVE-13`의 owner fallback을 구분한다. 긴급 중단은 Web, API, 알림과 분석 저장소의 가용성과
   무관하게 실행 runtime의 host-local 경로만으로 성립해야 하며, 중단 자체가 실패하면 그 사실을 fail-closed로 드러낸다.
   중단 latch는 재시작을 견딘다. 이때 수행하는 세 집합 종결을 `FENCE`라 하고 여기서 한 번만 정의한다. 강등·중단·종결
@@ -205,7 +211,8 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   수 있는 것은 그 전이가 허용하는 권한으로 새로 만든 intent뿐이다. 중단 latch(`LATCH_ENGAGED`)는 스스로 풀리지 않으며
   `LIVE-12`의 `RESUME`을 통해서만 `LATCH_CLEAR`로 돌아간다.
 - `SAFE-7` margin 적정성을 지속적으로 관찰하고 위험 상태에서는 신규 exposure를 차단한다. 거래소가 수행한 liquidation,
-  ADL 또는 강제 감축은 설명되지 않은 account drift로 탐지하며 내부 전략 결과로 조용히 흡수하지 않는다. 신규 차단만으로는
+  ADL 또는 강제 감축은 설명되지 않은 account drift로 탐지하며 내부 전략 결과로 조용히 흡수하지 않고 `SAFE-5`의 귀속
+  절차를 따른다. 신규 차단만으로는
   이미 열린 헤지 leg를 보호하지 못하므로, 사전 승인된 liquidation headroom과 stress 기준을 두고 그 기준을 침범하면
   §4.3의 권한 회수 트리거로서 `FENCE`를 동반한 상태 전이를 수행하고, `LIVE-11`의 `RECOVERY-C`(bounded paired reduction)
   또는 즉시 owner fallback으로 대응한다. 예약된 budget은 `FENCE` 완료까지 유지한다. 자동 이체가
@@ -248,13 +255,15 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   조치하는 절차이며, 임의 수동 거래가 아니라 fenced 비상 절차다. 다음을 요구한다.
   - 허용 범위는 노출을 줄이거나 주문을 취소하는 조치로 한정하고 새 경제적 기회를 취하지 않는다.
   - 시작 전에 알려진 모든 outstanding 주문을 취소하거나 terminal 상태로 확인하고, 자동 제출 경로는 잠근 상태를 유지한다.
-  - 수동 체결과 취소 결과는 durable하게 기록하고 거래소 상태와 직접 대조해 사후 포지션 진실을 확정한다.
+  - 수동 체결과 취소 결과는 durable하게 기록하고 거래소 상태와 직접 대조해 사후 포지션 진실을 확정한다. 각 조치의
+    귀속은 `SAFE-5`의 절차를 따르며, 매핑되지 않은 결과는 `unmanaged`로 남아 `RESUME`을 차단한다.
   - 그 reconcile이 끝나고 새 authorization epoch이 발급되기 전에는 자동 복구 제출과 `RESUME`을 재개하지 않는다.
   - fallback 중 뒤늦게 체결되는 주문이 중복·상충 정리를 만들지 않도록 조치 순서를 기록하고 경합을 탐지한다.
 - `LIVE-12` 권한이 회수된 상태에서 제출 권한을 되찾는 경로는 `RESUME` 하나뿐이며 여기서 정의한다. `RESUME`은 다음을
   모두 원자적 선행조건으로 요구한다. 하나라도 미충족이면 재개하지 않는다.
   - `FENCE-1`~`FENCE-3`의 terminal 확인과 외부 상태와의 전체 reconcile 완료
   - §4.3의 모든 활성 권한 회수 트리거가 해소되고 그 원인이 재평가됨
+  - `SAFE-5` 기준으로 `unmanaged`로 남은 주문·포지션·잔고가 없거나, 별도 해소 또는 새 승인 baseline이 기록됨
   - 무효화된 evidence, 해당 ACT gate와 account·symbol configuration snapshot의 재평가·재승인
   - owner의 명시적 재개 승인. 기존 승인의 재사용이나 단순 상태 변경으로 갈음하지 않는다
   - 새 authorization epoch 발급. 이전 epoch의 intent는 어떤 경우에도 되살아나지 않는다
@@ -814,7 +823,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. `FENCE` 이후 알려진 exposure-reducing working 주문이 새 복구 제출과 경합하지 않는지, owner fallback 중
+  판정한다. fallback 수동 조치가 전략 노출에 자동 흡수되지 않고 매핑·`unmanaged` 분류를 거치는지, `unmanaged`가 남으면
+  `RESUME`이 차단되는지도 확인한다. `FENCE` 이후 알려진 exposure-reducing working 주문이 새 복구 제출과 경합하지 않는지, owner fallback 중
   뒤늦은 체결이 중복·상충 정리를 만들지 않는지도 확인한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는
   margin·drift 상태에서 `FENCE` 종결 후 `RECOVERY-C`로 헤지된 pair를 청산할 수 있는지, `SAFE-3`이 활성인 stale 상태에서는
   반대로 `RECOVERY-C` 시도가 거부되고 취소·owner fallback만 남는지, 현재 headroom이
