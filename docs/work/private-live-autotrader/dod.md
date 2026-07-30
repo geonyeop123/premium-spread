@@ -45,7 +45,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
 | AC19 | 권한 회수 전이가 승인·알림을 기다리지 않고 runtime이 즉시 수행한다는 규칙이 §4.2에 있고, 트리거 표가 승인을 요구하지 않는다. | 안전 회수가 승인 대기로 지연될 수 있던 부류(codex 16R) 차단 | T1 | 아래 `AC19 command` | exit 0, `violations=[]` |
-| AC30 | 불가역 dispatch 지점과 lease·fencing token 격리가 정의되고, progress 소유 gate 값이 runtime versioned input으로 전파된다. | CAS 이후 stale worker와 gate 전파 지연 부류(codex 31R) 차단 | T1 | 아래 `AC30 command` | exit 0, `violations=[]` |
+| AC30 | 전송 개시가 barrier와 같은 critical section에서 선형화되고(추적 불가 전송 금지, `IN_TRANSIT_UNKNOWN` 범주 포함), gate 값이 runtime versioned input으로 전파된다. | CAS 이후 stale worker와 gate 전파 지연 부류(codex 31R) 차단 | T1 | 아래 `AC30 command` | exit 0, `violations=[]` |
 | AC29 | dispatch-claim이 barrier 세대·epoch 검증과 한 durable 선형화 연산으로 결속되고, claim–전송 구간의 소유·회수 규칙이 있다. | 동결 선언만 있고 선형화가 없어 생기는 경합 부류(codex 30R) 차단 | T1 | 아래 `AC29 command` | exit 0, `violations=[]` |
 | AC28 | `FENCE-0` dispatch barrier와 durable dispatch-claim 기반 분류가 정의되고(sender 생존 비의존), provider 장애 시 `FALLBACK_HANDOFF` 경로와 `RESUME` 차단이 유지된다. | 선행조건이 외부 가용성에 의존해 교착되는 부류(codex 27R) 차단 | T1 | 아래 `AC28 command` | exit 0, `violations=[]` |
 | AC27 | 권한 회수 트리거 표의 모든 행이 해제 조건을 갖고, fallback lifecycle이 종료 단계에서만 해제된다. | 진입만 정의하고 해제 조건이 없는 부류(codex 26R) 차단 | T1 | 아래 `AC27 command` | exit 0, `violations=[]` |
@@ -618,6 +618,12 @@ if 'versioned effective input' not in n:
     fail.append('no-versioned-input')
 if 'authorization은 매 제출마다 그 version을 검증하며' not in n:
     fail.append('no-version-check')
+if 'dispatcher critical section' not in n:
+    fail.append('no-critical-section')
+if '전송했는데 어디에도 추적되지 않는' not in n:
+    fail.append('no-untracked-ban')
+if 'IN_TRANSIT_UNKNOWN' not in n:
+    fail.append('no-in-transit-category')
 print(f'violations={fail}')
 sys.exit(1 if fail else 0)
 CHECK
@@ -801,7 +807,11 @@ CHECK
     지점과 lease·fencing token 격리를 정의하고 `FENCE`가 격리 확인 전 `FENCE-3` 완료 분류를 금지
   - high: progress 소유 gate 값(candidate reject, 종결)이 runtime에 원자적으로 전파되지 않아 이전 epoch 제출 가능 →
     versioned effective input으로 runtime에 먼저 commit 후 progress 투영, authorization이 version 검증, 전파 불가 시 fail-closed
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~31R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
+- 2026-07-30 32라운드: `needs-attention`, critical 0 · high 1.
+  - high: lease 재검증과 실제 socket write 사이에 barrier 전환이 끼어들 수 있어 stale send가 가능 → 전송 개시를 barrier와
+    같은 dispatcher critical section에서 선형화하고 결과를 "전송 불가" 또는 "`FENCE-3` 추적"으로 이분, 추적되지 않는 전송을
+    금지. 전송 경로에 들어갔을 수 있는 요청은 `IN_TRANSIT_UNKNOWN`으로 유지. `AC30` 강화
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~32R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -960,6 +970,13 @@ CHECK
 - GREEN: `violations=[]`, exit 0
 - dispatch-claim 생성을 barrier 세대·epoch 검증과 한 CAS 연산으로 묶고, claim 성공 후 전송 전 구간을 worker 소유로 표시해
   `FENCE`가 회수·격리하도록 정의했다. 정본 경계도 runtime control state와 `progress.md`로 분리했다.
+
+### AC30 — 2026-07-30 (32R 강화)
+
+- 강화: 32라운드가 "재검증과 실제 write 사이가 열려 있다"를 지적해, 전송 개시와 barrier 전환을 같은 dispatcher critical
+  section에서 상호배제하고 결과가 "전송 불가" 또는 "`FENCE-3` 추적" 둘 중 하나만 되도록 못박았다. 전송 경로에 이미
+  들어갔을 수 있는 요청은 `IN_TRANSIT_UNKNOWN` 범주로 유지하며 terminal 결론 전에는 정리 완료를 주장하지 않는다.
+- GREEN: `violations=[]`, exit 0
 
 ### AC30 — 2026-07-30
 

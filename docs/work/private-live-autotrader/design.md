@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~31라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~32라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -208,6 +208,11 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
     그 token을 거부하므로 멈췄다 깨어난 worker도 호출을 시작할 수 없다. `FENCE`는 각 claimed worker가 이렇게 호출 불능으로
     격리됐음(lease 만료 또는 token 거부 확정)을 확인하기 전에는 그 intent를 `FENCE-3` 완료로 분류하지 않는다. sender 장애
     복구도 이 보장을 유지하며, lease 만료가 durable한 격리 증거다.
+    전송 시작 자체가 선형화 대상이다. 실제 전송 개시와 barrier 세대 전환은 같은 dispatcher critical section에서 상호배제
+    되며 결과는 둘 중 하나뿐이다. `FENCE`가 먼저 선형화되면 그 intent는 전송을 시작할 수 없고, 전송이 먼저 선형화되면
+    그 intent는 반드시 `FENCE-3`의 결과 불명 제출로 durable하게 추적된다. "전송했는데 어디에도 추적되지 않는" 상태를
+    허용하지 않는다. 외부 전달 지연은 취소·client order identifier 조회로 terminal 결론을 얻기 전까지 해소된 것으로
+    간주하지 않는다.
   - `FENCE-0` 시작 시 dispatch barrier를 원자적으로 세워 새 전송 시작을 막고, barrier 이전의 모든 intent를
     `FENCE-1`(미전송 무효)이나 durable `FENCE-2`·`FENCE-3` 항목으로 분류한다. 분류 근거는 `SAFE-11`의 durable
     dispatch-claim이며 sender acknowledgement는 보조 신호일 뿐이다. barrier 획득이 claim 생성보다 앞서도록 순서를
@@ -278,7 +283,10 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
     이때는 `FALLBACK_HANDOFF` 경로를 사용한다. 외부 호출이 필요 없는 부분(epoch 무효화, `LATCH_ENGAGED`, `FENCE-1`의
     미전송 intent 무효화)을 먼저 확정한다. 여기에는 `FENCE-0`의 dispatch barrier와 sender acknowledgement가 포함되며,
     in-flight intent가 모두 분류되기 전에는 owner에게 조치를 넘기지 않는다. 그 뒤 미확정·working 주문 목록을 durable하게
-    동결하고 owner가 거래소 UI에서 그 목록의 주문을 취소·청산할 수 있게 넘긴다. `FENCE-2`·`FENCE-3`은 미완료로 남아 provider 복구 후 재조회로 종결하며,
+    동결하고 owner가 거래소 UI에서 그 목록의 주문을 취소·청산할 수 있게 넘긴다. 동결 목록과 별도로 **전송 경로에 이미
+    들어갔을 수 있는 요청**을 `IN_TRANSIT_UNKNOWN` 범주로 유지하며, 수동 정리는 이 범주의 늦은 도착 가능성을 전제로
+    수행한다. 이 범주가 취소·조회로 terminal 결론에 도달하기 전에는 `FALLBACK_HANDOFF`도 `RESUME`도 정리 완료를 주장하지
+    않는다. `FENCE-2`·`FENCE-3`은 미완료로 남아 provider 복구 후 재조회로 종결하며,
     그 종결과 수동 결과의 `SAFE-5` 귀속·reconcile이 끝나기 전에는 `RESUME`을 차단한다. 자동 제출 경로는 계속 잠긴다.
   - fallback은 durable lifecycle을 갖는다. `FALLBACK_STARTED`(개시와 `FENCE` 완료 또는 `FALLBACK_HANDOFF` 확정) →
     `FALLBACK_ACTING`(수동 조치 수행) →
@@ -866,7 +874,9 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. 세대 전환 뒤 멈췄다 깨어난 worker의 호출이 거부되는지, gate 결정이 runtime에 commit되기 전에는 이전 epoch로
+  판정한다. 재검증 직후 전송 개시와 barrier 전환이 경합할 때 결과가 항상 "전송 불가" 또는 "`FENCE-3` 추적" 둘 중
+  하나인지, `IN_TRANSIT_UNKNOWN` 요청이 늦게 도착해도 수동 정리와 충돌 없이 귀속되는지도 확인한다. 세대 전환 뒤 멈췄다
+  깨어난 worker의 호출이 거부되는지, gate 결정이 runtime에 commit되기 전에는 이전 epoch로
   제출되지 않는지도 확인한다. barrier 세대 변경과 claim 생성이 경합하거나 `FENCE-3` 조회 이후 같은 intent가 전송되는 경로가 차단되는지,
   runtime control state와 `progress.md` 투영이 어긋날 때 fail-closed되는지도 확인한다.
   `FENCE-0` barrier 직전에 전송을 시작한 intent가 목록 동결·수동 정리와 경합해 뒤늦게 체결되지 않는지,

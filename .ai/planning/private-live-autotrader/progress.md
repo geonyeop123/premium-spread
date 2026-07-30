@@ -590,6 +590,20 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
     검증하고, 전파·대조가 불가능한 동안에는 fail-closed로 신규 제출을 막는다.
 - §7.2에 stale worker 호출 거부와 gate 전파 전 제출 금지 사례를 추가하고 `AC30`을 신설했다. 자동 수용기준 28개.
 
+### Codex 외부 스펙 리뷰 32라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: lease·fencing token을 "불가역 지점 직전"에 재검증한다고만 해서, 재검증 CAS 직후 실제 socket write 전에 `FENCE`가
+  barrier 세대를 바꾸는 interleaving이 남는다. fencing token은 거래소가 검증하는 값이 아니므로 local dispatch path가 그
+  사이를 선형화하지 않으면 멈췄던 worker가 이전 token으로 호출을 시작할 수 있다. `FALLBACK_HANDOFF`는 provider 장애 중
+  `FENCE-3`을 미완료로 두므로 이미 전송 경로에 들어간 요청이 늦게 도착하면 수동 정리와 충돌한다.
+- 반영: 전송 시작 자체를 선형화 대상으로 못박았다. 실제 전송 개시와 barrier 세대 전환은 같은 dispatcher critical section
+  에서 상호배제되며 결과는 둘 중 하나다. `FENCE`가 먼저 선형화되면 전송을 시작할 수 없고, 전송이 먼저 선형화되면 그
+  intent는 반드시 `FENCE-3`의 결과 불명 제출로 durable 추적된다. "전송했는데 어디에도 추적되지 않는" 상태를 금지했다.
+- `FALLBACK_HANDOFF`에는 동결 목록과 별도로 `IN_TRANSIT_UNKNOWN` 범주를 유지해 늦은 도착 가능성을 전제로 수동 정리를
+  수행하고, 그 범주가 terminal 결론에 도달하기 전에는 HANDOFF도 `RESUME`도 정리 완료를 주장하지 않도록 했다.
+- §7.2에 경합 순서와 늦은 도착 귀속 사례를 추가하고 `AC30`을 세 조건 더 검사하도록 강화했다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
