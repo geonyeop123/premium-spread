@@ -507,6 +507,21 @@
 - fallback은 `FALLBACK_STARTED` → `FALLBACK_ACTING` → `FALLBACK_RECONCILING` → `FALLBACK_CLOSED`의 durable lifecycle로
   정의하고 각 단계를 재시작 후 복원하며 종료 단계에서만 트리거를 해제한다. `AC27`로 기계 검사한다. 자동 수용기준 25개.
 
+### Codex 외부 스펙 리뷰 27라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1. 교착(deadlock) 지적이다.
+- 지적: owner fallback은 자동 복구가 불가능할 때의 수동 경로인데, 수동 조치는 `FENCE-1`~`FENCE-3` 완료 뒤에만 시작할 수
+  있다. `FENCE-2`·`FENCE-3`은 거래소 취소·조회의 terminal 결론을 요구하고 실패 시 재시도만 하므로, private API는 장애이고
+  owner UI는 가능한 상황에서 `FENCE`가 영구 미완료가 되어 `ACTIVATION_FENCE_PENDING`에 갇힌다. 자동 unwind도 금지된
+  상태라 미헤지 잔여 노출의 손실·liquidation 위험을 줄일 경로가 사라진다.
+- 부류 도출: "선행조건이 외부 가용성에 의존해 교착될 수 있는 계약". `RESUME`은 위험 증가 방향이라 차단이 옳고,
+  `RECOVERY-C`는 `SAFE-3` 시 취소·fallback으로 빠지므로, 실제 탈출구인 fallback의 시작 가능성이 핵심임을 확인했다.
+- 반영: `FALLBACK_HANDOFF`를 정의했다. 외부 호출이 필요 없는 epoch 무효화·`LATCH_ENGAGED`·`FENCE-1`을 먼저 확정하고,
+  미확정·working 주문 목록을 durable하게 동결한 뒤 owner가 거래소 UI에서 취소·청산할 수 있게 이관한다. `FENCE-2`·`FENCE-3`은
+  미완료로 남아 provider 복구 후 재조회로 종결하며, 그 종결과 수동 결과의 `SAFE-5` 귀속·reconcile 전에는 `RESUME`을
+  차단하고 자동 제출 경로는 계속 잠근다.
+- §4.3의 `ACTIVATION_FENCE_PENDING` 행과 §7.2 failure matrix에도 이 경로를 반영했다. `AC28`로 기계 검사한다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

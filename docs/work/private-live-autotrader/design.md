@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~26라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~27라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -256,12 +256,19 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `LIVE-13` owner fallback은 자동 복구가 불가능하거나 금지된 구간에서 owner가 거래소 UI 등 제품 밖 경로로 직접
   조치하는 절차이며, 임의 수동 거래가 아니라 fenced 비상 절차다. 다음을 요구한다.
   - 허용 범위는 노출을 줄이거나 주문을 취소하는 조치로 한정하고 새 경제적 기회를 취하지 않는다.
-  - fallback은 durable lifecycle을 갖는다. `FALLBACK_STARTED`(개시와 `FENCE` 완료) → `FALLBACK_ACTING`(수동 조치 수행) →
+  - `FENCE`가 provider 장애로 terminal 결론을 얻지 못하는 동안에도 owner가 손실·liquidation 위험을 줄일 수 있어야 한다.
+    이때는 `FALLBACK_HANDOFF` 경로를 사용한다. 외부 호출이 필요 없는 부분(epoch 무효화, `LATCH_ENGAGED`, `FENCE-1`의
+    미전송 intent 무효화)을 먼저 확정하고, 미확정·working 주문 목록을 durable하게 동결한 뒤 owner가 거래소 UI에서 그
+    목록의 주문을 취소·청산할 수 있게 넘긴다. `FENCE-2`·`FENCE-3`은 미완료로 남아 provider 복구 후 재조회로 종결하며,
+    그 종결과 수동 결과의 `SAFE-5` 귀속·reconcile이 끝나기 전에는 `RESUME`을 차단한다. 자동 제출 경로는 계속 잠긴다.
+  - fallback은 durable lifecycle을 갖는다. `FALLBACK_STARTED`(개시와 `FENCE` 완료 또는 `FALLBACK_HANDOFF` 확정) →
+    `FALLBACK_ACTING`(수동 조치 수행) →
     `FALLBACK_RECONCILING`(거래소 대조와 `SAFE-5` 귀속) → `FALLBACK_CLOSED`(종료). 각 단계는 durable하게 기록해 재시작 후
     복원하며, §4.3의 fallback 트리거는 `FALLBACK_CLOSED`에서만 해제된다. 그 전에는 자동 복구 제출과 `RESUME`을 재개하지
     않는다.
-  - fallback 개시는 §4.3의 권한 회수 트리거다. 시작은 epoch 무효화와 `FENCE-1`~`FENCE-3` 완료를 동반하며, 그 전에는
-    수동 조치를 시작하지 않는다. 이렇게 해야 미전송·응답 불명 intent가 수동 취소·청산과 경합하지 않는다.
+  - fallback 개시는 §4.3의 권한 회수 트리거다. 시작은 epoch 무효화와 `FENCE-1`~`FENCE-3` 완료를 동반한다. 다만 provider
+    장애로 `FENCE-2`·`FENCE-3`이 종결되지 않으면 위 `FALLBACK_HANDOFF` 확정으로 대체하며, 어느 경우에도 epoch 무효화와
+    `FENCE-1` 없이 수동 조치를 시작하지 않는다. 이렇게 해야 미전송·응답 불명 intent가 수동 취소·청산과 경합하지 않는다.
   - `FENCE` 이후에도 자동 제출 경로는 잠근 상태(`LATCH_ENGAGED`)를 유지한다.
   - 수동 체결과 취소 결과는 durable하게 기록하고 거래소 상태와 직접 대조해 사후 포지션 진실을 확정한다. 각 조치의
     귀속은 `SAFE-5`의 절차를 따르며, 매핑되지 않은 결과는 `unmanaged`로 남아 `RESUME`을 차단한다.
@@ -464,7 +471,7 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
 | `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` |
 | `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` 대상 아님 (§10 프로그램 재개 승인) |
 | `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | `FENCE` | 가능 | `RESUME` 대상 아님 (§10 프로그램 재개 승인) |
-| `ACTIVATION_FENCE_PENDING` | 불가 | `RECOVERY-0`만 (idempotent 재시도, unwind 금지) | `FENCE` 진행 중 | 가능 | `FENCE` 완료 후 durable 목적 상태로 이동, 이후 `RESUME` |
+| `ACTIVATION_FENCE_PENDING` | 불가 | `RECOVERY-0`만 (idempotent 재시도, unwind 금지). provider 장애 시 `LIVE-13`의 `FALLBACK_HANDOFF`로 owner 수동 조치 | `FENCE` 진행 중 | 가능 | `FENCE` 완료 후 durable 목적 상태로 이동, 이후 `RESUME` |
 | `LATCH_ENGAGED` (execution latch, 직교) | 불가 | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` (latch 해제 포함) |
 | `LATCH_CLEAR` (execution latch, 직교) | activation 축을 따름 | 해당 없음 (activation 축을 따름) | 해당 없음 | 가능 | 해당 없음 |
 
@@ -833,7 +840,9 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. fallback이 `FALLBACK_CLOSED` 전에는 `RESUME`이 거부되는지, 각 lifecycle 단계에서 재시작해도 상태가
+  판정한다. private API 조회·취소가 반복 실패하는 동시에 owner UI는 가능한 상황에서 `FALLBACK_HANDOFF`로 수동 조치가
+  가능한지, 그 뒤 provider 복구 시 재조회로 `FENCE-2`·`FENCE-3`이 종결되고 늦은 체결이 귀속되는지도 확인한다.
+  fallback이 `FALLBACK_CLOSED` 전에는 `RESUME`이 거부되는지, 각 lifecycle 단계에서 재시작해도 상태가
   복원되는지도 확인한다. 정상 activation 중 owner가 fallback을 개시할 때 미전송·응답 불명 intent가 먼저 종결되는지도 확인한다.
   활성 중 수동 거래·자금 이동으로 `unmanaged`가 생기거나 statement·ledger mismatch가 발견되면 자동 제출이
   즉시 차단되는지도 확인한다. fallback 수동 조치가 전략 노출에 자동 흡수되지 않고 매핑·`unmanaged` 분류를 거치는지, `unmanaged`가 남으면
