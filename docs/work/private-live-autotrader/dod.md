@@ -44,6 +44,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC15 | 신규 제출이 차단된 모든 상태가 재개 조건(`RESUME` 또는 최초 gate)을 명시한다. | 회수만 정의하고 재개를 비워 두는 부류(codex 11R) 차단 | T1 | 아래 `AC15 command` | exit 0, `missing_resume=[]` |
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
+| AC18 | §4.2의 모든 상태축(software 포함)이 초기값 선언에 등장한다. | 축을 추가하고 초기값 목록을 갱신하지 않는 부류(codex 14R) 차단 | T1 | 아래 `AC18 command` | exit 0, `missing_initial=[]` |
 
 ### AC1 command
 
@@ -307,6 +308,24 @@ sys.exit(1 if bad else 0)
 CHECK
 ```
 
+### AC18 command
+
+상태축을 새로 만들고 초기값 선언을 갱신하지 않은 경우를 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import re, sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+axes_sec = d.split('### 4.2 독립 상태축')[1].split('### 4.3')[0]
+axes = {m.strip() for m in re.findall(r'^\| ([a-z][a-z /]*) \|', axes_sec, re.M)}
+axes.add('software')
+init = axes_sec.split('프로그램 개시 시점의 초기값은')[1].split('축을 새로 만들면')[0]
+missing = sorted(a for a in axes if a not in init)
+print(f'axes={sorted(axes)} missing_initial={missing}')
+sys.exit(1 if missing else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -407,7 +426,13 @@ CHECK
     통일하고 목적 상태를 `FENCE` context에 durable 저장, `AC17`로 기계 검사
   - high: `ACTIVATION_FENCE_PENDING`이 `RECOVERY-A`(unwind 포함)를 허용해 "새 경제적 제출 금지"·`SAFE-10`과 충돌 →
     `RECOVERY-0`(FENCE 수행에 필요한 취소·조회만)을 `LIVE-11`에 신설하고 해당 행을 `RECOVERY-0` 전용으로 정정
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~13R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
+- 2026-07-30 14라운드: `needs-attention`, critical 0 · high 2.
+  - high: `ACTIVATION_FENCE_PENDING` 중 다른 트리거가 발생할 때 `FENCE` context의 병합·승격 규칙이 없어 나중 중단·종결
+    요구가 유실될 수 있음 → context를 누적 전이 요청으로 정의하고 축별 최대 제한 병합, latch·program 우선순위, 모든
+    요청 종결 시에만 완료를 명시
+  - high: execution latch의 초기값 누락 → 부류 스윕으로 specification·candidate/evidence 축도 누락임을 확인해 함께 채우고,
+    latch 값 누락·손상 시 `LATCH_ENGAGED` fail-closed 규칙과 `AC18` 기계 검사를 추가
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -477,6 +502,12 @@ CHECK
 - 부류 스윕: 13라운드 지적은 정상·긴급 중단 1건이었으나 확인 결과 8개 트리거 전부가 한 축만 지정하고 있었다.
   전이 대상 열을 "진입 → `FENCE` 완료 후 / latch 축" 형식으로 통일하고 목적 상태의 durable 저장 규칙을 추가했다.
 
+### AC18 — 2026-07-30
+
+- GREEN: `axes=7 missing_initial=[]`, exit 0
+- 부류 스윕: 14라운드 지적은 execution latch 1건이었으나 확인 결과 specification과 candidate/evidence 축도 초기값
+  선언에 없었다. 세 축을 함께 채우고 축 신설 시 초기값 정의 의무를 규칙으로 명시했다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -485,7 +516,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      15/15 PASS
+  T1/T2 자동:      16/16 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN

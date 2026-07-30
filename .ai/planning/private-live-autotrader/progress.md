@@ -14,6 +14,7 @@
 | evidence collection | `COLLECTION_NOT_READY` |
 | candidate/evidence | 해당 candidate 없음 |
 | activation | `ACTIVATION_NOT_STARTED` |
+| execution latch | `LATCH_CLEAR` |
 | program | `PROGRAM_IN_PROGRESS` |
 
 - 현재 Phase: `Master specification 사용자 승인 대기`
@@ -322,6 +323,21 @@
   - 반영: `LIVE-11`에 `RECOVERY-0`(FENCE 수행에 필요한 취소·조회만, unwind 금지, `FENCE-3` 전 복구 판단 금지)을 신설하고
     해당 행을 `RECOVERY-0` 전용으로 정정했다. `AC11` 정규식도 세 집합으로 확장했다.
 - 자동 수용기준 15개, requirement ID 127개, dangling 0건.
+
+### Codex 외부 스펙 리뷰 14라운드와 부류 스윕 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 2.
+- 지적 1: 각 트리거가 `FENCE` context에 목적 상태를 저장한다고만 규정해, `ACTIVATION_FENCE_PENDING` 동안 다른 트리거가
+  발생하면 먼저 저장된 목적지로 `FENCE`가 완료되어 뒤늦은 중단·종결 요구가 유실될 수 있다.
+  - 반영: `FENCE` context를 단일 스냅샷이 아니라 누적되는 전이 요청으로 정의했다. 새 트리거는 목적 상태를 덮어쓰지 않고
+    축별로 더 제한적인 값으로 원자 병합하며, latch 축은 `LATCH_ENGAGED`가 program 축은 종결 방향이 항상 우선한다.
+    병합 결과는 durable하게 남아 재시작 후 복원되고, 모든 요청이 종결돼야 `FENCE`가 완료된다.
+- 지적 2: execution latch 축의 초기값이 §4.2 초기값 선언에 없어 시작·재시작 직후 제출 권한을 안전하게 판정할 수 없다.
+  - 부류 도출: "축을 추가하고 초기값 선언을 갱신하지 않는 계약". 스윕 결과 specification과 candidate/evidence 축도
+    초기값이 없었다.
+  - 반영: 7개 축 전부의 초기값을 명시하고 축 신설 시 초기값 정의를 의무화했다. latch 값이 없거나 손상된 재시작은
+    `LATCH_ENGAGED` fail-closed로 처리한다. `progress.md` 현재값 표에도 latch 축을 추가했다. `AC18`로 기계 검사한다.
+- 자동 수용기준 16개.
 
 ## Phase -1 기준선 — 2026-07-20
 

@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~13라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~14라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -385,8 +385,11 @@ Software milestone과 다음 상태축은 서로 독립적으로 기록한다.
 | program | `PROGRAM_TERMINATION_PENDING` | 종결을 결정했지만 열린 위험 또는 정리 작업이 남음 |
 | program | `PROGRAM_TERMINATED_NO_GO` | 위험과 권한을 닫고 프로그램을 안전하게 종결 |
 
-프로그램 개시 시점의 초기값은 software `SOFTWARE_BASELINE`, evidence collection `COLLECTION_NOT_READY`, activation
-`ACTIVATION_NOT_STARTED`, program `PROGRAM_IN_PROGRESS`다. 각 축의 현재값과 전이 근거는 `progress.md`에만 기록하며,
+프로그램 개시 시점의 초기값은 모든 축에 대해 정의한다. specification `MASTER_SPEC_DRAFT_FOR_DUAL_REVIEW`,
+software `SOFTWARE_BASELINE`, evidence collection `COLLECTION_NOT_READY`, candidate/evidence 해당 candidate 없음,
+activation `ACTIVATION_NOT_STARTED`, execution latch `LATCH_CLEAR`, program `PROGRAM_IN_PROGRESS`다. 축을 새로 만들면
+초기값도 함께 정의하며, 초기값이 없는 축을 두지 않는다. 재시작 시 latch 값이 없거나 손상됐으면 `LATCH_ENGAGED`로
+fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 축의 현재값과 전이 근거는 `progress.md`에만 기록하며,
 software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 activation 축 전이는 사용자 승인으로 선언한다.
 기록과 근거가 어긋나면 근거를 정본으로 삼아 `progress.md`를 다시 기록한다.
 
@@ -417,6 +420,11 @@ software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 
 - execution latch 축은 activation 축과 직교한다. 두 축이 동시에 적용되면 더 제한적인 쪽을 따른다.
 - 모든 트리거는 진입 시 activation 축과 latch 축의 목적 상태를 함께 지정하고, 그 목적 상태를 `FENCE` context에 durable하게
   저장한다. 재시작해도 목적 상태가 복원되며, 한 축만 정하고 다른 축을 미정으로 두지 않는다.
+- `FENCE` context는 단일 트리거의 스냅샷이 아니라 **누적되는 전이 요청**이다. `ACTIVATION_FENCE_PENDING` 동안 다른 트리거가
+  발생하면 목적 상태를 덮어쓰지 않고 축별로 더 제한적인 값으로 원자적으로 병합한다. latch 축은 `LATCH_ENGAGED`가,
+  program 축은 종결 방향이 항상 우선한다. 병합된 요청은 durable하게 남아 재시작 후에도 복원되며, 나중에 도착한 중단이나
+  종결 요구가 먼저 시작된 `FENCE`의 완료로 사라지지 않는다. 새 트리거는 진행 중인 `FENCE`를 취소하지 않고 그 범위를
+  넓히며, 모든 요청이 종결돼야 `FENCE`가 완료된다.
 - 문서가 상태처럼 부르는 이름은 모두 §4.2에 등재한다. 표와 본문에만 등장하고 상태축에 없는 비정형 상태를 두지 않는다.
 제출 권한을 회수하는 트리거는 상태 전이뿐 아니라 guard 조건에서도 발생한다. 아래가 전체 목록이며, 모든 트리거는
 `FENCE`를 동반한 상태로 원자적으로 전이한다. 목록에 없는 경로가 권한을 회수하면 그 자체가 결함이다.
@@ -764,7 +772,9 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. `ACTIVATION_FENCE_PENDING`에서 거래소 취소·조회가 반복 실패하거나 재시작이 겹치는 경우, `FENCE-3` 완료 전
+  판정한다. `ACTIVATION_FENCE_PENDING` 중 다른 트리거가 겹치는 순서 조합(drift → 중단 → 종결 등)과 그 사이 재시작에서
+  병합된 목적 상태가 보존되는지, `ACTIVATION_FENCE_PENDING`에서 거래소 취소·조회가 반복 실패하거나 재시작이 겹치는 경우,
+  `FENCE-3` 완료 전
   unwind가 제출되지 않는지, `FENCE` 완료 후 두 축의 목적 상태가 저장된 대로 복원되는지도 failure matrix에서 판정한다. 만료·candidate reject가 거래소 대기 진입 주문 또는 응답 불명 제출과 경합하는 경우, 그리고 margin·자본·데이터
   guard가 이미 승인된 intent나 응답 불명 제출과 동시에 발생하는 경우, 응답 불명·중복 의심이 탐지된 뒤 다른 intent가
   계속 제출되지 않는지, 점검과 전송 사이에 configuration·자본·freshness가 바뀐 경우 그 제출이 무효가 되는지, 제출이
