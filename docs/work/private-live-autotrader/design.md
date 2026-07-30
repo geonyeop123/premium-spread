@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~25라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~26라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -256,6 +256,10 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `LIVE-13` owner fallback은 자동 복구가 불가능하거나 금지된 구간에서 owner가 거래소 UI 등 제품 밖 경로로 직접
   조치하는 절차이며, 임의 수동 거래가 아니라 fenced 비상 절차다. 다음을 요구한다.
   - 허용 범위는 노출을 줄이거나 주문을 취소하는 조치로 한정하고 새 경제적 기회를 취하지 않는다.
+  - fallback은 durable lifecycle을 갖는다. `FALLBACK_STARTED`(개시와 `FENCE` 완료) → `FALLBACK_ACTING`(수동 조치 수행) →
+    `FALLBACK_RECONCILING`(거래소 대조와 `SAFE-5` 귀속) → `FALLBACK_CLOSED`(종료). 각 단계는 durable하게 기록해 재시작 후
+    복원하며, §4.3의 fallback 트리거는 `FALLBACK_CLOSED`에서만 해제된다. 그 전에는 자동 복구 제출과 `RESUME`을 재개하지
+    않는다.
   - fallback 개시는 §4.3의 권한 회수 트리거다. 시작은 epoch 무효화와 `FENCE-1`~`FENCE-3` 완료를 동반하며, 그 전에는
     수동 조치를 시작하지 않는다. 이렇게 해야 미전송·응답 불명 intent가 수동 취소·청산과 경합하지 않는다.
   - `FENCE` 이후에도 자동 제출 경로는 잠근 상태(`LATCH_ENGAGED`)를 유지한다.
@@ -481,18 +485,18 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
 제출 권한을 회수하는 트리거는 상태 전이뿐 아니라 guard 조건에서도 발생한다. 아래가 전체 목록이며, 모든 트리거는
 `FENCE`를 동반한 상태로 원자적으로 전이한다. 목록에 없는 경로가 권한을 회수하면 그 자체가 결함이다.
 
-| 권한 회수 트리거 | 정의 위치 | 전이 대상 (진입 → `FENCE` 완료 후 / latch 축) | `FENCE` | 탐지 경로 |
-|---|---|---|---|---|
-| 정상·긴급 중단 | `SAFE-6` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / `LATCH_ENGAGED` | 필수 | owner 요청과 host-local latch, 재시작 시 latch 복원 |
-| activation·evidence 만료, candidate reject | `LIVE-10` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 만료 시각과 candidate 상태의 주기 평가, 재시작 시 재평가 |
-| 프로그램 종결 결정 | §9.4 | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 (program 축은 `PROGRAM_TERMINATION_PENDING`) | 필수 | owner 선언 즉시, 재시작 시 상태 복원 |
-| margin headroom·stress 침범, liquidation·ADL·강제 감축, 설명되지 않은 account drift | `SAFE-7` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속 관찰, 재시작 시 재평가 |
-| 헤지를 지지하지 못하는 자본·margin 상태 | `SAFE-9` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속 관찰, 재시작 시 재평가 |
-| 데이터·account·order·position 상태 불신 | `SAFE-3` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | freshness 지속 감시, 재시작 시 재평가 |
-| 제출 결과 불명 또는 중복 효과 의심 | `SAFE-10` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 (`FENCE-3` 포함) | 제출 결과 추적과 주기 reconcile, 재시작 시 미해결 제출 복원 |
-| 승인된 account·symbol configuration snapshot과의 drift | `P3-O17`, `LIVE-10` 경로 | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 제출 직전 점검과 주기 reconcile, 재시작 시 재평가 |
-| 미귀속(`unmanaged`) 외부·수동 변화 발견 또는 statement·ledger reconcile mismatch | `SAFE-4`, `SAFE-5` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속·주기 reconcile, 재시작 시 재평가 |
-| owner fallback 개시 | `LIVE-13` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / `LATCH_ENGAGED` | 필수 | owner 트리거 수신 즉시, 재시작 시 fallback 진행 상태 복원 |
+| 권한 회수 트리거 | 정의 위치 | 전이 대상 (진입 → `FENCE` 완료 후 / latch 축) | `FENCE` | 탐지 경로 | 해제 조건 |
+|---|---|---|---|---|---|
+| 정상·긴급 중단 | `SAFE-6` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / `LATCH_ENGAGED` | 필수 | owner 요청과 host-local latch, 재시작 시 latch 복원 | owner의 재개 트리거와 `RESUME` 완료 |
+| activation·evidence 만료, candidate reject | `LIVE-10` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 만료 시각과 candidate 상태의 주기 평가, 재시작 시 재평가 | 새 evidence·candidate 승인과 `RESUME` 완료 |
+| 프로그램 종결 결정 | §9.4 | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 (program 축은 `PROGRAM_TERMINATION_PENDING`) | 필수 | owner 선언 즉시, 재시작 시 상태 복원 | 해제하지 않음 (§10 프로그램 재개 승인 대상) |
+| margin headroom·stress 침범, liquidation·ADL·강제 감축, 설명되지 않은 account drift | `SAFE-7` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속 관찰, 재시작 시 재평가 | headroom 회복과 reconcile 확인 |
+| 헤지를 지지하지 못하는 자본·margin 상태 | `SAFE-9` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속 관찰, 재시작 시 재평가 | 가용 자본이 목표 헤지를 지지함을 확인 |
+| 데이터·account·order·position 상태 불신 | `SAFE-3` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | freshness 지속 감시, 재시작 시 재평가 | freshness 회복과 필요한 reconcile 완료 |
+| 제출 결과 불명 또는 중복 효과 의심 | `SAFE-10` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 (`FENCE-3` 포함) | 제출 결과 추적과 주기 reconcile, 재시작 시 미해결 제출 복원 | `FENCE-3` terminal 결론과 중복 효과 해소 확인 |
+| 승인된 account·symbol configuration snapshot과의 drift | `P3-O17`, `LIVE-10` 경로 | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 제출 직전 점검과 주기 reconcile, 재시작 시 재평가 | snapshot 재승인 또는 설정 원복 확인 |
+| 미귀속(`unmanaged`) 외부·수동 변화 발견 또는 statement·ledger reconcile mismatch | `SAFE-4`, `SAFE-5` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속·주기 reconcile, 재시작 시 재평가 | `SAFE-5` 매핑 완료 또는 승인 baseline 기록 |
+| owner fallback 개시 | `LIVE-13` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / `LATCH_ENGAGED` | 필수 | owner 트리거 수신 즉시, 재시작 시 fallback 진행 상태 복원 | `LIVE-13` lifecycle의 종료 단계 도달 |
 
 모든 트리거는 제출 시점의 일회성 점검에 의존하지 않는다. 각 트리거는 지속 또는 주기 감시 경로와 재시작 시 재평가
 경로를 갖추며, 제출이 일어나지 않는 구간에도 조건 변화를 탐지한다. 또한 점검과 제출 사이의 변화를 막기 위해 제출은
@@ -829,7 +833,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. 정상 activation 중 owner가 fallback을 개시할 때 미전송·응답 불명 intent가 먼저 종결되는지도 확인한다.
+  판정한다. fallback이 `FALLBACK_CLOSED` 전에는 `RESUME`이 거부되는지, 각 lifecycle 단계에서 재시작해도 상태가
+  복원되는지도 확인한다. 정상 activation 중 owner가 fallback을 개시할 때 미전송·응답 불명 intent가 먼저 종결되는지도 확인한다.
   활성 중 수동 거래·자금 이동으로 `unmanaged`가 생기거나 statement·ledger mismatch가 발견되면 자동 제출이
   즉시 차단되는지도 확인한다. fallback 수동 조치가 전략 노출에 자동 흡수되지 않고 매핑·`unmanaged` 분류를 거치는지, `unmanaged`가 남으면
   `RESUME`이 차단되는지도 확인한다. `FENCE` 이후 알려진 exposure-reducing working 주문이 새 복구 제출과 경합하지 않는지, owner fallback 중

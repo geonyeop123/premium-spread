@@ -45,6 +45,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
 | AC19 | 권한 회수 전이가 승인·알림을 기다리지 않고 runtime이 즉시 수행한다는 규칙이 §4.2에 있고, 트리거 표가 승인을 요구하지 않는다. | 안전 회수가 승인 대기로 지연될 수 있던 부류(codex 16R) 차단 | T1 | 아래 `AC19 command` | exit 0, `violations=[]` |
+| AC27 | 권한 회수 트리거 표의 모든 행이 해제 조건을 갖고, fallback lifecycle이 종료 단계에서만 해제된다. | 진입만 정의하고 해제 조건이 없는 부류(codex 26R) 차단 | T1 | 아래 `AC27 command` | exit 0, `violations=[]` |
 | AC26 | `unmanaged`와 reconcile mismatch가 권한 회수 트리거이며 `DONE-3`·`DONE-4`·`NOGO-2`의 PASS 조건에 포함된다. | 탐지만 하고 fail-closed 전이·완료 조건이 없는 부류(codex 24R) 차단 | T1 | 아래 `AC26 command` | exit 0, `violations=[]` |
 | AC25 | 외부·수동 기원 변화의 귀속 절차가 `SAFE-5`에 정의되고 `LIVE-13`·`SAFE-7`·`RESUME`이 이를 참조한다. | 수동·외부 개입 결과의 귀속 경계 부재 부류(codex 23R) 차단 | T1 | 아래 `AC25 command` | exit 0, `violations=[]` |
 | AC24 | `FENCE-2`가 exposure-reducing working 주문까지 다루고, owner fallback이 `LIVE-13`으로 정의돼 참조된다. | 참조만 되고 정의되지 않은 절차와 fence 범위 누락 부류(codex 22R) 차단 | T1 | 아래 `AC24 command` | exit 0, `violations=[]` |
@@ -517,6 +518,31 @@ sys.exit(1 if fail else 0)
 CHECK
 ```
 
+### AC27 command
+
+트리거마다 해제 조건이 있고 fallback lifecycle이 정의됐는지 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+block = d.split('| 권한 회수 트리거 |')[1].split('\n\n')[0]
+rows = [l for l in block.splitlines() if l.startswith('|') and not l.startswith('|---')]
+bad = []
+for l in rows:
+    c = [x.strip() for x in l.strip('|').split('|')]
+    if len(c) < 6 or not c[5]:
+        bad.append(c[0][:25])
+n = ' '.join(d.split())
+if 'FALLBACK_CLOSED' not in n:
+    bad.append('no-fallback-lifecycle')
+if 'fallback 트리거는 `FALLBACK_CLOSED`에서만 해제된다' not in n:
+    bad.append('no-release-binding')
+print(f'rows={len(rows)} violations={bad}')
+sys.exit(1 if bad else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -669,7 +695,11 @@ CHECK
   - high: 22라운드에 신설한 `LIVE-13`(owner fallback)이 닫힌 트리거 목록에 없어, 정상 activation 중 fallback 개시가
     미전송·응답 불명 intent와 경합할 수 있었음 → fallback 개시를 10번째 트리거로 등재하고 `LIVE-13`에 epoch 무효화·
     `FENCE-1`~`FENCE-3` 완료 선행을 명시, `AC13` 필수 출처를 10개로 확장
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~25R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
+- 2026-07-30 26라운드: `needs-attention`, critical 0 · high 1.
+  - high: fallback의 완료·해제 조건이 없어 영구 halt 또는 조기 재개 중 하나로 갈 수 있었음 → 부류 스윕으로 트리거 표
+    전체에 해제 조건이 없음을 확인하고 10개 행에 해제 조건 열을 신설, fallback은 4단계 durable lifecycle로 정의해
+    종료 단계에서만 해제. `AC27` 기계 검사
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~26R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -798,6 +828,12 @@ CHECK
 - `SAFE-4`를 탐지 전용에서 트리거로 승격하고 트리거 표를 9개로 늘렸다. `DONE-3`·`DONE-4`·`NOGO-2`에 mismatch·`unmanaged`
   해소를 PASS 조건으로 넣었다.
 
+### AC27 — 2026-07-30
+
+- GREEN: `rows=10 violations=[]`, exit 0
+- 부류 스윕: 26라운드 지적은 fallback 1건이었으나 트리거 표 전체에 해제 조건 열이 없었다. 10개 행 모두에 해제 조건을
+  채우고, fallback은 `FALLBACK_STARTED`→`FALLBACK_ACTING`→`FALLBACK_RECONCILING`→`FALLBACK_CLOSED` lifecycle로 정의했다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -806,7 +842,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      24/24 PASS
+  T1/T2 자동:      25/25 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN

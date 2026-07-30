@@ -493,6 +493,20 @@
   `FENCE-1`~`FENCE-3` 완료를 수동 조치 시작의 선행조건으로 명시했다.
 - `AC13` 필수 출처를 10개로 확장했다. 자동 수용기준 24개 유지.
 
+### Codex 외부 스펙 리뷰 26라운드와 부류 스윕 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `LIVE-13`은 fallback 시작 전 `FENCE` 완료와 수동 결과 기록·reconcile을 요구하지만, fallback이 언제 완료돼
+  §4.3의 활성 트리거에서 해제되는지가 없다. `RESUME`은 모든 활성 트리거 해소를 요구하므로 구현은 영구 halt에 빠지거나
+  `FENCE` 완료만으로 해제해 귀속·전체 reconcile 전에 재개할 수 있다.
+- 부류 도출: "트리거 진입 조건만 정의하고 해제 조건이 없는 계약". 스윕 결과 트리거 표 10개 행 **전부** 해제 조건이 없었다.
+- 반영: 트리거 표에 해제 조건 열을 신설하고 10개 행을 모두 채웠다. 중단은 owner 재개 트리거와 `RESUME` 완료, 만료·reject는
+  새 evidence·candidate 승인과 `RESUME`, 종결은 해제하지 않음(§10 대상), margin은 headroom 회복과 reconcile, 자본 부족은
+  가용 자본 확인, 상태 불신은 freshness 회복과 reconcile, 응답 불명은 `FENCE-3` terminal과 중복 해소, drift는 snapshot
+  재승인 또는 원복, 미귀속·mismatch는 `SAFE-5` 매핑 완료 또는 baseline, fallback은 lifecycle 종료다.
+- fallback은 `FALLBACK_STARTED` → `FALLBACK_ACTING` → `FALLBACK_RECONCILING` → `FALLBACK_CLOSED`의 durable lifecycle로
+  정의하고 각 단계를 재시작 후 복원하며 종료 단계에서만 트리거를 해제한다. `AC27`로 기계 검사한다. 자동 수용기준 25개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
