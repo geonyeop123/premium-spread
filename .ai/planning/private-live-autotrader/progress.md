@@ -12,7 +12,7 @@
 | specification | `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL` (Review C 반영본) |
 | software | `SOFTWARE_BASELINE` |
 | evidence collection | `COLLECTION_NOT_READY` |
-| candidate/evidence | 해당 candidate 없음 |
+| candidate/evidence | `CANDIDATE_NOT_SELECTED` |
 | activation | `ACTIVATION_NOT_STARTED` |
 | execution latch | `LATCH_CLEAR` |
 | program | `PROGRAM_IN_PROGRESS` |
@@ -338,6 +338,18 @@
   - 반영: 7개 축 전부의 초기값을 명시하고 축 신설 시 초기값 정의를 의무화했다. latch 값이 없거나 손상된 재시작은
     `LATCH_ENGAGED` fail-closed로 처리한다. `progress.md` 현재값 표에도 latch 축을 추가했다. `AC18`로 기계 검사한다.
 - 자동 수용기준 16개.
+
+### Codex 외부 스펙 리뷰 15라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 0 · **medium 1**. 1라운드 이후 처음으로 high 지적이 없었다.
+- 지적: 14라운드에 채운 candidate/evidence 초기값이 "해당 candidate 없음"이라는 서술형이라 §4.2에 등록된 상태가 아니다.
+  첫 candidate를 `EVIDENCE_PENDING`으로 만드는 전이도 없고, `AC18`이 축 이름 존재만 검사해 이 불일치를 통과시킨다.
+- 반영: `CANDIDATE_NOT_SELECTED`를 축에 등재하고 초기값을 그것으로 바꿨다. candidate 등록 시 `EVIDENCE_PENDING`,
+  `CANDIDATE_REJECTED` 후 폐기 시 `CANDIDATE_NOT_SELECTED`로 돌아가는 전이와 재시작 복원을 명시했다. "초기값은 반드시
+  그 축의 등록 상태여야 하며 서술형으로 대체하지 않는다"는 규칙도 추가했다.
+- 검사 강화: `AC18`이 초기값의 존재뿐 아니라 그 값이 해당 축의 등록 상태인지까지 검증하도록 명령을 교체했다.
+  리뷰어가 기계 검사의 강도를 직접 지적한 두 번째 사례다.
+- `progress.md` 현재값 표도 `CANDIDATE_NOT_SELECTED`로 갱신했다.
 
 ## Phase -1 기준선 — 2026-07-20
 

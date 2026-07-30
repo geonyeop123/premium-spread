@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~14라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~15라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -369,6 +369,7 @@ Software milestone과 다음 상태축은 서로 독립적으로 기록한다.
 | evidence collection | `COLLECTION_NOT_READY` | 장기 증거 clock을 시작할 최소 환경이나 승인이 준비되지 않음 |
 | evidence collection | `COLLECTION_READY` | 장기 증거 수집의 환경·보존·관찰·비용 전제가 승인됐지만 clock은 시작하지 않음 |
 | evidence collection | `COLLECTION_IN_PROGRESS` | 기록된 시작 시점부터 장기 증거를 수집 중 |
+| candidate/evidence | `CANDIDATE_NOT_SELECTED` | 평가 대상 candidate가 없음. 프로그램 개시와 candidate 폐기 후의 상태 |
 | candidate/evidence | `EVIDENCE_PENDING` | 특정 candidate의 데이터·전략·운영 증거를 수집 중 |
 | candidate/evidence | `CANDIDATE_APPROVED` | 승인된 정책에 따라 candidate가 다음 gate의 입력이 됨 |
 | candidate/evidence | `CANDIDATE_REJECTED` | 특정 candidate가 실패했으며 새 candidate로 재시도 가능 |
@@ -386,9 +387,12 @@ Software milestone과 다음 상태축은 서로 독립적으로 기록한다.
 | program | `PROGRAM_TERMINATED_NO_GO` | 위험과 권한을 닫고 프로그램을 안전하게 종결 |
 
 프로그램 개시 시점의 초기값은 모든 축에 대해 정의한다. specification `MASTER_SPEC_DRAFT_FOR_DUAL_REVIEW`,
-software `SOFTWARE_BASELINE`, evidence collection `COLLECTION_NOT_READY`, candidate/evidence 해당 candidate 없음,
+software `SOFTWARE_BASELINE`, evidence collection `COLLECTION_NOT_READY`, candidate/evidence `CANDIDATE_NOT_SELECTED`,
 activation `ACTIVATION_NOT_STARTED`, execution latch `LATCH_CLEAR`, program `PROGRAM_IN_PROGRESS`다. 축을 새로 만들면
-초기값도 함께 정의하며, 초기값이 없는 축을 두지 않는다. 재시작 시 latch 값이 없거나 손상됐으면 `LATCH_ENGAGED`로
+초기값도 함께 정의하며, 초기값이 없는 축을 두지 않는다. 초기값은 반드시 그 축에 등록된 상태 중 하나여야 하고 서술형
+표현으로 대체하지 않는다. candidate는 `CANDIDATE_NOT_SELECTED`에서 시작해 새 candidate를 등록하면 `EVIDENCE_PENDING`으로
+전이하고, `CANDIDATE_REJECTED` 이후 그 candidate를 폐기하면 `CANDIDATE_NOT_SELECTED`로 돌아간다. 재시작 시 이 값도
+durable 기록에서 복원한다. 재시작 시 latch 값이 없거나 손상됐으면 `LATCH_ENGAGED`로
 fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 축의 현재값과 전이 근거는 `progress.md`에만 기록하며,
 software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 activation 축 전이는 사용자 승인으로 선언한다.
 기록과 근거가 어긋나면 근거를 정본으로 삼아 `progress.md`를 다시 기록한다.

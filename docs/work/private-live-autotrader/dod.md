@@ -44,7 +44,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC15 | 신규 제출이 차단된 모든 상태가 재개 조건(`RESUME` 또는 최초 gate)을 명시한다. | 회수만 정의하고 재개를 비워 두는 부류(codex 11R) 차단 | T1 | 아래 `AC15 command` | exit 0, `missing_resume=[]` |
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
-| AC18 | §4.2의 모든 상태축(software 포함)이 초기값 선언에 등장한다. | 축을 추가하고 초기값 목록을 갱신하지 않는 부류(codex 14R) 차단 | T1 | 아래 `AC18 command` | exit 0, `missing_initial=[]` |
+| AC18 | §4.2의 모든 상태축(software 포함)이 초기값을 갖고 그 값이 해당 축의 등록 상태다. | 축을 추가하고 초기값 목록을 갱신하지 않는 부류(codex 14R) 차단 | T1 | 아래 `AC18 command` | exit 0, `missing_initial=[]` |
 
 ### AC1 command
 
@@ -310,19 +310,30 @@ CHECK
 
 ### AC18 command
 
-상태축을 새로 만들고 초기값 선언을 갱신하지 않은 경우를 검사한다.
+모든 상태축이 초기값을 갖고, 그 초기값이 해당 축에 등록된 상태인지 검사한다. 서술형 초기값은 실패한다.
 
 ```bash
 python3 - <<'CHECK'
 import re, sys, pathlib
 d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
-axes_sec = d.split('### 4.2 독립 상태축')[1].split('### 4.3')[0]
-axes = {m.strip() for m in re.findall(r'^\| ([a-z][a-z /]*) \|', axes_sec, re.M)}
-axes.add('software')
-init = axes_sec.split('프로그램 개시 시점의 초기값은')[1].split('축을 새로 만들면')[0]
-missing = sorted(a for a in axes if a not in init)
-print(f'axes={sorted(axes)} missing_initial={missing}')
-sys.exit(1 if missing else 0)
+sec = d.split('### 4.2 독립 상태축')[1].split('### 4.3')[0]
+registered = {}
+for line in sec.splitlines():
+    m = re.match(r'\| ([a-z][a-z /]*) \| `([A-Z_]+)`', line)
+    if m:
+        registered.setdefault(m.group(1).strip(), set()).add(m.group(2))
+soft = d.split('### 4.1 Software 상태')[1].split('### 4.2')[0]
+registered['software'] = set(re.findall(r'\| `([A-Z_]+)`', soft))
+init = sec.split('프로그램 개시 시점의 초기값은')[1].split('축을 새로 만들면')[0]
+bad = []
+for axis, states in registered.items():
+    m = re.search(re.escape(axis) + r'\s+`([A-Z_]+)`', init)
+    if not m:
+        bad.append((axis, 'no-initial')); continue
+    if m.group(1) not in states:
+        bad.append((axis, f'{m.group(1)} not registered'))
+print(f'axes={len(registered)} invalid_initial={bad}')
+sys.exit(1 if bad else 0)
 CHECK
 ```
 
@@ -432,7 +443,11 @@ CHECK
     요청 종결 시에만 완료를 명시
   - high: execution latch의 초기값 누락 → 부류 스윕으로 specification·candidate/evidence 축도 누락임을 확인해 함께 채우고,
     latch 값 누락·손상 시 `LATCH_ENGAGED` fail-closed 규칙과 `AC18` 기계 검사를 추가
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
+- 2026-07-30 15라운드: `needs-attention`, **critical 0 · high 0 · medium 1**. 1라운드 이후 처음으로 high가 사라졌다.
+  - medium: candidate/evidence 초기값이 등록 상태가 아닌 서술형이고 `AC18`이 축 이름 존재만 검사해 통과시킴 →
+    `CANDIDATE_NOT_SELECTED`를 등재하고 candidate 생성·폐기·재시작 전이를 정의, `AC18`을 값 유효성까지 검사하도록 강화
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건(high) → 15R 1건(medium). critical은 2R 이후 0,
+  high는 15R에서 0이 됐다. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -504,7 +519,10 @@ CHECK
 
 ### AC18 — 2026-07-30
 
-- GREEN: `axes=7 missing_initial=[]`, exit 0
+- GREEN(초기): `axes=7 missing_initial=[]`, exit 0
+- 강화: 15라운드가 "축 이름 존재만 검사해 서술형 초기값을 통과시킨다"를 지적해, 초기값이 해당 축의 등록 상태인지까지
+  검증하도록 명령을 교체했다. `candidate/evidence`의 "해당 candidate 없음"을 `CANDIDATE_NOT_SELECTED`로 정식 등재한 뒤
+  `axes=7 invalid_initial=[]`, exit 0
 - 부류 스윕: 14라운드 지적은 execution latch 1건이었으나 확인 결과 specification과 candidate/evidence 축도 초기값
   선언에 없었다. 세 축을 함께 채우고 축 신설 시 초기값 정의 의무를 규칙으로 명시했다.
 
