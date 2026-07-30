@@ -662,7 +662,19 @@ CHECK
 
 - GREEN: `documentation check passed (20 files, 15 required paths)`, `git diff --check` exit 0
 
-### AC7 — 대기 (1·2라운드 완료, 수렴 미확정)
+### AC7 — 충족 (2026-07-30, 34라운드 수렴)
+
+- **판정: PASS.** 33라운드와 34라운드 연속으로 `approve` / `No material findings`, critical·high·medium 0건.
+  - 33R: job `review-ms73mxpy-np21u4`, session `019fb197-036a-7af2-9945-67f3acdafd36`, `Phase: done`, 실패 로그 0
+  - 34R: session `019fb198-d986-7eb2-83c5-e294428f3c93`, `Phase: done`, 실패 로그 0. 직전 결론에 동조하지 말라는 지시로
+    독립 재검토를 요청했고 같은 결과가 재현됐다.
+- 두 라운드 모두 turn이 정상 완료됐으며, 2라운드 첫 시도의 사용량 한도 실패 fallback과 달리 요약이 직전 라운드 내용과
+  질문에 구체적으로 답하고 있음을 확인했다.
+- 네 렌즈 요건: 제품·아키텍처(Review A), 추적성(Review B), 코드 대조(Review C), 실행 안전(Codex 1~34R) 각 1회 이상 통과.
+- 33R은 남은 dispatcher·socket 구현 방식이 Phase 3 설계·DoD 소유가 적절하다고 판단했고, 이는 `design.md` §0.3의 소유
+  경계와 일치한다.
+
+### AC7 — 이력 (1~32라운드)
 
 - 2026-07-27 codex `adversarial-review` 1라운드: `needs-attention`, critical 1 · high 5 · medium 2
 - REBUT 0건, 8건 전부 ACCEPT하고 `design.md`·`plan.md`에 반영 (상세는 `progress.md` "Codex 외부 스펙 리뷰")
@@ -994,13 +1006,13 @@ CHECK
 DoD VERDICT: private-live-autotrader-master-spec
   T1/T2 자동:      28/28 PASS
   T3 기록 제출:    0건
-  T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
+  T4 사람 확인:    1건 대기 (AC8 사용자 승인), AC7 충족
   => AWAITING_HUMAN
 ```
 
 **사람 확인이 필요한 항목**
 
-- AC7 — `codex-spec-review` 재검토에서 critical·high 0 확인
+- ~~AC7 — `codex-spec-review` 재검토에서 critical·high 0 확인~~ → 2026-07-30 충족 (33·34R 연속 지적 0건)
 - AC8 — 사용자 승인 후 `status: FROZEN`, `frozen_at` 기입
 
 ## Evidence 기록 소유권

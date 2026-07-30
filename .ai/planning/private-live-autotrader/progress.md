@@ -604,6 +604,22 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
   수행하고, 그 범주가 terminal 결론에 도달하기 전에는 HANDOFF도 `RESUME`도 정리 완료를 주장하지 않도록 했다.
 - §7.2에 경합 순서와 늦은 도착 귀속 사례를 추가하고 `AC30`을 세 조건 더 검사하도록 강화했다.
 
+### Codex 외부 스펙 리뷰 33·34라운드 — 수렴 — 2026-07-30
+
+- 33라운드: `approve`, `No material findings`. job `review-ms73mxpy-np21u4`, session `019fb197-036a-7af2-9945-67f3acdafd36`,
+  `Phase: done`, 실패 로그 0건. 32라운드의 stale-send 경합이 상위 스펙에서 고정할 안전 불변식 수준으로 해소됐고 남은
+  dispatcher·socket 구현 방식은 Phase 3 설계·DoD 소유가 적절하다고 판단했다.
+- 34라운드: 직전 결론에 동조하지 말라는 지시로 독립 재검토를 요청했고 같은 `approve`, 지적 0건이 재현됐다.
+  session `019fb198-d986-7eb2-83c5-e294428f3c93`, `Phase: done`, 실패 로그 0건.
+- 2라운드 첫 시도의 사용량 한도 실패 fallback과 구분하기 위해 두 라운드 모두 job 상태·로그·요약 내용을 확인했다.
+- `AC7` 판정: **충족**. 수렴 기준(동일 렌즈 재검토 critical·high 0)과 네 렌즈 통과 요건(제품·아키텍처 A, 추적성 B,
+  코드 대조 C, 실행 안전 Codex)을 모두 만족한다.
+- 전체 추이: 1R 8건(critical 1·high 5·medium 2) → 2R 2건 → 3R 2건 → 4R~12R 각 1건 → 13R·14R 각 2건 → 15R medium 1 →
+  16R~32R 각 1~2건 → **33R 0건 → 34R 0건**. critical은 2R 이후 32라운드 연속 0이었다.
+- 10라운드부터 적용한 부류 스윕 방식으로, 지적 1건마다 같은 부류를 문서 전체에서 훑어 codex가 짚지 않은 결함을 추가로
+  수정한 사례가 반복됐다(10R +3건, 11R +3건, 12R +1건, 14R +2건, 19R +1건, 22R +2건, 26R +9건, 27R·28R 근원 이동).
+- 남은 T4 항목은 `AC8` 사용자 승인 하나다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
