@@ -522,6 +522,21 @@
   차단하고 자동 제출 경로는 계속 잠근다.
 - §4.3의 `ACTIVATION_FENCE_PENDING` 행과 §7.2 failure matrix에도 이 경로를 반영했다. `AC28`로 기계 검사한다.
 
+### Codex 외부 스펙 리뷰 28라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `FALLBACK_HANDOFF`가 epoch 무효화와 `FENCE-1` 뒤 미확정·working 주문 목록을 동결해 owner에게 넘기지만, 이미
+  authorization 검사를 통과해 전송을 시작한 intent를 동결 전에 분류하거나 송신을 quiesce하라는 계약이 없다. private API
+  장애에서는 `FENCE-3` 조회도 불가하므로, owner가 UI에서 목록을 정리한 직후 그 in-flight 요청이 거래소에 도착·체결되어
+  수동 정리와 상충하는 새 노출을 만들 수 있다.
+- 부류 도출: "동결·차단을 선언하지만 진행 중 작업의 정지(quiesce)를 요구하지 않는 계약". 근원이 `FENCE` 정의 자체이므로
+  HANDOFF만 고치지 않고 `FENCE`에 넣었다.
+- 반영: `FENCE-0`을 신설했다. `FENCE` 시작 시 dispatch barrier를 원자적으로 세워 새 전송을 막고, barrier 이전에
+  authorization을 통과한 모든 intent가 `FENCE-1`이나 durable `FENCE-2`·`FENCE-3` 항목으로 분류됐다는 sender
+  acknowledgement를 받는다. 이 분류 전에는 이후 단계를 시작하지 않으며 `FALLBACK_HANDOFF`도 이를 상속해 분류 완료 전에는
+  owner에게 조치를 넘기지 않는다. `FENCE` 완료 기준에도 `FENCE-0` 분류 완료를 포함했다.
+- §7.2에 barrier 직전 전송과 수동 정리의 경합 사례를 추가하고 `AC28`을 두 조건 더 검사하도록 강화했다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

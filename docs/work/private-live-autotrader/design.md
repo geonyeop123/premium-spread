@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~27라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~28라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -198,6 +198,9 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   무관하게 실행 runtime의 host-local 경로만으로 성립해야 하며, 중단 자체가 실패하면 그 사실을 fail-closed로 드러낸다.
   중단 latch는 재시작을 견딘다. 이때 수행하는 세 집합 종결을 `FENCE`라 하고 여기서 한 번만 정의한다. 강등·중단·종결
   전이는 모두 이 정의를 참조하며 조건을 다시 서술하지 않는다.
+  - `FENCE-0` 시작 시 dispatch barrier를 원자적으로 세워 새 전송 시작을 막고, barrier 이전에 authorization을 통과한
+    모든 intent가 `FENCE-1`(미전송 무효)이나 durable `FENCE-2`·`FENCE-3` 항목 중 하나로 분류됐다는 sender
+    acknowledgement를 받는다. 이 분류가 끝나기 전에는 이후 단계를 시작하지 않는다.
   - `FENCE-1` 아직 전송하지 않은 intent를 무효화한다.
   - `FENCE-2` 거래소에 남아 있는 working 주문 중 복구 노출에 영향을 줄 수 있는 것을 모두 취소하고 종료를 확인한다.
     exposure-increasing 주문뿐 아니라 진행 중인 unwind·hedge 같은 exposure-reducing 주문도 포함한다. 취소 대신 유지하려면
@@ -258,8 +261,9 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   - 허용 범위는 노출을 줄이거나 주문을 취소하는 조치로 한정하고 새 경제적 기회를 취하지 않는다.
   - `FENCE`가 provider 장애로 terminal 결론을 얻지 못하는 동안에도 owner가 손실·liquidation 위험을 줄일 수 있어야 한다.
     이때는 `FALLBACK_HANDOFF` 경로를 사용한다. 외부 호출이 필요 없는 부분(epoch 무효화, `LATCH_ENGAGED`, `FENCE-1`의
-    미전송 intent 무효화)을 먼저 확정하고, 미확정·working 주문 목록을 durable하게 동결한 뒤 owner가 거래소 UI에서 그
-    목록의 주문을 취소·청산할 수 있게 넘긴다. `FENCE-2`·`FENCE-3`은 미완료로 남아 provider 복구 후 재조회로 종결하며,
+    미전송 intent 무효화)을 먼저 확정한다. 여기에는 `FENCE-0`의 dispatch barrier와 sender acknowledgement가 포함되며,
+    in-flight intent가 모두 분류되기 전에는 owner에게 조치를 넘기지 않는다. 그 뒤 미확정·working 주문 목록을 durable하게
+    동결하고 owner가 거래소 UI에서 그 목록의 주문을 취소·청산할 수 있게 넘긴다. `FENCE-2`·`FENCE-3`은 미완료로 남아 provider 복구 후 재조회로 종결하며,
     그 종결과 수동 결과의 `SAFE-5` 귀속·reconcile이 끝나기 전에는 `RESUME`을 차단한다. 자동 제출 경로는 계속 잠긴다.
   - fallback은 durable lifecycle을 갖는다. `FALLBACK_STARTED`(개시와 `FENCE` 완료 또는 `FALLBACK_HANDOFF` 확정) →
     `FALLBACK_ACTING`(수동 조치 수행) →
@@ -484,7 +488,7 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
   발생하면 목적 상태를 덮어쓰지 않고 축별로 더 제한적인 값으로 원자적으로 병합한다. latch 축은 `LATCH_ENGAGED`가,
   program 축은 종결 방향이 항상 우선한다. 병합된 요청은 durable하게 남아 재시작 후에도 복원되며, 나중에 도착한 중단이나
   종결 요구가 먼저 시작된 `FENCE`의 완료로 사라지지 않는다. 새 트리거는 진행 중인 `FENCE`를 취소하지 않고 그 범위를
-  넓힌다. `FENCE` 완료 기준은 오직 `FENCE-1`~`FENCE-3`의 terminal 결과이며 원인 트리거의 해소가 아니다. 데이터 불신,
+  넓힌다. `FENCE` 완료 기준은 오직 `FENCE-0`의 분류 완료와 `FENCE-1`~`FENCE-3`의 terminal 결과이며 원인 트리거의 해소가 아니다. 데이터 불신,
   margin 침범, account drift처럼 조건이 노출 정리 전까지 지속되는 트리거라도 세 집합이 종결되면 목적 상태로 전이한다.
   원인 해소는 `LIVE-12` `RESUME`의 선행조건으로만 요구한다. 이렇게 하지 않으면 `RECOVERY-0`만 허용되는
   `ACTIVATION_FENCE_PENDING`에 갇혀 열린 노출을 줄이지 못한다.
@@ -840,7 +844,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. private API 조회·취소가 반복 실패하는 동시에 owner UI는 가능한 상황에서 `FALLBACK_HANDOFF`로 수동 조치가
+  판정한다. `FENCE-0` barrier 직전에 전송을 시작한 intent가 목록 동결·수동 정리와 경합해 뒤늦게 체결되지 않는지도
+  확인한다. private API 조회·취소가 반복 실패하는 동시에 owner UI는 가능한 상황에서 `FALLBACK_HANDOFF`로 수동 조치가
   가능한지, 그 뒤 provider 복구 시 재조회로 `FENCE-2`·`FENCE-3`이 종결되고 늦은 체결이 귀속되는지도 확인한다.
   fallback이 `FALLBACK_CLOSED` 전에는 `RESUME`이 거부되는지, 각 lifecycle 단계에서 재시작해도 상태가
   복원되는지도 확인한다. 정상 activation 중 owner가 fallback을 개시할 때 미전송·응답 불명 intent가 먼저 종결되는지도 확인한다.
