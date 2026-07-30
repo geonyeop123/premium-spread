@@ -160,10 +160,11 @@ CHECK
 python3 - <<'CHECK'
 import re, sys, pathlib
 d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
-auth = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+state_table = sec.split('| 상태 | 신규 exposure 제출 |')[1].split('\n\n')[0]
 bad = []
-for line in auth.splitlines():
-    if not line.startswith('|') or line.startswith('|---') or '| 신규 exposure 제출 |' in line:
+for line in state_table.splitlines():
+    if not line.startswith('|') or line.startswith('|---'):
         continue
     cols = [c.strip() for c in line.strip('|').split('|')]
     if len(cols) < 5:
@@ -183,10 +184,11 @@ CHECK
 python3 - <<'CHECK'
 import re, sys, pathlib
 d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
-auth = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+state_table = sec.split('| 상태 | 신규 exposure 제출 |')[1].split('\n\n')[0]
 bad = []
-for line in auth.splitlines():
-    if not line.startswith('|') or line.startswith('|---') or '| 신규 exposure 제출 |' in line:
+for line in state_table.splitlines():
+    if not line.startswith('|') or line.startswith('|---'):
         continue
     cols = [c.strip() for c in line.strip('|').split('|')]
     if len(cols) < 5:
@@ -360,6 +362,13 @@ CHECK
 
 - GREEN: `rows=6 without_fence=[] missing_sources=[]`, exit 0
 - 이 검사는 codex 7라운드가 지적한 `AC12`의 사각지대(표 밖 guard 경로)를 덮는다.
+
+### AC11·AC12 파서 범위 수정 — 2026-07-30
+
+- RED: §4.3에 트리거 표가 추가되자 `AC11` 파서가 두 표를 구분하지 못해 트리거 행 8개를 오탐(`freeform_recovery_rows` 9건)했다.
+- 같은 부류(표 파싱 검사의 범위 미지정)로 `AC11`·`AC12`를 상태 표로 명시 범위 한정했다. `AC14`는 처음부터 트리거 표로
+  한정돼 있어 영향이 없었다.
+- GREEN: 두 검사 모두 `[]`, exit 0. 변형 검증에서 `ACTIVATION_RECOVERY_ONLY` 행을 자유 서술로 되돌리자 둘 다 탐지, exit 1.
 
 ### AC14 — 2026-07-30
 
