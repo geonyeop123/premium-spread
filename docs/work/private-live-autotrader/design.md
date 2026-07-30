@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~16라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~17라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -400,8 +400,10 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
   software 축 전이는 해당 Phase DoD의 merged 검증 결과로 선언한다.
 - 위험을 줄이는 방향(§4.3의 권한 회수 트리거에 따른 `ACTIVATION_FENCE_PENDING`·`ACTIVATION_RECOVERY_ONLY`·
   `LATCH_ENGAGED` 전이)은 runtime이 조건을 탐지한 즉시 durable하게 수행한다. 사용자 승인, gate 기록이나 알림 전달을
-  기다리지 않으며 그 사이에 신규 제출을 허용하지 않는다. owner는 `SAFE-8`의 사후 인지와 `LIVE-12`의 `RESUME`에서만
-  관여한다.
+  기다리지 않으며 그 사이에 신규 제출을 허용하지 않는다.
+- owner는 정상 중단과 NO_GO 선언처럼 **외부 트리거를 발행**할 수 있다. 그 선언은 §4.3 트리거의 입력이며, 전이 자체는
+  이를 수신한 runtime이 즉시 durable하게 수행한다. 즉 위험 감소 전이에서 owner의 역할은 트리거 발행과 `SAFE-8`의 사후
+  인지, `LIVE-12`의 `RESUME` 승인이고, 전이 실행을 승인 절차로 지연시키지 않는다.
 
 기록과 근거가 어긋나면 근거를 정본으로 삼아 `progress.md`를 다시 기록한다.
 
@@ -436,7 +438,10 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
   발생하면 목적 상태를 덮어쓰지 않고 축별로 더 제한적인 값으로 원자적으로 병합한다. latch 축은 `LATCH_ENGAGED`가,
   program 축은 종결 방향이 항상 우선한다. 병합된 요청은 durable하게 남아 재시작 후에도 복원되며, 나중에 도착한 중단이나
   종결 요구가 먼저 시작된 `FENCE`의 완료로 사라지지 않는다. 새 트리거는 진행 중인 `FENCE`를 취소하지 않고 그 범위를
-  넓히며, 모든 요청이 종결돼야 `FENCE`가 완료된다.
+  넓힌다. `FENCE` 완료 기준은 오직 `FENCE-1`~`FENCE-3`의 terminal 결과이며 원인 트리거의 해소가 아니다. 데이터 불신,
+  margin 침범, account drift처럼 조건이 노출 정리 전까지 지속되는 트리거라도 세 집합이 종결되면 목적 상태로 전이한다.
+  원인 해소는 `LIVE-12` `RESUME`의 선행조건으로만 요구한다. 이렇게 하지 않으면 `RECOVERY-0`만 허용되는
+  `ACTIVATION_FENCE_PENDING`에 갇혀 열린 노출을 줄이지 못한다.
 - 문서가 상태처럼 부르는 이름은 모두 §4.2에 등재한다. 표와 본문에만 등장하고 상태축에 없는 비정형 상태를 두지 않는다.
 제출 권한을 회수하는 트리거는 상태 전이뿐 아니라 guard 조건에서도 발생한다. 아래가 전체 목록이며, 모든 트리거는
 `FENCE`를 동반한 상태로 원자적으로 전이한다. 목록에 없는 경로가 권한을 회수하면 그 자체가 결함이다.
@@ -784,7 +789,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지도 확인한다.
+  판정한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는
+  stale·margin·drift 상태에서도 `FENCE` 종결 후 `RECOVERY-A`/`RECOVERY-B` unwind로 노출을 줄일 수 있는지도 확인한다.
   `ACTIVATION_FENCE_PENDING` 중 다른 트리거가 겹치는 순서 조합(drift → 중단 → 종결 등)과 그 사이 재시작에서
   병합된 목적 상태가 보존되는지, `ACTIVATION_FENCE_PENDING`에서 거래소 취소·조회가 반복 실패하거나 재시작이 겹치는 경우,
   `FENCE-3` 완료 전

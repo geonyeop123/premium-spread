@@ -45,6 +45,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
 | AC19 | 권한 회수 전이가 승인·알림을 기다리지 않고 runtime이 즉시 수행한다는 규칙이 §4.2에 있고, 트리거 표가 승인을 요구하지 않는다. | 안전 회수가 승인 대기로 지연될 수 있던 부류(codex 16R) 차단 | T1 | 아래 `AC19 command` | exit 0, `violations=[]` |
+| AC20 | `FENCE` 완료 기준이 `FENCE-1`~`FENCE-3`의 terminal 결과로만 정의되고, 원인 해소는 `RESUME` 선행조건이며, owner의 외부 트리거 발행 역할이 명시된다. | 완료 기준 모호로 `FENCE_PENDING`에 갇히는 부류와 owner 역할 모순(codex 17R) 차단 | T1 | 아래 `AC20 command` | exit 0, `violations=[]` |
 | AC18 | §4.2의 모든 상태축(software 포함)이 초기값을 갖고 그 값이 해당 축의 등록 상태다. | 축을 추가하고 초기값 목록을 갱신하지 않는 부류(codex 14R) 차단 | T1 | 아래 `AC18 command` | exit 0, `missing_initial=[]` |
 
 ### AC1 command
@@ -360,6 +361,26 @@ sys.exit(1 if fail else 0)
 CHECK
 ```
 
+### AC20 command
+
+`FENCE` 완료 기준과 owner 역할 분리가 문서에 유지되는지 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+fail = []
+if '`FENCE` 완료 기준은 오직 `FENCE-1`~`FENCE-3`의 terminal 결과이며 원인 트리거의 해소가 아니다' not in d:
+    fail.append('no-completion-criterion')
+if '원인 해소는 `LIVE-12` `RESUME`의 선행조건으로만 요구한다' not in d:
+    fail.append('cause-resolution-not-bound-to-resume')
+if '외부 트리거를 발행' not in d:
+    fail.append('no-owner-trigger-role')
+print(f'violations={fail}')
+sys.exit(1 if fail else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -472,7 +493,14 @@ CHECK
 - 2026-07-30 16라운드: `needs-attention`, critical 0 · high 1.
   - high: §4.2가 activation 축 전이를 사용자 승인으로 선언한다고 해서 안전 트리거의 즉시 회수가 승인 대기로 지연될 수
     있음 → 전이 선언 주체를 방향별로 분리(위험 증가는 승인, 위험 감소는 runtime 즉시 durable 수행)하고 `AC19`로 기계 검사
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16R high 1. critical은 2R 이후 0. 3~8라운드 지적은 모두
+- 2026-07-30 17라운드: `needs-attention`, critical 0 · high 1 · medium 1.
+  - high: `FENCE` 완료 기준이 "모든 요청 종결"로만 서술돼 원인 해소로 해석되면 `RECOVERY-0`만 허용되는
+    `ACTIVATION_FENCE_PENDING`에 갇혀 노출을 줄이지 못함 → 완료를 `FENCE-1`~`FENCE-3` terminal 결과로만 정의하고 원인
+    해소는 `RESUME` 선행조건으로 이동
+  - medium: owner가 "사후 인지와 RESUME에서만 관여"한다는 규칙이 owner의 중단·NO_GO 선언과 충돌 → owner는 외부 트리거를
+    발행하고 전이 실행은 runtime이 즉시 수행하는 역할 분리로 §4.2·§4.3·§9.4·plan Z2를 정렬
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16R high 1 → 17R high 1·medium 1.
+  critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -557,6 +585,12 @@ CHECK
 - §4.2의 전이 선언 주체를 방향별로 분리했다. 위험 증가 방향은 사용자 승인, 위험 감소 방향은 runtime 즉시 durable 수행이며
   승인·gate 기록·알림 전달을 기다리지 않는다.
 
+### AC20 — 2026-07-30
+
+- GREEN: `violations=[]`, exit 0
+- `FENCE` 완료를 `FENCE-1`~`FENCE-3`의 terminal 결과로만 정의해, 원인이 지속되는 트리거에서도 목적 상태로 전이해
+  `RECOVERY-A`/`RECOVERY-B` unwind가 가능하도록 했다. 원인 해소는 `RESUME` 선행조건으로 남는다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -565,7 +599,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      17/17 PASS
+  T1/T2 자동:      18/18 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN

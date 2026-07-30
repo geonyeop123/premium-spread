@@ -37,7 +37,7 @@ software Phase만으로는 프로그램이 정의된 최종 상태에 도달하�
 | A3 | Canary gate | A2 통과 | owner | 실계정 SHADOW 결과, leg별 provider 검증 단계 판정, preflight 기록 | `ACTIVATION_IN_PROGRESS` |
 | A4 | LIMITED gate | canary 완료 | owner | 외부 statement 대조, unresolved order·residual exposure 부재 확인 | bounded LIMITED 승인 |
 | Z1 | Active closure | bounded LIMITED 수행 완료 | owner | `DONE-1`~`DONE-6` 판정과 redacted evidence | `PRIVATE_LIVE_ACTIVE_COMPLETE` + `PROGRAM_COMPLETED` |
-| Z2 | NO_GO closure | owner 종결 결정 또는 `NOGO-0` 재평가 결과 | owner | `NOGO-1`~`NOGO-4` 확인 기록 | `PROGRAM_TERMINATED_NO_GO` |
+| Z2 | NO_GO closure | owner의 종결 트리거 발행 또는 `NOGO-0` 재평가 결과 (전이 실행은 runtime) | owner | `NOGO-1`~`NOGO-4` 확인 기록 | `PROGRAM_TERMINATED_NO_GO` |
 
 각 gate 실행 단위는 진입 전에 자신의 판정 기준을 `docs/work/{gate-slug}/dod.md`로 동결하고, 판정 결과와 evidence는
 `progress.md`에 append한다. gate는 T3·T4 증거를 다루므로 software DoD의 T1·T2와 섞지 않는다. 어느 항목이라도
