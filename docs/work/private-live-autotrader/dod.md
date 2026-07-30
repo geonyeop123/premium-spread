@@ -37,12 +37,13 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC8 | 사용자가 `design.md`·`plan.md`·`dod.md`를 승인하고 이 계약서가 `FROZEN`으로 전이한다. | `feature-workflow` ⑦ | T4 | 사용자 승인 기록 | `status: FROZEN` + `frozen_at` 기입 |
 | AC9 | §4.2가 정의한 모든 activation 상태가 §4.3 권한 표에 행으로 존재하고, 권한 표에 상태축 밖의 상태가 없다. | 반복 발생한 권한 모순(codex ISSUE-2)의 재발 차단 | T1 | 아래 `AC9 command` | exit 0, `missing=[] undefined_in_axis=[]` |
 | AC10 | §8이 계약을 배정한 모든 범위(Phase 0~3, Gate)가 §8.1 정직성 표에 판정 행을 갖는다. | 반복 발생한 배정 정직성 결함(codex ISSUE-8)의 재발 차단 | T1 | 아래 `AC10 command` | exit 0, `missing=[]` |
-| AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-A`/`RECOVERY-B`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
+| AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-0`/`RECOVERY-A`/`RECOVERY-B`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
 | AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
 | AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
 | AC14 | 권한 회수 트리거 표의 모든 행이 지속·주기 감시와 재시작 재평가를 포함한 탐지 경로를 갖는다. | 시점 검사만 있고 지속 감시가 없어 생기는 TOCTOU 부류(codex 10R) 차단 | T1 | 아래 `AC14 command` | exit 0, `incomplete_detection=[]` |
 | AC15 | 신규 제출이 차단된 모든 상태가 재개 조건(`RESUME` 또는 최초 gate)을 명시한다. | 회수만 정의하고 재개를 비워 두는 부류(codex 11R) 차단 | T1 | 아래 `AC15 command` | exit 0, `missing_resume=[]` |
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
+| AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
 
 ### AC1 command
 
@@ -171,7 +172,7 @@ for line in state_table.splitlines():
     cols = [c.strip() for c in line.strip('|').split('|')]
     if len(cols) < 5:
         continue
-    if not (re.search(r'RECOVERY-[AB]', cols[2]) or cols[2].startswith('해당 없음')):
+    if not (re.search(r'RECOVERY-[0AB]', cols[2]) or cols[2].startswith('해당 없음')):
         bad.append(f'{cols[0]} -> {cols[2][:30]}')
 print(f'freeform_recovery_rows={bad}')
 sys.exit(1 if bad else 0)
@@ -282,6 +283,30 @@ sys.exit(1 if informal else 0)
 CHECK
 ```
 
+### AC17 command
+
+트리거마다 진입 상태와 `FENCE` 완료 후 목적 상태가 두 축으로 명시됐는지 검사한다. 한 축만 적으면 실패한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+trig = sec.split('| 권한 회수 트리거 |')[1].split('\n\n')[0]
+bad = []
+for l in trig.splitlines():
+    if not l.startswith('|') or l.startswith('|---'):
+        continue
+    c = [x.strip() for x in l.strip('|').split('|')]
+    if len(c) < 5:
+        bad.append((c[0], 'no-column')); continue
+    if 'ACTIVATION_FENCE_PENDING' not in c[2] or '→' not in c[2] or '/' not in c[2]:
+        bad.append((c[0][:20], c[2][:30]))
+print(f'incomplete_target={bad}')
+sys.exit(1 if bad else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -377,7 +402,12 @@ CHECK
   - 부류 대응: "이름만 있고 등재되지 않은 상태" 부류로 스윕해 `halt latch 활성`도 같은 상태임을 확인했다.
     `ACTIVATION_FENCE_PENDING`과 execution latch 축(`LATCH_ENGAGED`/`LATCH_CLEAR`)을 정식 등재하고 §4.3 행·재시작 복원·
     idempotent 재시도·완료 후 목적 상태를 정의, `AC16`으로 기계 검사
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~12R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
+- 2026-07-30 13라운드: `needs-attention`, critical 0 · high 2 (둘 다 12라운드 상태 추가가 만든 모순).
+  - high: 중단의 전이 대상이 latch 축만 지정해 `FENCE` 완료 후 activation 권한이 미정 → 트리거 표를 두 축 형식으로
+    통일하고 목적 상태를 `FENCE` context에 durable 저장, `AC17`로 기계 검사
+  - high: `ACTIVATION_FENCE_PENDING`이 `RECOVERY-A`(unwind 포함)를 허용해 "새 경제적 제출 금지"·`SAFE-10`과 충돌 →
+    `RECOVERY-0`(FENCE 수행에 필요한 취소·조회만)을 `LIVE-11`에 신설하고 해당 행을 `RECOVERY-0` 전용으로 정정
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~13R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -441,6 +471,12 @@ CHECK
   §4.3에 행을 추가했다. 잔여 사용처 2곳도 검사가 잡아 정리했다.
 - GREEN: `informal=[]`, exit 0
 
+### AC17 — 2026-07-30
+
+- GREEN: `incomplete_target=[]`, exit 0
+- 부류 스윕: 13라운드 지적은 정상·긴급 중단 1건이었으나 확인 결과 8개 트리거 전부가 한 축만 지정하고 있었다.
+  전이 대상 열을 "진입 → `FENCE` 완료 후 / latch 축" 형식으로 통일하고 목적 상태의 durable 저장 규칙을 추가했다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -449,7 +485,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      14/14 PASS
+  T1/T2 자동:      15/15 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN
