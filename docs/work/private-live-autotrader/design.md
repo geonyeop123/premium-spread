@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~24라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~25라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -256,7 +256,9 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `LIVE-13` owner fallback은 자동 복구가 불가능하거나 금지된 구간에서 owner가 거래소 UI 등 제품 밖 경로로 직접
   조치하는 절차이며, 임의 수동 거래가 아니라 fenced 비상 절차다. 다음을 요구한다.
   - 허용 범위는 노출을 줄이거나 주문을 취소하는 조치로 한정하고 새 경제적 기회를 취하지 않는다.
-  - 시작 전에 알려진 모든 outstanding 주문을 취소하거나 terminal 상태로 확인하고, 자동 제출 경로는 잠근 상태를 유지한다.
+  - fallback 개시는 §4.3의 권한 회수 트리거다. 시작은 epoch 무효화와 `FENCE-1`~`FENCE-3` 완료를 동반하며, 그 전에는
+    수동 조치를 시작하지 않는다. 이렇게 해야 미전송·응답 불명 intent가 수동 취소·청산과 경합하지 않는다.
+  - `FENCE` 이후에도 자동 제출 경로는 잠근 상태(`LATCH_ENGAGED`)를 유지한다.
   - 수동 체결과 취소 결과는 durable하게 기록하고 거래소 상태와 직접 대조해 사후 포지션 진실을 확정한다. 각 조치의
     귀속은 `SAFE-5`의 절차를 따르며, 매핑되지 않은 결과는 `unmanaged`로 남아 `RESUME`을 차단한다.
   - 그 reconcile이 끝나고 새 authorization epoch이 발급되기 전에는 자동 복구 제출과 `RESUME`을 재개하지 않는다.
@@ -490,6 +492,7 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
 | 제출 결과 불명 또는 중복 효과 의심 | `SAFE-10` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 (`FENCE-3` 포함) | 제출 결과 추적과 주기 reconcile, 재시작 시 미해결 제출 복원 |
 | 승인된 account·symbol configuration snapshot과의 drift | `P3-O17`, `LIVE-10` 경로 | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 제출 직전 점검과 주기 reconcile, 재시작 시 재평가 |
 | 미귀속(`unmanaged`) 외부·수동 변화 발견 또는 statement·ledger reconcile mismatch | `SAFE-4`, `SAFE-5` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속·주기 reconcile, 재시작 시 재평가 |
+| owner fallback 개시 | `LIVE-13` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / `LATCH_ENGAGED` | 필수 | owner 트리거 수신 즉시, 재시작 시 fallback 진행 상태 복원 |
 
 모든 트리거는 제출 시점의 일회성 점검에 의존하지 않는다. 각 트리거는 지속 또는 주기 감시 경로와 재시작 시 재평가
 경로를 갖추며, 제출이 일어나지 않는 구간에도 조건 변화를 탐지한다. 또한 점검과 제출 사이의 변화를 막기 위해 제출은
@@ -826,7 +829,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. 활성 중 수동 거래·자금 이동으로 `unmanaged`가 생기거나 statement·ledger mismatch가 발견되면 자동 제출이
+  판정한다. 정상 activation 중 owner가 fallback을 개시할 때 미전송·응답 불명 intent가 먼저 종결되는지도 확인한다.
+  활성 중 수동 거래·자금 이동으로 `unmanaged`가 생기거나 statement·ledger mismatch가 발견되면 자동 제출이
   즉시 차단되는지도 확인한다. fallback 수동 조치가 전략 노출에 자동 흡수되지 않고 매핑·`unmanaged` 분류를 거치는지, `unmanaged`가 남으면
   `RESUME`이 차단되는지도 확인한다. `FENCE` 이후 알려진 exposure-reducing working 주문이 새 복구 제출과 경합하지 않는지, owner fallback 중
   뒤늦은 체결이 중복·상충 정리를 만들지 않는지도 확인한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는

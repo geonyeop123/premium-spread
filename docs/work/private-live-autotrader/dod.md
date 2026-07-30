@@ -39,7 +39,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC10 | §8이 계약을 배정한 모든 범위(Phase 0~3, Gate)가 §8.1 정직성 표에 판정 행을 갖는다. | 반복 발생한 배정 정직성 결함(codex ISSUE-8)의 재발 차단 | T1 | 아래 `AC10 command` | exit 0, `missing=[]` |
 | AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-0`/`RECOVERY-A`/`RECOVERY-B`/`RECOVERY-C`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
 | AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
-| AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`), 귀속·대조 경로(`SAFE-4`·`SAFE-5`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
+| AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`), 귀속·대조 경로(`SAFE-4`·`SAFE-5`), fallback 개시(`LIVE-13`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
 | AC14 | 권한 회수 트리거 표의 모든 행이 지속·주기 감시와 재시작 재평가를 포함한 탐지 경로를 갖는다. | 시점 검사만 있고 지속 감시가 없어 생기는 TOCTOU 부류(codex 10R) 차단 | T1 | 아래 `AC14 command` | exit 0, `incomplete_detection=[]` |
 | AC15 | 신규 제출이 차단된 모든 상태가 재개 조건(`RESUME` 또는 최초 gate)을 명시한다. | 회수만 정의하고 재개를 비워 두는 부류(codex 11R) 차단 | T1 | 아래 `AC15 command` | exit 0, `missing_resume=[]` |
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
@@ -224,7 +224,7 @@ sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
 block = sec.split('| 권한 회수 트리거 |')[1].split('\n\n')[0]
 rows = [l for l in block.splitlines() if l.startswith('|') and not l.startswith('|---')]
 bad = [l.split('|')[1].strip() for l in rows if '필수' not in l.split('|')[4]]
-missing = [r for r in ['SAFE-6', 'LIVE-10', 'SAFE-7', 'SAFE-9', 'SAFE-3', 'SAFE-10', 'P3-O17', 'SAFE-4', 'SAFE-5'] if f'`{r}`' not in block]
+missing = [r for r in ['SAFE-6', 'LIVE-10', 'SAFE-7', 'SAFE-9', 'SAFE-3', 'SAFE-10', 'P3-O17', 'SAFE-4', 'SAFE-5', 'LIVE-13'] if f'`{r}`' not in block]
 print(f'rows={len(rows)} without_fence={bad} missing_sources={missing}')
 sys.exit(1 if bad or missing else 0)
 CHECK
@@ -665,7 +665,11 @@ CHECK
   - high: `unmanaged`가 `RESUME`만 차단하고 `SAFE-4` mismatch는 탐지만 요구해, 활성 중 미귀속 항목이 생겨도 자동 제출이
     계속되고 완료·종결도 선언 가능 → 둘을 권한 회수 트리거로 승격(트리거 9개)하고 `DONE-3`·`DONE-4`·`NOGO-2`의 PASS
     조건에 해소·baseline 종결을 추가, `AC26` 기계 검사
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~24R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
+- 2026-07-30 25라운드: `needs-attention`, critical 0 · high 1.
+  - high: 22라운드에 신설한 `LIVE-13`(owner fallback)이 닫힌 트리거 목록에 없어, 정상 activation 중 fallback 개시가
+    미전송·응답 불명 intent와 경합할 수 있었음 → fallback 개시를 10번째 트리거로 등재하고 `LIVE-13`에 epoch 무효화·
+    `FENCE-1`~`FENCE-3` 완료 선행을 명시, `AC13` 필수 출처를 10개로 확장
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~25R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
