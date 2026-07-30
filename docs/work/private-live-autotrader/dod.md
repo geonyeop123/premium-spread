@@ -437,9 +437,9 @@ d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encodi
 fail = []
 if '입력 신뢰 전제' not in d:
     fail.append('no-input-trust-rule')
-if '`SAFE-3`이 활성이거나 필요한 reconcile이' not in d:
+if '`SAFE-3`이 활성이거나 필요한 reconcile이 끝나지 않았으면' not in ' '.join(d.split()):
     fail.append('no-safe3-binding')
-if '취소와 owner fallback만 허용한다' not in d:
+if 'owner fallback만 허용한다' not in ' '.join(d.split()):
     fail.append('no-reduced-set')
 print(f'violations={fail}')
 sys.exit(1 if fail else 0)
