@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~28라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~29라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -198,9 +198,12 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   무관하게 실행 runtime의 host-local 경로만으로 성립해야 하며, 중단 자체가 실패하면 그 사실을 fail-closed로 드러낸다.
   중단 latch는 재시작을 견딘다. 이때 수행하는 세 집합 종결을 `FENCE`라 하고 여기서 한 번만 정의한다. 강등·중단·종결
   전이는 모두 이 정의를 참조하며 조건을 다시 서술하지 않는다.
-  - `FENCE-0` 시작 시 dispatch barrier를 원자적으로 세워 새 전송 시작을 막고, barrier 이전에 authorization을 통과한
-    모든 intent가 `FENCE-1`(미전송 무효)이나 durable `FENCE-2`·`FENCE-3` 항목 중 하나로 분류됐다는 sender
-    acknowledgement를 받는다. 이 분류가 끝나기 전에는 이후 단계를 시작하지 않는다.
+  - `FENCE-0` 시작 시 dispatch barrier를 원자적으로 세워 새 전송 시작을 막고, barrier 이전의 모든 intent를
+    `FENCE-1`(미전송 무효)이나 durable `FENCE-2`·`FENCE-3` 항목으로 분류한다. 분류 근거는 `SAFE-11`의 durable
+    dispatch-claim이며 sender acknowledgement는 보조 신호일 뿐이다. barrier 획득이 claim 생성보다 앞서도록 순서를
+    고정해, claim이 없으면 전송되지 않았음이 보장되게 한다. sender가 응답하지 않거나 중단돼도 정해진 timeout 뒤
+    durable 기록만으로 분류를 완료하고, 재시작 후에도 같은 기록에서 독립적으로 이어서 판정한다. 살아 있는 sender의
+    응답을 무기한 기다리지 않는다.
   - `FENCE-1` 아직 전송하지 않은 intent를 무효화한다.
   - `FENCE-2` 거래소에 남아 있는 working 주문 중 복구 노출에 영향을 줄 수 있는 것을 모두 취소하고 종료를 확인한다.
     exposure-increasing 주문뿐 아니라 진행 중인 unwind·hedge 같은 exposure-reducing 주문도 포함한다. 취소 대신 유지하려면
@@ -227,7 +230,9 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `SAFE-9` 양 leg의 가용 자본과 margin을 지속 관찰하며 의도한 헤지를 성립시키지 못하면 신규 진입을 fail-closed한다. 자본 부족을 이유로
   한쪽 leg만 실행해 비헤지 노출을 만들지 않는다. 이미 승인된 intent가 남아 있을 수 있으므로 이 차단도 §4.3의 권한 회수
   트리거로서 `FENCE`를 동반한 상태 전이로 수행한다.
-- `SAFE-11` 실제 거래소 제출은 해당 intent의 durable 기록이 커밋된 뒤에만 수행한다. 이 순서 계약은 외부 전송 상태를
+- `SAFE-11` 실제 거래소 제출은 해당 intent의 durable 기록이 커밋된 뒤에만 수행한다. 전송 시작 직전에 client order
+  identifier를 포함한 durable dispatch-claim을 남기며, 이 기록이 전송 여부 판정의 선형화 지점이다. 판정은 sender
+  프로세스의 생존이나 응답에 의존하지 않는다. 이 순서 계약은 외부 전송 상태를
   갖는 실행에만 적용한다.
 - `SAFE-10` 실제 거래소 제출의 결과가 불명확하거나 중복 효과가 의심되면 성공으로 단정하지 않고 이를 탐지·노출하며,
   §4.3의 권한 회수 트리거로서 `FENCE`를 동반한 전이를 수행한다. 특히 `FENCE-3`으로 해당 제출의 terminal 결론을 얻기
@@ -844,8 +849,9 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. `FENCE-0` barrier 직전에 전송을 시작한 intent가 목록 동결·수동 정리와 경합해 뒤늦게 체결되지 않는지도
-  확인한다. private API 조회·취소가 반복 실패하는 동시에 owner UI는 가능한 상황에서 `FALLBACK_HANDOFF`로 수동 조치가
+  판정한다. `FENCE-0` barrier 직전에 전송을 시작한 intent가 목록 동결·수동 정리와 경합해 뒤늦게 체결되지 않는지,
+  sender가 crash하거나 acknowledgement가 timeout돼도 durable dispatch-claim만으로 분류가 끝나고 `FALLBACK_HANDOFF`가
+  진행되는지도 확인한다. private API 조회·취소가 반복 실패하는 동시에 owner UI는 가능한 상황에서 `FALLBACK_HANDOFF`로 수동 조치가
   가능한지, 그 뒤 provider 복구 시 재조회로 `FENCE-2`·`FENCE-3`이 종결되고 늦은 체결이 귀속되는지도 확인한다.
   fallback이 `FALLBACK_CLOSED` 전에는 `RESUME`이 거부되는지, 각 lifecycle 단계에서 재시작해도 상태가
   복원되는지도 확인한다. 정상 activation 중 owner가 fallback을 개시할 때 미전송·응답 불명 intent가 먼저 종결되는지도 확인한다.

@@ -537,6 +537,22 @@
   owner에게 조치를 넘기지 않는다. `FENCE` 완료 기준에도 `FENCE-0` 분류 완료를 포함했다.
 - §7.2에 barrier 직전 전송과 수동 정리의 경합 사례를 추가하고 `AC28`을 두 조건 더 검사하도록 강화했다.
 
+### Codex 외부 스펙 리뷰 29라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1. 28라운드 수정이 만든 새 교착이다.
+- 지적: `FENCE-0`은 barrier 이전 intent마다 sender acknowledgement가 올 때까지 다음 단계를 금지하고 `FALLBACK_HANDOFF`도
+  그 분류 전에는 owner에게 조치를 넘기지 않는다. 그러나 sender가 authorization 뒤 네트워크 호출·프로세스 정지·락 경합으로
+  acknowledgement를 남기지 못한 경우의 timeout, 재시작 인계, 독립 분류 규칙이 없다. provider가 아니라 sender 장애만으로도
+  27라운드에서 제거하려던 고위험 교착이 되살아난다.
+- 부류 도출: "복구 절차의 선행조건이 살아 있는 컴포넌트의 응답에 의존하는 계약".
+- 반영: `SAFE-11`에 전송 시작 직전 client order identifier를 포함한 durable dispatch-claim을 남기고 그것을 전송 여부 판정의
+  선형화 지점으로 삼는다고 명시했다. `FENCE-0`의 분류 근거를 이 durable 기록으로 바꾸고 sender acknowledgement는 보조
+  신호로 낮췄다. barrier 획득이 claim 생성보다 앞서도록 순서를 고정해 claim이 없으면 전송되지 않았음이 보장되게 했고,
+  sender가 응답하지 않거나 중단돼도 timeout 뒤 durable 기록만으로 분류를 완료하며 재시작 후에도 같은 기록에서 이어서
+  판정한다.
+- §7.2에 sender crash·ack timeout 시 HANDOFF 진행 사례를 추가하고 `AC28`의 검사 조건을 claim 존재와 sender 생존
+  비의존으로 교체했다.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
