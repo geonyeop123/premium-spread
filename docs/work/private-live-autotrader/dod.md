@@ -39,12 +39,13 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC10 | §8이 계약을 배정한 모든 범위(Phase 0~3, Gate)가 §8.1 정직성 표에 판정 행을 갖는다. | 반복 발생한 배정 정직성 결함(codex ISSUE-8)의 재발 차단 | T1 | 아래 `AC10 command` | exit 0, `missing=[]` |
 | AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-0`/`RECOVERY-A`/`RECOVERY-B`/`RECOVERY-C`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
 | AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
-| AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
+| AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`), 귀속·대조 경로(`SAFE-4`·`SAFE-5`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
 | AC14 | 권한 회수 트리거 표의 모든 행이 지속·주기 감시와 재시작 재평가를 포함한 탐지 경로를 갖는다. | 시점 검사만 있고 지속 감시가 없어 생기는 TOCTOU 부류(codex 10R) 차단 | T1 | 아래 `AC14 command` | exit 0, `incomplete_detection=[]` |
 | AC15 | 신규 제출이 차단된 모든 상태가 재개 조건(`RESUME` 또는 최초 gate)을 명시한다. | 회수만 정의하고 재개를 비워 두는 부류(codex 11R) 차단 | T1 | 아래 `AC15 command` | exit 0, `missing_resume=[]` |
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
 | AC19 | 권한 회수 전이가 승인·알림을 기다리지 않고 runtime이 즉시 수행한다는 규칙이 §4.2에 있고, 트리거 표가 승인을 요구하지 않는다. | 안전 회수가 승인 대기로 지연될 수 있던 부류(codex 16R) 차단 | T1 | 아래 `AC19 command` | exit 0, `violations=[]` |
+| AC26 | `unmanaged`와 reconcile mismatch가 권한 회수 트리거이며 `DONE-3`·`DONE-4`·`NOGO-2`의 PASS 조건에 포함된다. | 탐지만 하고 fail-closed 전이·완료 조건이 없는 부류(codex 24R) 차단 | T1 | 아래 `AC26 command` | exit 0, `violations=[]` |
 | AC25 | 외부·수동 기원 변화의 귀속 절차가 `SAFE-5`에 정의되고 `LIVE-13`·`SAFE-7`·`RESUME`이 이를 참조한다. | 수동·외부 개입 결과의 귀속 경계 부재 부류(codex 23R) 차단 | T1 | 아래 `AC25 command` | exit 0, `violations=[]` |
 | AC24 | `FENCE-2`가 exposure-reducing working 주문까지 다루고, owner fallback이 `LIVE-13`으로 정의돼 참조된다. | 참조만 되고 정의되지 않은 절차와 fence 범위 누락 부류(codex 22R) 차단 | T1 | 아래 `AC24 command` | exit 0, `violations=[]` |
 | AC23 | 상태 의존 복구 집합이 입력 신뢰(`SAFE-3` 비활성·reconcile 완료)를 전제로 하고, 불신 시 취소·owner fallback만 남는 규칙이 있다. | 검사를 요구하면서 그 입력의 신뢰를 전제하지 않는 부류(codex 21R) 차단 | T1 | 아래 `AC23 command` | exit 0, `violations=[]` |
@@ -223,7 +224,7 @@ sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
 block = sec.split('| 권한 회수 트리거 |')[1].split('\n\n')[0]
 rows = [l for l in block.splitlines() if l.startswith('|') and not l.startswith('|---')]
 bad = [l.split('|')[1].strip() for l in rows if '필수' not in l.split('|')[4]]
-missing = [r for r in ['SAFE-6', 'LIVE-10', 'SAFE-7', 'SAFE-9', 'SAFE-3', 'SAFE-10', 'P3-O17'] if f'`{r}`' not in block]
+missing = [r for r in ['SAFE-6', 'LIVE-10', 'SAFE-7', 'SAFE-9', 'SAFE-3', 'SAFE-10', 'P3-O17', 'SAFE-4', 'SAFE-5'] if f'`{r}`' not in block]
 print(f'rows={len(rows)} without_fence={bad} missing_sources={missing}')
 sys.exit(1 if bad or missing else 0)
 CHECK
@@ -492,6 +493,30 @@ sys.exit(1 if fail else 0)
 CHECK
 ```
 
+### AC26 command
+
+미귀속 변화와 대조 불일치가 트리거이자 완료·종결 조건인지 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+n = ' '.join(d.split())
+fail = []
+trig = d.split('| 권한 회수 트리거 |')[1].split('\n\n')[0]
+if 'unmanaged' not in trig or 'mismatch' not in trig:
+    fail.append('not-a-trigger')
+if '`SAFE-4`의 mismatch가 남아 있지 않다' not in n:
+    fail.append('done3-missing')
+if '`unmanaged` 주문·포지션·잔고가 모두' not in n:
+    fail.append('done4-missing')
+if '`unmanaged` 항목도 해소되거나 승인된 baseline으로 종결됨' not in n:
+    fail.append('nogo2-missing')
+print(f'violations={fail}')
+sys.exit(1 if fail else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -636,7 +661,11 @@ CHECK
   - high: `LIVE-13` fallback의 수동 조치가 전략 노출에 매핑되는지 여부가 정의되지 않아 `SAFE-5`(자동 흡수 금지)와 충돌 →
     `SAFE-5`를 귀속 절차의 단일 정의로 확장(owner 확인 매핑, `unmanaged` 분류, 매핑된 노출만 reconcile 종결,
     `unmanaged` 잔존 시 `RESUME` 차단)하고 `LIVE-13`·`SAFE-7`·`RESUME`이 참조, `AC25` 기계 검사
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~23R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
+- 2026-07-30 24라운드: `needs-attention`, critical 0 · high 1.
+  - high: `unmanaged`가 `RESUME`만 차단하고 `SAFE-4` mismatch는 탐지만 요구해, 활성 중 미귀속 항목이 생겨도 자동 제출이
+    계속되고 완료·종결도 선언 가능 → 둘을 권한 회수 트리거로 승격(트리거 9개)하고 `DONE-3`·`DONE-4`·`NOGO-2`의 PASS
+    조건에 해소·baseline 종결을 추가, `AC26` 기계 검사
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~24R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -759,6 +788,12 @@ CHECK
 - `SAFE-5`를 귀속 절차의 단일 정의로 확장하고 `LIVE-13`·`SAFE-7`·`LIVE-12`가 참조하도록 연결했다. 부류 스윕에서 거래소
   강제 감축·ADL 결과도 같은 귀속 공백이 있었음을 확인해 함께 묶었다.
 
+### AC26 — 2026-07-30
+
+- GREEN: `violations=[]`, exit 0
+- `SAFE-4`를 탐지 전용에서 트리거로 승격하고 트리거 표를 9개로 늘렸다. `DONE-3`·`DONE-4`·`NOGO-2`에 mismatch·`unmanaged`
+  해소를 PASS 조건으로 넣었다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -767,7 +802,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      23/23 PASS
+  T1/T2 자동:      24/24 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN

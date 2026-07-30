@@ -466,6 +466,19 @@
   노출만 종결시키고, `unmanaged`가 남아 있으면 별도 해소나 새 승인 baseline 전까지 `RESUME`을 차단한다.
 - `LIVE-13`과 `SAFE-7`이 이 절차를 참조하고 `LIVE-12`의 `RESUME` 선행조건에 `unmanaged` 부재를 추가했다. `AC25`로 기계 검사.
 
+### Codex 외부 스펙 리뷰 24라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `SAFE-5`의 `unmanaged`는 `RESUME`만 차단하고, `SAFE-4`의 statement·ledger 차이는 탐지만 요구하며, §4.3의 폐쇄된
+  트리거 목록에도 둘 다 없었다. 따라서 활성 중 수동 거래나 자금 이동으로 미귀속 항목이 생겨도 자동 제출 권한이 유지되고,
+  `DONE-3`의 단순 대조와 `DONE-4`의 residual 부재만으로 mismatch·unmanaged를 남긴 채 완료를 선언할 수 있었다.
+  `SAFE-8`이 reconcile mismatch를 안전 중요 전이로 다루는 것과도 충돌한다.
+- 부류 도출: "탐지만 요구하고 fail-closed 전이나 완료 조건을 요구하지 않는 계약".
+- 반영: `SAFE-4`를 지속·주기 탐지 + 권한 회수 트리거로 승격하고, 미귀속(`unmanaged`) 발견과 reconcile mismatch를 §4.3
+  트리거 표의 9번째 행으로 추가했다. `DONE-3`에 mismatch 잔존 금지, `DONE-4`에 `unmanaged` 해소 또는 승인 baseline 종결,
+  `NOGO-2`에 같은 조건을 넣었다. §7.2에 활성 중 미귀속 발생 시 자동 제출 즉시 차단 사례를 추가했다.
+- `AC13` 필수 출처를 9개로 확장하고 `AC26`을 신설했다. 자동 수용기준 24개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

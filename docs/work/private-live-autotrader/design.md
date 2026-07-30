@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~23라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~24라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -184,7 +184,9 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
 - `SAFE-3` 데이터, account, order 또는 position 상태의 신뢰성을 지속 감시하며 신뢰할 수 없으면 신규 exposure를
   fail-closed한다. 이 차단은
   §4.3의 권한 회수 트리거이므로 `FENCE`를 동반한 상태 전이로 수행한다.
-- `SAFE-4` 실제 fee와 funding을 포함한 거래소 statement와 내부 ledger의 차이를 탐지한다.
+- `SAFE-4` 실제 fee와 funding을 포함한 거래소 statement와 내부 ledger의 차이를 지속·주기적으로 탐지한다. 차이가 발견되면
+  탐지에 그치지 않고 §4.3의 권한 회수 트리거로서 `FENCE`를 동반한 전이를 수행한다. `SAFE-5`가 만든 `unmanaged` 항목의
+  발생도 같은 트리거다.
 - `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다. 외부·수동 기원의 모든
   변화(owner의 fallback 조치, 수동 거래, 거래소의 강제 감축·liquidation·ADL, 자금 이동)는 다음 귀속 절차를 따른다.
   - 각 주문·체결·잔고 변화를 fallback 이전의 특정 전략 노출에 매핑하려면 owner 확인이 필요하다. 매핑은 durable하게
@@ -487,6 +489,7 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
 | 데이터·account·order·position 상태 불신 | `SAFE-3` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | freshness 지속 감시, 재시작 시 재평가 |
 | 제출 결과 불명 또는 중복 효과 의심 | `SAFE-10` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 (`FENCE-3` 포함) | 제출 결과 추적과 주기 reconcile, 재시작 시 미해결 제출 복원 |
 | 승인된 account·symbol configuration snapshot과의 drift | `P3-O17`, `LIVE-10` 경로 | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 제출 직전 점검과 주기 reconcile, 재시작 시 재평가 |
+| 미귀속(`unmanaged`) 외부·수동 변화 발견 또는 statement·ledger reconcile mismatch | `SAFE-4`, `SAFE-5` | `ACTIVATION_FENCE_PENDING` → `ACTIVATION_RECOVERY_ONLY` / latch 유지 | 필수 | 지속·주기 reconcile, 재시작 시 재평가 |
 
 모든 트리거는 제출 시점의 일회성 점검에 의존하지 않는다. 각 트리거는 지속 또는 주기 감시 경로와 재시작 시 재평가
 경로를 갖추며, 제출이 일어나지 않는 구간에도 조건 변화를 탐지한다. 또한 점검과 제출 사이의 변화를 막기 위해 제출은
@@ -823,7 +826,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. fallback 수동 조치가 전략 노출에 자동 흡수되지 않고 매핑·`unmanaged` 분류를 거치는지, `unmanaged`가 남으면
+  판정한다. 활성 중 수동 거래·자금 이동으로 `unmanaged`가 생기거나 statement·ledger mismatch가 발견되면 자동 제출이
+  즉시 차단되는지도 확인한다. fallback 수동 조치가 전략 노출에 자동 흡수되지 않고 매핑·`unmanaged` 분류를 거치는지, `unmanaged`가 남으면
   `RESUME`이 차단되는지도 확인한다. `FENCE` 이후 알려진 exposure-reducing working 주문이 새 복구 제출과 경합하지 않는지, owner fallback 중
   뒤늦은 체결이 중복·상충 정리를 만들지 않는지도 확인한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는
   margin·drift 상태에서 `FENCE` 종결 후 `RECOVERY-C`로 헤지된 pair를 청산할 수 있는지, `SAFE-3`이 활성인 stale 상태에서는
@@ -941,8 +945,9 @@ Phase 3의 필수 outcome과 종료 조건이 merged 결과에서 충족되면 `
 
 - `DONE-1` §4.5에서 LIMITED 완료까지 적용되는 모든 gate가 PASS이고 UNKNOWN 또는 만료가 없다.
 - `DONE-2` 제한된 실제 실행이 승인된 risk budget 안에서 수행됐다.
-- `DONE-3` 주문, fill, fee, funding, balance와 position의 내부·외부 기록이 대조됐다.
-- `DONE-4` unresolved order와 설명되지 않은 residual exposure가 없다.
+- `DONE-3` 주문, fill, fee, funding, balance와 position의 내부·외부 기록이 대조됐고 `SAFE-4`의 mismatch가 남아 있지 않다.
+- `DONE-4` unresolved order와 설명되지 않은 residual exposure가 없으며, `SAFE-5`의 `unmanaged` 주문·포지션·잔고가 모두
+  해소됐거나 명시적 승인 baseline으로 종결됐다.
 - `DONE-5` 중단과 `LIVE-13`의 owner fallback이 준비돼 있다.
 - `DONE-6` redacted evidence와 프로젝트 상태가 정본 문서에 동기화됐다.
 
@@ -965,7 +970,7 @@ LIMITED가 이 프로그램의 V1 성공 종점이다. `PROGRAM_COMPLETED`는 �
 이 상태는 LIVE 제품 성공이 아니지만 다음을 만족하는 안전한 프로그램 종료다.
 
 - `NOGO-1` credential과 activation이 폐기 또는 비활성화됨
-- `NOGO-2` 열린 order와 전략 귀속 exposure가 없음
+- `NOGO-2` 열린 order와 전략 귀속 exposure가 없고, `unmanaged` 항목도 해소되거나 승인된 baseline으로 종결됨
 - `NOGO-3` 실패 근거와 재개 시 필요한 재승인 범위가 기록됨
 - `NOGO-4` SIMULATION/PAPER 산출물의 보존·폐기 결정이 기록됨
 
