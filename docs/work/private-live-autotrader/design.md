@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~21라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~22라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -186,12 +186,14 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   §4.3의 권한 회수 트리거이므로 `FENCE`를 동반한 상태 전이로 수행한다.
 - `SAFE-4` 실제 fee와 funding을 포함한 거래소 statement와 내부 ledger의 차이를 탐지한다.
 - `SAFE-5` 수동 거래, 자금 변화와 전략 외 position을 전략 소유분으로 자동 흡수하지 않는다.
-- `SAFE-6` 정상 중단, 긴급 중단과 수동 거래소 fallback을 구분한다. 긴급 중단은 Web, API, 알림과 분석 저장소의 가용성과
+- `SAFE-6` 정상 중단, 긴급 중단과 `LIVE-13`의 owner fallback을 구분한다. 긴급 중단은 Web, API, 알림과 분석 저장소의 가용성과
   무관하게 실행 runtime의 host-local 경로만으로 성립해야 하며, 중단 자체가 실패하면 그 사실을 fail-closed로 드러낸다.
   중단 latch는 재시작을 견딘다. 이때 수행하는 세 집합 종결을 `FENCE`라 하고 여기서 한 번만 정의한다. 강등·중단·종결
   전이는 모두 이 정의를 참조하며 조건을 다시 서술하지 않는다.
   - `FENCE-1` 아직 전송하지 않은 intent를 무효화한다.
-  - `FENCE-2` 거래소에 남아 있는 exposure-increasing 주문을 취소하고 종료를 확인한다.
+  - `FENCE-2` 거래소에 남아 있는 working 주문 중 복구 노출에 영향을 줄 수 있는 것을 모두 취소하고 종료를 확인한다.
+    exposure-increasing 주문뿐 아니라 진행 중인 unwind·hedge 같은 exposure-reducing 주문도 포함한다. 취소 대신 유지하려면
+    그 주문을 하나의 durable 복구 작업으로 예약·직렬화해 새 복구 제출과 경합하지 않음을 보장해야 한다.
   - `FENCE-3` 전송을 시작했으나 응답이 불명이고 거래소 주문 식별자가 확정되지 않은 intent를 자체 client order
     identifier로 조회해 terminal 결론을 얻는다.
 
@@ -242,6 +244,13 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
   원자적으로 수행하며, `FENCE`가 끝나기 전에는 복구 구간이 성립했다고 보지 않는다. 만료·reject 시점에 이미 거래소에서
   대기 중이던 진입 주문이 그 뒤에 체결되어 노출이 늘어나는 경로를 허용하지 않는다. 기존 exposure의 안전한 청산과
   reconcile은 `FENCE` 이후 복구 권한으로 계속할 수 있어야 한다.
+- `LIVE-13` owner fallback은 자동 복구가 불가능하거나 금지된 구간에서 owner가 거래소 UI 등 제품 밖 경로로 직접
+  조치하는 절차이며, 임의 수동 거래가 아니라 fenced 비상 절차다. 다음을 요구한다.
+  - 허용 범위는 노출을 줄이거나 주문을 취소하는 조치로 한정하고 새 경제적 기회를 취하지 않는다.
+  - 시작 전에 알려진 모든 outstanding 주문을 취소하거나 terminal 상태로 확인하고, 자동 제출 경로는 잠근 상태를 유지한다.
+  - 수동 체결과 취소 결과는 durable하게 기록하고 거래소 상태와 직접 대조해 사후 포지션 진실을 확정한다.
+  - 그 reconcile이 끝나고 새 authorization epoch이 발급되기 전에는 자동 복구 제출과 `RESUME`을 재개하지 않는다.
+  - fallback 중 뒤늦게 체결되는 주문이 중복·상충 정리를 만들지 않도록 조치 순서를 기록하고 경합을 탐지한다.
 - `LIVE-12` 권한이 회수된 상태에서 제출 권한을 되찾는 경로는 `RESUME` 하나뿐이며 여기서 정의한다. `RESUME`은 다음을
   모두 원자적 선행조건으로 요구한다. 하나라도 미충족이면 재개하지 않는다.
   - `FENCE-1`~`FENCE-3`의 terminal 확인과 외부 상태와의 전체 reconcile 완료
@@ -805,7 +814,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는
+  판정한다. `FENCE` 이후 알려진 exposure-reducing working 주문이 새 복구 제출과 경합하지 않는지, owner fallback 중
+  뒤늦은 체결이 중복·상충 정리를 만들지 않는지도 확인한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는
   margin·drift 상태에서 `FENCE` 종결 후 `RECOVERY-C`로 헤지된 pair를 청산할 수 있는지, `SAFE-3`이 활성인 stale 상태에서는
   반대로 `RECOVERY-C` 시도가 거부되고 취소·owner fallback만 남는지, 현재 headroom이
   worst-case 체결 경로를 견디지 못할 때 `RECOVERY-C`가 거부되고 `RECOVERY-A` 또는 owner fallback으로 분기하는지,
@@ -852,6 +862,7 @@ artifact와 도구 구성은 Phase 설계가 현재 CI를 기준으로 결정한
 | `LIVE-1`~`LIVE-9` | Phase 3 | `PRIVATE_LIVE_CODE_READY` |
 | `LIVE-10` | Phase 3, Activation Gate | LIVE code-ready와 activation 갱신·만료 판정 |
 | `LIVE-11` | Phase 3, Activation Gate | LIVE code-ready와 복구 구간 권한 판정 |
+| `LIVE-12`~`LIVE-13` | Phase 3, Activation Gate | LIVE code-ready와 재개·fallback 절차 판정 |
 | `ARCH-1`~`ARCH-2` | Phase 1 | `MARKET_ECONOMICS_READY` |
 | `ARCH-3` | Phase 1, Phase 2 | Market & Economics와 Stage A exit |
 | `ARCH-4` | Phase 2 | `STAGE_A_SOFTWARE_COMPLETE` |
@@ -922,7 +933,7 @@ Phase 3의 필수 outcome과 종료 조건이 merged 결과에서 충족되면 `
 - `DONE-2` 제한된 실제 실행이 승인된 risk budget 안에서 수행됐다.
 - `DONE-3` 주문, fill, fee, funding, balance와 position의 내부·외부 기록이 대조됐다.
 - `DONE-4` unresolved order와 설명되지 않은 residual exposure가 없다.
-- `DONE-5` 중단과 operator fallback이 준비돼 있다.
+- `DONE-5` 중단과 `LIVE-13`의 owner fallback이 준비돼 있다.
 - `DONE-6` redacted evidence와 프로젝트 상태가 정본 문서에 동기화됐다.
 
 위 조건을 충족하면 activation을 `PRIVATE_LIVE_ACTIVE_COMPLETE`, program을 `PROGRAM_COMPLETED`로 함께 기록한다. bounded

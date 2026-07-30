@@ -435,6 +435,23 @@
   "표 값과 무관하게 입력 신뢰 전제가 우선한다"를 명시하고 §7.2에 stale 상태의 청산 거부 사례를 추가했다.
 - `AC23`으로 기계 검사한다. 자동 수용기준 21개.
 
+### Codex 외부 스펙 리뷰 22라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 2.
+- 지적 1: `FENCE-2`는 exposure-increasing 주문만 취소하고 `FENCE-3`은 거래소 주문 ID가 확정되지 않은 제출만 다룬다.
+  따라서 이미 ID가 확정된 unwind·hedge working 주문은 `FENCE` 완료 전에 취소도 terminal 확인도 요구되지 않아,
+  `ACTIVATION_RECOVERY_ONLY` 전이 후 새 복구 결정과 경합해 leg를 과다 청산하거나 의도치 않은 residual을 만들 수 있다.
+  - 반영: `FENCE-2` 범위를 복구 노출에 영향을 줄 수 있는 모든 working 주문으로 넓히고, 취소 대신 유지하려면 하나의
+    durable 복구 작업으로 예약·직렬화해 경합하지 않음을 보장하도록 했다.
+- 지적 2: `owner fallback`이 문서에서 아홉 번 참조되는데 정의된 적이 없다. 상태 불신 구간에서 허용되는 유일한 대안인데도
+  권한 범위, 거래소 직접 확인, 미해결 주문과의 상호작용, 자동 복구 재개 전 reconcile 장벽이 정의되지 않았다.
+  - 부류 도출: "여러 번 참조되지만 정의되지 않은 절차·용어". 스윕에서 `DONE-5`의 `operator fallback`과 `SAFE-6`의
+    "수동 거래소 fallback"이 같은 대상을 다른 이름으로 부르고 있었음을 함께 확인했다.
+  - 반영: `LIVE-13`으로 owner fallback을 fenced 비상 절차로 정의했다. 노출 감소·취소로 범위를 한정하고, 시작 전 알려진
+    outstanding 주문의 취소·terminal 확인과 자동 제출 경로 잠금, 수동 체결의 durable 기록과 거래소 직접 대조, 그 reconcile과
+    새 authorization epoch 전 자동 복구·`RESUME` 금지, 뒤늦은 체결의 중복·상충 탐지를 요구한다. 세 표현을 한 용어로 통일했다.
+- `AC24`로 `FENCE-2` 범위와 fallback 정의·용어를 기계 검사한다. 자동 수용기준 22개, requirement ID 128개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
