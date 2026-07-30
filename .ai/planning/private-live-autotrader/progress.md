@@ -351,6 +351,21 @@
   리뷰어가 기계 검사의 강도를 직접 지적한 두 번째 사례다.
 - `progress.md` 현재값 표도 `CANDIDATE_NOT_SELECTED`로 갱신했다.
 
+### Codex 외부 스펙 리뷰 16라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: §4.2는 evidence·activation 축 전이를 사용자 승인으로 선언한다고 규정하는데, §4.3의 `SAFE-3`/`SAFE-7`/`SAFE-9`/
+  `SAFE-10`·`LIVE-10` 트리거는 조건 탐지 즉시 원자적 전이를 요구한다. 이 구분이 없으면 구현이 상태 변경을 owner 승인이나
+  gate 기록 뒤로 미뤄, 장애 감지와 제출 차단 사이에 신규 주문이 통과할 수 있다.
+- 부류 도출: "승인 주체 규칙이 자동 안전 경로와 충돌하는 계약". 스윕 결과 문제는 §4.2의 전이 주체 문장 하나였고,
+  `LIVE-12`의 `RESUME` 승인 요구와 §10의 재승인 목록은 모두 위험 증가 방향이라 충돌하지 않음을 확인했다.
+- 반영: 전이 선언 주체를 방향으로 나눴다. 위험을 늘리는 방향(activation 상향, gate 통과, `RESUME`, evidence 승격)은
+  사용자 승인으로만 선언하고, 위험을 줄이는 방향(권한 회수 트리거에 따른 `ACTIVATION_FENCE_PENDING`·
+  `ACTIVATION_RECOVERY_ONLY`·`LATCH_ENGAGED`)은 runtime이 탐지 즉시 durable하게 수행하며 승인·gate 기록·알림을 기다리지
+  않는다. owner는 `SAFE-8`의 사후 인지와 `RESUME`에서만 관여한다.
+- §7.2에 "탐지와 전이 사이 승인 대기로 신규 제출이 통과하지 않는지" negative 사례를 추가하고 `AC19`로 기계 검사한다.
+- 자동 수용기준 17개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

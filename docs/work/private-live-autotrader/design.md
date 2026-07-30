@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~15라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~16라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -393,8 +393,16 @@ activation `ACTIVATION_NOT_STARTED`, execution latch `LATCH_CLEAR`, program `PRO
 표현으로 대체하지 않는다. candidate는 `CANDIDATE_NOT_SELECTED`에서 시작해 새 candidate를 등록하면 `EVIDENCE_PENDING`으로
 전이하고, `CANDIDATE_REJECTED` 이후 그 candidate를 폐기하면 `CANDIDATE_NOT_SELECTED`로 돌아간다. 재시작 시 이 값도
 durable 기록에서 복원한다. 재시작 시 latch 값이 없거나 손상됐으면 `LATCH_ENGAGED`로
-fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 축의 현재값과 전이 근거는 `progress.md`에만 기록하며,
-software 축 전이는 해당 Phase DoD의 merged 검증 결과로, evidence와 activation 축 전이는 사용자 승인으로 선언한다.
+fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 축의 현재값과 전이 근거는 `progress.md`에만 기록한다. 전이 선언 주체는
+**전이 방향**으로 나뉜다.
+
+- 위험을 늘리는 방향(activation 상향, gate 통과, `RESUME`, evidence 승격)은 사용자 승인으로만 선언한다.
+  software 축 전이는 해당 Phase DoD의 merged 검증 결과로 선언한다.
+- 위험을 줄이는 방향(§4.3의 권한 회수 트리거에 따른 `ACTIVATION_FENCE_PENDING`·`ACTIVATION_RECOVERY_ONLY`·
+  `LATCH_ENGAGED` 전이)은 runtime이 조건을 탐지한 즉시 durable하게 수행한다. 사용자 승인, gate 기록이나 알림 전달을
+  기다리지 않으며 그 사이에 신규 제출을 허용하지 않는다. owner는 `SAFE-8`의 사후 인지와 `LIVE-12`의 `RESUME`에서만
+  관여한다.
+
 기록과 근거가 어긋나면 근거를 정본으로 삼아 `progress.md`를 다시 기록한다.
 
 예를 들어 software는 `PRIVATE_LIVE_CODE_READY`이면서 activation은 `ACTIVATION_PENDING`일 수 있다. 한 candidate의
@@ -776,7 +784,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. `ACTIVATION_FENCE_PENDING` 중 다른 트리거가 겹치는 순서 조합(drift → 중단 → 종결 등)과 그 사이 재시작에서
+  판정한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지도 확인한다.
+  `ACTIVATION_FENCE_PENDING` 중 다른 트리거가 겹치는 순서 조합(drift → 중단 → 종결 등)과 그 사이 재시작에서
   병합된 목적 상태가 보존되는지, `ACTIVATION_FENCE_PENDING`에서 거래소 취소·조회가 반복 실패하거나 재시작이 겹치는 경우,
   `FENCE-3` 완료 전
   unwind가 제출되지 않는지, `FENCE` 완료 후 두 축의 목적 상태가 저장된 대로 복원되는지도 failure matrix에서 판정한다. 만료·candidate reject가 거래소 대기 진입 주문 또는 응답 불명 제출과 경합하는 경우, 그리고 margin·자본·데이터
