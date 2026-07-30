@@ -40,6 +40,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC11 | §4.3 권한 표의 복구 열이 모두 `LIVE-11`의 집합 이름(`RECOVERY-A`/`RECOVERY-B`)을 참조하고 조건을 자유 서술한 행이 없다. | 복구 권한 의미가 라운드마다 재발(codex 3·4·5R)한 원인 차단 | T1 | 아래 `AC11 command` | exit 0, `freeform_recovery_rows=[]` |
 | AC12 | 신규 제출을 차단하는 §4.3의 모든 상태 행이 진입 시 `FENCE`를 참조한다. | 전이별 fence 누락 재발(codex 6R)의 차단 | T1 | 아래 `AC12 command` | exit 0, `unfenced_blocking_rows=[]` |
 | AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
+| AC14 | 권한 회수 트리거 표의 모든 행이 지속·주기 감시와 재시작 재평가를 포함한 탐지 경로를 갖는다. | 시점 검사만 있고 지속 감시가 없어 생기는 TOCTOU 부류(codex 10R) 차단 | T1 | 아래 `AC14 command` | exit 0, `incomplete_detection=[]` |
 
 ### AC1 command
 
@@ -215,6 +216,30 @@ sys.exit(1 if bad or missing else 0)
 CHECK
 ```
 
+### AC14 command
+
+트리거마다 지속·주기 감시와 재시작 재평가가 명시됐는지 검사한다. 제출 시점 일회성 점검만 남으면 실패한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+block = sec.split('| 권한 회수 트리거 |')[1].split('\n\n')[0]
+rows = [l for l in block.splitlines() if l.startswith('|') and not l.startswith('|---')]
+bad = []
+for l in rows:
+    cols = [c.strip() for c in l.strip('|').split('|')]
+    if len(cols) < 5:
+        bad.append((cols[0], 'no-detect-column')); continue
+    det = cols[4]
+    if not (('지속' in det or '주기' in det or '즉시' in det or 'latch' in det) and '재시작' in det):
+        bad.append((cols[0], det[:25]))
+print(f'rows={len(rows)} incomplete_detection={bad}')
+sys.exit(1 if bad else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -294,7 +319,12 @@ CHECK
 - 2026-07-28 9라운드: `needs-attention`, critical 0 · high 1.
   - high: `P3-O17`(configuration drift)도 권한 회수 경로인데 트리거 목록과 `AC13`에 없음 → 트리거로 등재하고 판별 기준에
     "Phase outcome과 gate 항목도 대상"을 추가, `P3-O17` 본문에 epoch 무효화·`FENCE`·전이를 명시, `AC13` 확장
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~9R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
+- 2026-07-30 10라운드: `needs-attention`, critical 0 · high 1.
+  - high: `P3-O17`의 drift 검사가 제출 직전에만 이뤄져 점검 후 변경이나 제출이 없는 구간의 변경을 탐지하지 못하는 TOCTOU
+  - 부류 대응: 트리거 표에 탐지 경로 열을 신설해 8개 전부에 지속·주기 감시와 재시작 재평가를 요구하고, 점검-전송 사이
+    변화를 막는 상태 version 결속 규칙을 추가. 스윕에서 `LIVE-10`·`SAFE-9`·`SAFE-3`의 같은 부류 결함 3건을 함께 수정.
+    `AC14`로 기계 검사
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~10R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -331,6 +361,12 @@ CHECK
 - GREEN: `rows=6 without_fence=[] missing_sources=[]`, exit 0
 - 이 검사는 codex 7라운드가 지적한 `AC12`의 사각지대(표 밖 guard 경로)를 덮는다.
 
+### AC14 — 2026-07-30
+
+- GREEN: `rows=8 incomplete_detection=[]`, exit 0
+- 부류 스윕 결과: 10라운드 지적은 `P3-O17` 하나였지만 같은 부류를 훑자 `LIVE-10`과 `SAFE-9`는 탐지 시점 자체가 없었고
+  `SAFE-3`도 지속 감시가 명시되지 않았다. 네 계약을 함께 고쳤다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -339,7 +375,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      11/11 PASS
+  T1/T2 자동:      12/12 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN
