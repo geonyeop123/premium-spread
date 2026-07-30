@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~19라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~20라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -262,13 +262,17 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
     어느 것도 증가시키지 않는 제출. 헤지된 pair의 순차 청산처럼 일시적 증가가 불가피한 경우는 `RECOVERY-C`가 담당한다.
   - `RECOVERY-B` (조건부 허용): 이미 체결된 한쪽 leg를 평탄화하는 hedge. net exposure와 residual delta를 줄이는 대신
     gross exposure 증가를 허용하되, 상한은 그 leg의 미헤지 수량이며 budget 예약과 완료 조건을 갖춘다.
-  - `RECOVERY-C` (bounded paired reduction, 상시 허용): 헤지된 pair를 순차 청산한다. 서로 다른 거래소의 체결은
+  - `RECOVERY-C` (bounded paired reduction, 현재 상태 검사 조건부): 헤지된 pair를 순차 청산한다. 서로 다른 거래소의 체결은
     원자적일 수 없으므로 먼저 체결된 leg 때문에 residual delta와 gross exposure가 일시적으로 증가하는 것을 허용하되,
     사전 승인된 worst-case residual·gross 한도와 budget 예약 안에서만 수행하고, 완료 시 전체 위험이 감소함을 검증한다.
     어느 leg가 먼저 체결되거나 부분 체결·재시작이 발생해도 종료할 수 있어야 하며, 잔여 leg 정리는 같은 요청의 일부로
     이어진다. `SAFE-7`이 breach 대응으로 요구하는 bounded paired reduction이 이 집합이다.
+    사전 승인된 정적 한도만으로는 부족하다. 제출 직전 **현재** account·margin 상태를 기준으로 leg별 worst-case 체결
+    경로가 현재 headroom과 risk budget을 지키는지 검사하고, 지키지 못하면 `RECOVERY-C`도 금지한다. 그때는 노출을
+    늘리지 않는 `RECOVERY-A` 또는 owner fallback만 허용한다. breach 대응 경로가 breach를 악화시키지 않아야 한다.
   - `RECOVERY-B` 차단 조건: `SAFE-7`의 headroom·stress 기준 침범, 거래소의 liquidation·ADL·강제 감축, 설명되지 않은
-    account drift 중 하나라도 활성이면 `RECOVERY-B`를 금지하고 `RECOVERY-A`·`RECOVERY-C`와 owner fallback만 허용한다. reconcile과
+    account drift 중 하나라도 활성이면 `RECOVERY-B`를 금지하고 `RECOVERY-A`, 현재 headroom 검사를 통과한 `RECOVERY-C`와
+    owner fallback만 허용한다. reconcile과
     headroom 회복이 확인되면 다시 열린다.
   - 어떤 상태에서도 새 경제적 기회를 취하는 제출은 복구가 아니다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
 
@@ -425,13 +429,13 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
 |---|---|---|---|---|---|
 | `ACTIVATION_NOT_STARTED` | 불가 | 해당 없음 | 해당 없음 | 가능 | `ACT-1`~`ACT-3` 최초 gate |
 | `ACTIVATION_PENDING` | 불가 | 해당 없음 (열린 exposure가 있으면 `ACTIVATION_RECOVERY_ONLY`가 옳은 상태) | `FENCE` | 가능 | `RESUME` |
-| `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | `RECOVERY-A`·`RECOVERY-C` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | 해당 없음 (현재 epoch 유효) | 가능 | 해당 없음 |
-| `ACTIVATION_RECOVERY_ONLY` | 불가 | `RECOVERY-A`·`RECOVERY-C` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` |
-| `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | `RECOVERY-A`·`RECOVERY-C` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` |
-| `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | `RECOVERY-A`·`RECOVERY-C` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` 대상 아님 (§10 프로그램 재개 승인) |
+| `ACTIVATION_IN_PROGRESS` | 승인된 risk budget 안에서 가능 | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | 해당 없음 (현재 epoch 유효) | 가능 | 해당 없음 |
+| `ACTIVATION_RECOVERY_ONLY` | 불가 | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` |
+| `PRIVATE_LIVE_ACTIVE_COMPLETE` | 불가 (새 승인 필요) | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` |
+| `PROGRAM_TERMINATION_PENDING` (program 축) | 불가 | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` 대상 아님 (§10 프로그램 재개 승인) |
 | `PROGRAM_TERMINATED_NO_GO` (program 축) | 불가 | 해당 없음 (열린 노출 없음이 전제) | `FENCE` | 가능 | `RESUME` 대상 아님 (§10 프로그램 재개 승인) |
 | `ACTIVATION_FENCE_PENDING` | 불가 | `RECOVERY-0`만 (idempotent 재시도, unwind 금지) | `FENCE` 진행 중 | 가능 | `FENCE` 완료 후 durable 목적 상태로 이동, 이후 `RESUME` |
-| `LATCH_ENGAGED` (execution latch, 직교) | 불가 | `RECOVERY-A`·`RECOVERY-C` 상시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` (latch 해제 포함) |
+| `LATCH_ENGAGED` (execution latch, 직교) | 불가 | `RECOVERY-A` 상시, `RECOVERY-C`는 현재 headroom 검사 통과 시, `RECOVERY-B`는 차단 조건이 없을 때만 | `FENCE` | 가능 | `RESUME` (latch 해제 포함) |
 | `LATCH_CLEAR` (execution latch, 직교) | activation 축을 따름 | 해당 없음 (activation 축을 따름) | 해당 없음 | 가능 | 해당 없음 |
 
 - 제출 권한을 부여하거나 제한하는 계약을 새로 만들면 이 표에 반영한다. 표에 나타나지 않는 권한은 존재하지 않는 것으로 본다.
@@ -686,7 +690,7 @@ evidence 없이는 진행하지 않는다.
 - `P3-O5` self-induced duplicate, 응답 불명, private event gap, partial fill과 restart를 탐지하고 복구할 수 있다. 모든
   제출은 `SAFE-11`에 따라 durable intent 기록 이후에만 수행하며 재시작이 미해결 제출을 지운 것처럼 보이게 하지 않는다.
 - `P3-O6` margin 위험과 거래소 강제 감축을 관찰하고 설명되지 않은 변화를 fail-closed한다. 이 상태가 활성인 동안에는
-  `RECOVERY-B`가 거부되고 `RECOVERY-A`·`RECOVERY-C` 또는 owner fallback만 진행된다. 이 전이도 `FENCE`를 동반하며 사전 승인된 intent나
+  `RECOVERY-B`가 거부되고, 현재 headroom 검사를 통과한 `RECOVERY-C` 또는 `RECOVERY-A`, 아니면 owner fallback만 진행된다. 이 전이도 `FENCE`를 동반하며 사전 승인된 intent나
   응답 불명 제출이 뒤늦게 진입으로 확정되지 않는다.
 - `P3-O7` 정상 중단과 긴급 중단이 신규 exposure를 차단하고 기존 exposure의 상태를 드러낸다. 긴급 중단은 `SAFE-6`에 따라
   Web/API/알림/분석 저장소가 불가용해도 host-local로 성립하며 중단 실패 자체가 관찰된다.
@@ -796,8 +800,9 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
   판정한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는
-  stale·margin·drift 상태에서도 `FENCE` 종결 후 `RECOVERY-C`로 헤지된 pair를 청산할 수 있는지, 두 leg 중 어느 쪽이
-  먼저 체결되거나 부분 체결·재시작이 겹쳐도 청산을 완료할 수 있는지도 확인한다.
+  stale·margin·drift 상태에서도 `FENCE` 종결 후 `RECOVERY-C`로 헤지된 pair를 청산할 수 있는지, 반대로 현재 headroom이
+  worst-case 체결 경로를 견디지 못할 때 `RECOVERY-C`가 거부되고 `RECOVERY-A` 또는 owner fallback으로 분기하는지,
+  두 leg 중 어느 쪽이 먼저 체결되거나 부분 체결·재시작이 겹쳐도 청산을 완료할 수 있는지도 확인한다.
   `ACTIVATION_FENCE_PENDING` 중 다른 트리거가 겹치는 순서 조합(drift → 중단 → 종결 등)과 그 사이 재시작에서
   병합된 목적 상태가 보존되는지, `ACTIVATION_FENCE_PENDING`에서 거래소 취소·조회가 반복 실패하거나 재시작이 겹치는 경우,
   `FENCE-3` 완료 전

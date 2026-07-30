@@ -409,6 +409,18 @@
   `RECOVERY-A`·`RECOVERY-B`만 열거하고 `RECOVERY-C`를 빠뜨린 줄을 기계적으로 탐지한다.
 - 자동 수용기준 19개.
 
+### Codex 외부 스펙 리뷰 20라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `RECOVERY-B`는 headroom·stress 침범 시 차단되는데 `RECOVERY-C`는 상시 허용이었다. `RECOVERY-C`는 비원자적 청산
+  때문에 gross·residual의 일시 증가를 허용하고 사전 승인된 정적 한도와 budget 예약만 요구하므로, 이미 breach한 시점에는
+  현재 margin이 그 worst-case 체결 경로를 견디지 못해 강제 청산을 촉발할 수 있다. breach 대응 경로가 breach를 악화시킨다.
+- 부류 도출: "정적 사전 승인 한도만 검사하고 현재 상태 기준 실현 가능성을 검사하지 않는 계약".
+- 반영: `RECOVERY-C`를 제출 직전 현재 account·margin 상태 기준의 leg별 worst-case 실현 가능성 검사에 결속했다. 현재
+  headroom과 risk budget을 지키지 못하면 `RECOVERY-C`도 금지하고 노출 비증가 `RECOVERY-A` 또는 owner fallback만 허용한다.
+  §4.3의 다섯 행, `P3-O6`, `LIVE-11` 차단 조건을 같은 표현으로 정렬하고 §7.2에 거부·분기 시나리오를 추가했다.
+- `AC22`로 동적 검사 결속과 fallback 분기를 기계 검사한다. 자동 수용기준 20개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

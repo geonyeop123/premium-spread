@@ -45,6 +45,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
 | AC19 | 권한 회수 전이가 승인·알림을 기다리지 않고 runtime이 즉시 수행한다는 규칙이 §4.2에 있고, 트리거 표가 승인을 요구하지 않는다. | 안전 회수가 승인 대기로 지연될 수 있던 부류(codex 16R) 차단 | T1 | 아래 `AC19 command` | exit 0, `violations=[]` |
+| AC22 | `RECOVERY-C`가 정적 승인 한도뿐 아니라 현재 headroom·risk budget 기준 실현 가능성 검사에 결속된다. | 정적 한도만 보고 현재 상태를 보지 않는 부류(codex 20R) 차단 | T1 | 아래 `AC22 command` | exit 0, `violations=[]` |
 | AC21 | 복구 집합을 열거하는 어떤 위치도 `RECOVERY-A`·`RECOVERY-B`만 적고 `RECOVERY-C`를 빠뜨리지 않는다. | 단일 정의를 여러 곳에서 열거하다 전파를 빠뜨리는 부류(codex 19R) 차단 | T1 | 아래 `AC21 command` | exit 0, `inconsistent_enumerations=[]` |
 | AC20 | `FENCE` 완료 기준이 `FENCE-1`~`FENCE-3`의 terminal 결과로만 정의되고, 원인 해소는 `RESUME` 선행조건이며, owner의 외부 트리거 발행 역할이 명시된다. | 완료 기준 모호로 `FENCE_PENDING`에 갇히는 부류와 owner 역할 모순(codex 17R) 차단 | T1 | 아래 `AC20 command` | exit 0, `violations=[]` |
 | AC18 | §4.2의 모든 상태축(software 포함)이 초기값을 갖고 그 값이 해당 축의 등록 상태다. | 축을 추가하고 초기값 목록을 갱신하지 않는 부류(codex 14R) 차단 | T1 | 아래 `AC18 command` | exit 0, `missing_initial=[]` |
@@ -401,6 +402,29 @@ sys.exit(1 if bad else 0)
 CHECK
 ```
 
+### AC22 command
+
+`RECOVERY-C`가 현재 상태 기준 검사에 결속되고 실패 시 분기가 정의됐는지 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+fail = []
+if '현재 headroom과 risk budget을 지키는지 검사' not in d:
+    fail.append('no-dynamic-feasibility-check')
+if '지키지 못하면 `RECOVERY-C`도 금지한다' not in d:
+    fail.append('no-fallback-branch')
+sec = d.split('### 4.3 상태별 허용 행위')[1].split('### 4.4')[0]
+st = sec.split('| 상태 | 신규 exposure 제출 |')[1].split('\n\n')[0]
+for line in st.splitlines():
+    if 'RECOVERY-C' in line and '현재 headroom 검사' not in line:
+        fail.append(line.split('|')[1].strip())
+print(f'violations={fail}')
+sys.exit(1 if fail else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -528,8 +552,11 @@ CHECK
   - high: 18라운드에 신설한 `RECOVERY-C`가 `P3-O14`와 §9.4에 전파되지 않아 만료·종결 시 완전 헤지 pair 청산 권한이
     상태 표와 모순 → 부류 스윕으로 `LIVE-11` 차단 조건 문장의 누락 1건을 추가 발견하고 세 곳을 단일 정의 참조로 전환,
     `AC21`로 기계 검사
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16R high 1 → 17R 2건 → 18R high 1
-  → 19R high 1. critical은 2R 이후 0. 3~8라운드 지적은 모두
+- 2026-07-30 20라운드: `needs-attention`, critical 0 · high 1.
+  - high: `RECOVERY-C`가 margin breach 중에도 상시 허용이라 정적 승인 한도 안이어도 현재 margin이 worst-case 체결 경로를
+    견디지 못해 강제 청산을 촉발할 수 있음 → 제출 직전 현재 account·margin 기준 실현 가능성 검사에 결속하고 실패 시
+    `RECOVERY-A`·owner fallback으로 분기, `AC22`로 기계 검사
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~20R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -627,6 +654,12 @@ CHECK
 - 반영 방식: 열거 대신 §4.3과 `LIVE-11` 단일 정의를 참조하도록 바꿔 재발 여지를 줄였다.
 - GREEN: `inconsistent_enumerations=[]`, exit 0
 
+### AC22 — 2026-07-30
+
+- GREEN: `violations=[]`, exit 0
+- `RECOVERY-C`를 "상시 허용"에서 "현재 headroom 검사 통과 시"로 바꾸고, 검사 실패 시 `RECOVERY-A` 또는 owner fallback으로
+  분기하도록 정의했다. §4.3의 다섯 행과 `P3-O6`, `LIVE-11` 차단 조건도 같은 표현으로 맞췄다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -635,7 +668,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      19/19 PASS
+  T1/T2 자동:      20/20 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN
