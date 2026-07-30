@@ -29,7 +29,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 |---|---|---|---|---|---|
 | AC1 | specification의 모든 requirement ID 참조가 정의를 갖는다 (dangling reference 0건). | 사용자: "문제점 및 개선사항 체크" | T1 | 아래 `AC1 command` | exit 0, `dangling=[]` |
 | AC2 | Review C blocker·major 반영으로 신설된 8개 ID가 문서에 정의돼 있다. | 사용자: "반영본 초안 작성해봐" | T1 | 아래 `AC2 command` | exit 0, `review C ids present` |
-| AC3 | 상태축 현재값을 spec이 중복 기록하지 않고 `progress.md`가 단독 소유한다. | Review C major(M5) 상태 SSOT | T1 | 아래 `AC3 command` | exit 0, `state ssot ok` |
+| AC3 | spec이 상태축 현재값을 중복 기록하지 않고, runtime control state와 `progress.md`의 정본 경계가 명시된다. | Review C major(M5) 상태 SSOT | T1 | 아래 `AC3 command` | exit 0, `state ssot ok` |
 | AC4 | `docs/work/{slug}/`에 workflow 산출물 5종이 존재하고 상대 링크가 모두 실재 파일을 가리킨다. | 사용자: "feature-workflow에서 생성하는 문서처럼 재구성" | T1 | 아래 `AC4 command` | exit 0, `missing=[] broken_links=[]` |
 | AC5 | 동결된 Phase -1 DoD가 변경되지 않고 그 검증 명령이 참조하는 경로가 유지된다. | Phase -1 DoD "Evidence 기록 소유권" | T1 | 아래 `AC5 command` | exit 0, `frozen artifacts intact` |
 | AC6 | 저장소 문서 계약과 whitespace 계약이 유지된다. | 기존 repository gate | T1 | `bash docs/check-documentation.sh && git diff --check` | exit 0, `documentation check passed` |
@@ -45,6 +45,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 | AC17 | 권한 회수 트리거 표의 모든 행이 진입 상태와 `FENCE` 완료 후 목적 상태를 activation·latch 두 축으로 명시한다. | 한 축만 지정하고 다른 축을 미정으로 두는 부류(codex 13R) 차단 | T1 | 아래 `AC17 command` | exit 0, `incomplete_target=[]` |
 | AC19 | 권한 회수 전이가 승인·알림을 기다리지 않고 runtime이 즉시 수행한다는 규칙이 §4.2에 있고, 트리거 표가 승인을 요구하지 않는다. | 안전 회수가 승인 대기로 지연될 수 있던 부류(codex 16R) 차단 | T1 | 아래 `AC19 command` | exit 0, `violations=[]` |
+| AC29 | dispatch-claim이 barrier 세대·epoch 검증과 한 durable 선형화 연산으로 결속되고, claim–전송 구간의 소유·회수 규칙이 있다. | 동결 선언만 있고 선형화가 없어 생기는 경합 부류(codex 30R) 차단 | T1 | 아래 `AC29 command` | exit 0, `violations=[]` |
 | AC28 | `FENCE-0` dispatch barrier와 durable dispatch-claim 기반 분류가 정의되고(sender 생존 비의존), provider 장애 시 `FALLBACK_HANDOFF` 경로와 `RESUME` 차단이 유지된다. | 선행조건이 외부 가용성에 의존해 교착되는 부류(codex 27R) 차단 | T1 | 아래 `AC28 command` | exit 0, `violations=[]` |
 | AC27 | 권한 회수 트리거 표의 모든 행이 해제 조건을 갖고, fallback lifecycle이 종료 단계에서만 해제된다. | 진입만 정의하고 해제 조건이 없는 부류(codex 26R) 차단 | T1 | 아래 `AC27 command` | exit 0, `violations=[]` |
 | AC26 | `unmanaged`와 reconcile mismatch가 권한 회수 트리거이며 `DONE-3`·`DONE-4`·`NOGO-2`의 PASS 조건에 포함된다. | 탐지만 하고 fail-closed 전이·완료 조건이 없는 부류(codex 24R) 차단 | T1 | 아래 `AC26 command` | exit 0, `violations=[]` |
@@ -82,7 +83,7 @@ echo 'review C ids present'
 
 ```bash
 ! grep -q '현재 프로그램 상태' docs/work/private-live-autotrader/design.md &&
-grep -q '상태축 현재값은 이 문서가 단독으로 소유한다' .ai/planning/private-live-autotrader/progress.md &&
+grep -q 'runtime durable control state가 정본이며' .ai/planning/private-live-autotrader/progress.md &&
 grep -q '| software | `SOFTWARE_BASELINE` |' .ai/planning/private-live-autotrader/progress.md &&
 echo 'state ssot ok'
 ```
@@ -573,6 +574,29 @@ sys.exit(1 if fail else 0)
 CHECK
 ```
 
+### AC29 command
+
+barrier 세대와 claim의 원자적 결속, claim–전송 구간 회수 규칙을 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+n = ' '.join(d.split())
+fail = []
+if '하나의 durable 선형화 연산' not in n:
+    fail.append('no-linearization')
+if '세대가 바뀐 뒤에는 어떤 sender도 새 외부 호출을 시작할 수 없다' not in n:
+    fail.append('no-generation-fence')
+if '회수·격리해' not in n:
+    fail.append('no-ownership-reclaim')
+if 'runtime durable control state' not in n:
+    fail.append('no-runtime-ssot')
+print(f'violations={fail}')
+sys.exit(1 if fail else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -741,7 +765,12 @@ CHECK
   - high: `FENCE-0`의 sender acknowledgement 대기가 sender crash·ack timeout 시 `FALLBACK_HANDOFF`를 다시 교착시킴 →
     분류 근거를 `SAFE-11`의 durable dispatch-claim으로 옮기고 barrier·claim 순서를 고정, timeout·재시작 후 durable
     기록만으로 분류 완료하도록 재정의. `AC28` 재강화
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~29R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
+- 2026-07-30 30라운드: `needs-attention`, critical 0 · high 2.
+  - high: dispatch-claim이 barrier에 원자적으로 결속되지 않아 barrier 이후 claim 커밋이나 `FENCE-3` 조회 후 전송이 가능 →
+    claim 생성을 barrier 세대·epoch 검증과 한 durable CAS로 묶고 claim–전송 구간의 소유·회수 규칙 추가
+  - high: `progress.md`를 상태 정본으로 둔 규칙이 runtime durable 전이와 충돌 → activation·latch·`FENCE`·epoch는 runtime
+    control state가 정본, 나머지 축과 승인 근거는 `progress.md`가 소유, 투영 불일치 시 fail-closed로 분리. `AC3` 갱신
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~14R 각 1~2건 → 15R medium 1 → 16~30R 각 1~2건. critical은 2R 이후 0. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -895,6 +924,12 @@ CHECK
   외부 호출이 필요 없는 epoch 무효화·latch·`FENCE-1`을 먼저 확정하고 미확정 주문 목록을 동결한 뒤 owner UI로 넘기며,
   `FENCE-2`·`FENCE-3`은 provider 복구 후 재조회로 종결하고 그 전까지 `RESUME`을 차단한다.
 
+### AC29 — 2026-07-30
+
+- GREEN: `violations=[]`, exit 0
+- dispatch-claim 생성을 barrier 세대·epoch 검증과 한 CAS 연산으로 묶고, claim 성공 후 전송 전 구간을 worker 소유로 표시해
+  `FENCE`가 회수·격리하도록 정의했다. 정본 경계도 runtime control state와 `progress.md`로 분리했다.
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -903,7 +938,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      26/26 PASS
+  T1/T2 자동:      27/27 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN

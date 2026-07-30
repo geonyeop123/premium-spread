@@ -5,7 +5,9 @@
 
 ## 프로그램 상태
 
-`docs/work/private-live-autotrader/design.md` §4의 상태축 현재값은 이 문서가 단독으로 소유한다.
+`docs/work/private-live-autotrader/design.md` §4.2에 따라 이 문서는 specification·software·evidence collection·
+candidate/evidence·program 축의 현재값과 승인 근거를 소유한다. activation·execution latch·`FENCE`·epoch는 runtime durable
+control state가 정본이며 아래 표의 해당 값은 그 투영이다.
 
 | 상태축 | 현재값 |
 |---|---|
@@ -552,6 +554,24 @@
   판정한다.
 - §7.2에 sender crash·ack timeout 시 HANDOFF 진행 사례를 추가하고 `AC28`의 검사 조건을 claim 존재와 sender 생존
   비의존으로 교체했다.
+
+### Codex 외부 스펙 리뷰 30라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 2.
+- 지적 1: `FENCE-0`은 barrier를 먼저 세운 뒤 claim을 만든다고만 하고 `SAFE-11`은 claim 커밋 후 전송한다고만 해서,
+  sender가 barrier 확인 전에 멈췄다가 barrier가 선 뒤 claim을 커밋하거나 `FENCE-3` 조회가 끝난 뒤 전송을 시작하는 경로를
+  막는 compare-and-set·상호배제 규칙이 없었다. HANDOFF가 동결한 목록 밖 주문이 수동 청산 뒤 체결될 수 있다.
+  - 반영: dispatch barrier에 세대를 도입하고, claim 생성을 현재 세대·epoch 검증을 포함한 하나의 durable 선형화 연산으로
+    정의했다. 세대가 바뀐 뒤에는 어떤 sender도 새 외부 호출을 시작할 수 없고, claim 성공과 실제 전송 사이 구간은 worker
+    소유로 표시해 `FENCE`가 회수·격리해 취소 여부를 확정한다.
+- 지적 2: §0.1과 §4.2가 §4 상태축의 현재값을 `progress.md`가 단독 소유한다고 규정했는데, `FENCE`·latch·epoch·재시작
+  복원은 runtime이 즉시 durable하게 수행해야 한다. 문서를 제어 정본으로 삼으면 원자적 전이가 불가능하고, 별도 실행
+  저장소를 쓰면 단독 소유 규칙을 위반한다. 이 모호성은 Review C에서 도입한 SSOT 일원화가 만든 것이다.
+  - 반영: 정본을 둘로 나눴다. activation·execution latch·`FENCE`·epoch는 runtime durable control state가 정본이고,
+    specification·software·evidence collection·candidate/evidence·program 축과 승인 근거는 `progress.md`가 소유한다.
+    `progress.md`에는 runtime 상태의 append-only 투영만 기록하며 불일치 시 runtime을 fail-closed로 처리한다. 주문 권한
+    판정은 언제나 runtime control state를 따른다. §0.1과 이 문서 머리말, `AC3` 검사도 함께 갱신했다.
+- `AC29`를 신설했다. 자동 수용기준 27개.
 
 ## Phase -1 기준선 — 2026-07-20
 
