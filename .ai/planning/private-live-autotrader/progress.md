@@ -573,6 +573,23 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
     판정은 언제나 runtime control state를 따른다. §0.1과 이 문서 머리말, `AC3` 검사도 함께 갱신했다.
 - `AC29`를 신설했다. 자동 수용기준 27개.
 
+### Codex 외부 스펙 리뷰 31라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 2. 둘 다 30라운드 수정의 후속 공백이다.
+- 지적 1: claim CAS는 generation·epoch를 검증하지만 실제 외부 호출은 그 뒤 별도 단계다. worker가 세대 G로 claim한 직후
+  `FENCE`가 G+1로 전환하고 `FENCE-3` 조회까지 끝낸 뒤, 멈췄던 worker가 호출을 시작하는 순서를 배제하지 못한다.
+  - 반영: 외부 호출의 불가역 지점을 실제 전송 시작 순간으로 명시하고, worker가 claim 시 받은 lease와 fencing token을
+    불가역 지점 직전에 같은 선형화 연산으로 재검증하도록 했다. 세대가 바뀌면 dispatch 경로가 token을 거부하므로 멈췄다
+    깨어난 worker도 호출할 수 없다. `FENCE`는 각 claimed worker의 격리(lease 만료 또는 token 거부 확정)를 확인하기 전에는
+    그 intent를 `FENCE-3` 완료로 분류하지 않으며, sender 장애 복구도 이 보장을 유지한다.
+- 지적 2: `progress.md`가 소유한 candidate/evidence·program 값은 즉시 주문 권한을 회수해야 하는데, 문서 변경을 runtime에
+  전달·확인하는 순서와 불일치 탐지 주체가 없었다. gate나 owner가 reject·종결을 기록한 뒤 runtime이 아직 보지 못한 구간에서
+  이전 activation·epoch로 주문할 수 있다.
+  - 반영: 주문 권한에 영향을 주는 progress 소유 값은 문서 수정만으로 효력이 생기지 않고, runtime durable control state에
+    versioned effective input으로 먼저 commit한 뒤 `progress.md`에 투영한다. authorization은 매 제출마다 그 version을
+    검증하고, 전파·대조가 불가능한 동안에는 fail-closed로 신규 제출을 막는다.
+- §7.2에 stale worker 호출 거부와 gate 전파 전 제출 금지 사례를 추가하고 `AC30`을 신설했다. 자동 수용기준 28개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

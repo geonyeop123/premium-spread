@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~30라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~31라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -203,6 +203,11 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
     시작할 수 없다. claim 성공과 실제 전송 사이 구간은 해당 worker의 소유로 표시하고, `FENCE`가 그 구간을 회수·격리해
     취소 여부를 확정할 수 있어야 한다. claim 없이 전송을 시작하거나, `FENCE-3` 조회가 끝난 뒤 같은 intent로 전송을
     시작하는 경로를 허용하지 않는다.
+    외부 호출의 **불가역 지점**은 실제 전송이 시작되는 순간이다. worker는 claim 시 받은 lease와 fencing token을 보유하며,
+    불가역 지점 직전에 같은 선형화 연산으로 세대·epoch·lease 유효성을 재검증한다. barrier 세대가 바뀌면 dispatch 경로가
+    그 token을 거부하므로 멈췄다 깨어난 worker도 호출을 시작할 수 없다. `FENCE`는 각 claimed worker가 이렇게 호출 불능으로
+    격리됐음(lease 만료 또는 token 거부 확정)을 확인하기 전에는 그 intent를 `FENCE-3` 완료로 분류하지 않는다. sender 장애
+    복구도 이 보장을 유지하며, lease 만료가 durable한 격리 증거다.
   - `FENCE-0` 시작 시 dispatch barrier를 원자적으로 세워 새 전송 시작을 막고, barrier 이전의 모든 intent를
     `FENCE-1`(미전송 무효)이나 durable `FENCE-2`·`FENCE-3` 항목으로 분류한다. 분류 근거는 `SAFE-11`의 durable
     dispatch-claim이며 sender acknowledgement는 보조 신호일 뿐이다. barrier 획득이 claim 생성보다 앞서도록 순서를
@@ -455,7 +460,10 @@ activation `ACTIVATION_NOT_STARTED`, execution latch `LATCH_CLEAR`, program `PRO
 durable 기록에서 복원한다. 재시작 시 latch 값이 없거나 손상됐으면 `LATCH_ENGAGED`로
 fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 상태의 정본은 두 곳으로 나뉜다. activation, execution latch, `FENCE` 진행과 authorization epoch의 현재값과 전이 근거는
 **runtime durable control state**가 정본이며, 원자적 전이와 재시작 복원이 여기서 이뤄진다. specification, software,
-evidence collection, candidate/evidence, program 축의 현재값과 승인 근거는 `progress.md`가 소유한다. `progress.md`에는
+evidence collection, candidate/evidence, program 축의 현재값과 승인 근거는 `progress.md`가 소유한다. `progress.md`가 소유한 축 중 주문 권한에 영향을 주는 값(`CANDIDATE_REJECTED`, program 종결 등)은 사람이 문서를 고치는
+것으로 효력이 생기지 않는다. 그 결정은 runtime durable control state에 **versioned effective input**으로 먼저 commit하고,
+commit이 성공한 뒤 `progress.md`에 투영한다. authorization은 매 제출마다 그 version을 검증하며, 전파나 대조가 불가능한
+동안에는 fail-closed로 신규 제출을 막는다. `progress.md`에는
 runtime 상태의 append-only 투영만 기록하고, 두 기록이 어긋나면 runtime을 fail-closed로 처리한 뒤 근거를 재확인해 다시
 기록한다. 주문 권한 판정은 언제나 runtime control state를 따른다. 전이 선언 주체는
 **전이 방향**으로 나뉜다.
@@ -858,7 +866,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   생기지 않는지, 복구 구간의 제출이 허용된 위험 벡터 기준을 벗어나지 않는지를 negative 검증으로 포함한다. 거래소가 한
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
-  판정한다. barrier 세대 변경과 claim 생성이 경합하거나 `FENCE-3` 조회 이후 같은 intent가 전송되는 경로가 차단되는지,
+  판정한다. 세대 전환 뒤 멈췄다 깨어난 worker의 호출이 거부되는지, gate 결정이 runtime에 commit되기 전에는 이전 epoch로
+  제출되지 않는지도 확인한다. barrier 세대 변경과 claim 생성이 경합하거나 `FENCE-3` 조회 이후 같은 intent가 전송되는 경로가 차단되는지,
   runtime control state와 `progress.md` 투영이 어긋날 때 fail-closed되는지도 확인한다.
   `FENCE-0` barrier 직전에 전송을 시작한 intent가 목록 동결·수동 정리와 경합해 뒤늦게 체결되지 않는지,
   sender가 crash하거나 acknowledgement가 timeout돼도 durable dispatch-claim만으로 분류가 끝나고 `FALLBACK_HANDOFF`가
