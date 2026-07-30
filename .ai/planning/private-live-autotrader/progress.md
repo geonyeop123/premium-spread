@@ -6,8 +6,8 @@
 ## 프로그램 상태
 
 `docs/work/private-live-autotrader/design.md` §4.2에 따라 이 문서는 specification·software·evidence collection·
-candidate/evidence·program 축의 현재값과 승인 근거를 소유한다. activation·execution latch·`FENCE`·epoch는 runtime durable
-control state가 정본이며 아래 표의 해당 값은 그 투영이다.
+candidate/evidence·program 축의 현재값과 승인 근거를 소유한다.
+activation·execution latch·`FENCE`·epoch는 runtime durable control state가 정본이며, 아래 표의 해당 값은 그 투영이다.
 
 | 상태축 | 현재값 |
 |---|---|
