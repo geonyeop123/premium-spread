@@ -42,6 +42,7 @@ source: 사용자 지시("상위 specification으로 재작성", "반영본 초�
 | AC13 | §4.3 권한 회수 트리거 표의 모든 행이 `FENCE` 필수이고, 표 밖 guard(`SAFE-3`·`SAFE-7`·`SAFE-9`·`SAFE-10`)와 Phase outcome 경로(`P3-O17`)를 포함한다. | 표 밖 guard 경로가 fence 없이 권한을 회수하던 문제(codex 7R) 차단 | T1 | 아래 `AC13 command` | exit 0, `without_fence=[] missing_sources=[]` |
 | AC14 | 권한 회수 트리거 표의 모든 행이 지속·주기 감시와 재시작 재평가를 포함한 탐지 경로를 갖는다. | 시점 검사만 있고 지속 감시가 없어 생기는 TOCTOU 부류(codex 10R) 차단 | T1 | 아래 `AC14 command` | exit 0, `incomplete_detection=[]` |
 | AC15 | 신규 제출이 차단된 모든 상태가 재개 조건(`RESUME` 또는 최초 gate)을 명시한다. | 회수만 정의하고 재개를 비워 두는 부류(codex 11R) 차단 | T1 | 아래 `AC15 command` | exit 0, `missing_resume=[]` |
+| AC16 | 문서에 상태축 밖의 비정형 상태 이름이 남아 있지 않다. | 이름만 있고 등재되지 않은 상태 부류(codex 12R) 차단 | T1 | 아래 `AC16 command` | exit 0, `informal=[]` |
 
 ### AC1 command
 
@@ -267,6 +268,20 @@ sys.exit(1 if bad else 0)
 CHECK
 ```
 
+### AC16 command
+
+상태처럼 쓰이지만 §4.2에 등재되지 않은 비정형 이름이 남아 있는지 검사한다.
+
+```bash
+python3 - <<'CHECK'
+import re, sys, pathlib
+d = pathlib.Path('docs/work/private-live-autotrader/design.md').read_text(encoding='utf-8')
+informal = re.findall(r'recovery-required|halt latch 활성', d)
+print(f'informal={informal}')
+sys.exit(1 if informal else 0)
+CHECK
+```
+
 ## 증거 로그
 
 ### AC1 — 2026-07-27
@@ -357,7 +372,12 @@ CHECK
   - 부류 대응: "회수만 정의하고 재개가 빈 상태" 부류로 보고 전 상태를 스윕한 결과 저하·종결 상태 전부에 복귀 조건이
     없었다. `LIVE-12`로 `RESUME`(FENCE terminal 확인·전체 reconcile·트리거 해소·evidence/configuration 재승인·owner
     재승인·새 epoch)을 단일 정의하고 상태 표에 재개 조건 열을 신설, `AC15`로 기계 검사
-- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~11R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
+- 2026-07-30 12라운드: `needs-attention`, critical 0 · high 1.
+  - high: `FENCE` 미완료 구간의 `recovery-required`가 §4.2·§4.3에 없어 허용 제출·재시도·재시작 복원·다음 전이가 미정의
+  - 부류 대응: "이름만 있고 등재되지 않은 상태" 부류로 스윕해 `halt latch 활성`도 같은 상태임을 확인했다.
+    `ACTIVATION_FENCE_PENDING`과 execution latch 축(`LATCH_ENGAGED`/`LATCH_CLEAR`)을 정식 등재하고 §4.3 행·재시작 복원·
+    idempotent 재시도·완료 후 목적 상태를 정의, `AC16`으로 기계 검사
+- 추이: 1R 8건(critical 1) → 2R 2건(critical 1) → 3~12R 각 1~2건, critical은 2라운드 이후 0이다. 3~8라운드 지적은 모두
   "권한이 회수될 때 무엇이 허용되고 어떤 fence가 걸리는가"라는 한 매듭의 다른 표면이었고, 5·6·7라운드에서 각각 복구
   권한·전이 fence·회수 트리거를 단일 정의로 접은 뒤 8라운드에서 그 목록을 전수 조사로 닫았다.
 
@@ -414,6 +434,13 @@ CHECK
   없었다. halt latch 해제, `PROGRAM_TERMINATION_PENDING`의 재개 불가 명시, `CANDIDATE_REJECTED` 이후 `ACT-1` 재통과까지
   함께 정의했다.
 
+### AC16 — 2026-07-30
+
+- RED(최초): 부류 스윕에서 `recovery-required` 2회, `halt latch 활성` 2회가 상태축 밖 이름으로 사용 중임을 확인했다.
+- 반영: `ACTIVATION_FENCE_PENDING`(activation 축)과 `LATCH_ENGAGED`·`LATCH_CLEAR`(execution latch 축 신설)로 정식 등재하고
+  §4.3에 행을 추가했다. 잔여 사용처 2곳도 검사가 잡아 정리했다.
+- GREEN: `informal=[]`, exit 0
+
 ### AC8 — 대기
 
 - 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
@@ -422,7 +449,7 @@ CHECK
 
 ```text
 DoD VERDICT: private-live-autotrader-master-spec
-  T1/T2 자동:      13/13 PASS
+  T1/T2 자동:      14/14 PASS
   T3 기록 제출:    0건
   T4 사람 확인:    2건 대기 (AC7 리뷰 수렴, AC8 사용자 승인)
   => AWAITING_HUMAN

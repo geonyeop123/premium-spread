@@ -296,6 +296,19 @@
 - 상태 표에 재개 조건 열을 신설하고 halt latch가 스스로 풀리지 않음을 명시했다. `AC15`로 기계 검사한다.
 - 지적 1건에 대해 같은 부류 3건(halt latch 해제, 종결 되돌림, candidate 재시도 경로)을 함께 정의했다.
 
+### Codex 외부 스펙 리뷰 12라운드와 부류 스윕 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `FENCE-2`/`FENCE-3`이 거래소 취소·조회 실패나 timeout으로 장시간 미완료일 수 있는데, 그때의
+  `recovery-required`가 §4.2 상태축과 §4.3 권한표에 없다. 허용 제출, `FENCE` 재시도, 재시작 복원, 완료 후 목적 상태,
+  `RESUME` 가능 시점이 모두 미정의라 구현이 재제출하거나 빠져나오지 못할 수 있다.
+- 부류 도출: "문서가 상태처럼 부르지만 상태축에 등재되지 않은 비정형 상태".
+- 스윕 결과: `recovery-required` 외에 `halt latch 활성`도 같은 부류였다.
+- 반영: `ACTIVATION_FENCE_PENDING`을 activation 축에 등재하고, latch를 execution latch 축(`LATCH_ENGAGED`/`LATCH_CLEAR`)으로
+  정식화했다. §4.3에 세 행을 추가하고 `FENCE` 미완료 구간의 durable 재시작 복원, idempotent 재시도, 새 경제적 제출 금지,
+  완료 후 원인별 목적 상태 이동을 명시했다. "상태처럼 부르는 이름은 모두 §4.2에 등재한다"는 규칙도 넣었다.
+- `AC16`을 신설해 비정형 상태 이름을 기계 검사한다. 검사가 잔여 사용처 2곳을 추가로 잡아 정리했다. 자동 수용기준 14개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리
