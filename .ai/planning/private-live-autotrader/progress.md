@@ -421,6 +421,20 @@
   §4.3의 다섯 행, `P3-O6`, `LIVE-11` 차단 조건을 같은 표현으로 정렬하고 §7.2에 거부·분기 시나리오를 추가했다.
 - `AC22`로 동적 검사 결속과 fallback 분기를 기계 검사한다. 자동 수용기준 20개.
 
+### Codex 외부 스펙 리뷰 21라운드와 반영 — 2026-07-30
+
+- 판정 `needs-attention`, critical 0 · high 1.
+- 지적: `SAFE-3`은 데이터·account·order·position 상태 불신을 fail-closed 트리거로 두지만, 그 결과 상태인
+  `ACTIVATION_RECOVERY_ONLY`의 복구 열은 여전히 현재 headroom 검사만으로 `RECOVERY-C`를 허용한다. 검사의 입력이 바로 그
+  신뢰할 수 없는 상태이므로, stale한 margin·노출 관점으로 순차 청산의 한 leg를 제출해 잔여 노출을 오히려 키울 수 있다.
+- 부류 도출: "검사를 요구하면서 그 검사 입력의 신뢰를 전제하지 않는 계약". 스윕 결과 `RECOVERY-B`의 미헤지 수량 상한과
+  `RECOVERY-A`의 unwind 판단도 같은 입력에 의존함을 확인했다.
+- 반영: `LIVE-11`에 입력 신뢰 전제를 도입했다. 안전 판단이 시장·account·order·position 상태에 의존하는 집합
+  (`RECOVERY-A`의 unwind, `RECOVERY-B`, `RECOVERY-C`)은 입력이 신뢰 가능하고 최신일 때만 허용하며, `SAFE-3`이 활성이거나
+  필요한 reconcile이 끝나지 않았으면 취소(`RECOVERY-0`과 `RECOVERY-A`의 cancel)와 owner fallback만 남는다. §4.3에도
+  "표 값과 무관하게 입력 신뢰 전제가 우선한다"를 명시하고 §7.2에 stale 상태의 청산 거부 사례를 추가했다.
+- `AC23`으로 기계 검사한다. 자동 수용기준 21개.
+
 ## Phase -1 기준선 — 2026-07-20
 
 ### 격리

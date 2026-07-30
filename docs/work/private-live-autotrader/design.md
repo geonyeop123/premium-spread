@@ -19,7 +19,7 @@
 ### 0.1 상태
 
 - 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
-- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~20라운드 반영
+- 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~21라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
 - 다음 specification 상태: `MASTER_SPEC_APPROVED`
@@ -274,6 +274,10 @@ SaaS 전환은 이 프로그램의 후속 Phase가 아니라 별도의 제품·�
     account drift 중 하나라도 활성이면 `RECOVERY-B`를 금지하고 `RECOVERY-A`, 현재 headroom 검사를 통과한 `RECOVERY-C`와
     owner fallback만 허용한다. reconcile과
     headroom 회복이 확인되면 다시 열린다.
+  - **입력 신뢰 전제**: 안전 판단이 시장·account·order·position 상태에 의존하는 집합(`RECOVERY-A`의 unwind,
+    `RECOVERY-B`, `RECOVERY-C`)은 그 입력이 신뢰 가능하고 최신일 때만 허용한다. `SAFE-3`이 활성이거나 필요한 reconcile이
+    끝나지 않았으면 이 집합들을 금지하고, 안전성이 그 입력에 의존하지 않는 취소(`RECOVERY-0`과 `RECOVERY-A`의 cancel)와
+    owner fallback만 허용한다. 신뢰할 수 없는 상태에서 계산한 headroom·수량으로 청산을 시작하지 않는다.
   - 어떤 상태에서도 새 경제적 기회를 취하는 제출은 복구가 아니다. 복구 권한은 노출이 정리되고 reconcile이 끝나면 종료한다.
 
 ## 3. 목표 아키텍처
@@ -479,6 +483,8 @@ fail-closed 처리하고 `LIVE-12`의 `RESUME`을 거쳐야 해제한다. 각 �
   더 약한 절차로 대체하지 않으며, fence 완료 전에는 그 상태가 성립했다고 보지 않는다.
 - 권한이 회수된 모든 상태는 되돌아오는 경로를 명시한다. 회수 조건만 정의하고 재개 조건을 비워 두지 않으며, 재개는
   `LIVE-12`의 `RESUME`을 유일한 경로로 삼는다. 종결 방향 상태는 `RESUME` 대상이 아님을 명시적으로 표기한다.
+- 복구 열의 값은 `SAFE-3`이 비활성이고 필요한 reconcile이 끝난 상태를 전제한다. `SAFE-3`이 활성인 동안에는 표의 값과
+  무관하게 `LIVE-11`의 입력 신뢰 전제가 우선해 취소와 owner fallback만 남는다.
 - 복구 열의 모든 값은 `LIVE-11`이 정의한 집합 이름을 참조한다. 상태 행마다 허용 조건을 다시 서술하지 않으며,
   집합 정의가 바뀌면 모든 상태에 동시에 적용된다. 종결 상태도 이 정의를 상속하며 더 넓은 "정리 범위"를 갖지 않는다.
 - program 축이 종결 방향이면 activation 축보다 우선한다. `PROGRAM_TERMINATION_PENDING` 진입은 activation을
@@ -800,7 +806,8 @@ program gate의 `PENDING | PASS | FAIL`로 기록한다.
   leg를 강제 감축해 단일 leg만 남은 상태에서 복구 hedge가 거부되고 paired reduction 또는 owner fallback으로만 진행되는
   경로를 failure matrix에 포함한다. 종결 전이와 단일 leg 잔존, 강제 감축, 응답 불명이 겹치는 조합도 같은 matrix에서
   판정한다. 안전 트리거 탐지와 상태 전이 사이에 승인·알림을 기다리며 신규 제출이 통과하지 않는지, 원인이 지속되는
-  stale·margin·drift 상태에서도 `FENCE` 종결 후 `RECOVERY-C`로 헤지된 pair를 청산할 수 있는지, 반대로 현재 headroom이
+  margin·drift 상태에서 `FENCE` 종결 후 `RECOVERY-C`로 헤지된 pair를 청산할 수 있는지, `SAFE-3`이 활성인 stale 상태에서는
+  반대로 `RECOVERY-C` 시도가 거부되고 취소·owner fallback만 남는지, 현재 headroom이
   worst-case 체결 경로를 견디지 못할 때 `RECOVERY-C`가 거부되고 `RECOVERY-A` 또는 owner fallback으로 분기하는지,
   두 leg 중 어느 쪽이 먼저 체결되거나 부분 체결·재시작이 겹쳐도 청산을 완료할 수 있는지도 확인한다.
   `ACTIVATION_FENCE_PENDING` 중 다른 트리거가 겹치는 순서 조합(drift → 중단 → 종결 등)과 그 사이 재시작에서
