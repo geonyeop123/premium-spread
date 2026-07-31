@@ -18,11 +18,10 @@
 
 ### 0.1 상태
 
-- 문서 상태: `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`
+- 문서 상태: `MASTER_SPEC_APPROVED`
 - 반영 회차: Review C 반영본 (blocker 3, major 7, minor 7) + Codex 외부 리뷰 1~32라운드 반영
 - 기준 branch: `dev`
 - 완료 기준선: PR #63 merge commit `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
-- 다음 specification 상태: `MASTER_SPEC_APPROVED`
 
 PR #63에서 수행한 Phase -1은 완료된 역사다. 이 문서의 남은 작업과 Phase에는 포함하지 않는다.
 

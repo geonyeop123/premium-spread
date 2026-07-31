@@ -1,8 +1,8 @@
 ---
 feature: PRIVATE LIVE master specification 재작성과 workflow 산출물 정렬
 slug: private-live-autotrader-master-spec
-status: DRAFT
-frozen_at: null
+status: FROZEN
+frozen_at: 2026-07-31T11:38:14+09:00
 source: 사용자 지시("상위 specification으로 재작성", "반영본 초안 작성", "feature-workflow 산출물처럼 재구성")와 docs/work/private-live-autotrader/design.md
 ---
 
@@ -996,9 +996,12 @@ CHECK
 - 불가역 dispatch 지점을 명시하고 lease·fencing token으로 stale worker를 격리하며, `FENCE`는 격리 확인 전에는
   `FENCE-3` 완료로 분류하지 않는다. gate 결정은 runtime versioned effective input으로 commit한 뒤 progress에 투영한다.
 
-### AC8 — 대기
+### AC8 — 충족 (2026-07-31)
 
-- 사용자 승인 미수령. 승인 전까지 `status: DRAFT`를 유지하고 Phase 0으로 진행하지 않는다.
+- 사용자 승인: "승인할게, DoD 동결하고 push해서 draft PR 올려줘"
+- 승인 대상: `design.md`(master specification), `plan.md`(상위 plan과 실행 단위), `dod.md`(이 계약서)
+- 이 계약서를 `status: FROZEN`, `frozen_at: 2026-07-31T11:38:14+09:00`로 전이했다. 이후 수용기준 문장을 바꾸려면 구현을 멈추고
+  `## 변경 요청` 절을 추가해 재승인받는다.
 
 ## 최종 판정
 
@@ -1006,14 +1009,13 @@ CHECK
 DoD VERDICT: private-live-autotrader-master-spec
   T1/T2 자동:      28/28 PASS
   T3 기록 제출:    0건
-  T4 사람 확인:    1건 대기 (AC8 사용자 승인), AC7 충족
-  => AWAITING_HUMAN
+  T4 사람 확인:    2/2 충족 (AC7 리뷰 수렴, AC8 사용자 승인)
+  => VERIFIED
 ```
 
 **사람 확인이 필요한 항목**
 
-- ~~AC7 — `codex-spec-review` 재검토에서 critical·high 0 확인~~ → 2026-07-30 충족 (33·34R 연속 지적 0건)
-- AC8 — 사용자 승인 후 `status: FROZEN`, `frozen_at` 기입
+- 없음. `AC7`은 2026-07-30 33·34R 연속 지적 0건으로, `AC8`은 사용자 승인으로 충족됐다.
 
 ## Evidence 기록 소유권
 

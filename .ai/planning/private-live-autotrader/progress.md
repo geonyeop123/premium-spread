@@ -11,7 +11,7 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
 
 | 상태축 | 현재값 |
 |---|---|
-| specification | `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL` (Review C 반영본) |
+| specification | `MASTER_SPEC_APPROVED` |
 | software | `SOFTWARE_BASELINE` |
 | evidence collection | `COLLECTION_NOT_READY` |
 | candidate/evidence | `CANDIDATE_NOT_SELECTED` |
@@ -19,7 +19,7 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
 | execution latch | `LATCH_CLEAR` |
 | program | `PROGRAM_IN_PROGRESS` |
 
-- 현재 Phase: `Master specification 사용자 승인 대기`
+- 현재 Phase: `Phase 0 진입 가능 (master specification 승인 완료)`
 - feature branch: `docs/private-live-autotrader-master-spec`
 - worktree: `/mnt/c/users/yeop/ideaprojects/premium-spread/.worktrees/docs-private-live-autotrader-master-spec`
 - Draft PR: `NOT_CREATED`
@@ -619,6 +619,16 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
 - 10라운드부터 적용한 부류 스윕 방식으로, 지적 1건마다 같은 부류를 문서 전체에서 훑어 codex가 짚지 않은 결함을 추가로
   수정한 사례가 반복됐다(10R +3건, 11R +3건, 12R +1건, 14R +2건, 19R +1건, 22R +2건, 26R +9건, 27R·28R 근원 이동).
 - 남은 T4 항목은 `AC8` 사용자 승인 하나다.
+
+### Master specification 사용자 승인과 DoD 동결 — 2026-07-31
+
+- 사용자 승인: "승인할게, DoD 동결하고 push해서 draft PR 올려줘"
+- `dod.md`를 `status: FROZEN`, `frozen_at: 2026-07-31T11:38:14+09:00`로 전이했다. 최종 판정은 `VERIFIED`(T1/T2 자동 28/28 PASS,
+  T4 2/2 충족)다.
+- specification 축을 `MASTER_SPEC_APPROVED`로 전이했다. `design.md` §0.1의 문서 상태도 함께 갱신했다.
+- 이로써 Phase 0(Foundation Alignment)의 진입 조건이 충족됐다. Phase 0은 별도 `feature-workflow` 실행 단위이며
+  자신의 `docs/work/{phase-slug}/design.md`·`plan.md`·`dod.md`를 만들고 사용자 승인을 다시 받는다.
+- 이후 수용기준 문장 변경은 구현을 멈추고 `## 변경 요청` 절로 재승인받는다.
 
 ## Phase -1 기준선 — 2026-07-20
 

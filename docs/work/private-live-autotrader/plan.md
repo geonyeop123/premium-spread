@@ -91,8 +91,8 @@ Phase마다 반복하며, 이 문서는 그 반복의 진입 조건만 고정한
       → 10R부터 사용자 지시로 지적마다 부류를 도출해 문서 전체를 스윕하고 기계 검사를 추가하는 방식으로 전환
       → 10R TOCTOU 부류(+3건 동시 수정), 11R 재개 전이 부류(+3건 동시 정의). 자동 수용기준 13개
       → **완료: 33·34라운드 연속 지적 0건으로 수렴, `AC7` 충족**
-- [ ] **T8. 사용자 리뷰와 DoD 동결 (`feature-workflow` ⑦)** — 문서 3종을 공유해 승인받고 `dod.md`를
-      `status: FROZEN` + `frozen_at`으로 전이한다. 동결 전에는 Phase 0으로 진행하지 않는다.
+- [x] **T8. 사용자 리뷰와 DoD 동결 (`feature-workflow` ⑦)** — 사용자 승인을 받아 `dod.md`를 `status: FROZEN`,
+      `frozen_at: 2026-07-31T11:38:14+09:00`로 전이했다. specification 축은 `MASTER_SPEC_APPROVED`다.
 - [x] **T9. 프로젝트 문서 최신화 (`feature-workflow` ⑪-a)** — `.ai/PROJECT_STATUS.md`에 프로그램 상태와 문서 경로
       변경을 반영한다. 코드 변경이 없으므로 ERD·상태 다이어그램·progress 카운트는 대상이 아니다.
       → 산출: `.ai/PROJECT_STATUS.md` "PRIVATE LIVE 프로그램 상태" 절, `CLAUDE.md` 문서 경로 표
