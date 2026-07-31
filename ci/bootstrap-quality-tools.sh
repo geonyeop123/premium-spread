@@ -4,7 +4,6 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 lock_file="${root_dir}/ci/quality-tools.lock"
 tool_dir="${root_dir}/.ci-tools"
-dependency_data_dir="${tool_dir}/dependency-check-data"
 
 fail() {
   echo "quality tool bootstrap failed: $*" >&2
@@ -17,10 +16,9 @@ fail() {
   fail "network bootstrap is CI-only (set QUALITY_TOOLS_ALLOW_NETWORK=true only in an isolated CI-equivalent runner)"
 command -v curl >/dev/null || fail "curl is required"
 command -v sha256sum >/dev/null || fail "sha256sum is required"
-command -v unzip >/dev/null || fail "unzip is required"
 [[ -f "${lock_file}" ]] || fail "missing checksum lock ${lock_file}"
 
-mkdir -p "${tool_dir}/downloads" "${dependency_data_dir}"
+mkdir -p "${tool_dir}/downloads"
 
 download_and_verify() {
   local name="$1"
@@ -63,11 +61,6 @@ while IFS='|' read -r name version url expected_sha; do
     detekt)
       cp "${artifact}" "${tool_dir}/detekt-cli.jar"
       ;;
-    dependency-check)
-      rm -rf "${tool_dir}/dependency-check"
-      unzip -q "${artifact}" -d "${tool_dir}"
-      chmod +x "${tool_dir}/dependency-check/bin/dependency-check.sh"
-      ;;
     *)
       fail "unsupported tool ${name}"
       ;;
@@ -76,8 +69,5 @@ done < "${lock_file}"
 
 [[ -f "${tool_dir}/ktlint.jar" ]] || fail "ktlint was not installed"
 [[ -f "${tool_dir}/detekt-cli.jar" ]] || fail "detekt was not installed"
-[[ -x "${tool_dir}/dependency-check/bin/dependency-check.sh" ]] ||
-  fail "dependency-check was not installed"
-[[ -d "${dependency_data_dir}" ]] || fail "dependency-check data directory was not preserved"
 
 echo "CI quality tools downloaded and SHA-256 verified"

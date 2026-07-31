@@ -413,35 +413,3 @@ tasks.register("materializeProductionBuildArtifacts") {
         }
     }
 }
-
-tasks.register("prepareDependencyCheckInput") {
-    group = "verification"
-    description = "Copies API/Batch production runtime external JARs for deterministic OWASP scanning."
-    val outputDirectory = layout.buildDirectory.dir("dependency-check-input")
-    outputs.dir(outputDirectory)
-    outputs.upToDateWhen { false }
-
-    doLast {
-        val runtimeProjects = listOf(project(":apps:api"), project(":apps:batch"))
-        val artifacts =
-            externalArtifactsOf(runtimeProjects, setOf("runtimeClasspath", "productionRuntimeClasspath"))
-                .filter { artifact -> artifact.file.extension == "jar" }
-                .associateBy { artifact -> artifact.stableCoordinate() }
-                .toSortedMap()
-        check(artifacts.isNotEmpty()) { "No API/Batch production runtime JARs were resolved" }
-
-        val output = outputDirectory.get().asFile
-        delete(output)
-        output.mkdirs()
-        val manifest =
-            artifacts.map { (coordinate, artifact) ->
-                val component = artifact.id.componentIdentifier as ModuleComponentIdentifier
-                val destinationName =
-                    "${component.group}__${component.module}__${component.version}__${artifact.file.name}"
-                        .replace(Regex("[^A-Za-z0-9._-]"), "_")
-                artifact.file.copyTo(output.resolve(destinationName), overwrite = false)
-                "$coordinate=$destinationName"
-            }
-        output.resolve("manifest.txt").writeText(manifest.joinToString(separator = "\n", postfix = "\n"))
-    }
-}

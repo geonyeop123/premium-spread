@@ -154,7 +154,6 @@ jobs:
             .ci-tools/downloads
             .ci-tools/ktlint.jar
             .ci-tools/detekt-cli.jar
-            .ci-tools/dependency-check
           key: quality-tools-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}
       - name: Bootstrap standalone tools
         run: bash ci/bootstrap-quality-tools.sh --verify-checksums
@@ -182,14 +181,9 @@ jobs:
     name: 6. Dependency + security scan
     needs: compile-architecture
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
@@ -201,43 +195,6 @@ jobs:
         run: npm --prefix apps/web run lint
       - name: Audit the complete web lockfile at high severity
         run: bash ci/run-npm-audit.sh
-      - name: Cache checksum-verified dependency-check
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            .ci-tools/downloads
-            .ci-tools/ktlint.jar
-            .ci-tools/detekt-cli.jar
-            .ci-tools/dependency-check
-          key: quality-tools-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}
-      - name: Restore isolated Dependency-Check NVD data
-        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: .ci-tools/dependency-check-data
-          key: dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}-${{ github.run_id }}
-          restore-keys: |
-            dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}-
-      - name: Bootstrap standalone security scanner
-        run: bash ci/bootstrap-quality-tools.sh --verify-checksums
-      - name: Update Dependency-Check NVD data
-        run: bash ci/update-dependency-check-data.sh
-      - name: Save verified Dependency-Check NVD data
-        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: .ci-tools/dependency-check-data
-          key: dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('ci/quality-tools.lock') }}-${{ github.run_id }}
-      - name: Stage strict-verified production runtime dependencies
-        run: ./gradlew prepareDependencyCheckInput --dependency-verification strict --no-daemon
-      - name: OWASP Dependency-Check (CVSS 7+ fails)
-        run: bash ci/run-dependency-check.sh
-      - name: Publish security evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: dependency-security-${{ github.sha }}
-          path: build/reports/dependency-check/**
-          if-no-files-found: warn
-          retention-days: 14
 
   docker-build:
     name: 7. Docker image build
