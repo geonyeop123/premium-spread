@@ -180,13 +180,31 @@ nullable 컬럼을 추가한다. 종료된 추적의 손익은 그 스냅샷으�
 주석·문서가 아니라 **응답 필드**로 표현한다. 필드명에 `gross`와 분모를 박고, `pnlBasis`·`priceBasis` 두
 메타 필드를 추가한다 (§5.3.3). 문서는 지워지거나 안 읽히지만 응답 스키마는 소비자가 반드시 통과한다.
 
-### D4. 상태값을 `ACTIVE`/`ARCHIVED`로 정렬한다
+### D4. 상태값은 domain·API만 `ACTIVE`/`ARCHIVED`로 정렬하고 DB 저장값은 유지한다
 
-`TrackingStatus`의 값을 `ACTIVE`/`ARCHIVED`로 바꾸고 `V15`가 기존 행의 값을 갱신한다.
+`TrackingStatus`의 값은 `ACTIVE`/`ARCHIVED`다. **DB `position.status` 컬럼에는 기존 `OPEN`/`CLOSED`를 그대로
+저장한다.** JPA `AttributeConverter` 하나가 `ACTIVE ↔ OPEN`, `ARCHIVED ↔ CLOSED`를 매개한다. `V15`는 컬럼을
+추가할 뿐 기존 컬럼의 값을 재작성하지 않는다.
 
-근거: 엔드포인트가 `/archive`인데 응답 상태가 `CLOSED`로 남으면 절반만 끝난 rename이 되고, 그것이야말로
-Phase 0이 없애려는 부류의 불일치다. `verifyMigrations`의 destructive gate는 `TRUNCATE TABLE`과 `DROP TABLE`만
-차단하므로 값 갱신 `UPDATE`는 허용된다(`infrastructure/common/build.gradle.kts:85`).
+근거는 저장소의 배포 계약이다. `docs/runbooks/deployment.md` "Rollback 제약"은 다음을 규정한다.
+
+> 자동 rollback은 application image rollback이며 DB down migration을 수행하지 않는다. 모든 forward
+> migration은 최소 한 배포 동안 이전 application image와 호환되어야 한다. 호환되지 않는 migration은
+> 별도 expand/contract 배포로 나눈다.
+>
+> V13/V14 적용 뒤 image rollback은 이전 image가 추가 column/table을 무시하는 호환 범위에서만 허용한다.
+
+기존 컬럼의 값을 `ACTIVE`/`ARCHIVED`로 재작성하면 이전 image가 `PositionStatus.valueOf("ACTIVE")`에서
+실패한다. 롤백이 DB를 되돌리지 않으므로 **롤백 자체가 불가능해진다.** 이는 runbook이 금지하는 비호환
+migration이고, `verifyMigrations`의 destructive gate(`TRUNCATE`·`DROP`만 검사)가 잡아주지 못하는 종류다.
+
+이 결정은 D1의 "DB 테이블명은 유지"와 같은 규칙의 적용이다. **DB는 legacy 표현을 유지하고 domain과 API가
+정렬된 표현을 쓴다.** 매핑은 converter 한 곳에 모이고 §5.8이 그 경계를 기록한다.
+
+버린 대안: **`V15`가 값을 `UPDATE`** — 초안이 택했던 방식이며 위 이유로 폐기했다. **expand/contract 2단계
+배포** — 새 코드가 구·신 값을 모두 읽고 한 배포 뒤 수축한다. 정석이지만 개인 단일 계정 제품에서 "다음
+배포"가 보장되지 않아 영구 이중 상태로 남을 위험이 크고, converter 방식이 같은 안전성을 더 적은 상태로 얻는다.
+**상태값 정렬 포기** — `/archive`가 `CLOSED`를 만드는 절반짜리 rename이 남는다.
 
 ### D5. identity는 판정·기록만 하고 타입 확장은 Phase 1이 수행한다
 
@@ -272,7 +290,9 @@ class TrackingCommand  private constructor() { data class Create(...) }
 #### 5.3.1 스키마 (`V15`)
 
 ```sql
--- V15: 추적 종료 시점의 시세를 확정 저장하고 상태값을 추적 의미로 정렬한다.
+-- V15: 추적 종료 시점의 시세를 확정 저장한다.
+-- 기존 컬럼의 값을 재작성하지 않는다 — 이전 application image 롤백 호환을 유지해야 한다
+-- (docs/runbooks/deployment.md "Rollback 제약", design.md D4).
 ALTER TABLE position
     ADD COLUMN closed_at           DATETIME(6)     NULL AFTER status,
     ADD COLUMN close_price_source  VARCHAR(30)     NULL AFTER closed_at,
@@ -282,13 +302,12 @@ ALTER TABLE position
     ADD COLUMN close_fx_rate       DECIMAL(20, 6)  NULL AFTER close_foreign_price,
     ADD COLUMN close_premium_rate  DECIMAL(10, 2)  NULL AFTER close_fx_rate;
 
+-- 신규 컬럼만 채운다. 이전 image는 이 컬럼을 무시하므로 롤백 호환 범위 안이다.
 UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED';
-UPDATE position SET status = 'ARCHIVED' WHERE status = 'CLOSED';
-UPDATE position SET status = 'ACTIVE'   WHERE status = 'OPEN';
 ```
 
-기존 `CLOSED` 행은 청산 시세를 복원할 방법이 없다. 추정해 채우지 않고 `LEGACY_UNKNOWN`으로 표시해 확정
-손익을 제공하지 않는다.
+`status` 컬럼은 `OPEN`/`CLOSED`를 유지한다 (D4). 기존 종료 행은 청산 시세를 복원할 방법이 없으므로 추정해
+채우지 않고 `LEGACY_UNKNOWN`으로 표시해 확정 손익을 제공하지 않는다.
 
 #### 5.3.2 `close_price_source` 값
 
@@ -358,6 +377,29 @@ fun grossPnl(reference: TrackingPriceReference): TrackingGrossPnl    // ACTIVE�
 
 이미 `ARCHIVED`인 추적을 다시 `archive`하면 `InvalidTrackingException` → `INVALID_TRACKING`이다(현재
 `Position.close()`의 동작과 동일).
+
+#### 5.3.5 확정의 단일성 (동시성)
+
+"종료 시점 시세를 확정한다"는 계약은 **정확히 한 번만** 확정될 때 성립한다. 현재 `BaseEntity`에는
+optimistic lock version이 없다. 두 요청이 같은 추적을 동시에 archive하면 둘 다 `ACTIVE`를 읽고 둘 다
+성공해 마지막 쓰기가 앞선 스냅샷을 덮어쓴다. 첫 요청이 사용자에게 돌려준 확정 손익과 DB에 남은 값이
+달라지므로 계약이 깨진다. 화면의 종료 버튼 연타로 충분히 재현된다.
+
+**해결**: archive 트랜잭션은 행을 잠근 뒤 상태를 검사한다.
+
+```kotlin
+// TrackingRepository
+fun findByIdForUpdate(id: Long): Tracking?   // SELECT ... FOR UPDATE
+```
+
+- 잠금 → 상태 검사 → snapshot 조회 → 확정 → 저장을 하나의 트랜잭션에서 수행한다
+- 경쟁에서 진 요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다. 조용히 성공시키지 않는다
+- `BaseEntity`에 `@Version`을 추가하지 않는다. 모든 Entity에 파급되는 변경이고 Phase 0 범위 밖이다.
+  필요한 것은 이 한 경로의 선형화이므로 행 잠금이 정확한 도구다
+- 조회 경로(`findById`, 목록, `gross-pnl`)는 잠그지 않는다
+
+`gross-pnl`은 확정 이후 읽기 전용이므로 추가 잠금이 필요 없다. 기록 생성은 확정 계약이 아니므로 대상이
+아니다 — 같은 추적을 두 번 기록하면 두 개의 독립 record가 생기는 것이 맞다.
 
 ### 5.4 표현 정렬
 
@@ -453,6 +495,28 @@ canonicalKey = "BTC:BITHUMB:BINANCE"
 - `docs/work/private-live-autotrader/README.md`에 As-Is 문서로의 역참조를 추가한다. 동결된 마스터
   `design.md`는 건드리지 않는다 — 역참조는 프로그램 문서 목록의 성격이므로 랜딩 문서가 소유하는 편이 맞고,
   동결 산출물의 무변경 검사(`dod.md` AC17)와도 충돌하지 않는다.
+
+### 5.8 배포 호환성
+
+`docs/runbooks/deployment.md`의 배포 순서는 API 교체 → API readiness → Batch 교체 → **Web/Nginx 교체** →
+smoke이고, 실패 시 이전 성공 SHA의 API·Batch·Web image를 **함께** 되돌린다. DB down migration은 하지 않는다.
+
+Phase 0의 모든 변경을 이 계약 기준으로 분류한다.
+
+| 변경 | 이전 image 호환 | 판정 |
+|---|---|---|
+| `V15` 컬럼 추가 (전부 nullable) | 이전 image가 무시 | **안전** — runbook이 명시한 허용 범위 |
+| `V15`의 `close_price_source` 백필 | 신규 컬럼만 채움 | **안전** |
+| REST 경로 `/positions` → `/trackings` | 이전 web image는 404 | 배포 순서상 API 교체(4단계)~Web 교체(7단계) 구간에서 web이 깨진다. **롤백은 세 image를 함께 되돌리므로 안전**하다. 개인 단일 계정 제품에서 이 구간의 사용자 영향은 수 분이다 |
+| 에러코드·응답 필드 rename | 〃 | 〃 — API와 Web이 같은 SHA로 함께 움직이는 한 정합적이다 |
+| `status` 컬럼 값 재작성 | **이전 image가 `valueOf` 실패 → 롤백 불가** | **금지. 채택하지 않는다** (D4) |
+
+정리하면 Phase 0이 DB에 남기는 것은 **추가 컬럼뿐**이고, 나머지는 함께 배포·함께 롤백되는 application
+계약 변경이다. 이 원칙이 깨지는 유일한 후보였던 상태값 재작성을 D4가 제거했다.
+
+배포 구간(4~7단계)의 web 단절을 줄이려면 그 배포에서만 Web을 API보다 먼저 교체하는 방법이 있으나,
+runbook의 고정 순서를 이 Phase가 바꾸지 않는다. 대신 배포 시 짧은 단절이 발생함을 `understanding.md`에
+기록한다.
 
 ## 6. 미해결 결정 (Phase 1 이월)
 

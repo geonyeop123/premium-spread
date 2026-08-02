@@ -119,14 +119,35 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC1
 
 예상: exit 0. AC1은 `web=6 web_route_dir=1`이 남아 여전히 RED다 (T6이 처리).
 
-### T3. 상태값 정렬 + `V15` + 청산 스냅샷
+### T3. 상태 표현 정렬 + `V15` + 청산 스냅샷 + 확정 단일성
 
-**`TrackingStatus`**: `OPEN` → `ACTIVE`, `CLOSED` → `ARCHIVED`
+**`TrackingStatus`**: 값은 `ACTIVE`/`ARCHIVED`. **DB 저장값은 `OPEN`/`CLOSED`를 유지한다** (`design.md` D4).
 
-**`infrastructure/common/src/main/resources/db/migration/V15__add_close_snapshot_and_align_tracking_status.sql`**
+```kotlin
+// domain/tracking/TrackingStatusConverter.kt
+@Converter(autoApply = false)
+class TrackingStatusConverter : AttributeConverter<TrackingStatus, String> {
+    override fun convertToDatabaseColumn(attribute: TrackingStatus): String = when (attribute) {
+        TrackingStatus.ACTIVE -> "OPEN"
+        TrackingStatus.ARCHIVED -> "CLOSED"
+    }
+    override fun convertToEntityAttribute(dbData: String): TrackingStatus = when (dbData) {
+        "OPEN" -> TrackingStatus.ACTIVE
+        "CLOSED" -> TrackingStatus.ARCHIVED
+        else -> throw IllegalStateException("Unknown tracking status in database: $dbData")
+    }
+}
+```
+
+`Tracking.status`는 `@Enumerated`를 떼고 `@Convert(converter = TrackingStatusConverter::class)`를 쓴다.
+저장값 리터럴 `"OPEN"`·`"CLOSED"`는 이 파일 밖에 나타나지 않는다 (`dod.md` AC24가 기계 검사).
+
+**`infrastructure/common/src/main/resources/db/migration/V15__add_tracking_close_snapshot.sql`**
 
 ```sql
--- V15: 추적 종료 시점의 시세를 확정 저장하고 상태값을 추적 의미로 정렬한다.
+-- V15: 추적 종료 시점의 시세를 확정 저장한다.
+-- 기존 컬럼의 값을 재작성하지 않는다 — 이전 application image 롤백 호환을 유지해야 한다
+-- (docs/runbooks/deployment.md "Rollback 제약", design.md D4·§5.8).
 ALTER TABLE position
     ADD COLUMN closed_at           DATETIME(6)     NULL AFTER status,
     ADD COLUMN close_price_source  VARCHAR(30)     NULL AFTER closed_at,
@@ -136,10 +157,20 @@ ALTER TABLE position
     ADD COLUMN close_fx_rate       DECIMAL(20, 6)  NULL AFTER close_foreign_price,
     ADD COLUMN close_premium_rate  DECIMAL(10, 2)  NULL AFTER close_fx_rate;
 
+-- 신규 컬럼만 채운다. 이전 image는 이 컬럼을 무시하므로 롤백 호환 범위 안이다.
 UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED';
-UPDATE position SET status = 'ARCHIVED' WHERE status = 'CLOSED';
-UPDATE position SET status = 'ACTIVE'   WHERE status = 'OPEN';
 ```
+
+**확정 단일성** (`design.md` §5.3.5)
+
+```kotlin
+// TrackingRepository
+fun findByIdForUpdate(id: Long): Tracking?
+```
+
+`SpringDataTrackingRepository`에 `@Lock(LockModeType.PESSIMISTIC_WRITE)` 쿼리를 추가하고
+`JpaTrackingRepositoryAdapter`가 노출한다. Facade의 `archive`만 이 경로를 쓴다. 조회 경로는 잠그지 않는다.
+경쟁에서 진 요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다.
 
 **도메인**
 
@@ -171,11 +202,16 @@ fun archive(snapshot: TrackingCloseSnapshot?, archivedAt: Instant)
 ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
 ./gradlew test --offline --no-daemon
 ./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon
-bash docs/work/private-live-autotrader-phase-0/verify.sh AC11
+./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon
+bash docs/work/private-live-autotrader-phase-0/verify.sh AC11 AC23 AC24
 ```
 
-예상: exit 0. `verifyMigrations`는 `UPDATE`를 차단하지 않는다 (`infrastructure/common/build.gradle.kts:85`가
-`TRUNCATE TABLE`·`DROP TABLE`만 검사).
+예상: exit 0. `V15*` 통합 test는 빈 DB latest, `V14`→`V15` 경로, **`status` 값 보존**, `LEGACY_UNKNOWN`
+백필을 검사한다. `TrackingArchive*`는 확정성·`SNAPSHOT_UNAVAILABLE` 409·**동시 archive 단일 확정** 세 케이스를
+포함한다.
+
+`verifyMigrations`의 destructive gate는 `TRUNCATE TABLE`·`DROP TABLE`만 검사하므로
+(`infrastructure/common/build.gradle.kts:85`) 기존 컬럼 값 재작성을 잡지 못한다. 그 공백을 `AC23`이 메운다.
 
 ### T4. `gross-pnl` 응답 정직화
 
@@ -195,13 +231,17 @@ Phase 0은 손익 모델을 바꾸지 않는다 (`design.md` §1.3).
 
 **검증**
 
+신설 `TrackingGrossPnlContractTest` (`apps/api/src/integrationTest`)가 `ACTIVE`·`ARCHIVED` 두 경우의 응답
+JSON **키 집합을 정확히 대조**한다. 옛 키(`totalPnlPercent`, `isProfit`, `koreaCurrentValue`, `premiumDiff`,
+`positionId`)의 부재도 응답 기준으로 확인한다 — DTO 파일 텍스트 검사는 필드가 응답에 실리는지를 증명하지
+못한다 (`dod.md` AC3).
+
 ```bash
 ./gradlew test --offline --no-daemon
-./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon
-bash docs/work/private-live-autotrader-phase-0/verify.sh AC3 AC5
+./gradlew :apps:api:integrationTest --tests '*TrackingGrossPnlContract*' --tests '*TrackingArchive*' --offline --no-daemon
 ```
 
-예상: exit 0. `AC5`는 "archive 후 시세를 바꿔도 gross 손익이 동일" 케이스와 409 케이스를 모두 포함한다.
+예상: exit 0.
 
 ### T5. dead·미연결 계약 처리
 
@@ -244,14 +284,31 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC7
   않습니다.`를 표시한다. 조용히 삼키지 않는다
 - 타입 union `'OPEN' | 'CLOSED'` → `'ACTIVE' | 'ARCHIVED'`
 
+**테스트 인프라 도입** — `apps/web`에는 테스트가 없었다 (`scripts`는 `dev`/`build`/`start`/`lint`뿐,
+testing 관련 의존성 0개). 문구 grep은 주석·미사용 컴포넌트·도달 불가 분기로도 통과하므로 고지가 실제로
+보이는지 증명하지 못한다 (`dod.md` AC4).
+
+- devDependencies 추가: `vitest`, `@vitejs/plugin-react`, `jsdom`, `@testing-library/react`,
+  `@testing-library/jest-dom`
+- `package.json` scripts에 `"test": "vitest run"` 추가, `vitest.config.ts` 신설
+- 테스트: `src/components/TrackingList.test.tsx`, `src/app/trackings/[id]/page.test.tsx` —
+  `dod.md` AC4 표의 확인 대상을 각각 검증
+- `npm ci` 후 `npm audit --audit-level=high`가 여전히 exit 0인지 확인한다. 신규 advisory가 생기면
+  `overrides`로 처리하고 그 근거를 `understanding.md`에 남긴다 (PR #65·#66에서 정리한 계약을 깨지 않는다)
+
+**CI 반영** — `.github/workflows/quality-gate.yml`의 web job에 `npm run test`를 추가하고,
+`ci/quality-gate-contract-test.sh`의 해당 job 단계 기대값을 함께 갱신한다. 계약 검사와 workflow를 따로
+바꾸면 CI가 RED가 된다 (Phase -1에서 확인된 계약).
+
 **검증**
 
 ```bash
-cd apps/web && npm ci && npm run lint && npm run build
-cd ../.. && bash docs/work/private-live-autotrader-phase-0/verify.sh AC1 AC4
+cd apps/web && npm ci && npm run lint && npm run test && npm run build && npm audit --audit-level=high
+cd ../.. && bash ci/quality-gate-contract-test.sh
+bash docs/work/private-live-autotrader-phase-0/verify.sh AC1
 ```
 
-예상: exit 0, `AC1 GREEN`, `AC4 GREEN missing=[]`.
+예상: 전부 exit 0, `AC1 GREEN leftover=[api_http=0 web=0 old_route=0] new_route=1`.
 
 ### T7. 문서 정렬
 
@@ -281,7 +338,9 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC8 AC15 AC16 AC17
 ./gradlew test architectureTest --offline --no-daemon
 ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
 ./gradlew :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --offline --no-daemon
-cd apps/web && npm ci && npm run lint && npm run build && cd ../..
+cd apps/web && npm ci && npm run lint && npm run test && npm run build && cd ../..
+bash ci/quality-gate-contract-test.sh
+bash docs/check-documentation.sh && git diff --check
 bash docs/work/private-live-autotrader-phase-0/verify.sh
 ```
 
@@ -292,10 +351,10 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh
 
 - [ ] T1. 도메인·인프라·애플리케이션·인터페이스 타입 rename
 - [ ] T2. REST 경로·에러코드 rename
-- [ ] T3. 상태값 정렬 + `V15` + 청산 스냅샷
+- [ ] T3. 상태 표현 정렬 + `V15` + 청산 스냅샷 + 확정 단일성
 - [ ] T4. `gross-pnl` 응답 정직화
 - [ ] T5. dead·미연결 계약 처리
-- [ ] T6. `apps/web` 정렬
+- [ ] T6. `apps/web` 정렬 (테스트 인프라 도입 포함)
 - [ ] T7. 문서 정렬
 - [ ] T8. 전체 gate와 DoD 증거
 

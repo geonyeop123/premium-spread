@@ -32,16 +32,18 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 
 | # | 수용기준 (관찰 가능) | 근거 원문 | 티어 | 검증 명령 | 통과 조건 |
 |---|---|---|---|---|---|
-| AC1 | 실행 소스와 HTTP 샘플에 `positions` REST 경로가 남아 있지 않다. | `P0-O1`, `SEM-1`, D1 | T1 | 아래 `AC1 command` | exit 0, `leftover=[]` |
-| AC2 | 실행 소스의 Kotlin 타입·패키지에 `Position` 식별자가 남아 있지 않다 (`@Table(name = "position")`과 V12 동결 guard 제외). | D1, `SEM-2` | T1 | 아래 `AC2 command` | exit 0, `leftover=[]` |
-| AC3 | `gross-pnl` 응답이 `pnlBasis`·`priceBasis`·`observedAt`을 갖고, 분모를 감춘 옛 필드명(`totalPnlPercent`, `isProfit`, `koreaCurrentValue`)이 없다. | `P0-O2`, `SEM-4`, D3 | T1 | 아래 `AC3 command` | exit 0, `missing=[] leftover=[]` |
-| AC4 | 화면이 비주문 고지와 gross 각주(수수료·펀딩비·슬리피지·환전 스프레드 제외, 계정 손익 아님)와 레버리지 무관성 각주와 프리미엄 방향 설명을 모두 표시한다. | `SEM-1`, `SEM-3`, `SEM-4` | T1 | 아래 `AC4 command` | exit 0, `missing=[]` |
-| AC5 | 종료된 추적의 gross 손익이 이후 시세 변동에 영향받지 않는다. 시세를 확정하지 못한 종료는 손익 대신 `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE`을 반환한다. | §3.3 실제 결함, D2 | T2 | `./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon` | exit 0, 확정성·409 케이스 모두 통과 |
+| AC1 | 실행 소스와 HTTP 샘플에 `positions` REST 경로가 남아 있지 않다. 인용 부호 종류와 무관하게 검사한다. | `P0-O1`, `SEM-1`, D1 | T1 | 아래 `AC1 command` | exit 0, `leftover=[…0…] new_route=1` |
+| AC2 | 실행 소스의 Kotlin 타입·패키지에 `Position` 식별자가 남아 있지 않다 (`@Table(name = "position")`과 V12 동결 guard 제외). | D1, `SEM-2` | T1 | 아래 `AC2 command` | exit 0, `leftover=[0 hits]` |
+| AC3 | **실제 HTTP 응답**이 `pnlBasis`·`priceBasis`·`observedAt`과 분모를 드러낸 필드명을 갖고, 옛 필드명이 응답에 없다. 파일 텍스트가 아니라 응답 body를 검증한다. | `P0-O2`, `SEM-4`, D3 | T2 | 아래 `AC3 command` | exit 0 |
+| AC4 | 목록·상세 화면 **렌더 결과**에 비주문 고지, gross 각주(수수료·펀딩비·슬리피지·환전 스프레드 제외, 계정 손익 아님), 레버리지 무관성 각주, 프리미엄 방향 설명, 분모 라벨이 나타난다. 문자열 존재가 아니라 DOM 출현을 검증한다. | `SEM-1`, `SEM-3`, `SEM-4` | T2 | 아래 `AC4 command` | exit 0 |
+| AC5 | 종료된 추적의 gross 손익이 이후 시세 변동에 영향받지 않는다. 시세를 확정하지 못한 종료는 `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE`을 반환한다. **동시 archive 요청 중 정확히 하나만 확정하고 나머지는 `INVALID_TRACKING`을 받는다.** | §3.3 실제 결함, D2, §5.3.5 | T2 | `./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon` | exit 0, 확정성·409·동시성 세 케이스 통과 |
 | AC6 | identity 판정이 4개 누락 항목(양 leg의 instrument class·quote currency), 기존 자산의 유효 범위, 확장 담당 Phase를 모두 명시한다. | `P0-O3`, `ARCH-9`, D5 | T1 | 아래 `AC6 command` | exit 0, `missing=[]` |
 | AC7 | dead·미연결 계약 4건이 각각 유지/수정/제거로 판정되고, 제거 판정 항목이 실행 소스에서 사라졌다. | `P0-O4` | T1 | 아래 `AC7 command` | exit 0, `undecided=[] not_removed=[]` |
 | AC8 | As-Is 문서에 `Planned capability` 절과 Planned 문서 링크가 있고, Planned 문서에서 As-Is 문서로의 역참조가 있다. | `P0-O5`, `ARCH-7` | T1 | 아래 `AC8 command` | exit 0, `missing=[]` |
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
-| AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 `OPEN`/`CLOSED` 행이 `ACTIVE`/`ARCHIVED`로 전이하며 기존 종료 행이 `LEGACY_UNKNOWN`을 갖는다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
+| AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
+| AC23 | `V15`가 기존 컬럼을 재작성·변경·삭제하지 않는다. `UPDATE`의 대상 컬럼이 모두 같은 migration이 추가한 컬럼이다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8 | T1 | 아래 `AC23 command` | exit 0, `rewrites_existing=[] forbidden=[]` |
+| AC24 | 상태 변환 경계가 converter 한 곳에 모이고, 도메인·API가 `ACTIVE`/`ARCHIVED`를 쓰는 동안 DB 저장값은 `OPEN`/`CLOSED`다. | D4, §5.8 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
 | AC12 | unit·contract test와 architecture 경계 test가 통과한다. | 기존 repository gate, `.ai/rules/architecture.md` | T2 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 |
 | AC13 | API·batch·infrastructure 통합 test가 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --offline --no-daemon` | exit 0 |
@@ -64,14 +66,26 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 > 통과시킨다.** 이 계약서 작성 중 실제로 `rg` 기반 AC1·AC2·AC7이 구현 전인데도 GREEN을 반환하는 것을
 > 확인했다. 같은 부류를 Phase -1이 이미 겪었다(`f40d4b2 fix: CI 계약 검사의 runner 도구 의존성 제거`).
 
+> **정적 검사의 한계:** 문자열 존재 검사는 "그 문자열이 파일에 있다"만 증명한다. 주석·미사용 컴포넌트·도달
+> 불가 분기·응답에 실리지 않는 DTO 필드로도 통과할 수 있다. 따라서 **사용자가 보는 것**(AC4)과 **소비자가
+> 받는 것**(AC3)은 정적 검사가 아니라 렌더 테스트와 응답 계약 테스트로 검증한다. 정적 검사는 "옛 이름이
+> 남아 있지 않다"처럼 부재를 주장하는 데만 쓴다.
+
+`verify.sh`는 `dod.md`의 `#### ACn command` 블록을 그대로 추출해 실행한다. 인자 없이 실행하면 블록이 있는
+모든 기준을 돌리므로 `gradlew`·`npm`이 포함된 AC3·AC4·AC9도 함께 실행된다. 빠른 정적 확인만 필요하면
+기준을 명시한다: `bash docs/work/private-live-autotrader-phase-0/verify.sh AC1 AC2 AC23 AC24`.
+
 #### AC1 command
 
 ```bash
+# 인용 부호에 의존하지 않는다. 초안의 "'/positions" 패턴은 백틱 템플릿 리터럴
+# (`/positions/${id}` 등 3건)을 놓쳐 구현 전에도 GREEN을 낼 수 있었다.
 api_http=$(grep -rn --exclude-dir=build '/api/v1/positions' apps/api/src http 2>/dev/null | grep -c . || true)
-web=$(grep -rn --exclude-dir=node_modules --exclude-dir=.next "'/positions" apps/web/src 2>/dev/null | grep -c . || true)
-webpath=$([ -d apps/web/src/app/positions ] && echo 1 || echo 0)
-echo "leftover=[api_http=$api_http web=$web web_route_dir=$webpath]"
-[ "$api_http" -eq 0 ] && [ "$web" -eq 0 ] && [ "$webpath" -eq 0 ]
+web=$(grep -rn --exclude-dir=node_modules --exclude-dir=.next '/positions' apps/web/src 2>/dev/null | grep -c . || true)
+oldroute=$([ -d apps/web/src/app/positions ] && echo 1 || echo 0)
+newroute=$([ -d apps/web/src/app/trackings ] && echo 1 || echo 0)
+echo "leftover=[api_http=$api_http web=$web old_route=$oldroute] new_route=$newroute"
+[ "$api_http" -eq 0 ] && [ "$web" -eq 0 ] && [ "$oldroute" -eq 0 ] && [ "$newroute" -eq 1 ]
 ```
 
 #### AC2 command
@@ -89,34 +103,36 @@ echo "leftover=[$hits hits]"
 
 #### AC3 command
 
+파일 텍스트가 아니라 **실제 응답 body**를 검증한다. 필드가 DTO에 선언돼 있어도 응답에 실리지 않을 수 있고,
+컨트롤러가 다른 DTO를 반환할 수도 있으므로 정적 검사만으로는 주장을 지지하지 못한다.
+
+`TrackingGrossPnlContractTest`가 `ACTIVE`·`ARCHIVED` 두 경우의 응답 JSON 키 집합을 정확히 대조한다.
+
 ```bash
-dto=apps/api/src/main/kotlin/io/premiumspread/interfaces/api/tracking/TrackingDtos.kt
-missing=""
-for f in pnlBasis priceBasis observedAt grossPnlPercentOfKoreaNotional isGrossProfit \
-         koreaLegGrossPnlKrw foreignLegGrossPnlKrw totalGrossPnlKrw koreaLegNotionalKrw; do
-  grep -q "$f" "$dto" || missing="$missing $f"
-done
-leftover=""
-for f in totalPnlPercent isProfit koreaCurrentValue premiumDiff positionId; do
-  grep -qw "$f" "$dto" && leftover="$leftover $f"
-done
-echo "missing=[$missing] leftover=[$leftover]"
-[ -z "$missing" ] && [ -z "$leftover" ]
+./gradlew :apps:api:integrationTest --tests '*TrackingGrossPnlContract*' --offline --no-daemon
 ```
 
 #### AC4 command
 
+`apps/web`에는 테스트 인프라가 없었다. 이 Phase가 vitest + Testing Library를 도입한다 (`plan.md` T6). 문자열
+grep은 주석·미사용 컴포넌트·도달 불가 분기로도 통과하므로 렌더 결과를 검증한다.
+
 ```bash
-missing=""
-grep -rq "주문을 내지 않습니다" apps/web/src || missing="$missing non-order-notice"
-grep -rq "수수료·펀딩비·슬리피지·환전 스프레드" apps/web/src || missing="$missing gross-footnote"
-grep -rq "계정 손익이나 실제 체결 손익이 아닙니다" apps/web/src || missing="$missing not-account-pnl"
-grep -rq "필요 증거금에만 영향" apps/web/src || missing="$missing leverage-footnote"
-grep -rq "프리미엄이 축소될 때 이익" apps/web/src || missing="$missing premium-direction"
-grep -rq "한국 leg 명목가 대비" apps/web/src || missing="$missing percent-denominator"
-echo "missing=[$missing]"
-[ -z "$missing" ]
+cd apps/web && npm ci && npm run test
 ```
+
+`TrackingList.test.tsx`와 `trackings/[id]/page.test.tsx`가 각각 다음이 DOM에 나타남을 확인한다.
+
+| 확인 대상 | 목록 | 상세 |
+|---|---|---|
+| 비주문 고지 | O | O |
+| gross 각주 (제외 항목) | O | O |
+| 계정 손익 아님 | O | O |
+| 분모 라벨 | O | O |
+| 레버리지 무관성 각주 | — | O |
+| 프리미엄 방향 설명 | — | O |
+| `ARCHIVED` 확정값 배지 | O | O |
+| 409 시 손익 미제공 안내 | — | O |
 
 #### AC6 command
 
@@ -164,6 +180,43 @@ echo "missing=[$missing]"
 grep -qi "tracking" infrastructure/api/src/main/kotlin/io/premiumspread/infrastructure/api/security/PublicEndpointPolicy.kt \
   && { echo "tracking path leaked into public policy"; exit 1; }
 ./gradlew :apps:api:integrationTest --tests '*TrackingController*' --offline --no-daemon
+```
+
+#### AC23 command
+
+```bash
+m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
+[ -n "$m" ] || { echo "V15 없음"; exit 1; }
+added=$(grep -oiE 'ADD COLUMN[[:space:]]+[a-zA-Z_]+' "$m" | awk '{print tolower($3)}' | sort -u)
+targets=$(grep -oiE 'SET[[:space:]]+[a-zA-Z_]+' "$m" | awk '{print tolower($2)}' | sort -u)
+bad=""
+for t in $targets; do printf '%s\n' "$added" | grep -qx "$t" || bad="$bad $t"; done
+forbidden=$(grep -inE 'MODIFY COLUMN|CHANGE COLUMN|DROP COLUMN|TRUNCATE|DROP TABLE' "$m" | cut -c1-60 || true)
+echo "added=[$(printf '%s' "$added" | tr '\n' ' ')] rewrites_existing=[$bad] forbidden=[$forbidden]"
+[ -z "$bad" ] && [ -z "$forbidden" ]
+```
+
+#### AC24 command
+
+```bash
+conv=$(find domain/src/main infrastructure/common/src/main -name 'TrackingStatusConverter.kt' 2>/dev/null | head -1)
+missing=""
+[ -n "$conv" ] || missing="$missing converter-file"
+if [ -n "$conv" ]; then
+  for v in ACTIVE ARCHIVED OPEN CLOSED; do grep -q "$v" "$conv" || missing="$missing $v"; done
+fi
+# 저장값 리터럴이 converter 밖으로 새지 않아야 한다.
+leaked=$(grep -rn --include='*.kt' --exclude-dir=build -E '"(OPEN|CLOSED)"' \
+  domain/src/main apps/api/src/main infrastructure/common/src/main 2>/dev/null \
+  | grep -v 'TrackingStatusConverter' | grep -v 'V12MigrationSafety' | cut -c1-80 || true)
+echo "missing=[$missing] leaked=[$leaked]"
+[ -z "$missing" ] && [ -z "$leaked" ]
+```
+
+#### AC15 command
+
+```bash
+bash docs/check-documentation.sh && git diff --check && echo "whitespace ok"
 ```
 
 #### AC16 command
@@ -239,16 +292,18 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 | # | RED (구현 전) | GREEN (구현 후) |
 |---|---|---|
-| AC1 | RED — `leftover=[api_http=35 web=6 web_route_dir=1]` | |
+| AC1 | RED — 초안 패턴 기준 `leftover=[api_http=35 web=6 web_route_dir=1]`. 강화 후 web 실측 9건 (백틱 경로 3건 추가 검출) | |
 | AC2 | RED — `leftover=[131 hits]` | |
-| AC3 | RED — `TrackingDtos.kt` 파일 부재 | |
-| AC4 | RED — `missing=[non-order-notice gross-footnote not-account-pnl leverage-footnote premium-direction percent-denominator]` (6/6 전부 부재) | |
-| AC5 | RED — `TrackingArchive*` 테스트 부재. 현재 `Position.close()`는 청산 시세를 저장하지 않고 `/pnl`에 상태 가드가 없다 (`design.md` §3.3) | |
+| AC3 | RED — `TrackingGrossPnlContractTest` 부재. 현재 응답에 `pnlBasis`·`priceBasis`가 없다 | |
+| AC4 | RED — `apps/web`에 테스트 인프라 자체가 없다 (`scripts`에 `test` 없음, testing 관련 의존성 0개). 고지 문구 6종도 전부 부재 | |
+| AC5 | RED — `TrackingArchive*` 테스트 부재. 현재 `Position.close()`는 청산 시세를 저장하지 않고 `/pnl`에 상태 가드가 없다 (§3.3). 동시성: `BaseEntity`에 `@Version`이 없고 archive 경로에 행 잠금이 없어 마지막 쓰기가 앞선 확정을 덮어쓴다 (§5.3.5) | |
 | AC6 | GREEN — `missing=[]` (§5.5 판정이 `design.md`에 존재) | |
 | AC7 | RED — `undecided=[] not_removed=[10 hits]` (판정은 완료, 제거 미실행) | |
 | AC8 | RED — `missing=[planned-section forward-link back-link]` (3/3 전부 부재) | |
 | AC9 | 회귀 guard — `PublicEndpointPolicy`에 추적 경로 없음(현재도 없음). 통합 test는 rename 후에만 실행 가능 | |
 | AC10 | RED — `V15` 미존재 | |
+| AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | |
+| AC24 | RED — `TrackingStatusConverter` 미존재 | |
 | AC11 | 회귀 guard — 기준선 통과 | |
 | AC12 | 회귀 guard — 기준선 통과 | |
 | AC13 | 회귀 guard — 기준선 통과 | |
@@ -266,7 +321,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 ```text
 DoD VERDICT: private-live-autotrader-phase-0
-  T1/T2 자동:      _/19
+  T1/T2 자동:      _/21
   T3 기록 제출:    0건
   T4 사람 확인:    _/3
   => (미판정)
