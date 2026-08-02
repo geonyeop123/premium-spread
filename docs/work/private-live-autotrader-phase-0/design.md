@@ -309,21 +309,50 @@ UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED
 `status` 컬럼은 `OPEN`/`CLOSED`를 유지한다 (D4). 기존 종료 행은 청산 시세를 복원할 방법이 없으므로 추정해
 채우지 않고 `LEGACY_UNKNOWN`으로 표시해 확정 손익을 제공하지 않는다.
 
-#### 5.3.2 `close_price_source` 값
+#### 5.3.2 확정 판정과 요청·응답 계약
 
-| 값 | 의미 | `gross-pnl` 응답 |
+**확정 판정 규칙 (단일 정의).** 종료된 추적이 확정 손익을 갖는 것은 다음이 모두 참일 때뿐이다.
+
+```text
+status == ARCHIVED
+  AND close_price_source == 'MARKET_SNAPSHOT'
+  AND close_korea_price, close_foreign_price, close_fx_rate, close_premium_rate 가 모두 non-null
+```
+
+하나라도 아니면 **확정 손익을 제공하지 않는다**(fail-closed). `close_price_source`가 `NULL`인 경우도 여기
+포함된다. 이 규칙 하나가 아래 모든 조합을 덮으므로 값마다 분기를 따로 두지 않는다.
+
+| `close_price_source` | 생성 경로 | 확정 손익 |
 |---|---|---|
-| `MARKET_SNAPSHOT` | 종료 시점 premium snapshot을 확정 저장 | 고정된 확정 손익 |
-| `SNAPSHOT_UNAVAILABLE` | 종료 시점에 snapshot이 없거나 신선도 기준을 넘김 | `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE` |
-| `LEGACY_UNKNOWN` | `V15` 이전에 종료된 행 | `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE` |
+| `MARKET_SNAPSHOT` | 이 Phase 이후의 archive, snapshot 신선 | 제공 |
+| `SNAPSHOT_UNAVAILABLE` | 이 Phase 이후의 archive, snapshot 부재·stale | 미제공 |
+| `LEGACY_UNKNOWN` | `V15`가 백필한 기존 종료 행 | 미제공 |
+| `NULL` | **`V15` 적용 후 이전 image가 종료시킨 행** — 이전 image는 `status`만 쓰고 신규 컬럼을 모르므로 `NULL`이 남는다. 롤백했거나 API 교체 중 이전 image가 아직 요청을 처리한 구간에서 발생한다 | 미제공 |
 
-신선도 기준은 기록 생성 시와 같은 60초(`SNAPSHOT_MAX_AGE_SECONDS`)를 쓴다. 기록 생성은 stale이면 **거절**
-하지만 종료는 **거절하지 않고 `SNAPSHOT_UNAVAILABLE`로 기록**한다. 생성은 사용자가 재시도하면 되지만 종료는
+`closed_at`도 같은 이유로 `NULL`일 수 있다. 이 Phase의 archive는 항상 기록하지만(주입된 `Clock`) 이전
+image가 종료시킨 행에는 없다. `NULL`이면 종료 시각을 추정하지 않고 "종료 시각 불명"으로 표시한다.
+`updatedAt`으로 대체하지 않는다 — 그것은 종료 시각이 아니다.
+
+`V15`는 재실행되지 않으므로 이런 행을 자동 보정하지 않는다. 보정하지 않는 것이 옳다: 없는 시세를 만들어
+채우는 것은 `SEM-4`가 금지하는 거짓 확정이다.
+
+**신선도.** 기준은 기록 생성과 같은 60초(`SNAPSHOT_MAX_AGE_SECONDS`)다. 기록 생성은 stale이면 **거절**하고,
+종료는 **거절하지 않고 `SNAPSHOT_UNAVAILABLE`로 기록**한다. 생성은 사용자가 재시도하면 되지만 종료는
 사용자의 실제 행위를 사후 기록하는 것이라 막을 근거가 없다.
 
-`closed_at`은 항상 기록한다(주입된 `Clock`). `close_observed_at`은 스냅샷의 관측 시각이며
-`MARKET_SNAPSHOT`일 때만 채워진다. 둘을 분리해야 "언제 종료했는지"와 "어느 시점 시세로 확정했는지"가
-구분된다.
+**요청·응답 계약 (세 문서의 단일 출처).** `409`가 어느 요청에 붙는지를 여기서 고정한다.
+
+| 요청 | 조건 | 응답 |
+|---|---|---|
+| `POST /trackings/{id}/archive` | snapshot 신선 | `200` + `close_price_source = MARKET_SNAPSHOT` |
+| `POST /trackings/{id}/archive` | snapshot 부재·stale | **`200`** + `close_price_source = SNAPSHOT_UNAVAILABLE` |
+| `POST /trackings/{id}/archive` | 이미 `ARCHIVED` (동시 요청의 패자 포함) | `400 INVALID_TRACKING` |
+| `GET /trackings/{id}/gross-pnl` | `ACTIVE` | `200`, `priceBasis = CURRENT_MARKET` |
+| `GET /trackings/{id}/gross-pnl` | `ARCHIVED` + 확정 판정 통과 | `200`, `priceBasis = ARCHIVED_SNAPSHOT` |
+| `GET /trackings/{id}/gross-pnl` | `ARCHIVED` + 확정 판정 실패 | `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE` |
+
+**`archive`는 어떤 경우에도 시세를 이유로 `409`를 반환하지 않는다.** 확정 실패는 종료를 막는 사유가 아니라
+그 종료가 확정 손익을 갖지 못한다는 사실일 뿐이며, 그 사실은 `gross-pnl` 조회 시점에 드러난다.
 
 #### 5.3.3 `gross-pnl` 응답 스키마
 
@@ -507,16 +536,37 @@ Phase 0의 모든 변경을 이 계약 기준으로 분류한다.
 |---|---|---|
 | `V15` 컬럼 추가 (전부 nullable) | 이전 image가 무시 | **안전** — runbook이 명시한 허용 범위 |
 | `V15`의 `close_price_source` 백필 | 신규 컬럼만 채움 | **안전** |
-| REST 경로 `/positions` → `/trackings` | 이전 web image는 404 | 배포 순서상 API 교체(4단계)~Web 교체(7단계) 구간에서 web이 깨진다. **롤백은 세 image를 함께 되돌리므로 안전**하다. 개인 단일 계정 제품에서 이 구간의 사용자 영향은 수 분이다 |
-| 에러코드·응답 필드 rename | 〃 | 〃 — API와 Web이 같은 SHA로 함께 움직이는 한 정합적이다 |
+| REST 경로 `/positions` → `/trackings` | 이전 web image는 404 | **롤백은 안전**(세 image를 함께 되돌린다). 그러나 **정상 배포마다 4~7단계 구간에 단절이 생긴다** — 아래에서 별도로 다룬다 |
+| 에러코드·응답 필드 rename | 〃 | 〃 |
 | `status` 컬럼 값 재작성 | **이전 image가 `valueOf` 실패 → 롤백 불가** | **금지. 채택하지 않는다** (D4) |
 
 정리하면 Phase 0이 DB에 남기는 것은 **추가 컬럼뿐**이고, 나머지는 함께 배포·함께 롤백되는 application
 계약 변경이다. 이 원칙이 깨지는 유일한 후보였던 상태값 재작성을 D4가 제거했다.
 
-배포 구간(4~7단계)의 web 단절을 줄이려면 그 배포에서만 Web을 API보다 먼저 교체하는 방법이 있으나,
-runbook의 고정 순서를 이 Phase가 바꾸지 않는다. 대신 배포 시 짧은 단절이 발생함을 `understanding.md`에
-기록한다.
+**이전 image가 남기는 데이터.** `V15` 적용 후 이전 image가 종료시킨 행은 `status`만 바뀌고 신규 컬럼이
+`NULL`로 남는다. 이는 롤백 호환의 대가이며 §5.3.2의 확정 판정 규칙이 fail-closed로 처리한다. "이전 image가
+쓴 데이터를 새 image가 읽는 경로"는 이 한 규칙으로 전부 덮인다.
+
+#### 배포 중 단절 — 수용하고 기록한다
+
+배포 순서는 API 교체 → readiness → Batch → Web이므로, 그 구간에 **이전 Web이 새 API를 호출해 404를 받는다.**
+정상 배포마다 발생하는 가용성 회귀이고 롤백 가능성과는 별개 문제다.
+
+호환 alias(`/positions`를 한 배포 동안 유지)로는 해결되지 않는다. 경로만 살려도 **응답 계약이 함께
+바뀌기 때문이다** — 이전 Web은 `totalPnlKrw`·`isProfit`·`status: "OPEN"`을 읽고 새 API는
+`totalGrossPnlKrw`·`isGrossProfit`·`status: "ACTIVE"`를 준다. `308` 리다이렉트도 같은 이유로 무의미하다.
+Web을 먼저 교체하는 순서 역전도 대칭적으로 깨진다(새 Web이 이전 API에 `/trackings`를 호출).
+
+즉 **경로·응답을 함께 바꾸는 이상 순차 교체 구간의 단절은 제거할 수 없다.** 제거하려면 세 image를 원자적으로
+전환하는 배포 절차가 필요하고, 그것은 이 Phase의 범위가 아니다.
+
+**결정: 수용한다.** 근거는 다음과 같다.
+
+- 영향 범위가 소유자 본인의 추적 화면 하나이고, 이 제품은 개인 단일 계정이다
+- 단절 구간은 API 기동~Web 교체 사이 수 분이며 배포 시점은 소유자가 정한다
+- 대안(영구 alias)은 `SEM-1`이 없애려는 이름을 계속 살려 두므로 Phase 0의 목적과 정면 충돌한다
+
+`understanding.md`와 PR 본문에 "이 배포에는 수 분의 Web 단절이 있다"를 명시한다. 조용히 넘기지 않는다.
 
 ## 6. 미해결 결정 (Phase 1 이월)
 

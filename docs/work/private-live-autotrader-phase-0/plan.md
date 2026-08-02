@@ -193,8 +193,25 @@ fun archive(snapshot: TrackingCloseSnapshot?, archivedAt: Instant)
 - `snapshot == null` → `closePriceSource = SNAPSHOT_UNAVAILABLE`, 가격 컬럼 null
 - `closedAt`은 항상 기록, `closeObservedAt`은 `MARKET_SNAPSHOT`일 때만
 
-**Facade `archive`**: 최신 premium snapshot을 조회해 60초 이내면 `TrackingCloseSnapshot`, 아니면 `null`을
-넘긴다. **snapshot 부재·stale을 이유로 archive를 거절하지 않는다** (`design.md` §5.3.2).
+**확정 판정은 한 곳에만 둔다** (`design.md` §5.3.2). 값별 분기를 흩뿌리지 않는다.
+
+```kotlin
+// Tracking
+val hasConfirmedClose: Boolean
+    get() = status == TrackingStatus.ARCHIVED &&
+        closePriceSource == TrackingClosePriceSource.MARKET_SNAPSHOT &&
+        closeKoreaPrice != null && closeForeignPrice != null &&
+        closeFxRate != null && closePremiumRate != null
+```
+
+`closePriceSource`와 `closedAt`은 **nullable**이다. `V15` 적용 후 이전 application image가 종료시킨 행은
+`status`만 바뀌고 신규 컬럼이 `NULL`로 남기 때문이다 (`design.md` §5.8). `NULL`은 `hasConfirmedClose == false`로
+자연히 fail-closed 처리되고, `closedAt`이 `NULL`이면 화면이 "종료 시각 불명"을 표시한다. `updatedAt`으로
+대체하지 않는다.
+
+**Facade `archive`**: 행을 잠근 뒤 최신 premium snapshot을 조회해 60초 이내면 `TrackingCloseSnapshot`,
+아니면 `null`을 넘긴다. **snapshot 부재·stale을 이유로 archive를 거절하지 않는다.** `409`는 archive가 아니라
+그 추적의 `gross-pnl` 조회에서만 나온다 — 요청·응답 계약의 단일 출처는 `design.md` §5.3.2 표다.
 
 **검증**
 
@@ -202,13 +219,16 @@ fun archive(snapshot: TrackingCloseSnapshot?, archivedAt: Instant)
 ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
 ./gradlew test --offline --no-daemon
 ./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon
-./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon
+./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --tests '*TrackingLegacyRow*' --offline --no-daemon
 bash docs/work/private-live-autotrader-phase-0/verify.sh AC11 AC23 AC24
 ```
 
-예상: exit 0. `V15*` 통합 test는 빈 DB latest, `V14`→`V15` 경로, **`status` 값 보존**, `LEGACY_UNKNOWN`
-백필을 검사한다. `TrackingArchive*`는 확정성·`SNAPSHOT_UNAVAILABLE` 409·**동시 archive 단일 확정** 세 케이스를
-포함한다.
+예상: exit 0.
+
+- `V15*` 통합 test — 빈 DB latest, `V14`→`V15` 경로, **`status` 값 보존**, `LEGACY_UNKNOWN` 백필 (`AC10`)
+- `TrackingArchive*` — `design.md` §5.3.2 요청·응답 계약 표의 6행 (`AC5`). archive는 어떤 경우에도 시세를
+  이유로 `409`를 내지 않는다
+- `TrackingLegacyRow*` — 이전 image가 남긴 `NULL` 행을 SQL로 직접 심고 fail-closed 읽기를 검증 (`AC25`)
 
 `verifyMigrations`의 destructive gate는 `TRUNCATE TABLE`·`DROP TABLE`만 검사하므로
 (`infrastructure/common/build.gradle.kts:85`) 기존 컬럼 값 재작성을 잡지 못한다. 그 공백을 `AC23`이 메운다.

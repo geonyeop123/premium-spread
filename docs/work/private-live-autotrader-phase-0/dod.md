@@ -36,12 +36,13 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC2 | 실행 소스의 Kotlin 타입·패키지에 `Position` 식별자가 남아 있지 않다 (`@Table(name = "position")`과 V12 동결 guard 제외). | D1, `SEM-2` | T1 | 아래 `AC2 command` | exit 0, `leftover=[0 hits]` |
 | AC3 | **실제 HTTP 응답**이 `pnlBasis`·`priceBasis`·`observedAt`과 분모를 드러낸 필드명을 갖고, 옛 필드명이 응답에 없다. 파일 텍스트가 아니라 응답 body를 검증한다. | `P0-O2`, `SEM-4`, D3 | T2 | 아래 `AC3 command` | exit 0 |
 | AC4 | 목록·상세 화면 **렌더 결과**에 비주문 고지, gross 각주(수수료·펀딩비·슬리피지·환전 스프레드 제외, 계정 손익 아님), 레버리지 무관성 각주, 프리미엄 방향 설명, 분모 라벨이 나타난다. 문자열 존재가 아니라 DOM 출현을 검증한다. | `SEM-1`, `SEM-3`, `SEM-4` | T2 | 아래 `AC4 command` | exit 0 |
-| AC5 | 종료된 추적의 gross 손익이 이후 시세 변동에 영향받지 않는다. 시세를 확정하지 못한 종료는 `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE`을 반환한다. **동시 archive 요청 중 정확히 하나만 확정하고 나머지는 `INVALID_TRACKING`을 받는다.** | §3.3 실제 결함, D2, §5.3.5 | T2 | `./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon` | exit 0, 확정성·409·동시성 세 케이스 통과 |
+| AC5 | `design.md` §5.3.2 "요청·응답 계약" 표의 6행이 실제 응답으로 성립한다. 특히 **`archive`는 snapshot 부재·stale에도 `200`을 반환하고**, `409`는 그 추적의 `gross-pnl` 조회에서만 나온다. 동시 archive 중 정확히 하나만 확정하고 나머지는 `400 INVALID_TRACKING`을 받는다. | §3.3 실제 결함, D2, §5.3.2, §5.3.5 | T2 | 아래 `AC5 command` | exit 0, 6행 전부 + 동시성 통과 |
 | AC6 | identity 판정이 4개 누락 항목(양 leg의 instrument class·quote currency), 기존 자산의 유효 범위, 확장 담당 Phase를 모두 명시한다. | `P0-O3`, `ARCH-9`, D5 | T1 | 아래 `AC6 command` | exit 0, `missing=[]` |
 | AC7 | dead·미연결 계약 4건이 각각 유지/수정/제거로 판정되고, 제거 판정 항목이 실행 소스에서 사라졌다. | `P0-O4` | T1 | 아래 `AC7 command` | exit 0, `undecided=[] not_removed=[]` |
 | AC8 | As-Is 문서에 `Planned capability` 절과 Planned 문서 링크가 있고, Planned 문서에서 As-Is 문서로의 역참조가 있다. | `P0-O5`, `ARCH-7` | T1 | 아래 `AC8 command` | exit 0, `missing=[]` |
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
+| AC25 | **`V15` 적용 후 이전 image가 종료시킨 행**(`status='CLOSED'`, 신규 컬럼 전부 `NULL`)을 새 code가 fail-closed로 읽는다. `gross-pnl`은 `409`, 종료 시각은 "불명"이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1 | T2 | 아래 `AC25 command` | exit 0 |
 | AC23 | `V15`가 기존 컬럼을 재작성·변경·삭제하지 않는다. `UPDATE`의 대상 컬럼이 모두 같은 migration이 추가한 컬럼이다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8 | T1 | 아래 `AC23 command` | exit 0, `rewrites_existing=[] forbidden=[]` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모이고, 도메인·API가 `ACTIVE`/`ARCHIVED`를 쓰는 동안 DB 저장값은 `OPEN`/`CLOSED`다. | D4, §5.8 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
@@ -182,6 +183,38 @@ grep -qi "tracking" infrastructure/api/src/main/kotlin/io/premiumspread/infrastr
 ./gradlew :apps:api:integrationTest --tests '*TrackingController*' --offline --no-daemon
 ```
 
+#### AC5 command
+
+`TrackingArchiveIntegrationTest`가 `design.md` §5.3.2 요청·응답 계약 표의 6행을 각각 검증한다. 표가 단일
+출처이고 이 테스트가 그 표를 그대로 옮긴다 — 세 문서가 `409`의 위치를 다르게 서술하던 문제(codex 2R high-2)의
+재발 차단선이다.
+
+| 케이스 | 요청 | 기대 |
+|---|---|---|
+| 1 | `POST /archive` (snapshot 신선) | `200`, `closePriceSource=MARKET_SNAPSHOT` |
+| 2 | `POST /archive` (snapshot 부재·stale) | **`200`**, `closePriceSource=SNAPSHOT_UNAVAILABLE` |
+| 3 | `POST /archive` 재호출 | `400 INVALID_TRACKING` |
+| 4 | 케이스 1 뒤 시세를 바꾸고 `GET /gross-pnl` | `200`, `priceBasis=ARCHIVED_SNAPSHOT`, 금액이 archive 시점과 **동일** |
+| 5 | 케이스 2 뒤 `GET /gross-pnl` | `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE` |
+| 6 | 동시 `POST /archive` × N | 정확히 1건 `200`, 나머지 `400 INVALID_TRACKING`, DB의 확정값은 성공한 1건과 일치 |
+
+```bash
+./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon
+```
+
+#### AC25 command
+
+`TrackingLegacyRowIntegrationTest`가 이전 image가 남긴 행을 SQL로 직접 만들어(`status='CLOSED'`,
+`closed_at`·`close_price_source`·`close_*` 전부 `NULL`) 새 code로 읽는다.
+
+```bash
+./gradlew :apps:api:integrationTest --tests '*TrackingLegacyRow*' --offline --no-daemon
+```
+
+기대: 목록·상세 조회가 `200`으로 성공하고 상태가 `ARCHIVED`, `GET /gross-pnl`이
+`409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE`, `closedAt`이 `null`이며 어떤 경로에서도 `NullPointerException`이나
+`IllegalStateException`이 발생하지 않는다.
+
 #### AC23 command
 
 ```bash
@@ -302,6 +335,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC8 | RED — `missing=[planned-section forward-link back-link]` (3/3 전부 부재) | |
 | AC9 | 회귀 guard — `PublicEndpointPolicy`에 추적 경로 없음(현재도 없음). 통합 test는 rename 후에만 실행 가능 | |
 | AC10 | RED — `V15` 미존재 | |
+| AC25 | RED — `TrackingLegacyRow*` 테스트 부재. 현재 code에는 `close_price_source` 개념 자체가 없다 | |
 | AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | |
 | AC24 | RED — `TrackingStatusConverter` 미존재 | |
 | AC11 | 회귀 guard — 기준선 통과 | |
@@ -321,7 +355,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 ```text
 DoD VERDICT: private-live-autotrader-phase-0
-  T1/T2 자동:      _/21
+  T1/T2 자동:      _/22
   T3 기록 제출:    0건
   T4 사람 확인:    _/3
   => (미판정)
