@@ -1,9 +1,25 @@
 # 개인용 PRIVATE LIVE 자동매매
 
-개인 단일 계정용 PRIVATE LIVE 자동매매를 단계적으로 구축하는 PR #63의 계획, 완료 계약과 구현 이해문서다.
+개인 단일 계정용 PRIVATE LIVE 자동매매를 단계적으로 구축하는 프로그램의 workflow 산출물이다.
 
-- [설계](../../../.ai/planning/private-live-autotrader/phase-minus-1-design.md)
-- [실행 계획](../../../.ai/planning/private-live-autotrader/phase-minus-1-plan.md)
-- [마스터 계획](../../../.ai/planning/private-live-autotrader/task_plan.md)
-- [완료 조건](../../dod/private-live-autotrader-phase-minus-1.dod.md)
+## 프로그램 문서
+
+- [스펙 (master specification)](design.md) — 제품 목표·보장·안전 불변식·Phase 정의
+- [상위 plan](plan.md) — Phase를 workflow 실행 단위로 분해한 매핑과 현재 태스크
+- [완료 기준 계약서](dod.md) — 현재 실행 단위의 DoD (`status: DRAFT`)
+- [개발자 이해문서 (master spec 재작성)](understanding-master-spec.md) — 이번 실행 단위의 배경·결정·함정
+- [진행·acceptance 증거](../../../.ai/planning/private-live-autotrader/progress.md) — 상태축 현재값의 단독 소유처
+
+## 완료된 실행 단위
+
+Phase -1 (PR #63, DoD `VERIFIED`) — 동결 증거이므로 경로를 옮기지 않는다.
+
+- [Phase -1 설계](../../../.ai/planning/private-live-autotrader/phase-minus-1-design.md)
+- [Phase -1 실행 계획](../../../.ai/planning/private-live-autotrader/phase-minus-1-plan.md)
+- [Phase -1 완료 조건](../../dod/private-live-autotrader-phase-minus-1.dod.md)
 - [개발자 이해문서](understanding.md)
+
+## 다음 Phase
+
+각 Phase는 별도의 `feature-workflow` 실행 단위이며 진입 시 자신의 `docs/work/{phase-slug}/design.md`, `plan.md`,
+`dod.md`를 만든다. 진입 조건과 slug 후보는 [plan.md](plan.md) §1이 소유한다.

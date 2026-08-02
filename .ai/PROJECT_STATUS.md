@@ -1,6 +1,6 @@
 # Project Status
 
-> Last updated: 2026-07-20, PRIVATE LIVE Phase -1 CI/host-local 배포 경계 전환 중
+> Last updated: 2026-07-27, PRIVATE LIVE master specification 재작성 후 사용자 승인 대기
 
 ## Current State
 
@@ -33,6 +33,22 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   `NOT_CONFIGURED`다. 운영/스테이징 배포도 `NOT_DEPLOYED`이며 코드/CI 완료와 구분한다.
 - 전체 상세와 Phase별 증거는 [진행 문서](planning/infrastructure-boundary/progress.md), 완료 조건별 판정은
   [결과 문서](../docs/superpowers/plans/2026-07-14-infrastructure-boundary-refactoring-result.md)에 기록한다.
+
+## PRIVATE LIVE 프로그램 상태
+
+- master specification을 상세 구현 계획이 아닌 상위 spec으로 재작성했고 Phase 경계를 Phase 0 Foundation Alignment,
+  Phase 1 Market & Economics, Phase 2 SIMULATION + PAPER, Phase 3 PRIVATE LIVE Capability로 정리했다.
+- 프로그램 문서는 `feature-workflow` 산출물 계약에 맞춰 [`docs/work/private-live-autotrader/`](../docs/work/private-live-autotrader/README.md)의
+  `design.md`(스펙), `plan.md`(상위 plan), `dod.md`(완료 기준 계약서)로 정렬했다. 재작성 전 경로인
+  `.ai/planning/private-live-autotrader/task_plan.md`는 더 이상 사용하지 않는다.
+- 완료된 Phase -1 산출물과 acceptance 증거는 동결 대상이므로 `.ai/planning/private-live-autotrader/`와
+  `docs/dod/`에 그대로 둔다. 상태축 현재값은
+  [`progress.md`](planning/private-live-autotrader/progress.md)가 단독으로 소유한다.
+- 현재 판정은 specification `MASTER_SPEC_REVIEWED_AWAITING_USER_APPROVAL`, software `SOFTWARE_BASELINE`,
+  evidence collection `COLLECTION_NOT_READY`, activation `ACTIVATION_NOT_STARTED`다. 사용자 승인 전에는 Phase 0을
+  시작하지 않는다.
+- Claude 독립 리뷰 3회(A·B·C)를 반영했고 외부 관점 `codex-spec-review`는 아직 수행하지 않았다. 제품 소스 변경은
+  Phase -1 이후 없다.
 
 ## PRIVATE LIVE Phase -1 상태
 

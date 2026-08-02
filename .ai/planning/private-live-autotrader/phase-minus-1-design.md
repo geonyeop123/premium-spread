@@ -2,7 +2,7 @@
 
 > 상태: 승인된 마스터 계획에서 추출한 실행 설계  
 > 작성일: 2026-07-20  
-> 상위 정본: `.ai/planning/private-live-autotrader/task_plan.md` §7 Phase -1
+> 상위 정본: `docs/work/private-live-autotrader/design.md` (재작성 전 `.ai/planning/private-live-autotrader/task_plan.md` §7 Phase -1)
 
 ## 1. 목표
 
