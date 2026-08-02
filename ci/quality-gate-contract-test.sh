@@ -209,7 +209,6 @@ upload_step_names=(
   'Publish API integration evidence'
   'Publish Batch integration evidence'
   'Publish static-analysis evidence'
-  'Publish security evidence'
   'Publish Docker image archives'
 )
 upload_artifact_names=(
@@ -218,7 +217,6 @@ upload_artifact_names=(
   'api-integration-${{ github.sha }}'
   'batch-integration-${{ github.sha }}'
   'static-analysis-${{ github.sha }}'
-  'dependency-security-${{ github.sha }}'
   'docker-images-${{ github.sha }}'
 )
 upload_action_line='        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2'
@@ -230,8 +228,8 @@ for index in "${!upload_step_names[@]}"; do
   [[ "$(grep -Fxc "          name: ${upload_artifact_names[${index}]}" <<< "${upload_step}")" -eq 1 ]] ||
     fail "upload step has the wrong exact artifact name: ${upload_step_names[${index}]}"
 done
-[[ "$(grep -c 'uses: actions/upload-artifact@' "${quality_workflow}")" -eq 7 ]] ||
-  fail "Quality Gate must publish exactly seven review/evidence artifacts"
+[[ "$(grep -c 'uses: actions/upload-artifact@' "${quality_workflow}")" -eq 6 ]] ||
+  fail "Quality Gate must publish exactly six review/evidence artifacts"
 
 mapfile -d '' -t workflow_files < <(
   find "${root_dir}/.github/workflows" -maxdepth 1 -type f \
@@ -249,8 +247,6 @@ grep -q 'detekt-cli.jar' "${quality_workflow}" || fail "standalone detekt is req
 grep -q -- '--config config/detekt/detekt.yml' "${quality_workflow}" || fail "standalone detekt configuration is required"
 grep -q -- '--baseline config/detekt/baseline.xml' "${quality_workflow}" || fail "detekt baseline contract is required"
 grep -q 'ktlint.jar' "${quality_workflow}" || fail "standalone ktlint is required"
-grep -q 'run-dependency-check.sh' "${quality_workflow}" || fail "dependency-check wrapper is required"
-grep -q -- '--failOnCVSS 7' "${root_dir}/ci/run-dependency-check.sh" || fail "CVSS 7 dependency-check threshold is required"
 grep -q 'run-npm-audit.sh' "${quality_workflow}" || fail "web audit gate is required"
 grep -q 'npm --prefix apps/web run lint' "${quality_workflow}" || fail "locked web lint gate is required"
 grep -q 'npm --prefix apps/web ci --include=optional' "${quality_workflow}" || fail "web install must include locked native optional dependencies"
@@ -299,97 +295,6 @@ for contract_command in \
   grep -q "${contract_command}" "${quality_workflow}" || fail "required CI contract is not executed: ${contract_command}"
 done
 
-grep -q 'run: ./gradlew prepareDependencyCheckInput --dependency-verification strict --no-daemon' "${quality_workflow}" ||
-  fail "OWASP scan must stage strict-verified runtime artifacts"
-grep -q 'prepareDependencyCheckInput' "${root_dir}/ci/stage-dependency-check-input.sh" ||
-  fail "external production runtime dependency JAR staging is required"
-grep -q 'externalArtifactsOf(runtimeProjects' "${root_dir}/build.gradle.kts" ||
-  fail "dependency-check input must resolve API/Batch external runtime artifacts"
-grep -q -- '--dependency-verification strict' "${root_dir}/ci/stage-dependency-check-input.sh" ||
-  fail "runtime JAR staging must use strict dependency verification"
-grep -q 'build/dependency-check-input' "${root_dir}/ci/stage-dependency-check-input.sh" ||
-  fail "runtime JAR staging directory is missing"
-grep -q -- '--scan "${input_dir}"' "${root_dir}/ci/run-dependency-check.sh" ||
-  fail "Dependency-Check must scan only staged production runtime JARs"
-if grep -q -- '--scan "${root_dir}"' "${root_dir}/ci/run-dependency-check.sh"; then
-  fail "Dependency-Check must not scan the repository source tree"
-fi
-grep -q -- '--data "${data_dir}"' "${root_dir}/ci/run-dependency-check.sh" ||
-  fail "Dependency-Check must use its isolated NVD data directory"
-grep -q 'dependency_data_dir=.*dependency-check-data' "${root_dir}/ci/bootstrap-quality-tools.sh" ||
-  fail "bootstrap must create a separate dependency data directory"
-if grep -En 'rm -rf.*dependency-check-data|rm -rf[[:space:]]+"\$\{(tool_dir|dependency_data_dir)\}"' \
-  "${root_dir}/ci/bootstrap-quality-tools.sh"; then
-  fail "tool bootstrap must never delete cached Dependency-Check data"
-fi
-grep -q 'path: .ci-tools/dependency-check-data' "${quality_workflow}" || fail "NVD data must be cached separately"
-grep -q 'dependency-check-datafeed-v1-${{ runner.os }}' "${quality_workflow}" ||
-  fail "NVD datafeed cache key is missing"
-dependency_security_job="$(workflow_job_block dependency-security)"
-for nvd_step_name in \
-  "Restore isolated Dependency-Check NVD data" \
-  "Update Dependency-Check NVD data" \
-  "Save verified Dependency-Check NVD data" \
-  "OWASP Dependency-Check (CVSS 7+ fails)"; do
-  [[ "$(grep -Fxc "      - name: ${nvd_step_name}" <<< "${dependency_security_job}")" -eq 1 ]] ||
-    fail "NVD step must exist exactly once inside dependency-security: ${nvd_step_name}"
-done
-nvd_restore_step="$(workflow_job_step_block dependency-security "Restore isolated Dependency-Check NVD data")"
-nvd_update_step="$(workflow_job_step_block dependency-security "Update Dependency-Check NVD data")"
-nvd_save_step="$(workflow_job_step_block dependency-security "Save verified Dependency-Check NVD data")"
-nvd_scan_step="$(workflow_job_step_block dependency-security "OWASP Dependency-Check (CVSS 7+ fails)")"
-grep -q 'uses: actions/cache/restore@' <<< "${nvd_restore_step}" || fail "NVD data cache must have an explicit restore step"
-grep -Fxq '        run: bash ci/update-dependency-check-data.sh' <<< "${nvd_update_step}" ||
-  fail "NVD update step must execute the fail-closed updater directly"
-grep -Fxq '        run: bash ci/run-dependency-check.sh' <<< "${nvd_scan_step}" ||
-  fail "NVD scan step must execute the fail-closed scanner directly"
-for fail_closed_step in "${nvd_update_step}" "${nvd_scan_step}"; do
-  if grep -Eq '^        (if|continue-on-error):' <<< "${fail_closed_step}"; then
-    fail "NVD update and scan steps must not be conditionally skipped or ignore failures"
-  fi
-done
-if grep -Eq 'continue-on-error|always\(\)' <<< "${nvd_update_step}${nvd_save_step}${nvd_scan_step}"; then
-  fail "NVD update, cache save and scan steps must not override normal failure propagation"
-fi
-grep -Fxq '        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3' \
-  <<< "${nvd_save_step}" || fail "verified NVD data must use the pinned cache save action"
-grep -Fxq '          path: .ci-tools/dependency-check-data' <<< "${nvd_save_step}" ||
-  fail "verified NVD cache save step must write only the isolated data directory"
-grep -Fxq '          key: dependency-check-datafeed-v1-${{ runner.os }}-${{ hashFiles('"'"'ci/quality-tools.lock'"'"') }}-${{ github.run_id }}' \
-  <<< "${nvd_save_step}" || fail "verified NVD cache save key must be immutable per run"
-nvd_restore_line="$(grep -nF '      - name: Restore isolated Dependency-Check NVD data' <<< "${dependency_security_job}" | cut -d: -f1)"
-nvd_update_line="$(grep -nF '      - name: Update Dependency-Check NVD data' <<< "${dependency_security_job}" | cut -d: -f1)"
-nvd_save_line="$(grep -nF '      - name: Save verified Dependency-Check NVD data' <<< "${dependency_security_job}" | cut -d: -f1)"
-nvd_scan_line="$(grep -nF '      - name: OWASP Dependency-Check (CVSS 7+ fails)' <<< "${dependency_security_job}" | cut -d: -f1)"
-[[ "${nvd_restore_line}" -lt "${nvd_update_line}" && "${nvd_update_line}" -lt "${nvd_save_line}" &&
-  "${nvd_save_line}" -lt "${nvd_scan_line}" ]] ||
-  fail "NVD steps must stay in restore, update, save, scan order inside dependency-security"
-if grep -q '^          path: \.ci-tools$' "${quality_workflow}"; then
-  fail "tool installation cache must not absorb the isolated NVD data directory"
-fi
-grep -Fq -- '--nvdDatafeed "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-{0}.json.gz"' \
-  "${root_dir}/ci/update-dependency-check-data.sh" || fail "Dependency-Check must use the authoritative NVD static datafeed"
-grep -Fq 'set -euo pipefail' "${root_dir}/ci/update-dependency-check-data.sh" ||
-  fail "Dependency-Check update must propagate command failures"
-grep -Fq 'set -euo pipefail' "${root_dir}/ci/run-dependency-check.sh" ||
-  fail "Dependency-Check scan must propagate suppression validation and scanner failures"
-expected_nvd_data_dir='data_dir="${root_dir}/.ci-tools/dependency-check-data"'
-grep -Fxq "${expected_nvd_data_dir}" "${root_dir}/ci/update-dependency-check-data.sh" ||
-  fail "Dependency-Check updater must use the canonical isolated data directory"
-grep -Fxq "${expected_nvd_data_dir}" "${root_dir}/ci/run-dependency-check.sh" ||
-  fail "Dependency-Check scanner must use the same canonical isolated data directory"
-grep -q -- '--data "${data_dir}"' "${root_dir}/ci/update-dependency-check-data.sh" ||
-  fail "Dependency-Check update and scan must share the isolated data directory"
-grep -q -- '--updateonly' "${root_dir}/ci/update-dependency-check-data.sh" ||
-  fail "Dependency-Check data must be updated independently before scanning"
-grep -q -- '--noupdate' "${root_dir}/ci/run-dependency-check.sh" ||
-  fail "Dependency-Check scan must read the database completed by the update step"
-if grep -En -- '--nvdApiKey|--noupdate|\|\|[[:space:]]*true' "${root_dir}/ci/update-dependency-check-data.sh"; then
-  fail "Dependency-Check update must neither skip nor hide authoritative datafeed failures"
-fi
-if grep -En -- '--nvdApiKey|--updateonly|\|\|[[:space:]]*true' "${root_dir}/ci/run-dependency-check.sh"; then
-  fail "Dependency-Check scan must not update data, use a runner-specific API key, or hide failures"
-fi
 
 docker_job="$(workflow_job_block docker-build)"
 [[ "$(grep -c 'outputs: type=docker,dest=${{ runner.temp }}/docker-images/' <<< "${docker_job}")" -eq 3 ]] ||
@@ -503,7 +408,7 @@ for kotlin_build_configuration in kotlinCompilerPluginClasspathMain kotlinBuildT
 done
 
 lock_entries="$(grep -Evc '^#|^[[:space:]]*$' "${tool_lock}")"
-[[ "${lock_entries}" -eq 3 ]] || fail "ktlint, detekt and dependency-check must all be locked"
+[[ "${lock_entries}" -eq 2 ]] || fail "ktlint and detekt must both be locked"
 while IFS='|' read -r name version url sha; do
   [[ -z "${name}" || "${name}" == \#* ]] && continue
   [[ -n "${version}" && "${url}" == https://* && "${sha}" =~ ^[0-9a-f]{64}$ ]] ||
