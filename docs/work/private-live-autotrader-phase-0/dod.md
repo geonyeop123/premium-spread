@@ -1,9 +1,9 @@
 ---
 feature: PRIVATE LIVE autotrader Phase 0 — Foundation Alignment
 slug: private-live-autotrader-phase-0
-status: DRAFT
-frozen_at:
-source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SEM-1~SEM-4, ARCH-7, ARCH-9)와 사용자 합의(feature-workflow ③, 2026-08-02)
+status: FROZEN
+frozen_at: 2026-08-03T11:05:54+09:00
+source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SEM-1~SEM-4, ARCH-7, ARCH-9), 사용자 합의(feature-workflow ③, 2026-08-02)와 승인(feature-workflow ⑦, 2026-08-03)
 ---
 
 ## 범위
@@ -643,7 +643,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC10 | RED — `V15` 미존재 | |
 | AC25 | RED — `TrackingLegacyRow*` 테스트 부재. 현재 code에는 `close_price_source` 개념 자체가 없다 | |
 | AC26 | 회귀 guard — 기준선 `changed=[] ticker_other=[] ticker_code=[] mig=[] table=1` | |
-| AC27 | 미실행 — `feature-workflow` ⑦ 대기 | |
+| AC27 | 미실행 — `feature-workflow` ⑦ 대기 | **선택됨 (2026-08-03): 그대로 수용.** 배포 중 수 분의 Web 단절을 인지하고 alias·원자 전환 없이 진행한다. `understanding.md`와 PR 본문에 명시한다 |
 | AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | |
 | AC24 | RED — `TrackingStatusConverter` 미존재. `rawsql`은 구현 전 JPQL `FROM Position p` 2건을 보고한다(T1 rename 시 소멸) | |
 | AC11 | 회귀 guard — 기준선 통과 | |
@@ -656,7 +656,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC18 | GREEN — `rows=11 empty_cells=[] dangling_ac=[]` | |
 | AC19 | GREEN — `rows=5 unassigned=[]` | |
 | AC20 | 미실행 — `feature-workflow` ⑥ 대기 | **18라운드 완료.** 지적 45건 처리(critical 2·high 25·medium 18), REBUT 2건은 모두 codex가 ACCEPTED/MAINTAINED로 수렴. **critical·high 0은 달성하지 못했다** — 16~18R(도메인 초점)에서도 매 라운드 high가 나왔다. 아래 `## 변경 요청` 참조 |
-| AC21 | 미실행 — `feature-workflow` ⑦ 대기 | |
+| AC21 | 미실행 — `feature-workflow` ⑦ 대기 | **승인됨 (2026-08-03).** §5.2 도메인 rename **포함** 확인. 함께 확인받은 항목: `apps/web` vitest 테스트 인프라 도입과 CI workflow 변경 포함, `AC20` 정지 규칙 변경(CR-1) 승인 |
 | AC22 | 미실행 — `feature-workflow` ⑩ 대기 | |
 
 ## 변경 요청
@@ -685,10 +685,13 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 ## 최종 판정
 
+승인 시점(`feature-workflow` ⑦) 판정이다. 구현 후 ⑩에서 다시 채운다.
+
 ```text
-DoD VERDICT: private-live-autotrader-phase-0
-  T1/T2 자동:      _/23
+DoD VERDICT: private-live-autotrader-phase-0  (⑦ 승인 시점)
+  T1/T2 자동:      6/23 GREEN, 6 RED, 11 미실행(T2)   — 구현 전이므로 정상
   T3 기록 제출:    0건
-  T4 사람 확인:    _/4
-  => (미판정)
+  T4 사람 확인:    3/4 (AC20 CR-1 승인, AC21 승인, AC27 선택 완료)
+                   AC22 는 ⑩ 대기
+  => FROZEN — 구현 착수 가능
 ```
