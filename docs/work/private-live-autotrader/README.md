@@ -19,6 +19,11 @@ Phase -1 (PR #63, DoD `VERIFIED`) — 동결 증거이므로 경로를 옮기지
 - [Phase -1 완료 조건](../../dod/private-live-autotrader-phase-minus-1.dod.md)
 - [개발자 이해문서](understanding.md)
 
+## As-Is 아키텍처
+
+현재 구현 경계는 [`.ai/architecture/ARCHITECTURE_DESIGN.md`](../../../.ai/architecture/ARCHITECTURE_DESIGN.md)가
+소유한다. 이 디렉터리의 문서는 Planned capability 이며 둘은 서로를 참조한다 (`P0-O5`).
+
 ## 다음 Phase
 
 각 Phase는 별도의 `feature-workflow` 실행 단위이며 진입 시 자신의 `docs/work/{phase-slug}/design.md`, `plan.md`,

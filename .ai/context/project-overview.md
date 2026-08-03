@@ -39,9 +39,14 @@ premiumRate = ((koreaPrice - foreignPriceInKrw) / foreignPriceInKrw) × 100
 - Domain `PremiumPolicy`가 계산 정밀도와 반올림의 단일 정본이다. 저장 정밀도와 API 표시 정밀도는 분리한다.
 - 음수 프리미엄도 정상적인 시장 값이며 오류나 0으로 보정하지 않는다.
 
-## 4. Position과 손익
+## 4. 추적 기록(Tracking)과 gross 손익
 
-Position 한 행은 같은 symbol의 한 MarketPair를 나타낸다.
+Tracking 한 행은 같은 symbol의 한 MarketPair를 나타낸다.
+
+**Tracking은 실제 주문을 생성하지 않는다.** 다른 곳에서 체결한 포지션을 손으로 기록해 두는 추적 record이며,
+주문 ID·체결 ID·수수료를 갖지 않는다. 손익은 수수료·펀딩비·슬리피지·환전 스프레드가 빠진 gross이고
+계정 ROI가 아니다. 종료 시점 시세는 확정 저장되어 이후 시세 변동에 영향받지 않는다
+(`docs/work/private-live-autotrader-phase-0/design.md`).
 
 | 측 | 방향 | 필수 값 |
 |---|---|---|

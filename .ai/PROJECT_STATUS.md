@@ -64,7 +64,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - WebSocket Binance/Bithumb 시세 수집과 1초 down-sample
 - USD/KRW 30분 수집, Premium 1초 계산, minute/hour/day 집계
 - canonical `MarketPair` 기반 premium/position/notification 저장·조회
-- Position AUTO/MANUAL 오픈과 KRW 손익 계산
+- Tracking 기록(현재 시세/입력값)과 KRW gross 손익 계산, 종료 시점 스냅샷 확정
 - JWT Access/rotating Refresh 인증, Redis family/session fencing
 - MySQL durable notification queue, retry/stale recovery/FAILED redrive/PII scrub
 - Redis pair-aware v2 key와 default-pair legacy read cutover
