@@ -310,8 +310,20 @@ class TrackingCommand  private constructor() { data class Create(...) }
 
 #### 5.3.1 스키마 (`V15`)
 
+`V15`는 **`ALTER` 한 문장뿐이다.** backfill `UPDATE`를 붙이지 않는다.
+
+MySQL DDL은 `ALTER`와 뒤따르는 `UPDATE`를 한 트랜잭션으로 원자화하지 않는다. `ALTER`가 끝난 뒤 `UPDATE`나
+프로세스가 실패하면 **컬럼은 존재하는데 Flyway에는 성공 이력이 없는 상태**가 남고, 다음 배포의 `V15`
+재실행은 중복 컬럼 오류로 멈춘다. 배포가 막힌다.
+
+backfill은 애초에 필요 없다. §5.3.2의 확정 판정 규칙이 `NULL`을 이미 fail-closed로 처리하기 때문이다.
+`V15` 이전에 종료된 행은 `close_price_source`가 `NULL`이고, 그 자체로 "확정 손익 없음"을 뜻한다. 값을 채워
+넣어야만 표현되는 것이 아니다. 규칙 하나가 이미 덮고 있는 상태를 데이터로 중복 기록하면서 원자성 위험만
+샀던 셈이다.
+
 ```sql
 -- V15: 추적 종료 시점의 시세를 확정 저장한다.
+-- ALTER 한 문장만 수행한다 — DDL 과 DML 을 섞으면 중단 시 부분 적용 상태가 남는다.
 -- 기존 컬럼의 값을 재작성하지 않는다 — 이전 application image 롤백 호환을 유지해야 한다
 -- (docs/runbooks/deployment.md "Rollback 제약", design.md D4).
 ALTER TABLE position
@@ -323,13 +335,10 @@ ALTER TABLE position
     ADD COLUMN close_foreign_price DECIMAL(30, 10) NULL AFTER close_korea_price,
     ADD COLUMN close_fx_rate       DECIMAL(20, 6)  NULL AFTER close_foreign_price,
     ADD COLUMN close_premium_rate  DECIMAL(10, 2)  NULL AFTER close_fx_rate;
-
--- 신규 컬럼만 채운다. 이전 image는 이 컬럼을 무시하므로 롤백 호환 범위 안이다.
-UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED';
 ```
 
 `status` 컬럼은 `OPEN`/`CLOSED`를 유지한다 (D4). 기존 종료 행은 청산 시세를 복원할 방법이 없으므로 추정해
-채우지 않고 `LEGACY_UNKNOWN`으로 표시해 확정 손익을 제공하지 않는다.
+채우지 않는다. 신규 컬럼이 전부 `NULL`인 채로 남고 §5.3.2가 이를 확정 불가로 판정한다.
 
 #### 5.3.2 확정 판정과 요청·응답 계약
 
@@ -367,8 +376,7 @@ status == ARCHIVED
 |---|---|---|
 | `MARKET_SNAPSHOT` | 이 Phase 이후의 archive, snapshot 신선 | 제공 |
 | `SNAPSHOT_UNAVAILABLE` | 이 Phase 이후의 archive, snapshot 부재·stale | 미제공 |
-| `LEGACY_UNKNOWN` | `V15`가 백필한 기존 종료 행 | 미제공 |
-| `NULL` | **`V15` 적용 후 이전 image가 종료시킨 행** — 이전 image는 `status`만 쓰고 신규 컬럼을 모르므로 `NULL`이 남는다. 롤백했거나 API 교체 중 이전 image가 아직 요청을 처리한 구간에서 발생한다 | 미제공 |
+| `NULL` | 두 경우가 여기 모인다. ① `V15` 이전에 종료된 행 ② `V15` 적용 후 **이전 image가 종료시킨 행** — 이전 image는 `status`만 쓰고 신규 컬럼을 모른다. 롤백했거나 API 교체 중 이전 image가 아직 요청을 처리한 구간에서 발생한다 | 미제공 |
 
 `closed_at`도 같은 이유로 `NULL`일 수 있다. 이 Phase의 archive는 항상 기록하지만(주입된 `Clock`) 이전
 image가 종료시킨 행에는 없다. `NULL`이면 종료 시각을 추정하지 않고 "종료 시각 불명"으로 표시한다.
@@ -390,6 +398,20 @@ image가 종료시킨 행에는 없다. `NULL`이면 종료 시각을 추정하�
 `batch.scheduling.exchange-rate.fixed-rate`가 `30m`이라 **최대 30분 낡은 값이 정상 운영 상태**인데
 `observedAt`은 방금 갱신된 ticker 시각을 쓴다. 해외 leg 손익은 전부 `close_fx_rate` 환산이므로,
 premium만 검사하면 30분 낡은 환율로 계산된 값이 불변 확정 손익으로 저장된다.
+
+**남는 한계 — leg별 관측 시각이 없다.** `observedAt`이 max라는 문제는 FX뿐 아니라 한국·해외 ticker에도
+같이 걸린다. 한쪽 ticker가 오래됐어도 다른 쪽이 방금 갱신되면 `observedAt`은 60초 이내가 된다. 그런데
+`PremiumSnapshot`에는 **leg별 관측 시각 필드가 없어** 구현이 이를 검출할 방법 자체가 없다. FX만 분리
+검사할 수 있는 것은 `fxObservedAt`이 이미 존재하기 때문이다.
+
+leg별 시각을 추가하려면 `PremiumSnapshot`·Redis payload·DB projection을 함께 바꿔야 하고, 그것은 이 Phase가
+제외한 premium 도메인 변경이다(§1.3). 따라서 Phase 0은 **이 한계를 고치지 않고 드러낸다.**
+
+- `MARKET_SNAPSHOT`이 보장하는 것은 "**세 관측 중 가장 최신인 시각**이 신선했고 FX가 별도로 신선했다"이지
+  "세 값이 동시에 신선했다"가 아니다
+- 화면 배지는 `종료 시점(<close_observed_at>) 관측값 기준`으로 쓴다. "확정값"이라는 단어만으로 세 leg의
+  동시성을 암시하지 않는다
+- leg별 provenance는 `OPEN-6`으로 Phase 1(`P1-O1` 최소 수집 계약, `P1-O3` 품질 상태)에 넘긴다
 
 FX 한도는 **수집 주기에서 유도한다.** `batch.scheduling.exchange-rate.fixed-rate`(현재 `30m`)보다 작으면
 정상 운영에서도 모든 archive가 `SNAPSHOT_UNAVAILABLE`이 되어 기능이 죽는다. API 설정
@@ -568,7 +590,7 @@ fun findOwnedByIdForUpdate(id: Long, memberId: Long): Tracking?   // SELECT ... 
 | 백분율 라벨 | `%` | `한국 leg 명목가 대비 %` |
 | 레버리지 행 | `레버리지` | `레버리지` + 각주 `필요 증거금에만 영향을 주며 위 손익 금액에는 반영되지 않습니다.` |
 | 프리미엄 변화 | `premiumDiff` 숫자만 | `진입 대비 프리미엄 변화` + `이 조합(한국 롱 / 해외 숏)은 프리미엄이 축소될 때 이익입니다.` |
-| `ARCHIVED` 손익 | 현재 시세로 계산된 변동값 | `종료 시점(<close_observed_at>) 확정값` 배지와 함께 고정 표시 |
+| `ARCHIVED` 손익 | 현재 시세로 계산된 변동값 | `종료 시점(<close_observed_at>) 관측값 기준` 배지와 함께 고정 표시 |
 | `STALE_MARKET` | (해당 없음) | `<observedAt> 기준 — 현재 시세가 아닙니다` 배지. 손익 숫자는 그대로 보여주되 현재값으로 부르지 않는다 |
 | `LEGACY_UNKNOWN`·`SNAPSHOT_UNAVAILABLE` | (해당 없음) | `종료 시점 시세를 확정하지 못해 손익을 제공하지 않습니다.` |
 
@@ -607,6 +629,12 @@ canonicalKey = "BTC:BITHUMB:BINANCE"
 1. 기존 수집·저장 자산(`ticker`, `premium`, `premium_minute/hour/day`, Redis premium key)은
    **`BITHUMB` KRW 현물 × `BINANCE` USDT 무기한선물이라는 단일 조합의 관측**으로만 유효하다. 같은
    `canonicalKey`가 다른 instrument 조합을 가리키게 될 경우 과거 데이터와 신규 데이터를 구분할 수단이 없다.
+1-1. **저장된 quote는 USDT가 아니라 `USD`다.** `Currency` enum에는 `KRW`·`USD`뿐이고
+   (`domain/ticker/Currency.kt`), batch가 수집 시점에 `"USDT" -> Currency.USD`로 정규화한다
+   (`infrastructure/batch/exchange/MarketData.kt:41`). 즉 legacy 데이터는 **USDT라는 실제 quote를 보존하지
+   않으며 USD와 USDT의 구별을 이미 잃었다.** 위 1의 "USDT 조합"은 수집 **의도**이지 기록된 사실이 아니다.
+   따라서 legacy 자산은 그 정규화 가정이 참임을 별도로 확인한 경우에만 재사용할 수 있고, USD와 USDT를
+   구분해야 하는 소비(예: 스테이블코인 디페그 반영)에는 쓸 수 없다.
 2. 따라서 기존 자산은 **이 조합에 한해** Phase 1 이후의 입력으로 쓸 수 있다. 조합이 늘어나는 순간부터의
    데이터만 확장된 identity를 갖는다.
 3. identity 확장은 **Phase 1**이 최소 수집 계약(`P1-O1`)과 함께 수행한다. 확장은 최소한 `MarketPair`,
@@ -690,7 +718,9 @@ Phase 0이 발견했으나 이 Phase가 결정하지 않는 항목이다. 상위
 | `OPEN-2` | 한국 leg 체결가와 해외 leg 호가 중간값의 의미 차이를 어떤 관측으로 맞출지 | Phase 1 (`P1-O1`) |
 | `OPEN-3` | 수수료·펀딩비·슬리피지를 반영한 순손익 모델 | Phase 1 (`P1-O5`) |
 | `OPEN-4` | `Exchange.UPBIT`의 실제 연결 또는 제거 | Phase 1 (수집 계약 확정 시) |
-| `OPEN-5` | `SNAPSHOT_UNAVAILABLE`·`LEGACY_UNKNOWN` 기록을 사후 backfill할지 여부 | Phase 1 (`P1-O3` 품질 상태) |
+| `OPEN-5` | 확정 불가로 남은 종료 기록을 사후 backfill할지 여부 | Phase 1 (`P1-O3` 품질 상태) |
+| `OPEN-6` | `PremiumSnapshot`에 leg별 관측 시각을 추가해 세 구성요소를 각각 신선도 판정할지 | Phase 1 (`P1-O1` 최소 수집 계약, `P1-O3`) |
+| `OPEN-7` | 저장 quote의 USDT→USD 정규화를 되돌릴지, 정규화 사실을 데이터에 기록할지 | Phase 1 (`P1-O1`, `P1-O7`) |
 
 ## 7. Outcome 추적
 

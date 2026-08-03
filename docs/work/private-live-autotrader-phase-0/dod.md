@@ -47,7 +47,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC7 | dead·미연결 계약 4건이 각각 유지/수정/제거로 판정되고, 제거 판정 항목이 실행 소스에서 사라졌다. | `P0-O4` | T1 | 아래 `AC7 command` | exit 0, `undecided=[] not_removed=[]` |
 | AC8 | As-Is 문서에 `Planned capability` 절과 Planned 문서 링크가 있고, Planned 문서에서 As-Is 문서로의 역참조가 있다. | `P0-O5`, `ARCH-7` | T1 | 아래 `AC8 command` | exit 0, `missing=[]` |
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
-| AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
+| AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행의 신규 컬럼이 전부 `NULL`로 남으며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**되며, `V15`가 `ALTER` 한 문장뿐이라 기존 행의 데이터가 전혀 바뀌지 않는다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L9 전부 통과 |
 | AC23 | `V15`가 **두 독립 gate**를 통과한다. **Gate 1**: 파일이 `design.md` §5.3.1의 승인된 SQL 블록과 공백 정규화 후 정확히 일치한다(파싱 없음 — 어떤 문법 변형도 통과 불가). **Gate 2**: 그 승인 블록이 다섯 겹 allowlist를 통과한다(문장 형태·대상 테이블·`ALTER` 연산·`SET` 대상·문장 내부 키워드). 검사기는 우회·정상 표본 38종을 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R~13R (파서 결함 6회 반복 후 내용 대조로 전환) | T1 | 아래 `AC23 command` | exit 0, `self_test=ok v15_count=1 gate1=MATCH` 이후 모든 위반 버킷이 빈 값 |
 | AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 canonical `V15__add_tracking_close_snapshot.sql` **하나만** 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3·14R medium-2 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
@@ -252,7 +252,7 @@ grep -qi "tracking" infrastructure/api/src/main/kotlin/io/premiumspread/infrastr
 | 케이스 | 행 상태 | 기대 |
 |---|---|---|
 | L1 | `status='CLOSED'`, 신규 컬럼 전부 `NULL` (이전 image가 종료) | 조회 `200`·`ARCHIVED`, `closedAt=null`, `gross-pnl` `409` |
-| L2 | `close_price_source='LEGACY_UNKNOWN'` | `gross-pnl` `409` |
+| L2 | `close_price_source='SNAPSHOT_UNAVAILABLE'` | `gross-pnl` `409` |
 | L3~L9 | `close_price_source='MARKET_SNAPSHOT'` + 나머지 7개 중 **정확히 하나만 `NULL`** (`closed_at`, `close_observed_at`, `close_fx_observed_at`, `close_korea_price`, `close_foreign_price`, `close_fx_rate`, `close_premium_rate`) | 각각 `gross-pnl` `409` |
 
 L3~L9는 §5.3.2 확정 판정 규칙의 7개 필드에 1:1 대응하는 parameterized test다. 규칙에 필드를 추가하면 케이스도
