@@ -49,8 +49,8 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`가 **두 독립 gate**를 통과한다. **Gate 1**: 파일이 `design.md` §5.3.1의 승인된 SQL 블록과 공백 정규화 후 정확히 일치한다(파싱 없음 — 어떤 문법 변형도 통과 불가). **Gate 2**: 그 승인 블록이 다섯 겹 allowlist를 통과한다(문장 형태·대상 테이블·`ALTER` 연산·`SET` 대상·문장 내부 키워드). 검사기는 우회·정상 표본 38종을 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R~13R (파서 결함 6회 반복 후 내용 대조로 전환) | T1 | 아래 `AC23 command` | exit 0, `self_test=ok gate1=MATCH` 이후 모든 위반 버킷이 빈 값 |
-| AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 `V15` 하나만 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
+| AC23 | `V15`가 **두 독립 gate**를 통과한다. **Gate 1**: 파일이 `design.md` §5.3.1의 승인된 SQL 블록과 공백 정규화 후 정확히 일치한다(파싱 없음 — 어떤 문법 변형도 통과 불가). **Gate 2**: 그 승인 블록이 다섯 겹 allowlist를 통과한다(문장 형태·대상 테이블·`ALTER` 연산·`SET` 대상·문장 내부 키워드). 검사기는 우회·정상 표본 38종을 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R~13R (파서 결함 6회 반복 후 내용 대조로 전환) | T1 | 아래 `AC23 command` | exit 0, `self_test=ok v15_count=1 gate1=MATCH` 이후 모든 위반 버킷이 빈 값 |
+| AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 canonical `V15__add_tracking_close_snapshot.sql` **하나만** 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3·14R medium-2 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query와 `position` 테이블 raw SQL이 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[] rawsql=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
 | AC12 | unit·contract test와 architecture 경계 test가 통과한다. | 기존 repository gate, `.ai/rules/architecture.md` | T2 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 |
@@ -412,15 +412,23 @@ norm() { tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'; }
 approved=$(awk '/^#### 5\.3\.1/,/^#### 5\.3\.2/' docs/work/private-live-autotrader-phase-0/design.md \
   | awk '/^```sql$/{f=1;next} f&&/^```$/{exit} f')
 [ -n "$approved" ] || { echo "self_test=ok design.md §5.3.1 SQL 블록 없음"; exit 1; }
-m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
-[ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
+CANON=infrastructure/common/src/main/resources/db/migration/V15__add_tracking_close_snapshot.sql
+matches=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null)
+nmatch=$(printf '%s\n' "$matches" | grep -c . || true)
+if [ "$nmatch" -ne 1 ]; then
+  echo "self_test=ok v15_count=$nmatch (정확히 1개여야 한다)"; exit 1
+fi
+m=$(printf '%s\n' "$matches" | head -1)
+if [ "$m" != "$CANON" ]; then
+  echo "self_test=ok v15_name=MISMATCH ($m != $CANON)"; exit 1
+fi
 if [ "$(printf '%s' "$approved" | norm)" != "$(norm < "$m")" ]; then
   echo "self_test=ok gate1=MISMATCH (V15가 design.md §5.3.1 승인본과 다르다)"; exit 1
 fi
 
 # --- Gate 2: 승인된 블록이 allowlist 를 통과하는가 ---
 judge "$approved"; rc=$?
-echo "self_test=ok gate1=MATCH added=[$(printf '%s' "$approved" | added_cols | tr '\n' ' ')] bad_table=[$JT] bad_statement=[$JS] inner_keyword=[$JI] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD] exec_comment=[$JE]"
+echo "self_test=ok v15_count=1 gate1=MATCH added=[$(printf '%s' "$approved" | added_cols | tr '\n' ' ')] bad_table=[$JT] bad_statement=[$JS] inner_keyword=[$JI] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD] exec_comment=[$JE]"
 exit $rc
 ```
 
@@ -502,9 +510,13 @@ ticker_code=$(git diff -U0 origin/dev...HEAD -- "$tk/Exchange.kt" 2>/dev/null \
   | grep -vE '^[+-][[:space:]]*(/\*\*|\*|\*/|//)' \
   | grep -vE '^[+-][[:space:]]*$' | cut -c1-60 || true)
 
-# 3) migration 은 V15 하나만 추가한다. 기존 migration 은 append-only 계약상 불변이다.
-mig=$(git diff --name-only origin/dev...HEAD -- \
-  infrastructure/common/src/main/resources/db/migration | grep -v 'V15__' || true)
+# 3) migration 은 canonical V15 **하나만** 추가한다. 기존 migration 은 append-only 계약상 불변이고,
+#    다른 V15__* 파일이 함께 있으면 AC23 이 어느 쪽을 볼지 모호해진다.
+migall=$(git diff --name-only origin/dev...HEAD -- \
+  infrastructure/common/src/main/resources/db/migration)
+mig=$(printf '%s\n' "$migall" | grep -vx 'infrastructure/common/src/main/resources/db/migration/V15__add_tracking_close_snapshot.sql' | grep -E '.' || true)
+migcount=$(printf '%s\n' "$migall" | grep -c . || true)
+[ "$migcount" -le 1 ] || mig="$mig multiple($migcount)"
 
 # 4) DB 테이블명 유지
 table=$(grep -rn '@Table(name = "position")' --include='*.kt' domain/src/main | grep -c . || true)
