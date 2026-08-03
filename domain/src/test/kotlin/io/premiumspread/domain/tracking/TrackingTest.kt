@@ -11,10 +11,10 @@ import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
 
-class PositionTest {
+class TrackingTest {
 
     @Test
-    fun `포지션을 페어 모델로 정상 생성한다`() {
+    fun `추적 기록을 페어 모델로 정상 생성한다`() {
         val observedAt = Instant.parse("2024-01-01T00:00:00Z")
 
         val tracking = createPosition(entryObservedAt = observedAt)
@@ -123,7 +123,7 @@ class PositionTest {
     }
 
     @Test
-    fun `포지션을 청산한다`() {
+    fun `추적 기록을 청산한다`() {
         val tracking = createPosition()
 
         tracking.close()
@@ -132,7 +132,7 @@ class PositionTest {
     }
 
     @Test
-    fun `이미 청산된 포지션은 다시 청산할 수 없다`() {
+    fun `이미 청산된 추적 기록은 다시 청산할 수 없다`() {
         val tracking = createPosition()
         tracking.close()
 

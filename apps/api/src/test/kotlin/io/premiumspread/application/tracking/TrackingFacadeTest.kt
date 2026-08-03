@@ -22,7 +22,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 
-class PositionFacadeTest {
+class TrackingFacadeTest {
     private lateinit var trackingService: TrackingService
     private lateinit var premiumService: PremiumService
     private lateinit var facade: TrackingFacade
@@ -49,13 +49,13 @@ class PositionFacadeTest {
     }
 
     @Test
-    fun `잘못된 거래소와 도메인 예외는 안정된 INVALID_POSITION으로 변환한다`() {
-        assertApplicationError(ApplicationError.INVALID_POSITION) {
+    fun `잘못된 거래소와 도메인 예외는 안정된 INVALID_TRACKING으로 변환한다`() {
+        assertApplicationError(ApplicationError.INVALID_TRACKING) {
             facade.recordFromMarket(openAuto(koreaExchange = "UNKNOWN"))
         }
 
         every { trackingService.create(any()) } throws InvalidTrackingException("internal")
-        assertApplicationError(ApplicationError.INVALID_POSITION) {
+        assertApplicationError(ApplicationError.INVALID_TRACKING) {
             facade.record(openManual())
         }
     }
@@ -75,7 +75,7 @@ class PositionFacadeTest {
     }
 
     @Test
-    fun `premium snapshot 불변식 위반은 INVALID_POSITION으로 숨기지 않는다`() {
+    fun `premium snapshot 불변식 위반은 INVALID_TRACKING으로 숨기지 않는다`() {
         val pair = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
         every { premiumService.findLatestSnapshot(pair) } throws IllegalArgumentException("snapshot pair mismatch")
 
@@ -85,14 +85,14 @@ class PositionFacadeTest {
     }
 
     @Test
-    fun `단건 미발견과 소유권 위반은 같은 POSITION_NOT_FOUND로 숨긴다`() {
+    fun `단건 미발견과 소유권 위반은 같은 TRACKING_NOT_FOUND로 숨긴다`() {
         every { trackingService.findById(99L) } returns null
-        assertApplicationError(ApplicationError.POSITION_NOT_FOUND) {
+        assertApplicationError(ApplicationError.TRACKING_NOT_FOUND) {
             facade.findById(TrackingCriteria.FindById(99L, 1L))
         }
 
         every { trackingService.findById(1L) } returns TrackingFixtures.openPosition(id = 1L, memberId = 2L)
-        assertApplicationError(ApplicationError.POSITION_NOT_FOUND) {
+        assertApplicationError(ApplicationError.TRACKING_NOT_FOUND) {
             facade.findById(TrackingCriteria.FindById(1L, 1L))
         }
     }

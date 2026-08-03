@@ -7,7 +7,7 @@ http/
 ├── http-client.env.json   # 환경 변수 정의
 └── api/
     ├── premiums.http      # Premium API
-    ├── positions.http     # Position API
+    ├── trackings.http     # 추적 기록 API (실제 주문 아님)
     └── tickers.http       # Ticker API
 ```
 
@@ -37,16 +37,16 @@ Content-Type: application/json  # POST/PUT 요청 시 필수
 ## 예시
 
 ```http
-### 포지션 오픈
-POST {{commerce-api}}/api/v1/positions
+### 추적 기록 생성
+POST {{premium-api}}/api/v1/trackings
 Content-Type: application/json
 
 {
   "symbol": "BTC",
-  "exchange": "UPBIT",
-  "quantity": 0.1
+  "koreaExchange": "BITHUMB",
+  "koreaQuantity": 0.1
 }
 
-### 포지션 조회
-GET {{commerce-api}}/api/v1/positions/1
+### 추적 기록 조회
+GET {{premium-api}}/api/v1/trackings/1
 ```

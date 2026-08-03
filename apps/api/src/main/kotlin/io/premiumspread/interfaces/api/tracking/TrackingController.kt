@@ -14,11 +14,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/api/v1/positions")
+@RequestMapping("/api/v1/trackings")
 class TrackingController(private val trackingFacade: TrackingFacade) {
 
-    @PostMapping("/auto")
-    fun openAuto(
+    @PostMapping("/from-market")
+    fun recordFromMarket(
         @LoginMemberId memberId: Long,
         @Valid @RequestBody request: TrackingRequest.RecordFromMarket,
     ): ResponseEntity<TrackingResponse.Detail> {
@@ -35,8 +35,8 @@ class TrackingController(private val trackingFacade: TrackingFacade) {
         return ResponseEntity.status(HttpStatus.CREATED).body(TrackingResponse.Detail.from(result))
     }
 
-    @PostMapping("/manual")
-    fun openManual(
+    @PostMapping
+    fun record(
         @LoginMemberId memberId: Long,
         @Valid @RequestBody request: TrackingRequest.Record,
     ): ResponseEntity<TrackingResponse.Detail> {
@@ -63,7 +63,7 @@ class TrackingController(private val trackingFacade: TrackingFacade) {
         return ResponseEntity.ok(TrackingResponse.Summary.from(result))
     }
 
-    @GetMapping("/history")
+    @GetMapping("/archived")
     fun findAllArchived(@LoginMemberId memberId: Long): ResponseEntity<List<TrackingResponse.Detail>> {
         val result = trackingFacade.findAllArchivedByMemberId(TrackingCriteria.FindAllArchived(memberId))
         return ResponseEntity.ok(result.items.map { TrackingResponse.Detail.from(it) })
@@ -84,8 +84,8 @@ class TrackingController(private val trackingFacade: TrackingFacade) {
         return ResponseEntity.ok(result.items.map { TrackingResponse.Detail.from(it) })
     }
 
-    @GetMapping("/{id}/pnl")
-    fun getPnl(
+    @GetMapping("/{id}/gross-pnl")
+    fun getGrossPnl(
         @PathVariable id: Long,
         @LoginMemberId memberId: Long,
     ): ResponseEntity<TrackingResponse.Pnl> {
@@ -93,8 +93,8 @@ class TrackingController(private val trackingFacade: TrackingFacade) {
         return ResponseEntity.ok(TrackingResponse.Pnl.from(result))
     }
 
-    @PostMapping("/{id}/close")
-    fun close(
+    @PostMapping("/{id}/archive")
+    fun archive(
         @PathVariable id: Long,
         @LoginMemberId memberId: Long,
     ): ResponseEntity<TrackingResponse.Detail> {

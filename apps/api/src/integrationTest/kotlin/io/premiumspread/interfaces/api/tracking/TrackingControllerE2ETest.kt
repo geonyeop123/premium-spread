@@ -43,7 +43,7 @@ import java.time.Instant
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, TestConfig::class)
-class PositionControllerE2ETest @Autowired constructor(
+class TrackingControllerE2ETest @Autowired constructor(
     private val mockMvc: MockMvc,
     private val objectMapper: ObjectMapper,
     private val databaseCleanUp: DatabaseCleanUp,
@@ -71,18 +71,18 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `인증 없이 포지션 목록 조회 시 401 반환`() {
-        mockMvc.get("/api/v1/positions")
+    fun `인증 없이 추적 기록 목록 조회 시 401 반환`() {
+        mockMvc.get("/api/v1/trackings")
             .andExpect { status { isUnauthorized() } }
     }
 
     @Test
-    fun `AUTO 포지션 오픈 성공 - 최신 스냅샷으로 DB 저장`() {
+    fun `AUTO 추적 기록 오픈 성공 - 최신 스냅샷으로 DB 저장`() {
         val accessToken = login()
         val observedAt = Instant.now()
         savePremiumWithTickers(observedAt = observedAt)
 
-        mockMvc.post("/api/v1/positions/auto") {
+        mockMvc.post("/api/v1/trackings/from-market") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openAutoRequest())
@@ -100,10 +100,10 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `AUTO 포지션 오픈 시 스냅샷이 없으면 409 반환`() {
+    fun `AUTO 추적 기록 오픈 시 스냅샷이 없으면 409 반환`() {
         val accessToken = login()
 
-        mockMvc.post("/api/v1/positions/auto") {
+        mockMvc.post("/api/v1/trackings/from-market") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openAutoRequest(symbol = "DOGE"))
@@ -114,11 +114,11 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `AUTO 포지션 오픈 시 스냅샷이 오래되면 409 반환`() {
+    fun `AUTO 추적 기록 오픈 시 스냅샷이 오래되면 409 반환`() {
         val accessToken = login()
         savePremiumWithTickers(symbol = "ETH", observedAt = Instant.now().minusSeconds(120))
 
-        mockMvc.post("/api/v1/positions/auto") {
+        mockMvc.post("/api/v1/trackings/from-market") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openAutoRequest(symbol = "ETH"))
@@ -129,25 +129,25 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `AUTO 포지션 오픈 시 region 위반이면 422 반환`() {
+    fun `AUTO 추적 기록 오픈 시 region 위반이면 422 반환`() {
         val accessToken = login()
         savePremiumWithTickers(observedAt = Instant.now())
 
-        mockMvc.post("/api/v1/positions/auto") {
+        mockMvc.post("/api/v1/trackings/from-market") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openAutoRequest(koreaExchange = "BINANCE"))
         }.andExpect {
             status { isUnprocessableEntity() }
-            jsonPath("$.code") { value("INVALID_POSITION") }
+            jsonPath("$.code") { value("INVALID_TRACKING") }
         }
     }
 
     @Test
-    fun `MANUAL 포지션 오픈 성공 - 입력값으로 DB 저장`() {
+    fun `MANUAL 추적 기록 오픈 성공 - 입력값으로 DB 저장`() {
         val accessToken = login()
 
-        mockMvc.post("/api/v1/positions/manual") {
+        mockMvc.post("/api/v1/trackings") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openManualRequest())
@@ -165,24 +165,24 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `MANUAL 포지션 오픈 시 region 위반이면 422 반환`() {
+    fun `MANUAL 추적 기록 오픈 시 region 위반이면 422 반환`() {
         val accessToken = login()
 
-        mockMvc.post("/api/v1/positions/manual") {
+        mockMvc.post("/api/v1/trackings") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openManualRequest(koreaExchange = "BINANCE"))
         }.andExpect {
             status { isUnprocessableEntity() }
-            jsonPath("$.code") { value("INVALID_POSITION") }
+            jsonPath("$.code") { value("INVALID_TRACKING") }
         }
     }
 
     @Test
-    fun `루트 POST 포지션 생성 라우트는 제거되어 있다`() {
+    fun `루트 POST 추적 기록 생성 라우트는 제거되어 있다`() {
         val accessToken = login()
 
-        mockMvc.post("/api/v1/positions") {
+        mockMvc.post("/api/v1/trackings") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openManualRequest())
@@ -192,11 +192,11 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `존재하는 포지션 단건 조회 성공`() {
+    fun `존재하는 추적 기록 단건 조회 성공`() {
         val saved = createPosition()
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions/${saved.id}") {
+        mockMvc.get("/api/v1/trackings/${saved.id}") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
@@ -207,10 +207,10 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `없는 포지션 조회 시 404 반환`() {
+    fun `없는 추적 기록 조회 시 404 반환`() {
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions/999") {
+        mockMvc.get("/api/v1/trackings/999") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
@@ -218,7 +218,7 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `OPEN 포지션만 필터링하여 반환`() {
+    fun `OPEN 추적 기록만 필터링하여 반환`() {
         createPosition(symbol = "BTC")
         createPosition(symbol = "ETH")
         val closedPosition = createPosition(symbol = "SOL")
@@ -226,7 +226,7 @@ class PositionControllerE2ETest @Autowired constructor(
         trackingRepository.save(closedPosition)
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions") {
+        mockMvc.get("/api/v1/trackings") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
@@ -238,10 +238,10 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `열린 포지션 없으면 빈 배열 반환`() {
+    fun `열린 추적 기록 없으면 빈 배열 반환`() {
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions") {
+        mockMvc.get("/api/v1/trackings") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
@@ -266,7 +266,7 @@ class PositionControllerE2ETest @Autowired constructor(
             observedAt = Instant.now(),
         )
 
-        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
+        mockMvc.get("/api/v1/trackings/${tracking.id}/gross-pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
@@ -291,7 +291,7 @@ class PositionControllerE2ETest @Autowired constructor(
         val premium = savePremiumWithTickers()
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
+        mockMvc.get("/api/v1/trackings/${tracking.id}/gross-pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
@@ -307,7 +307,7 @@ class PositionControllerE2ETest @Autowired constructor(
         val tracking = createPosition()
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
+        mockMvc.get("/api/v1/trackings/${tracking.id}/gross-pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
@@ -316,7 +316,7 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `다른 회원의 포지션 PnL 조회 시 404 반환`() {
+    fun `다른 회원의 추적 기록 PnL 조회 시 404 반환`() {
         val tracking = createPosition()
         val otherEmail = "other@example.com"
         memberRepository.save(
@@ -328,20 +328,20 @@ class PositionControllerE2ETest @Autowired constructor(
         val accessToken = login(email = otherEmail)
         savePremiumWithTickers(observedAt = Instant.now())
 
-        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
+        mockMvc.get("/api/v1/trackings/${tracking.id}/gross-pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
-            jsonPath("$.code") { value("POSITION_NOT_FOUND") }
+            jsonPath("$.code") { value("TRACKING_NOT_FOUND") }
         }
     }
 
     @Test
-    fun `포지션 청산 성공 - DB CLOSED 상태 저장`() {
+    fun `추적 기록 청산 성공 - DB CLOSED 상태 저장`() {
         val tracking = createPosition()
         val accessToken = login()
 
-        mockMvc.post("/api/v1/positions/${tracking.id}/close") {
+        mockMvc.post("/api/v1/trackings/${tracking.id}/archive") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
@@ -354,14 +354,14 @@ class PositionControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `없는 포지션 청산 시 404 반환`() {
+    fun `없는 추적 기록 청산 시 404 반환`() {
         val accessToken = login()
 
-        mockMvc.post("/api/v1/positions/999/close") {
+        mockMvc.post("/api/v1/trackings/999/archive") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
-            jsonPath("$.code") { value("POSITION_NOT_FOUND") }
+            jsonPath("$.code") { value("TRACKING_NOT_FOUND") }
         }
     }
 

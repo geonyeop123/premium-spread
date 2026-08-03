@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
 
-class PositionServiceTest {
+class TrackingServiceTest {
 
     private lateinit var trackingRepository: TrackingRepository
     private lateinit var service: TrackingService
@@ -29,7 +29,7 @@ class PositionServiceTest {
     inner class Create {
 
         @Test
-        fun `Command로 포지션을 생성한다`() {
+        fun `Command로 추적 기록을 생성한다`() {
             val command = TrackingCommand.Create(
                 memberId = 1L,
                 symbol = "BTC",
@@ -70,7 +70,7 @@ class PositionServiceTest {
     inner class Save {
 
         @Test
-        fun `포지션을 저장한다`() {
+        fun `추적 기록을 저장한다`() {
             val tracking = TrackingFixtures.openPosition()
 
             every { trackingRepository.save(tracking) } returns tracking
@@ -86,7 +86,7 @@ class PositionServiceTest {
     inner class FindById {
 
         @Test
-        fun `ID로 포지션을 조회한다`() {
+        fun `ID로 추적 기록을 조회한다`() {
             val tracking = TrackingFixtures.openPosition(id = 1L)
 
             every { trackingRepository.findById(1L) } returns tracking
@@ -97,7 +97,7 @@ class PositionServiceTest {
         }
 
         @Test
-        fun `포지션이 없으면 null을 반환한다`() {
+        fun `추적 기록이 없으면 null을 반환한다`() {
             every { trackingRepository.findById(999L) } returns null
 
             val result = service.findById(999L)
@@ -110,7 +110,7 @@ class PositionServiceTest {
     inner class FindAllActive {
 
         @Test
-        fun `열린 포지션 목록을 조회한다`() {
+        fun `열린 추적 기록 목록을 조회한다`() {
             val positions = listOf(
                 TrackingFixtures.openPosition(symbol = "BTC", id = 1L),
                 TrackingFixtures.openPosition(symbol = "ETH", id = 2L),
@@ -126,7 +126,7 @@ class PositionServiceTest {
         }
 
         @Test
-        fun `열린 포지션이 없으면 빈 목록을 반환한다`() {
+        fun `열린 추적 기록이 없으면 빈 목록을 반환한다`() {
             every { trackingRepository.findAllOpen() } returns emptyList()
 
             val result = service.findAllOpen()
@@ -139,7 +139,7 @@ class PositionServiceTest {
     inner class CountByMemberId {
 
         @Test
-        fun `회원의 상태별 포지션을 엔티티 로딩 없이 집계한다`() {
+        fun `회원의 상태별 추적 기록을 엔티티 로딩 없이 집계한다`() {
             every { trackingRepository.countActiveByMemberId(7L) } returns 2L
             every { trackingRepository.countArchivedByMemberId(7L) } returns 3L
 
@@ -156,7 +156,7 @@ class PositionServiceTest {
     inner class FindAllOpenByMemberId {
 
         @Test
-        fun `회원별 열린 포지션 목록을 조회한다`() {
+        fun `회원별 열린 추적 기록 목록을 조회한다`() {
             val memberId = 1L
             val positions = listOf(
                 TrackingFixtures.openPosition(memberId = memberId, symbol = "BTC", id = 1L),
@@ -173,7 +173,7 @@ class PositionServiceTest {
         }
 
         @Test
-        fun `회원의 열린 포지션이 없으면 빈 목록을 반환한다`() {
+        fun `회원의 열린 추적 기록이 없으면 빈 목록을 반환한다`() {
             every { trackingRepository.findAllActiveByMemberId(999L) } returns emptyList()
 
             val result = service.findAllActiveByMemberId(999L)

@@ -105,7 +105,7 @@ class PremiumSchedulerE2ETest : BatchIntegrationTestBase() {
 
         @Test
         fun `실행 후 히스토리 ZSet에 데이터가 항상 저장된다`() {
-            // when - 포지션 유무와 관계없이 히스토리 저장
+            // when - 추적 기록 유무와 관계없이 히스토리 저장
             premiumJob.run()
 
             // then

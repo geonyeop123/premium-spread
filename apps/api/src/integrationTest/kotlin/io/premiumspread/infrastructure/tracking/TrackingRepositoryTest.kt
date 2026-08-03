@@ -30,7 +30,7 @@ import java.time.Instant
 @SpringBootTest
 @ActiveProfiles("test")
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, io.premiumspread.config.TestConfig::class)
-class PositionRepositoryTest @Autowired constructor(
+class TrackingRepositoryTest @Autowired constructor(
     private val trackingRepository: TrackingRepository,
     private val memberRepository: MemberRepository,
     private val passwordEncoder: PasswordEncoder,

@@ -74,7 +74,7 @@ class GlobalExceptionHandler(private val clock: Clock = Clock.systemUTC()) {
 
         ApplicationError.MEMBER_NOT_FOUND,
         ApplicationError.TICKER_NOT_FOUND,
-        ApplicationError.POSITION_NOT_FOUND,
+        ApplicationError.TRACKING_NOT_FOUND,
         ApplicationError.PREMIUM_NOT_FOUND,
         ApplicationError.NOTIFICATION_SUBSCRIPTION_NOT_FOUND,
         -> HttpStatus.NOT_FOUND
@@ -82,12 +82,13 @@ class GlobalExceptionHandler(private val clock: Clock = Clock.systemUTC()) {
         ApplicationError.DUPLICATE_EMAIL,
         ApplicationError.PREMIUM_SNAPSHOT_NOT_AVAILABLE,
         ApplicationError.STALE_PREMIUM_SNAPSHOT,
+        ApplicationError.TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE,
         -> HttpStatus.CONFLICT
 
         ApplicationError.INVALID_TICKER,
         ApplicationError.INVALID_QUOTE,
         ApplicationError.INVALID_PREMIUM_INPUT,
-        ApplicationError.INVALID_POSITION,
+        ApplicationError.INVALID_TRACKING,
         ApplicationError.DOMAIN_ERROR,
         -> HttpStatus.UNPROCESSABLE_ENTITY
     }
@@ -109,10 +110,11 @@ class GlobalExceptionHandler(private val clock: Clock = Clock.systemUTC()) {
             "INVALID_TICKER" to "유효하지 않은 티커입니다.",
             "INVALID_QUOTE" to "유효하지 않은 시세입니다.",
             "INVALID_PREMIUM_INPUT" to "유효하지 않은 프리미엄 입력값입니다.",
-            "INVALID_POSITION" to "유효하지 않은 포지션입니다.",
+            "INVALID_TRACKING" to "유효하지 않은 추적 기록입니다.",
             "DOMAIN_ERROR" to "요청을 처리할 수 없습니다.",
             "TICKER_NOT_FOUND" to "티커를 찾을 수 없습니다.",
-            "POSITION_NOT_FOUND" to "포지션을 찾을 수 없습니다.",
+            "TRACKING_NOT_FOUND" to "추적 기록을 찾을 수 없습니다.",
+            "TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE" to "종료 시점 시세를 확정하지 못해 손익을 제공하지 않습니다.",
             "PREMIUM_NOT_FOUND" to "프리미엄 정보를 찾을 수 없습니다.",
             "PREMIUM_SNAPSHOT_NOT_AVAILABLE" to "해당 종목의 최신 프리미엄 스냅샷이 없습니다.",
             "STALE_PREMIUM_SNAPSHOT" to "프리미엄 스냅샷이 오래되어 사용할 수 없습니다. 잠시 후 다시 시도해주세요.",

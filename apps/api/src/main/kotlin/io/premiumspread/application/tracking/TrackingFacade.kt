@@ -83,7 +83,7 @@ class TrackingFacade(
     @Transactional(readOnly = true)
     fun findById(criteria: TrackingCriteria.FindById): TrackingResult.Detail {
         val tracking = trackingService.findById(criteria.trackingId)
-            ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
+            ?: throw ApplicationException(ApplicationError.TRACKING_NOT_FOUND)
         verifyOwnership(tracking, criteria.memberId)
         return toDetail(tracking)
     }
@@ -101,7 +101,7 @@ class TrackingFacade(
     @Transactional(readOnly = true)
     fun calculatePnl(criteria: TrackingCriteria.CalculatePnl): TrackingResult.Pnl = translateInvalidTracking {
         val tracking = trackingService.findById(criteria.trackingId)
-            ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
+            ?: throw ApplicationException(ApplicationError.TRACKING_NOT_FOUND)
         verifyOwnership(tracking, criteria.memberId)
 
         val snapshot = premiumService.findLatestSnapshot(tracking.pair)
@@ -131,7 +131,7 @@ class TrackingFacade(
     @Transactional
     fun archive(criteria: TrackingCriteria.Archive): TrackingResult.Detail = translateInvalidTracking {
         val tracking = trackingService.findById(criteria.trackingId)
-            ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
+            ?: throw ApplicationException(ApplicationError.TRACKING_NOT_FOUND)
         verifyOwnership(tracking, criteria.memberId)
 
         tracking.close()
@@ -142,7 +142,7 @@ class TrackingFacade(
 
     private fun verifyOwnership(tracking: Tracking, memberId: Long) {
         if (tracking.memberId != memberId) {
-            throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
+            throw ApplicationException(ApplicationError.TRACKING_NOT_FOUND)
         }
     }
 
@@ -183,7 +183,7 @@ class TrackingFacade(
         } catch (ex: ApplicationException) {
             throw ex
         } catch (ex: InvalidTrackingException) {
-            throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
+            throw ApplicationException(ApplicationError.INVALID_TRACKING, ex)
         }
 
     private fun parsePair(symbol: String, koreaExchange: String, foreignExchange: String): MarketPair =
@@ -194,6 +194,6 @@ class TrackingFacade(
                 foreignExchange = Exchange.valueOf(foreignExchange),
             )
         } catch (ex: IllegalArgumentException) {
-            throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
+            throw ApplicationException(ApplicationError.INVALID_TRACKING, ex)
         }
 }

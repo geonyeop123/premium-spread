@@ -27,7 +27,7 @@ GET {{premium-api}}/api/v1/members/me
 Authorization: Bearer {{accessToken}}
 
 ### 인증된 API 호출 예시 (포지션 조회)
-GET {{premium-api}}/api/v1/positions
+GET {{premium-api}}/api/v1/trackings
 Authorization: Bearer {{accessToken}}
 
 ### 로그아웃 (Refresh Token 쿠키 삭제)

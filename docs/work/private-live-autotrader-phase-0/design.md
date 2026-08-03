@@ -440,7 +440,7 @@ clock skew 허용치를 두지 않는다 — 필요해지면 명시적 결정으
 |---|---|---|
 | `POST /trackings/{id}/archive` | snapshot 신선 | `200` + `close_price_source = MARKET_SNAPSHOT` |
 | `POST /trackings/{id}/archive` | snapshot 부재·stale | **`200`** + `close_price_source = SNAPSHOT_UNAVAILABLE` |
-| `POST /trackings/{id}/archive` | 이미 `ARCHIVED` (동시 요청의 패자 포함) | `400 INVALID_TRACKING` |
+| `POST /trackings/{id}/archive` | 이미 `ARCHIVED` (동시 요청의 패자 포함) | `422 INVALID_TRACKING` |
 | `GET /trackings/{id}/gross-pnl` | `ACTIVE`, snapshot이 신선도 범위 안 | `200`, `priceBasis = CURRENT_MARKET` |
 | `GET /trackings/{id}/gross-pnl` | `ACTIVE`, snapshot이 범위 밖(오래됨·미래) | `200`, `priceBasis = STALE_MARKET` |
 | `GET /trackings/{id}/gross-pnl` | `ARCHIVED` + 확정 판정 통과 | `200`, `priceBasis = ARCHIVED_SNAPSHOT` |

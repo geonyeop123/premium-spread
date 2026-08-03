@@ -25,7 +25,7 @@ import java.time.Instant
 @WebMvcTest(TrackingController::class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import(WebMvcConfig::class)
-class PositionControllerTest {
+class TrackingControllerTest {
     @Autowired lateinit var mockMvc: MockMvc
 
     @Autowired lateinit var objectMapper: ObjectMapper
@@ -40,8 +40,8 @@ class PositionControllerTest {
             facade.recordFromMarket(TrackingCriteria.RecordFromMarket(1L, "BTC", "UPBIT", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1))
         } returns detail()
 
-        mockMvc.post("/api/v1/positions/auto") {
-            principal = this@PositionControllerTest.principal
+        mockMvc.post("/api/v1/trackings/from-market") {
+            principal = this@TrackingControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
@@ -53,8 +53,8 @@ class PositionControllerTest {
     @Test
     fun `DTO validation 오류는 transport 400이다`() {
         val request = TrackingRequest.RecordFromMarket("", "UPBIT", BigDecimal.ZERO, "BINANCE", BigDecimal.ONE, 1)
-        mockMvc.post("/api/v1/positions/auto") {
-            principal = this@PositionControllerTest.principal
+        mockMvc.post("/api/v1/trackings/from-market") {
+            principal = this@TrackingControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect { status { isBadRequest() } }
@@ -62,25 +62,25 @@ class PositionControllerTest {
 
     @Test
     fun `도메인 semantic 오류는 422다`() {
-        every { facade.recordFromMarket(any()) } throws ApplicationException(ApplicationError.INVALID_POSITION)
+        every { facade.recordFromMarket(any()) } throws ApplicationException(ApplicationError.INVALID_TRACKING)
         val request = TrackingRequest.RecordFromMarket("BTC", "BINANCE", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1)
-        mockMvc.post("/api/v1/positions/auto") {
-            principal = this@PositionControllerTest.principal
+        mockMvc.post("/api/v1/trackings/from-market") {
+            principal = this@TrackingControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
             status { isUnprocessableEntity() }
-            jsonPath("$.code") { value("INVALID_POSITION") }
+            jsonPath("$.code") { value("INVALID_TRACKING") }
         }
     }
 
     @Test
     fun `단건 미발견은 404 envelope다`() {
         every { facade.findById(TrackingCriteria.FindById(99L, 1L)) } throws
-            ApplicationException(ApplicationError.POSITION_NOT_FOUND)
-        mockMvc.get("/api/v1/positions/99") { principal = this@PositionControllerTest.principal }.andExpect {
+            ApplicationException(ApplicationError.TRACKING_NOT_FOUND)
+        mockMvc.get("/api/v1/trackings/99") { principal = this@TrackingControllerTest.principal }.andExpect {
             status { isNotFound() }
-            jsonPath("$.code") { value("POSITION_NOT_FOUND") }
+            jsonPath("$.code") { value("TRACKING_NOT_FOUND") }
         }
     }
 
@@ -88,7 +88,7 @@ class PositionControllerTest {
     fun `목록 Details Result를 기존 배열 Response로 변환한다`() {
         every { facade.findAllActiveByMemberId(TrackingCriteria.FindAllActive(1L)) } returns
             TrackingResult.Details(listOf(detail()))
-        mockMvc.get("/api/v1/positions") { principal = this@PositionControllerTest.principal }.andExpect {
+        mockMvc.get("/api/v1/trackings") { principal = this@TrackingControllerTest.principal }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
         }
