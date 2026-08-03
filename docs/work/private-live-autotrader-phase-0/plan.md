@@ -19,6 +19,17 @@
   없어 조용히 통과시킨다 (`dod.md` 도구 제약).
 - 로컬 gradle은 `--offline --no-daemon`을 붙인다 (`.ai/rules/testing.md`).
 
+**사전 확인된 사실** — 계획 수립 중 실측했다. 구현자가 다시 확인할 필요 없다.
+
+| 확인 | 결과 |
+|---|---|
+| `docs/check-documentation.sh`의 `required_paths` | `http/api/positions.http`를 포함하지 않는다 → 파일 rename이 이 gate를 깨지 않는다 |
+| `architecture-tests/`의 패키지 하드코딩 | `position` 문자열 0건 → 패키지 이동이 architecture test를 깨지 않는다 |
+| `ci/`·`docker/`·`.github/`의 `positions` 참조 | 0건 → REST 경로 rename이 CI·배포 스크립트를 깨지 않는다 |
+| `position.status`를 쓰는 쿼리 | 전부 JPQL·derived query. native query 0건 → `AttributeConverter`가 파라미터 바인딩에 적용된다 (`design.md` D4) |
+| `verifyMigrations`의 destructive gate | `TRUNCATE TABLE`·`DROP TABLE`만 검사 → 기존 컬럼 값 재작성을 잡지 못한다. 그 공백은 `AC23`이 메운다 |
+| `apps/web` 테스트 인프라 | 없음. `scripts`는 `dev`/`build`/`start`/`lint`뿐이고 testing 의존성 0개 → T6이 도입한다 |
+
 ## 1. 태스크
 
 ### T1. 도메인·인프라·애플리케이션·인터페이스 타입 rename
