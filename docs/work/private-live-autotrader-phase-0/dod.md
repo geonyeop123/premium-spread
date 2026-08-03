@@ -19,7 +19,10 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 
 **제외** *(scope creep 차단선)*
 
-- `MarketPair` 타입 확장, Redis key 포맷 변경, premium/ticker/notification 도메인 변경
+- `MarketPair` 타입 확장, Redis key 포맷 변경, premium·notification 도메인 변경
+- ticker 도메인 변경 — 단 `Exchange.kt`에 `UPBIT` 미연결 사실을 적는 **주석 추가는 예외**다
+  (`design.md` §5.6, `plan.md` T5). `AC26`이 코드 줄 변경과 다른 파일 변경을 차단한다
+- 기존 migration 변경과 `V15` 외 migration 추가
 - 수수료·펀딩비·슬리피지를 반영한 순손익 모델 — Phase 1 `P1-O5`
 - 계정 ROI, 실제 체결 손익, 외부 계정 대조, 주문 실행 경로
 - `position` DB 테이블명 변경
@@ -46,8 +49,8 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`의 `ALTER` 연산이 **`ADD COLUMN`뿐**이고 모든 `UPDATE`의 모든 `SET` 대상이 같은 migration이 추가한 컬럼이다(fail-closed allowlist). 검사기는 우회 표본 11종(다중 SET·별칭·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·`DELETE FROM`)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok rewrites_existing=[] disallowed=[] destructive=[]` |
-| AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`, `modules/redis`, Redis 계약 runbook, premium·notification 도메인이 이 브랜치에서 변경되지 않았고 `@Table(name = "position")`이 정확히 1개 유지된다. | 범위 제외 절, codex 6R medium-2 | T1 | 아래 `AC26 command` | exit 0, `changed=[] table=1` |
+| AC23 | `V15`의 `ALTER` 연산이 **`ADD COLUMN`뿐**이고 모든 `UPDATE`의 모든 `SET` 대상이 같은 migration이 추가한 컬럼이다(fail-closed allowlist). **판독 불가한 `SET` 대상은 버리지 않고 위반으로 센다.** 검사기는 우회 표본 16종(다중 SET·별칭·별칭 주위 공백·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·`DELETE FROM`·정상 표본 2종)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok rewrites_existing=[] unparseable=[] disallowed=[] destructive=[]` |
+| AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 `V15` 하나만 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query와 `position` 테이블 raw SQL이 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[] rawsql=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
 | AC12 | unit·contract test와 architecture 경계 test가 통과한다. | 기존 repository gate, `.ai/rules/architecture.md` | T2 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 |
@@ -231,32 +234,37 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
 #### AC23 command
 
 금지 토큰 나열(blacklist)은 문법 변형에 뚫린다. MySQL은 `DROP status`·`CHANGE status ...`처럼 `COLUMN`을
-생략할 수 있고, `SET "status"`·``SET `status` ``처럼 식별자를 감쌀 수 있다. 그래서 **allowlist로 뒤집는다**:
-`ALTER` 연산은 `ADD COLUMN`만 허용하고, `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만 허용한다.
-허용 목록에 없으면 무조건 실패다(fail-closed).
+생략할 수 있고, 식별자를 따옴표로 감쌀 수 있으며, `SET p . status`처럼 한정자 주위에 공백을 둘 수 있다.
+그래서 **두 겹으로 fail-closed**로 만든다.
 
-검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다. self-test가 실패하면 본 검사
-결과를 신뢰하지 않는다.
+1. `ALTER` 연산은 `ADD COLUMN`만 허용한다. 그 밖의 연산은 종류를 묻지 않고 위반이다.
+2. `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만 허용한다. **판독할 수 없는 대상은 버리지 않고
+   위반으로 센다** — 초안은 bare identifier가 아닌 값을 조용히 걸러내 `SET p . status`가 `targets=[]`로
+   통과했다.
+
+검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다.
 
 ```bash
 unquote() { sed -E 's/[`"'"'"']//g'; }
 
-alter_ops() {   # ALTER TABLE 문의 연산을 콤마 단위로 하나씩 출력
+alter_ops() {
   sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' \
   | grep -iE '^[[:space:]]*ALTER[[:space:]]+TABLE' \
   | sed -E 's/^[[:space:]]*[Aa][Ll][Tt][Ee][Rr][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+[^[:space:]]+[[:space:]]+//' \
   | tr ',' '\n' | sed -E 's/^[[:space:]]*//; s/[[:space:]]+$//' | grep -E '.'
 }
 
-set_targets() {   # UPDATE 문의 SET 대상 컬럼 전부 (다중 SET·별칭·따옴표·복수 문장·주석 대응)
+set_targets_raw() {   # SET 대상 원문. 판정은 호출자가 한다 (여기서 버리지 않는다).
   sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' \
   | grep -iE '^[[:space:]]*UPDATE' \
   | sed -E 's/[[:space:]][Ww][Hh][Ee][Rr][Ee][[:space:]].*$//' \
   | sed -E 's/^.*[[:space:]][Ss][Ee][Tt][[:space:]]//' \
-  | tr ',' '\n' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*=.*$//' | unquote \
-  | sed -E 's/^[A-Za-z_][A-Za-z0-9_]*\.//' | tr '[:upper:]' '[:lower:]' \
-  | grep -E '^[a-z_][a-z0-9_]*$' | sort -u
+  | tr ',' '\n' | sed -E 's/[[:space:]]*=.*$//' | unquote \
+  | sed -E 's/[[:space:]]*\.[[:space:]]*/./g' \
+  | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.' | sort -u
 }
+
+normalize_target() { sed -E 's/^[A-Za-z_][A-Za-z0-9_]*\.//' | tr '[:upper:]' '[:lower:]'; }
 
 added_cols() {
   alter_ops | grep -iE '^ADD[[:space:]]+COLUMN[[:space:]]' \
@@ -264,39 +272,52 @@ added_cols() {
 }
 
 judge() {   # 0 = 안전, 1 = 위반
-  local sql="$1" added targets bad="" disallowed="" destructive=""
+  local sql="$1" added raw bad="" unparseable="" disallowed="" destructive="" r n
   disallowed=$(printf '%s' "$sql" | alter_ops | grep -ivE '^ADD[[:space:]]+COLUMN[[:space:]]' | cut -c1-50 || true)
   added=$(printf '%s' "$sql" | added_cols)
-  targets=$(printf '%s' "$sql" | set_targets)
-  for tgt in $targets; do printf '%s\n' "$added" | grep -qx "$tgt" || bad="$bad $tgt"; done
+  raw=$(printf '%s' "$sql" | set_targets_raw)
+  local IFS=$'\n'
+  for r in $raw; do
+    n=$(printf '%s' "$r" | normalize_target)
+    if ! printf '%s' "$n" | grep -qE '^[a-z_][a-z0-9_]*$'; then
+      unparseable="$unparseable [$r]"
+    elif ! printf '%s\n' "$added" | grep -qx "$n"; then
+      bad="$bad $n"
+    fi
+  done
+  unset IFS
   destructive=$(printf '%s' "$sql" | sed -E 's/--.*$//' \
     | grep -inE 'TRUNCATE|DROP[[:space:]]+TABLE|RENAME[[:space:]]+TABLE|DELETE[[:space:]]+FROM' | cut -c1-50 || true)
-  JB="$bad"; JD=$(printf '%s' "$disallowed" | tr '\n' ';'); JX=$(printf '%s' "$destructive" | tr '\n' ';')
-  [ -z "$bad" ] && [ -z "$disallowed" ] && [ -z "$destructive" ]
+  JB="$bad"; JU="$unparseable"; JD=$(printf '%s' "$disallowed" | tr '\n' ';'); JX=$(printf '%s' "$destructive" | tr '\n' ';')
+  [ -z "$bad" ] && [ -z "$unparseable" ] && [ -z "$disallowed" ] && [ -z "$destructive" ]
 }
 
-# --- self-test: 아래 우회 표본을 하나라도 놓치면 즉시 실패 ---
+# --- self-test: 아래를 하나라도 놓치면 즉시 실패 ---
 A="ALTER TABLE position ADD COLUMN close_price_source VARCHAR(30) NULL;"
-undetected=""
-judge "$A UPDATE position SET close_price_source='X', status='ARCHIVED';"       && undetected="$undetected multi-set"
-judge "$A UPDATE position p SET p.status='ACTIVE';"                             && undetected="$undetected alias-set"
-judge "$A UPDATE position SET close_price_source='X'; UPDATE position SET status='A';" && undetected="$undetected second-update"
-judge "$A UPDATE position SET \"status\" = 'ARCHIVED';"                         && undetected="$undetected quoted-set"
-judge "$A ALTER TABLE position MODIFY COLUMN status VARCHAR(30) NOT NULL;"      && undetected="$undetected modify-column"
-judge "$A ALTER TABLE position DROP COLUMN status;"                             && undetected="$undetected drop-column"
-judge "$A ALTER TABLE position DROP status;"                                    && undetected="$undetected drop-no-keyword"
-judge "$A ALTER TABLE position CHANGE status state VARCHAR(30);"                && undetected="$undetected change-no-keyword"
-judge "$A ALTER TABLE position RENAME COLUMN status TO state;"                  && undetected="$undetected rename-column"
-judge "$A ALTER TABLE position ALTER COLUMN status SET DEFAULT 'ACTIVE';"       && undetected="$undetected alter-column"
-judge "$A DELETE FROM position WHERE status='CLOSED';"                          && undetected="$undetected delete-from"
-judge "$A" || undetected="$undetected false-positive-on-clean"
-if [ -n "$undetected" ]; then echo "self_test_failed=[$undetected]"; exit 1; fi
+u=""
+judge "$A UPDATE position SET close_price_source='X', status='ARCHIVED';"        && u="$u multi-set"
+judge "$A UPDATE position p SET p.status='ACTIVE';"                              && u="$u alias-set"
+judge "$A UPDATE position p SET p . status = 'ARCHIVED';"                        && u="$u alias-spaced-dot"
+judge "$A UPDATE position p SET p .status = 'ARCHIVED';"                         && u="$u alias-spaced-left"
+judge "$A UPDATE position p SET p.\"status\" = 'ARCHIVED';"                      && u="$u alias-quoted"
+judge "$A UPDATE position SET \"status\" = 'ARCHIVED';"                          && u="$u quoted-set"
+judge "$A UPDATE position SET close_price_source='X'; UPDATE position SET status='A';" && u="$u second-update"
+judge "$A ALTER TABLE position MODIFY COLUMN status VARCHAR(30) NOT NULL;"       && u="$u modify-column"
+judge "$A ALTER TABLE position DROP COLUMN status;"                              && u="$u drop-column"
+judge "$A ALTER TABLE position DROP status;"                                     && u="$u drop-no-keyword"
+judge "$A ALTER TABLE position CHANGE status state VARCHAR(30);"                 && u="$u change-no-keyword"
+judge "$A ALTER TABLE position RENAME COLUMN status TO state;"                   && u="$u rename-column"
+judge "$A ALTER TABLE position ALTER COLUMN status SET DEFAULT 'ACTIVE';"        && u="$u alter-column"
+judge "$A DELETE FROM position WHERE status='CLOSED';"                           && u="$u delete-from"
+judge "$A" || u="$u false-positive-on-clean"
+judge "ALTER TABLE position ADD COLUMN a INT NULL; UPDATE position p SET p.a = 1;" || u="$u false-positive-on-alias-ok"
+if [ -n "$u" ]; then echo "self_test_failed=[$u]"; exit 1; fi
 
 # --- 본 검사 ---
 m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
 [ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
 judge "$(cat "$m")"; rc=$?
-echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] rewrites_existing=[$JB] disallowed=[$JD] destructive=[$JX]"
+echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD] destructive=[$JX]"
 exit $rc
 ```
 
@@ -338,13 +359,19 @@ native=$(grep -rn --exclude-dir=build --include='*.kt' --include='*.java' \
   | cut -c1-90 || true)
 
 # 3) JdbcTemplate 등으로 position 테이블을 직접 다루는 raw SQL 금지.
-#    대소문자를 구분한다 — JPQL은 엔티티명 "FROM Tracking t"를 쓰므로 오탐하지 않는다.
+#    키워드는 **대소문자를 무시**한다 — 초안은 대문자만 봐서 `update position set ...` 같은
+#    소문자 raw SQL이 그대로 통과했다. 주석 줄은 제외한다.
+#    주의: 구현 전에는 JPQL이 `SELECT p FROM Position p`라 이 검사가 2건을 보고한다(오탐 아님,
+#    엔티티명이 아직 Position이다). T1이 엔티티를 Tracking으로 옮기면 `FROM Tracking t`가 되어
+#    사라진다. 즉 이 검사는 rename 완료를 함께 강제한다.
 rawsql=$(grep -rn --exclude-dir=build --include='*.kt' --include='*.java' \
-  -E '(FROM|JOIN|INTO|UPDATE|TABLE)[[:space:]]+`?position`?([[:space:]]|`|;|$)' \
+  -iE '(FROM|JOIN|INTO|UPDATE|TABLE)[[:space:]]+`?position`?([[:space:]]|`|;|,|\)|$)' \
   apps/api/src/main apps/batch/src/main domain/src/main \
   infrastructure/api/src/main infrastructure/batch/src/main infrastructure/common/src/main \
   modules/jpa/src/main modules/redis/src/main 2>/dev/null \
-  | grep -v 'V12MigrationSafety' | cut -c1-90 || true)
+  | grep -v 'V12MigrationSafety' \
+  | grep -vE ':[[:space:]]*(//|\*|/\*)' \
+  | cut -c1-90 || true)
 
 echo "missing=[$missing] leaked=[$leaked] native=[$native] rawsql=[$rawsql]"
 [ -z "$missing" ] && [ -z "$leaked" ] && [ -z "$native" ] && [ -z "$rawsql" ]
@@ -353,15 +380,33 @@ echo "missing=[$missing] leaked=[$leaked] native=[$native] rawsql=[$rawsql]"
 #### AC26 command
 
 ```bash
+tk=domain/src/main/kotlin/io/premiumspread/domain/ticker
+
+# 1) 계약을 건드리면 안 되는 경로
 changed=$(git diff --name-only origin/dev...HEAD -- \
   domain/src/main/kotlin/io/premiumspread/domain/market/MarketPair.kt \
   domain/src/main/kotlin/io/premiumspread/domain/premium \
   domain/src/main/kotlin/io/premiumspread/domain/notification \
   modules/redis \
   docs/runbooks/redis-contract.md)
+
+# 2) ticker 도메인 — Exchange.kt 의 주석 추가만 허용한다 (plan T5의 UPBIT 미연결 명시).
+#    그 밖의 파일 변경, 또는 Exchange.kt 의 코드 줄 변경은 범위 이탈이다.
+ticker_other=$(git diff --name-only origin/dev...HEAD -- "$tk" | grep -v 'Exchange\.kt$' || true)
+ticker_code=$(git diff -U0 origin/dev...HEAD -- "$tk/Exchange.kt" 2>/dev/null \
+  | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
+  | grep -vE '^[+-][[:space:]]*(/\*\*|\*|\*/|//)' \
+  | grep -vE '^[+-][[:space:]]*$' | cut -c1-60 || true)
+
+# 3) migration 은 V15 하나만 추가한다. 기존 migration 은 append-only 계약상 불변이다.
+mig=$(git diff --name-only origin/dev...HEAD -- \
+  infrastructure/common/src/main/resources/db/migration | grep -v 'V15__' || true)
+
+# 4) DB 테이블명 유지
 table=$(grep -rn '@Table(name = "position")' --include='*.kt' domain/src/main | grep -c . || true)
-echo "changed=[$changed] table=$table"
-[ -z "$changed" ] && [ "$table" -eq 1 ]
+
+echo "changed=[$changed] ticker_other=[$ticker_other] ticker_code=[$ticker_code] mig=[$mig] table=$table"
+[ -z "$changed" ] && [ -z "$ticker_other" ] && [ -z "$ticker_code" ] && [ -z "$mig" ] && [ "$table" -eq 1 ]
 ```
 
 #### AC15 command
@@ -476,7 +521,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC25 | RED — `TrackingLegacyRow*` 테스트 부재. 현재 code에는 `close_price_source` 개념 자체가 없다 | |
 | AC26 | 회귀 guard — 기준선 `changed=[] table=1` | |
 | AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | |
-| AC24 | RED — `TrackingStatusConverter` 미존재 | |
+| AC24 | RED — `TrackingStatusConverter` 미존재. `rawsql`은 구현 전 JPQL `FROM Position p` 2건을 보고한다(T1 rename 시 소멸) | |
 | AC11 | 회귀 guard — 기준선 통과 | |
 | AC12 | 회귀 guard — 기준선 통과 | |
 | AC13 | 회귀 guard — 기준선 통과 | |
