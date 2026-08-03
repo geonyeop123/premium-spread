@@ -38,7 +38,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 
 | # | 수용기준 (관찰 가능) | 근거 원문 | 티어 | 검증 명령 | 통과 조건 |
 |---|---|---|---|---|---|
-| AC1 | 실행 소스와 HTTP 샘플에 `positions` REST 경로가 남아 있지 않다. 인용 부호 종류와 무관하게 검사한다. | `P0-O1`, `SEM-1`, D1 | T1 | 아래 `AC1 command` | exit 0, `leftover=[…0…] new_route=1` |
+| AC1 | **실행 중인 앱에** `/api/v1/positions/**` 경로가 없고 `/api/v1/trackings`가 동작한다. 정적 검사는 보조이며, 문자열 부재를 기능 부재의 증거로 쓰지 않는다. | `P0-O1`, `SEM-1`, D1, codex 8R medium-3 | T2 | 아래 `AC1 command` | exit 0 |
 | AC2 | 실행 소스의 Kotlin 타입·패키지에 `Position` 식별자가 남아 있지 않다 (`@Table(name = "position")`과 V12 동결 guard 제외). | D1, `SEM-2` | T1 | 아래 `AC2 command` | exit 0, `leftover=[0 hits]` |
 | AC3 | **실제 HTTP 응답**이 `pnlBasis`·`priceBasis`·`observedAt`과 분모를 드러낸 필드명을 갖고, 옛 필드명이 응답에 없다. 파일 텍스트가 아니라 응답 body를 검증한다. | `P0-O2`, `SEM-4`, D3 | T2 | 아래 `AC3 command` | exit 0 |
 | AC4 | 목록·상세 화면 **렌더 결과**에 비주문 고지, gross 각주(수수료·펀딩비·슬리피지·환전 스프레드 제외, 계정 손익 아님), 레버리지 무관성 각주, 프리미엄 방향 설명, 분모 라벨이 나타난다. 문자열 존재가 아니라 DOM 출현을 검증한다. | `SEM-1`, `SEM-3`, `SEM-4` | T2 | 아래 `AC4 command` | exit 0 |
@@ -63,11 +63,19 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC19 | 미해결 결정(§6)이 모두 이월 대상 Phase를 갖고, Phase 1 진입을 차단하지 않음이 명시된다. | 상위 spec §5 Phase 1 진입 조건 | T1 | 아래 `AC19 command` | exit 0, `unassigned=[]` |
 | AC20 | 외부 관점 스펙 리뷰가 수렴한다. 동일 렌즈 재검토에서 critical·high가 0이다. | `feature-workflow` ⑥ | T4 | `codex-spec-review` 재실행 후 verdict 기록 | 재검토 critical·high 0 |
 | AC21 | 사용자가 `design.md`·`plan.md`·`dod.md`를 승인하고 이 계약서가 `FROZEN`으로 전이한다. §5.2 도메인 rename 포함 여부를 명시적으로 확인받는다. | `feature-workflow` ⑦, `design.md` D1 단서 | T4 | 사용자 승인 기록 | `status: FROZEN` + `frozen_at` 기입 |
+| AC27 | 사용자가 §5.8의 **배포 중 Web 단절**을 인지하고 출시 방식을 명시 선택한다 (그대로 수용 / 배포 전 공지 / 원자 전환 절차 선행). 선택 결과를 `understanding.md`와 PR 본문에 적는다. | §5.8, codex 2R medium-3·4R high-1·8R high-2 | T4 | 사용자 선택 기록 | 선택지 중 하나가 기록됨 |
 | AC22 | 사용자가 구현 결과를 확인하고 `progress.md`에 `FOUNDATION_ALIGNED`가 append된다. | `feature-workflow` ⑩, 상위 spec 종료 판정 | T4 | 사용자 승인 기록 + `progress.md` diff | `FOUNDATION_ALIGNED` 기록 |
 
 ### 검증 명령
 
 모든 명령은 저장소 루트에서 `bash`로 실행한다.
+
+> **기준 ref (필수):** 범위·whitespace 검사의 base는 **`origin/dev`**다. 병합 대상이 remote 브랜치이기
+> 때문이다(`origin/HEAD` → `refs/remotes/origin/dev`). **로컬 `dev` ref를 쓰지 않는다** — pull하지 않은
+> 작업 트리에서는 stale이며, 그 상태로 diff하면 이 브랜치가 건드리지도 않은 파일이 변경으로 잡힌다.
+> 실제로 이 저장소의 로컬 `dev`는 `b877d42`(PR #64 이전)이고 `origin/dev`는 `5319a2d`라, 로컬 ref로
+> 검사하면 PR #64가 도입한 동결 산출물 10개가 전부 "변경됨"으로 나온다. base를 쓰는 검사는 해석한 SHA를
+> 출력해 증거에 남긴다.
 
 > **도구 제약 (필수):** 검증 명령은 `grep`·`awk`·`sed`·`find`·`git`·`gradlew`·`npm`만 사용한다. `rg`처럼
 > 개발자 환경에만 설치된 도구는 **비대화형 셸과 CI runner의 PATH에 없어 조용히 0건을 반환하고 검사를
@@ -85,9 +93,26 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 
 #### AC1 command
 
+문자열 grep은 `@RequestMapping("/api/v1/" + "positions")` 같은 상수 결합을 검출하지 못한다. 경로의 **부재**는
+실행 중인 앱에 물어야 한다. 정적 검사는 잔재 탐지 보조로만 쓴다.
+
+`TrackingRouteContractTest`(`apps/api/src/integrationTest`)가 **인증된** 요청으로 다음을 확인한다.
+인증 없이 호출하면 `PublicEndpointPolicy`에 없는 경로라 `404` 이전에 `401`이 나오므로 판정이 무의미하다.
+
+| 요청 | 기대 |
+|---|---|
+| `GET /api/v1/positions` | `404` |
+| `GET /api/v1/positions/1` | `404` |
+| `POST /api/v1/positions/auto` | `404` |
+| `POST /api/v1/positions/manual` | `404` |
+| `POST /api/v1/positions/1/close` | `404` |
+| `GET /api/v1/positions/1/pnl` | `404` |
+| `GET /api/v1/trackings` | `200` |
+
 ```bash
-# 인용 부호에 의존하지 않는다. 초안의 "'/positions" 패턴은 백틱 템플릿 리터럴
-# (`/positions/${id}` 등 3건)을 놓쳐 구현 전에도 GREEN을 낼 수 있었다.
+./gradlew :apps:api:integrationTest --tests '*TrackingRouteContract*' --offline --no-daemon
+
+# 보조: 소스·샘플의 잔재 탐지 (인용 부호에 의존하지 않는다)
 api_http=$(grep -rn --exclude-dir=build '/api/v1/positions' apps/api/src http 2>/dev/null | grep -c . || true)
 web=$(grep -rn --exclude-dir=node_modules --exclude-dir=.next '/positions' apps/web/src 2>/dev/null | grep -c . || true)
 oldroute=$([ -d apps/web/src/app/positions ] && echo 1 || echo 0)
@@ -380,6 +405,7 @@ echo "missing=[$missing] leaked=[$leaked] native=[$native] rawsql=[$rawsql]"
 #### AC26 command
 
 ```bash
+echo "base=origin/dev@$(git rev-parse --short origin/dev)"
 tk=domain/src/main/kotlin/io/premiumspread/domain/ticker
 
 # 1) 계약을 건드리면 안 되는 경로
@@ -415,6 +441,7 @@ echo "changed=[$changed] ticker_other=[$ticker_other] ticker_code=[$ticker_code]
 구조적으로 실패할 수 없는 검사였다. 브랜치가 base에 대해 도입한 whitespace 결함을 보려면 범위를 준다.
 
 ```bash
+echo "base=origin/dev@$(git rev-parse --short origin/dev)"
 bash docs/check-documentation.sh && git diff --check origin/dev...HEAD && echo "whitespace ok"
 ```
 
@@ -437,6 +464,7 @@ echo "missing=[$missing] broken_links=[$broken]"
 #### AC17 command
 
 ```bash
+echo "base=origin/dev@$(git rev-parse --short origin/dev)"
 modified=$(git diff --name-only origin/dev...HEAD -- \
   'docs/work/private-live-autotrader/design.md' \
   'docs/work/private-live-autotrader/dod.md' \
@@ -508,7 +536,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 | # | RED (구현 전) | GREEN (구현 후) |
 |---|---|---|
-| AC1 | RED — 초안 패턴 기준 `leftover=[api_http=35 web=6 web_route_dir=1]`. 강화 후 web 실측 9건 (백틱 경로 3건 추가 검출) | |
+| AC1 | RED — `TrackingRouteContractTest` 부재. 정적 보조 검사도 `leftover=[api_http=35 web=14 old_route=1] new_route=0` | |
 | AC2 | RED — `leftover=[131 hits]` | |
 | AC3 | RED — `TrackingGrossPnlContractTest` 부재. 현재 응답에 `pnlBasis`·`priceBasis`가 없다 | |
 | AC4 | RED — `apps/web`에 테스트 인프라 자체가 없다 (`scripts`에 `test` 없음, testing 관련 의존성 0개). 고지 문구 6종도 전부 부재 | |
@@ -519,7 +547,8 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC9 | 회귀 guard — `PublicEndpointPolicy`에 추적 경로 없음(현재도 없음). 통합 test는 rename 후에만 실행 가능 | |
 | AC10 | RED — `V15` 미존재 | |
 | AC25 | RED — `TrackingLegacyRow*` 테스트 부재. 현재 code에는 `close_price_source` 개념 자체가 없다 | |
-| AC26 | 회귀 guard — 기준선 `changed=[] table=1` | |
+| AC26 | 회귀 guard — 기준선 `changed=[] ticker_other=[] ticker_code=[] mig=[] table=1` | |
+| AC27 | 미실행 — `feature-workflow` ⑦ 대기 | |
 | AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | |
 | AC24 | RED — `TrackingStatusConverter` 미존재. `rawsql`은 구현 전 JPQL `FROM Position p` 2건을 보고한다(T1 rename 시 소멸) | |
 | AC11 | 회귀 guard — 기준선 통과 | |
@@ -541,6 +570,6 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 DoD VERDICT: private-live-autotrader-phase-0
   T1/T2 자동:      _/23
   T3 기록 제출:    0건
-  T4 사람 확인:    _/3
+  T4 사람 확인:    _/4
   => (미판정)
 ```
