@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api';
+import {
+  NonOrderNotice,
+  GrossPnlFootnote,
+  DenominatorLabel,
+  PriceBasisBadge,
+} from '@/components/TrackingNotices';
 
 export interface Tracking {
   id: number;
@@ -19,10 +25,17 @@ export interface Tracking {
   entryPremiumRate: number;
   entryObservedAt: string;
   status: 'ACTIVE' | 'ARCHIVED';
+  closedAt: string | null;
+  closePriceSource: string | null;
+  hasConfirmedClose: boolean;
 }
 
 export interface GrossPnlData {
   trackingId: number;
+  priceBasis: string;
+  pnlBasis: string;
+  observedAt: string;
+  fxObservedAt: string;
   premiumRateDelta: number;
   entryPremiumRate: number;
   referencePremiumRate: number;
@@ -96,6 +109,10 @@ export function TrackingList({ trackings }: TrackingListProps) {
 
   return (
     <div className="overflow-x-auto">
+      <div className="mb-3 space-y-1">
+        <NonOrderNotice />
+        <GrossPnlFootnote />
+      </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-muted-foreground">
@@ -103,7 +120,7 @@ export function TrackingList({ trackings }: TrackingListProps) {
             <th className="pb-2 pr-4 font-medium text-right">한국 수량</th>
             <th className="pb-2 pr-4 font-medium text-right">한국 진입가</th>
             <th className="pb-2 pr-4 font-medium text-right">진입 프리미엄</th>
-            <th className="pb-2 pr-4 font-medium text-right">gross 손익</th>
+            <th className="pb-2 pr-4 font-medium text-right">gross 손익 <DenominatorLabel /></th>
             <th className="pb-2 pr-4 font-medium">진입 시각</th>
             <th className="pb-2 pr-4 font-medium">상태</th>
             <th className="pb-2 font-medium"></th>
@@ -146,7 +163,8 @@ export function TrackingList({ trackings }: TrackingListProps) {
                         {pnl.premiumRateDelta.toFixed(2)}%p
                       </div>
                       <div className="text-xs font-normal">
-                        {formatSigned(pnl.totalGrossPnlKrw)}원 (
+                        {formatSigned(pnl.totalGrossPnlKrw)}원
+                        <PriceBasisBadge priceBasis={pnl.priceBasis} observedAt={pnl.observedAt} /> (
                         {pnl.grossPnlPercentOfKoreaNotional > 0 ? '+' : ''}
                         {pnl.grossPnlPercentOfKoreaNotional.toFixed(2)}%)
                       </div>

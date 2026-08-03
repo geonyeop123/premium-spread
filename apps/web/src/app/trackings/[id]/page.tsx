@@ -8,6 +8,16 @@ import { apiClient, ApiError } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Tracking, GrossPnlData } from '@/components/TrackingList';
+import {
+  NonOrderNotice,
+  GrossPnlFootnote,
+  DenominatorLabel,
+  LeverageFootnote,
+  PremiumDirectionNote,
+  PriceBasisBadge,
+  ConfirmUnavailableNotice,
+  UnknownClosedAtNotice,
+} from '@/components/TrackingNotices';
 
 const formatKrw = (n: number) =>
   n.toLocaleString('ko-KR', { maximumFractionDigits: 0 });
@@ -130,6 +140,7 @@ export default function TrackingDetailPage() {
     <div className="container mx-auto space-y-6 px-4 py-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">포지션 기록 상세</h1>
+        <NonOrderNotice />
         <Link href="/trackings">
           <Button variant="outline" size="sm">
             목록으로
@@ -207,6 +218,7 @@ export default function TrackingDetailPage() {
                     {tracking.foreignLeverage}x
                   </span>
                 </div>
+                <LeverageFootnote />
               </div>
             </div>
           </div>
@@ -240,6 +252,16 @@ export default function TrackingDetailPage() {
               </p>
             </div>
             <div>
+              <p className="text-muted-foreground">종료 시각</p>
+              <p className="text-lg font-semibold">
+                {tracking.status === 'ARCHIVED'
+                  ? tracking.closedAt
+                    ? new Date(tracking.closedAt).toLocaleString('ko-KR')
+                    : <UnknownClosedAtNotice />
+                  : '-'}
+              </p>
+            </div>
+            <div>
               <p className="text-muted-foreground">관측 시각</p>
               <p className="text-lg font-semibold">
                 {new Date(tracking.entryObservedAt).toLocaleString('ko-KR')}
@@ -249,10 +271,10 @@ export default function TrackingDetailPage() {
         </CardContent>
       </Card>
 
-      {tracking.status === 'ACTIVE' && (
-        <Card>
+      <Card>
           <CardHeader>
-            <CardTitle>손익 현황 (PnL)</CardTitle>
+            <CardTitle>gross 손익</CardTitle>
+            <GrossPnlFootnote />
           </CardHeader>
           <CardContent>
             {pnl ? (
@@ -264,7 +286,9 @@ export default function TrackingDetailPage() {
                       : 'bg-red-50 dark:bg-red-900/20'
                   }`}
                 >
-                  <p className="text-sm text-muted-foreground">총 PnL (KRW)</p>
+                  <p className="text-sm text-muted-foreground">
+                    총 gross 손익 (KRW) <PriceBasisBadge priceBasis={pnl.priceBasis} observedAt={pnl.observedAt} />
+                  </p>
                   <p
                     className={`text-3xl font-bold ${
                       profitable ? 'text-green-600' : 'text-red-600'
@@ -280,6 +304,8 @@ export default function TrackingDetailPage() {
                     {pnl.grossPnlPercentOfKoreaNotional > 0 ? '+' : ''}
                     {pnl.grossPnlPercentOfKoreaNotional.toFixed(2)}%
                   </p>
+                  <DenominatorLabel />
+                  <PremiumDirectionNote />
                   <p className="mt-2 text-xs text-muted-foreground">
                     프리미엄 차이{' '}
                     <span
@@ -342,13 +368,10 @@ export default function TrackingDetailPage() {
                 </p>
               </div>
             ) : (
-              <p className="py-4 text-center text-muted-foreground">
-                PnL 데이터를 불러오는 중...
-              </p>
+              <ConfirmUnavailableNotice />
             )}
           </CardContent>
         </Card>
-      )}
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 

@@ -193,6 +193,8 @@ jobs:
         run: npm --prefix apps/web ci --include=optional
       - name: Lint web sources from the locked dependency graph
         run: npm --prefix apps/web run lint
+      - name: Verify user-facing notices render
+        run: npm --prefix apps/web run test
       - name: Audit the complete web lockfile at high severity
         run: bash ci/run-npm-audit.sh
 
