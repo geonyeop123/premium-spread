@@ -24,9 +24,12 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 - 계정 ROI, 실제 체결 손익, 외부 계정 대조, 주문 실행 경로
 - `position` DB 테이블명 변경
 - 인증·보안 경계 변경
-- 동결 산출물 변경: `docs/work/private-live-autotrader/**`,
-  `.ai/planning/private-live-autotrader/phase-minus-1-*.md`,
+- 동결 산출물 변경 — **아래 7개 파일에 한정한다.** 디렉터리 전체가 아니다:
+  `docs/work/private-live-autotrader/{design,plan,dod,understanding}.md`,
+  `.ai/planning/private-live-autotrader/phase-minus-1-{design,plan}.md`,
   `docs/dod/private-live-autotrader-phase-minus-1.dod.md`
+  (`docs/work/private-live-autotrader/README.md`는 **동결 대상이 아니며** `design.md` §5.7과 `plan.md` T7이
+  As-Is 역참조 추가를 요구한다. `AC17`의 검사 목록이 이 7개와 정확히 같다)
 
 ## 수용기준
 
@@ -43,8 +46,9 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`가 기존 컬럼을 재작성·변경·삭제하지 않는다. 모든 `UPDATE` 문의 **모든** `SET` 대상이 같은 migration이 추가한 컬럼이다. 검사기는 우회 표본(다중 SET·별칭·복수 문장·`MODIFY COLUMN`)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok rewrites_existing=[] forbidden=[]` |
-| AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query가 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[]` |
+| AC23 | `V15`의 `ALTER` 연산이 **`ADD COLUMN`뿐**이고 모든 `UPDATE`의 모든 `SET` 대상이 같은 migration이 추가한 컬럼이다(fail-closed allowlist). 검사기는 우회 표본 11종(다중 SET·별칭·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·`DELETE FROM`)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok rewrites_existing=[] disallowed=[] destructive=[]` |
+| AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`, `modules/redis`, Redis 계약 runbook, premium·notification 도메인이 이 브랜치에서 변경되지 않았고 `@Table(name = "position")`이 정확히 1개 유지된다. | 범위 제외 절, codex 6R medium-2 | T1 | 아래 `AC26 command` | exit 0, `changed=[] table=1` |
+| AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query와 `position` 테이블 raw SQL이 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[] rawsql=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
 | AC12 | unit·contract test와 architecture 경계 test가 통과한다. | 기존 repository gate, `.ai/rules/architecture.md` | T2 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 |
 | AC13 | API·batch·infrastructure 통합 test가 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --offline --no-daemon` | exit 0 |
@@ -52,7 +56,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC15 | 저장소 문서 계약과 whitespace 계약이 유지된다. **브랜치가 base에 대해 도입한** whitespace 결함을 본다. | 기존 repository gate, codex 4R medium-3 | T1 | 아래 `AC15 command` | exit 0, `documentation check passed` |
 | AC16 | `docs/work/private-live-autotrader-phase-0/`에 workflow 산출물 4종이 존재하고 상대 링크가 모두 실재 파일을 가리킨다. | `feature-workflow` ④⑤⑪-b | T1 | 아래 `AC16 command` | exit 0, `missing=[] broken_links=[]` |
 | AC17 | 동결 산출물(마스터 spec 4종, Phase -1 3종)이 이 브랜치에서 변경되지 않았다. | 범위 제외 "동결 산출물 변경" | T1 | 아래 `AC17 command` | exit 0, `modified=[]` |
-| AC18 | `design.md` §7 outcome 추적표의 모든 계약이 근거 절과 검증 AC를 갖고, 참조된 AC가 이 계약서에 실재한다. | 상위 spec `P0-O1`~`ARCH-9` 배정 | T1 | 아래 `AC18 command` | exit 0, `empty_cells=[] dangling_ac=[]` |
+| AC18 | §7 outcome 추적표가 상위 동결 spec이 Phase 0에 배정한 **11개 ID와 정확히 일치**하고(누락·초과 0), 각 행이 근거 절과 검증 AC를 가지며, 참조된 AC가 이 계약서에 실재한다. | 상위 spec §8 Phase 0 배정, codex 6R medium-3 | T1 | 아래 `AC18 command` | exit 0, `missing=[] extra=[] empty_cells=[] dangling_ac=[]` |
 | AC19 | 미해결 결정(§6)이 모두 이월 대상 Phase를 갖고, Phase 1 진입을 차단하지 않음이 명시된다. | 상위 spec §5 Phase 1 진입 조건 | T1 | 아래 `AC19 command` | exit 0, `unassigned=[]` |
 | AC20 | 외부 관점 스펙 리뷰가 수렴한다. 동일 렌즈 재검토에서 critical·high가 0이다. | `feature-workflow` ⑥ | T4 | `codex-spec-review` 재실행 후 verdict 기록 | 재검토 critical·high 0 |
 | AC21 | 사용자가 `design.md`·`plan.md`·`dod.md`를 승인하고 이 계약서가 `FROZEN`으로 전이한다. §5.2 도메인 rename 포함 여부를 명시적으로 확인받는다. | `feature-workflow` ⑦, `design.md` D1 단서 | T4 | 사용자 승인 기록 | `status: FROZEN` + `frozen_at` 기입 |
@@ -226,50 +230,73 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
 
 #### AC23 command
 
-`SET` 바로 뒤 첫 컬럼만 보는 검사는 `SET close_price_source='X', status='Y'`나 `SET p.status=...`,
-두 번째 `UPDATE` 문으로 쉽게 우회된다. SET 절 전체를 컬럼 단위로 분해하고, **검사기 자신이 우회 표본을
-실제로 잡는지 먼저 확인한 뒤** V15를 검사한다. self-test가 실패하면 본 검사 결과를 믿지 않는다.
+금지 토큰 나열(blacklist)은 문법 변형에 뚫린다. MySQL은 `DROP status`·`CHANGE status ...`처럼 `COLUMN`을
+생략할 수 있고, `SET "status"`·``SET `status` ``처럼 식별자를 감쌀 수 있다. 그래서 **allowlist로 뒤집는다**:
+`ALTER` 연산은 `ADD COLUMN`만 허용하고, `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만 허용한다.
+허용 목록에 없으면 무조건 실패다(fail-closed).
+
+검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다. self-test가 실패하면 본 검사
+결과를 신뢰하지 않는다.
 
 ```bash
-set_targets() {   # UPDATE 문의 SET 대상 컬럼을 전부 수집 (다중 SET·별칭·복수 문장·주석 대응)
-  sed -E 's/--.*$//' \
-  | tr '\n' ' ' | tr ';' '\n' \
+unquote() { sed -E 's/[`"'"'"']//g'; }
+
+alter_ops() {   # ALTER TABLE 문의 연산을 콤마 단위로 하나씩 출력
+  sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' \
+  | grep -iE '^[[:space:]]*ALTER[[:space:]]+TABLE' \
+  | sed -E 's/^[[:space:]]*[Aa][Ll][Tt][Ee][Rr][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+[^[:space:]]+[[:space:]]+//' \
+  | tr ',' '\n' | sed -E 's/^[[:space:]]*//; s/[[:space:]]+$//' | grep -E '.'
+}
+
+set_targets() {   # UPDATE 문의 SET 대상 컬럼 전부 (다중 SET·별칭·따옴표·복수 문장·주석 대응)
+  sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' \
   | grep -iE '^[[:space:]]*UPDATE' \
   | sed -E 's/[[:space:]][Ww][Hh][Ee][Rr][Ee][[:space:]].*$//' \
   | sed -E 's/^.*[[:space:]][Ss][Ee][Tt][[:space:]]//' \
-  | tr ',' '\n' \
-  | sed -E 's/^[[:space:]]*//; s/[[:space:]]*=.*$//; s/^[A-Za-z_][A-Za-z0-9_]*\.//' \
-  | tr '[:upper:]' '[:lower:]' \
+  | tr ',' '\n' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*=.*$//' | unquote \
+  | sed -E 's/^[A-Za-z_][A-Za-z0-9_]*\.//' | tr '[:upper:]' '[:lower:]' \
   | grep -E '^[a-z_][a-z0-9_]*$' | sort -u
 }
-added_cols() { grep -oiE 'ADD COLUMN[[:space:]]+[a-zA-Z_]+' | awk '{print tolower($3)}' | sort -u; }
+
+added_cols() {
+  alter_ops | grep -iE '^ADD[[:space:]]+COLUMN[[:space:]]' \
+  | awk '{print $3}' | unquote | tr '[:upper:]' '[:lower:]' | sort -u
+}
 
 judge() {   # 0 = 안전, 1 = 위반
-  local sql="$1" added targets bad="" forbidden
+  local sql="$1" added targets bad="" disallowed="" destructive=""
+  disallowed=$(printf '%s' "$sql" | alter_ops | grep -ivE '^ADD[[:space:]]+COLUMN[[:space:]]' | cut -c1-50 || true)
   added=$(printf '%s' "$sql" | added_cols)
   targets=$(printf '%s' "$sql" | set_targets)
   for tgt in $targets; do printf '%s\n' "$added" | grep -qx "$tgt" || bad="$bad $tgt"; done
-  forbidden=$(printf '%s' "$sql" | grep -inE 'MODIFY COLUMN|CHANGE COLUMN|DROP COLUMN|TRUNCATE|DROP TABLE' || true)
-  JUDGE_BAD="$bad"; JUDGE_FORBIDDEN=$(printf '%s' "$forbidden" | cut -c1-60)
-  [ -z "$bad" ] && [ -z "$forbidden" ]
+  destructive=$(printf '%s' "$sql" | sed -E 's/--.*$//' \
+    | grep -inE 'TRUNCATE|DROP[[:space:]]+TABLE|RENAME[[:space:]]+TABLE|DELETE[[:space:]]+FROM' | cut -c1-50 || true)
+  JB="$bad"; JD=$(printf '%s' "$disallowed" | tr '\n' ';'); JX=$(printf '%s' "$destructive" | tr '\n' ';')
+  [ -z "$bad" ] && [ -z "$disallowed" ] && [ -z "$destructive" ]
 }
 
-# --- self-test: 우회 표본을 반드시 잡아야 한다 ---
+# --- self-test: 아래 우회 표본을 하나라도 놓치면 즉시 실패 ---
 A="ALTER TABLE position ADD COLUMN close_price_source VARCHAR(30) NULL;"
 undetected=""
-judge "$A UPDATE position SET close_price_source='X', status='ARCHIVED';" && undetected="$undetected multi-set"
-judge "$A UPDATE position p SET p.status='ACTIVE';"                       && undetected="$undetected alias-set"
-judge "$A UPDATE position SET close_price_source='X'; UPDATE position SET status='ARCHIVED';" && undetected="$undetected second-update"
-judge "$A ALTER TABLE position MODIFY COLUMN status VARCHAR(30) NOT NULL;" && undetected="$undetected modify-column"
+judge "$A UPDATE position SET close_price_source='X', status='ARCHIVED';"       && undetected="$undetected multi-set"
+judge "$A UPDATE position p SET p.status='ACTIVE';"                             && undetected="$undetected alias-set"
+judge "$A UPDATE position SET close_price_source='X'; UPDATE position SET status='A';" && undetected="$undetected second-update"
+judge "$A UPDATE position SET \"status\" = 'ARCHIVED';"                         && undetected="$undetected quoted-set"
+judge "$A ALTER TABLE position MODIFY COLUMN status VARCHAR(30) NOT NULL;"      && undetected="$undetected modify-column"
+judge "$A ALTER TABLE position DROP COLUMN status;"                             && undetected="$undetected drop-column"
+judge "$A ALTER TABLE position DROP status;"                                    && undetected="$undetected drop-no-keyword"
+judge "$A ALTER TABLE position CHANGE status state VARCHAR(30);"                && undetected="$undetected change-no-keyword"
+judge "$A ALTER TABLE position RENAME COLUMN status TO state;"                  && undetected="$undetected rename-column"
+judge "$A ALTER TABLE position ALTER COLUMN status SET DEFAULT 'ACTIVE';"       && undetected="$undetected alter-column"
+judge "$A DELETE FROM position WHERE status='CLOSED';"                          && undetected="$undetected delete-from"
 judge "$A" || undetected="$undetected false-positive-on-clean"
 if [ -n "$undetected" ]; then echo "self_test_failed=[$undetected]"; exit 1; fi
 
 # --- 본 검사 ---
 m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
 [ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
-judge "$(cat "$m")"
-rc=$?
-echo "self_test=ok added=[$(cat "$m" | added_cols | tr '\n' ' ')] rewrites_existing=[$JUDGE_BAD] forbidden=[$JUDGE_FORBIDDEN]"
+judge "$(cat "$m")"; rc=$?
+echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] rewrites_existing=[$JB] disallowed=[$JD] destructive=[$JX]"
 exit $rc
 ```
 
@@ -310,8 +337,31 @@ native=$(grep -rn --exclude-dir=build --include='*.kt' --include='*.java' \
   supports/logging/src/main supports/monitoring/src/main supports/email/src/main 2>/dev/null \
   | cut -c1-90 || true)
 
-echo "missing=[$missing] leaked=[$leaked] native=[$native]"
-[ -z "$missing" ] && [ -z "$leaked" ] && [ -z "$native" ]
+# 3) JdbcTemplate 등으로 position 테이블을 직접 다루는 raw SQL 금지.
+#    대소문자를 구분한다 — JPQL은 엔티티명 "FROM Tracking t"를 쓰므로 오탐하지 않는다.
+rawsql=$(grep -rn --exclude-dir=build --include='*.kt' --include='*.java' \
+  -E '(FROM|JOIN|INTO|UPDATE|TABLE)[[:space:]]+`?position`?([[:space:]]|`|;|$)' \
+  apps/api/src/main apps/batch/src/main domain/src/main \
+  infrastructure/api/src/main infrastructure/batch/src/main infrastructure/common/src/main \
+  modules/jpa/src/main modules/redis/src/main 2>/dev/null \
+  | grep -v 'V12MigrationSafety' | cut -c1-90 || true)
+
+echo "missing=[$missing] leaked=[$leaked] native=[$native] rawsql=[$rawsql]"
+[ -z "$missing" ] && [ -z "$leaked" ] && [ -z "$native" ] && [ -z "$rawsql" ]
+```
+
+#### AC26 command
+
+```bash
+changed=$(git diff --name-only origin/dev...HEAD -- \
+  domain/src/main/kotlin/io/premiumspread/domain/market/MarketPair.kt \
+  domain/src/main/kotlin/io/premiumspread/domain/premium \
+  domain/src/main/kotlin/io/premiumspread/domain/notification \
+  modules/redis \
+  docs/runbooks/redis-contract.md)
+table=$(grep -rn '@Table(name = "position")' --include='*.kt' domain/src/main | grep -c . || true)
+echo "changed=[$changed] table=$table"
+[ -z "$changed" ] && [ "$table" -eq 1 ]
 ```
 
 #### AC15 command
@@ -359,17 +409,31 @@ AC8의 As-Is 역참조는 동결 대상이 아닌 `docs/work/private-live-autotr
 
 #### AC18 command
 
+기대 집합을 **검사 대상 자신에게서 유도하면 공허하게 통과한다.** 행을 지우면 `rows`가 줄어들고
+`empty_cells`·`dangling_ac`가 비어 GREEN이 된다. 상위 동결 spec이 Phase 0에 배정한 ID 집합을 고정해 두고
+누락·초과를 함께 본다. 이 집합의 출처는 `docs/work/private-live-autotrader/design.md` §8이며 그 문서는
+`AC17`이 무변경을 보장한다.
+
 ```bash
 d=docs/work/private-live-autotrader-phase-0/design.md
 dod=docs/work/private-live-autotrader-phase-0/dod.md
+required="ARCH-7 ARCH-9 P0-O1 P0-O2 P0-O3 P0-O4 P0-O5 SEM-1 SEM-2 SEM-3 SEM-4"
+
 rows=$(awk '/^## 7\. Outcome 추적/,/^## 8\./' "$d" | grep -E '^\| `(P0-O|SEM-|ARCH-)')
-empty=$(echo "$rows" | awk -F'|' '$3 ~ /^[[:space:]]*$/ || $4 ~ /^[[:space:]]*$/ {print $2}')
+present=$(printf '%s\n' "$rows" | grep -oE '(P0-O[0-9]+|SEM-[0-9]+|ARCH-[0-9]+)' \
+  | awk '!seen[$0]++' | sort)
+
+missing=""; for id in $required; do printf '%s\n' "$present" | grep -qx "$id" || missing="$missing $id"; done
+extra=""; for id in $present; do printf '%s\n' "$required" | tr ' ' '\n' | grep -qx "$id" || extra="$extra $id"; done
+
+empty=$(printf '%s\n' "$rows" | awk -F'|' '$3 ~ /^[[:space:]]*$/ || $4 ~ /^[[:space:]]*$/ {print $2}')
 dangling=""
-for ac in $(echo "$rows" | grep -oE 'AC[0-9]+' | sort -u); do
+for ac in $(printf '%s\n' "$rows" | grep -oE 'AC[0-9]+' | sort -u); do
   grep -qE "^\| $ac \|" "$dod" || dangling="$dangling $ac"
 done
-echo "empty_cells=[$empty] dangling_ac=[$dangling]"
-[ -z "$empty" ] && [ -z "$dangling" ]
+
+echo "required=$(printf '%s' "$required" | wc -w) present=$(printf '%s\n' "$present" | grep -c .) missing=[$missing] extra=[$extra] empty_cells=[$empty] dangling_ac=[$dangling]"
+[ -z "$missing" ] && [ -z "$extra" ] && [ -z "$empty" ] && [ -z "$dangling" ]
 ```
 
 #### AC19 command
@@ -379,7 +443,10 @@ d=docs/work/private-live-autotrader-phase-0/design.md
 rows=$(awk '/^## 6\. 미해결 결정/,/^## 7\./' "$d" | grep -E '^\| `OPEN-')
 unassigned=$(echo "$rows" | awk -F'|' '$4 !~ /Phase/ {print $2}')
 grep -q "차단 요소가 아니다" "$d" || unassigned="$unassigned no-nonblocking-statement"
-echo "unassigned=[$unassigned]"
+# 행이 전부 삭제되면 공허하게 통과하므로 최소 개수를 함께 본다 (현재 OPEN-1~OPEN-5).
+n=$(printf '%s\n' "$rows" | grep -c . || true)
+[ "$n" -ge 5 ] || unassigned="$unassigned too-few-rows($n)"
+echo "rows=$n unassigned=[$unassigned]"
 [ -z "$unassigned" ]
 ```
 
@@ -407,6 +474,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC9 | 회귀 guard — `PublicEndpointPolicy`에 추적 경로 없음(현재도 없음). 통합 test는 rename 후에만 실행 가능 | |
 | AC10 | RED — `V15` 미존재 | |
 | AC25 | RED — `TrackingLegacyRow*` 테스트 부재. 현재 code에는 `close_price_source` 개념 자체가 없다 | |
+| AC26 | 회귀 guard — 기준선 `changed=[] table=1` | |
 | AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | |
 | AC24 | RED — `TrackingStatusConverter` 미존재 | |
 | AC11 | 회귀 guard — 기준선 통과 | |
@@ -426,7 +494,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 ```text
 DoD VERDICT: private-live-autotrader-phase-0
-  T1/T2 자동:      _/22
+  T1/T2 자동:      _/23
   T3 기록 제출:    0건
   T4 사람 확인:    _/3
   => (미판정)
