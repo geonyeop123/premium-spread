@@ -174,7 +174,14 @@ class TrackingFacade(
      */
     @Transactional
     fun archive(criteria: TrackingCriteria.Archive): TrackingResult.Detail = translateInvalidTracking {
-        // 소유권과 soft-delete 를 잠금 술어에 함께 넣는다. 잠근 뒤 검사하면 남의 행을 잠글 수 있다.
+        // 잠금이 이 트랜잭션의 **첫 조회**여야 한다. 앞에 findById 를 두면 엔티티가 영속성 컨텍스트에
+        // 먼저 올라가고, 뒤따르는 FOR UPDATE 쿼리는 DB 잠금은 잡되 **1차 캐시의 낡은 인스턴스**를
+        // 돌려준다. 그러면 status 검사가 stale ACTIVE 를 보고 동시 요청이 모두 통과한다.
+        // 실측으로 확인했다 — 조회를 잠금 앞으로 옮겼더니 동시 6요청 중 4건이 성공했다.
+        //
+        // 그래서 시세 조회는 잠금 뒤에 둔다. findLatestSnapshot 이 Redis·DB 를 읽는 동안 행이 잠겨
+        // 있다는 대가를 치르지만(codex 코드리뷰 medium-3), 정확히 한 번만 확정된다는 계약이 우선이다.
+        // 이 대가를 없애려면 트랜잭션 경계를 둘로 쪼개야 하고 그것은 Phase 0 범위를 벗어난다.
         val tracking = trackingService.findOwnedByIdForUpdate(criteria.trackingId, criteria.memberId)
             ?: throw ApplicationException(ApplicationError.TRACKING_NOT_FOUND)
 
@@ -182,7 +189,9 @@ class TrackingFacade(
         val snapshot = premiumService.findLatestSnapshot(tracking.pair)
             ?.takeIf { isFresh(it, now) }
             ?.let {
-                TrackingCloseSnapshot(
+                // of 는 0·음수를 null 로 돌려준다. 캐시 파서가 그런 값을 통과시키므로
+                // 확정 저장 직전에 막지 않으면 되돌릴 수 없는 잘못된 확정이 남는다.
+                TrackingCloseSnapshot.of(
                     koreaPrice = it.koreaPrice,
                     foreignPrice = it.foreignPrice,
                     fxRate = it.fxRate,

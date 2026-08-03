@@ -52,7 +52,8 @@ export default function TrackingDetailPage() {
       const data = await apiClient<GrossPnlData>(`/trackings/${id}/gross-pnl`);
       setPnl(data);
     } catch {
-      // PnL 조회 실패는 조용히 처리
+      // 409(확정 불가)는 정상 경로다. pnl 이 null 로 남고 화면이 ConfirmUnavailableNotice 를 보여준다.
+      // 그 밖의 실패도 같은 표시가 되므로, 확정 여부는 Detail 의 hasConfirmedClose 가 정본이다.
     }
   }, [id]);
 
@@ -62,8 +63,11 @@ export default function TrackingDetailPage() {
   }, [user, fetchTracking]);
 
   useEffect(() => {
-    if (!user || !tracking || tracking.status !== 'ACTIVE') return;
+    if (!user || !tracking) return;
+    // ARCHIVED 도 한 번은 조회한다. 확정 손익(ARCHIVED_SNAPSHOT)은 불변이므로 주기 갱신은 하지 않는다.
+    // 조회하지 않으면 확정된 값이 있는데도 화면이 "확정하지 못함" 을 보여준다.
     fetchPnl();
+    if (tracking.status !== 'ACTIVE') return;
     const interval = setInterval(fetchPnl, 5000);
     return () => clearInterval(interval);
   }, [user, tracking, fetchPnl]);

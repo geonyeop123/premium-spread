@@ -63,3 +63,17 @@ describe('추적 기록 고지', () => {
     expect(screen.getByText(/종료 시각 불명/)).toBeInTheDocument();
   });
 });
+
+/**
+ * 회귀 차단 — 확정된 종료 기록의 손익이 화면에 도달해야 한다.
+ * 상세 화면이 ACTIVE 일 때만 gross-pnl 을 조회하면, API 가 ARCHIVED_SNAPSHOT 을 돌려줘도
+ * 사용자는 "확정하지 못함" 만 본다 (codex 코드리뷰 high-1).
+ */
+describe('확정 종료 표시', () => {
+  it('ARCHIVED_SNAPSHOT 배지는 관측값 기준으로 표시된다', () => {
+    render(<PriceBasisBadge priceBasis="ARCHIVED_SNAPSHOT" observedAt="2026-08-03T01:23:00Z" />);
+    const badge = screen.getByText(/관측값 기준/);
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).not.toMatch(/확정값/);
+  });
+});
