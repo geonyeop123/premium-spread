@@ -44,12 +44,12 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
 | AC23 | `V15`가 기존 컬럼을 재작성·변경·삭제하지 않는다. `UPDATE`의 대상 컬럼이 모두 같은 migration이 추가한 컬럼이다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8 | T1 | 아래 `AC23 command` | exit 0, `rewrites_existing=[] forbidden=[]` |
-| AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query가 없다. | D4, §5.8, codex 3R medium-3 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[]` |
+| AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query가 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
 | AC12 | unit·contract test와 architecture 경계 test가 통과한다. | 기존 repository gate, `.ai/rules/architecture.md` | T2 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 |
 | AC13 | API·batch·infrastructure 통합 test가 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --offline --no-daemon` | exit 0 |
 | AC14 | 웹 lint와 production build가 통과한다. | `apps/web` 동시 수정 (D1) | T2 | `cd apps/web && npm ci && npm run lint && npm run build` | exit 0 |
-| AC15 | 저장소 문서 계약과 whitespace 계약이 유지된다. | 기존 repository gate | T1 | `bash docs/check-documentation.sh && git diff --check` | exit 0, `documentation check passed` |
+| AC15 | 저장소 문서 계약과 whitespace 계약이 유지된다. **브랜치가 base에 대해 도입한** whitespace 결함을 본다. | 기존 repository gate, codex 4R medium-3 | T1 | 아래 `AC15 command` | exit 0, `documentation check passed` |
 | AC16 | `docs/work/private-live-autotrader-phase-0/`에 workflow 산출물 4종이 존재하고 상대 링크가 모두 실재 파일을 가리킨다. | `feature-workflow` ④⑤⑪-b | T1 | 아래 `AC16 command` | exit 0, `missing=[] broken_links=[]` |
 | AC17 | 동결 산출물(마스터 spec 4종, Phase -1 3종)이 이 브랜치에서 변경되지 않았다. | 범위 제외 "동결 산출물 변경" | T1 | 아래 `AC17 command` | exit 0, `modified=[]` |
 | AC18 | `design.md` §7 outcome 추적표의 모든 계약이 근거 절과 검증 AC를 갖고, 참조된 AC가 이 계약서에 실재한다. | 상위 spec `P0-O1`~`ARCH-9` 배정 | T1 | 아래 `AC18 command` | exit 0, `empty_cells=[] dangling_ac=[]` |
@@ -257,16 +257,23 @@ leaked=$(grep -rn --exclude-dir=build --exclude-dir=node_modules --exclude-dir=.
   --include='*.kt' --include='*.kts' --include='*.java' --include='*.sql' --include='*.yml' \
   -E "['\"](OPEN|CLOSED)['\"]" \
   apps/api/src/main apps/batch/src/main domain/src/main \
-  infrastructure/api/src/main infrastructure/batch/src/main infrastructure/common/src/main 2>/dev/null \
+  infrastructure/api/src/main infrastructure/batch/src/main infrastructure/common/src/main \
+  modules/jpa/src/main modules/redis/src/main 2>/dev/null \
   | grep -v 'TrackingStatusConverter' \
   | grep -v 'V12MigrationSafety' \
   | grep -v '/db/migration/' \
   | cut -c1-90 || true)
 
-# 2) converter를 우회하는 native query 금지 (추적 영속화 경로).
-native=$(grep -rn --exclude-dir=build --include='*.kt' -E 'nativeQuery[[:space:]]*=[[:space:]]*true|createNativeQuery' \
-  infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jpa/tracking \
-  apps/api/src/main domain/src/main 2>/dev/null | cut -c1-90 || true)
+# 2) converter를 우회하는 native query 금지 — 실행 모듈 전체의 Kotlin·Java.
+#    테이블 참조 정규식은 JPQL의 "FROM Tracking t"를 대소문자 무시로 오탐하므로 쓰지 않는다.
+#    native query 선언 자체를 차단하는 편이 정밀하고, 현재 실행 소스에는 0건이라 성립한다.
+native=$(grep -rn --exclude-dir=build --include='*.kt' --include='*.java' \
+  -E 'nativeQuery[[:space:]]*=|createNativeQuery' \
+  apps/api/src/main apps/batch/src/main domain/src/main \
+  infrastructure/api/src/main infrastructure/batch/src/main infrastructure/common/src/main \
+  modules/jpa/src/main modules/redis/src/main \
+  supports/logging/src/main supports/monitoring/src/main supports/email/src/main 2>/dev/null \
+  | cut -c1-90 || true)
 
 echo "missing=[$missing] leaked=[$leaked] native=[$native]"
 [ -z "$missing" ] && [ -z "$leaked" ] && [ -z "$native" ]
@@ -274,8 +281,11 @@ echo "missing=[$missing] leaked=[$leaked] native=[$native]"
 
 #### AC15 command
 
+`git diff --check`는 **인자 없이 쓰면 working tree의 unstaged 변경만** 본다. 커밋 뒤에는 언제나 비어 있어
+구조적으로 실패할 수 없는 검사였다. 브랜치가 base에 대해 도입한 whitespace 결함을 보려면 범위를 준다.
+
 ```bash
-bash docs/check-documentation.sh && git diff --check && echo "whitespace ok"
+bash docs/check-documentation.sh && git diff --check origin/dev...HEAD && echo "whitespace ok"
 ```
 
 #### AC16 command

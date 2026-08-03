@@ -132,7 +132,7 @@ enum class Exchange(val region: ExchangeRegion) { UPBIT(KOREA), BITHUMB(KOREA), 
 
 ### 3.5 미연결·미사용 계약
 
-| 대상 | 실측 | 
+| 대상 | 실측 |
 |---|---|
 | `Exchange.UPBIT` | main 소스 사용처 **0건**. 테스트 픽스처에서만 등장. 수집·표시 경로 없음 |
 | `Position.foreignLeverage` | 저장·검증·응답하지만 계산 사용처 0건 |
