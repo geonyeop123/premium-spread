@@ -139,7 +139,7 @@ class TrackingRepositoryTest @Autowired constructor(
         }
     }
 
-    
+
 
     @Nested
     inner class CountByMemberIdAndStatus {

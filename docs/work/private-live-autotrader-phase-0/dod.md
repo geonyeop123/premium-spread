@@ -638,30 +638,30 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 | # | RED (구현 전) | GREEN (구현 후) |
 |---|---|---|
-| AC1 | RED — `TrackingRouteContractTest` 부재. 정적 보조 검사도 `leftover=[api_http=35 web=14 old_route=1] new_route=0` | |
-| AC2 | RED — `leftover=[131 hits]` | |
-| AC3 | RED — `TrackingGrossPnlContractTest` 부재. 현재 응답에 `pnlBasis`·`priceBasis`가 없다 | |
-| AC4 | RED — `apps/web`에 테스트 인프라 자체가 없다 (`scripts`에 `test` 없음, testing 관련 의존성 0개). 고지 문구 6종도 전부 부재 | |
-| AC5 | RED — `TrackingArchive*` 테스트 부재. 현재 `Position.close()`는 청산 시세를 저장하지 않고 `/pnl`에 상태 가드가 없다 (§3.3). 동시성: `BaseEntity`에 `@Version`이 없고 archive 경로에 행 잠금이 없어 마지막 쓰기가 앞선 확정을 덮어쓴다 (§5.3.5) | |
-| AC6 | GREEN — `missing=[]` (§5.5 판정이 `design.md`에 존재) | |
-| AC7 | RED — `undecided=[] not_removed=[10 hits]` (판정은 완료, 제거 미실행) | |
-| AC8 | RED — `missing=[planned-section forward-link back-link]` (3/3 전부 부재) | |
-| AC9 | 회귀 guard — `PublicEndpointPolicy`에 추적 경로 없음(현재도 없음). 통합 test는 rename 후에만 실행 가능 | |
-| AC10 | RED — `V15` 미존재 | |
-| AC25 | RED — `TrackingLegacyRow*` 테스트 부재. 현재 code에는 `close_price_source` 개념 자체가 없다 | |
-| AC26 | 회귀 guard — 기준선 `changed=[] ticker_other=[] ticker_code=[] mig=[] table=1` | |
+| AC1 | RED — `TrackingRouteContractTest` 부재. 정적 보조 검사도 `leftover=[api_http=35 web=14 old_route=1] new_route=0` | GREEN — TrackingRouteContractTest 2케이스 통과 (옛 경로 8종 404, 대체 8종 정상). 정적 보조 `leftover=[api_http=0 web=0 old_route=0] new_route=1` |
+| AC2 | RED — `leftover=[131 hits]` | GREEN — `leftover=[0 hits]` |
+| AC3 | RED — `TrackingGrossPnlContractTest` 부재. 현재 응답에 `pnlBasis`·`priceBasis`가 없다 | GREEN — TrackingGrossPnlContractTest 2케이스. 응답 키 필수 15개 존재·옛 이름 9개 부재, ACTIVE·ARCHIVED 양쪽 |
+| AC4 | RED — `apps/web`에 테스트 인프라 자체가 없다 (`scripts`에 `test` 없음, testing 관련 의존성 0개). 고지 문구 6종도 전부 부재 | GREEN — vitest 9케이스 통과. 고지 8종의 DOM 출현 검증 (node 20) |
+| AC5 | RED — `TrackingArchive*` 테스트 부재. 현재 `Position.close()`는 청산 시세를 저장하지 않고 `/pnl`에 상태 가드가 없다 (§3.3). 동시성: `BaseEntity`에 `@Version`이 없고 archive 경로에 행 잠금이 없어 마지막 쓰기가 앞선 확정을 덮어쓴다 (§5.3.5) | GREEN — TrackingArchiveIntegrationTest 9케이스. §5.3.2 계약 표 + 동시성 + 타인 소유 DB 무변경 |
+| AC6 | GREEN — `missing=[]` (§5.5 판정이 `design.md`에 존재) | GREEN — `missing=[]` |
+| AC7 | RED — `undecided=[] not_removed=[10 hits]` (판정은 완료, 제거 미실행) | GREEN — `undecided=[] not_removed=[0 hits]` |
+| AC8 | RED — `missing=[planned-section forward-link back-link]` (3/3 전부 부재) | GREEN — `missing=[]`. ARCHITECTURE_DESIGN.md 에 Planned capability 절, README 에 역참조 |
+| AC9 | 회귀 guard — `PublicEndpointPolicy`에 추적 경로 없음(현재도 없음). 통합 test는 rename 후에만 실행 가능 | GREEN — PublicEndpointPolicy 에 tracking 없음. TrackingControllerE2ETest 미인증 401 확인 |
+| AC10 | RED — `V15` 미존재 | GREEN — V15 통합 test 통과. status 값 OPEN/CLOSED 보존 |
+| AC25 | RED — `TrackingLegacyRow*` 테스트 부재. 현재 code에는 `close_price_source` 개념 자체가 없다 | GREEN — TrackingLegacyRowIntegrationTest 4케이스. 부분 행 7종 전부 409, 대조군 200. **mutant 검증**: hasConfirmedClose 를 가격 4필드만 검사하도록 약화하면 L3~L9 즉시 FAILED |
+| AC26 | 회귀 guard — 기준선 `changed=[] ticker_other=[] ticker_code=[] mig=[] table=1` | GREEN — `changed=[] ticker_other=[] ticker_code=[] mig=[] table=1` |
 | AC27 | 미실행 — `feature-workflow` ⑦ 대기 | **선택됨 (2026-08-03): 그대로 수용.** 배포 중 수 분의 Web 단절을 인지하고 alias·원자 전환 없이 진행한다. `understanding.md`와 PR 본문에 명시한다 |
-| AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | |
-| AC24 | RED — `TrackingStatusConverter` 미존재. `rawsql`은 구현 전 JPQL `FROM Position p` 2건을 보고한다(T1 rename 시 소멸) | |
-| AC11 | 회귀 guard — 기준선 통과 | |
-| AC12 | 회귀 guard — 기준선 통과 | |
-| AC13 | 회귀 guard — 기준선 통과 | |
-| AC14 | 회귀 guard — 기준선 통과 | |
-| AC15 | 회귀 guard — 기준선 통과 | |
-| AC16 | RED — `missing=[plan.md understanding.md] broken_links=[plan.md]` → 이후 `plan.md` 작성으로 부분 해소, `understanding.md`는 ⑪-b가 생성 | |
-| AC17 | GREEN — `modified=[]` | |
-| AC18 | GREEN — `rows=11 empty_cells=[] dangling_ac=[]` | |
-| AC19 | GREEN — `rows=5 unassigned=[]` | |
+| AC23 | RED — `V15` 미존재. 초안의 `V15`는 `status` 값을 재작성해 이 검사에 걸렸을 것이다 (codex 리뷰 1R high-1으로 D4 폐기) | GREEN — `self_test=ok v15_count=1 gate1=MATCH`. V15 는 ALTER 한 문장 |
+| AC24 | RED — `TrackingStatusConverter` 미존재. `rawsql`은 구현 전 JPQL `FROM Position p` 2건을 보고한다(T1 rename 시 소멸) | GREEN — `missing=[] leaked=[] native=[] rawsql=[]` |
+| AC11 | 회귀 guard — 기준선 통과 | GREEN — verifyMigrations BUILD SUCCESSFUL |
+| AC12 | 회귀 guard — 기준선 통과 | GREEN — test + architectureTest BUILD SUCCESSFUL |
+| AC13 | 회귀 guard — 기준선 통과 | GREEN — infrastructure:common + apps:api + apps:batch integrationTest BUILD SUCCESSFUL (17m 6s) |
+| AC14 | 회귀 guard — 기준선 통과 | GREEN — node 20 기준 lint 0 errors, build Compiled successfully, npm audit high 이상 0건 |
+| AC15 | 회귀 guard — 기준선 통과 | GREEN — `base=origin/dev@5319a2d documentation check passed whitespace ok` |
+| AC16 | RED — `missing=[plan.md understanding.md] broken_links=[plan.md]` → 이후 `plan.md` 작성으로 부분 해소, `understanding.md`는 ⑪-b가 생성 | GREEN — 산출물 5종 존재, 상대 링크 무결 |
+| AC17 | GREEN — `modified=[]` | GREEN — `modified=[]` |
+| AC18 | GREEN — `rows=11 empty_cells=[] dangling_ac=[]` | GREEN — `required=11 present=11 missing=[] extra=[]` |
+| AC19 | GREEN — `rows=5 unassigned=[]` | GREEN — `rows=7 unassigned=[]` |
 | AC20 | 미실행 — `feature-workflow` ⑥ 대기 | **18라운드 완료.** 지적 45건 처리(critical 2·high 25·medium 18), REBUT 2건은 모두 codex가 ACCEPTED/MAINTAINED로 수렴. **critical·high 0은 달성하지 못했다** — 16~18R(도메인 초점)에서도 매 라운드 high가 나왔다. 아래 `## 변경 요청` 참조 |
 | AC21 | 미실행 — `feature-workflow` ⑦ 대기 | **승인됨 (2026-08-03).** §5.2 도메인 rename **포함** 확인. 함께 확인받은 항목: `apps/web` vitest 테스트 인프라 도입과 CI workflow 변경 포함, `AC20` 정지 규칙 변경(CR-1) 승인 |
 | AC22 | 미실행 — `feature-workflow` ⑩ 대기 | |
