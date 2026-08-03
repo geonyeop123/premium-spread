@@ -179,15 +179,18 @@ class TrackingControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `루트 POST 추적 기록 생성 라우트는 제거되어 있다`() {
+    fun `루트 POST 는 입력값으로 기록하는 endpoint 다`() {
         val accessToken = login()
 
+        // 옛 계약에서는 /manual 만 있고 루트 POST 는 405 였다.
+        // 새 계약은 루트 POST 가 "입력값으로 기록" 이다 (design.md §5.1).
         mockMvc.post("/api/v1/trackings") {
             header("Authorization", "Bearer $accessToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(openManualRequest())
         }.andExpect {
-            status { isMethodNotAllowed() }
+            status { isCreated() }
+            jsonPath("$.status") { value("ACTIVE") }
         }
     }
 
@@ -218,7 +221,7 @@ class TrackingControllerE2ETest @Autowired constructor(
     }
 
     @Test
-    fun `OPEN 추적 기록만 필터링하여 반환`() {
+    fun `ACTIVE 추적 기록만 필터링하여 반환`() {
         createPosition(symbol = "BTC")
         createPosition(symbol = "ETH")
         val closedPosition = createPosition(symbol = "SOL")
@@ -232,7 +235,7 @@ class TrackingControllerE2ETest @Autowired constructor(
             status { isOk() }
             jsonPath("$.length()") { value(2) }
             jsonPath("$[*].status") {
-                value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.equalTo("OPEN")))
+                value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.equalTo("ACTIVE")))
             }
         }
     }
