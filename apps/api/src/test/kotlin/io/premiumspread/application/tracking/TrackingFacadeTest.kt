@@ -112,7 +112,7 @@ class TrackingFacadeTest {
         every { trackingService.findById(1L) } returns tracking
         every { premiumService.findLatestSnapshot(tracking.pair) } returns snapshot(tracking.pair, now)
 
-        val result = facade.calculatePnl(TrackingCriteria.CalculatePnl(1L, 1L))
+        val result = facade.getGrossPnl(TrackingCriteria.GetGrossPnl(1L, 1L))
 
         assertThat(result.calculatedAt).isEqualTo(now)
     }

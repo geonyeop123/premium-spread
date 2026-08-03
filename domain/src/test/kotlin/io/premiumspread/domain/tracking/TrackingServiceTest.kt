@@ -60,7 +60,7 @@ class TrackingServiceTest {
             assertThat(result.foreignQuantity).isEqualByComparingTo(BigDecimal("0.5"))
             assertThat(result.foreignEntryPrice).isEqualByComparingTo(BigDecimal("89500"))
             assertThat(result.foreignLeverage).isEqualTo(1)
-            assertThat(result.status).isEqualTo(TrackingStatus.OPEN)
+            assertThat(result.status).isEqualTo(TrackingStatus.ACTIVE)
 
             verify(exactly = 1) { trackingRepository.save(any()) }
         }
@@ -103,35 +103,6 @@ class TrackingServiceTest {
             val result = service.findById(999L)
 
             assertThat(result).isNull()
-        }
-    }
-
-    @Nested
-    inner class FindAllActive {
-
-        @Test
-        fun `열린 추적 기록 목록을 조회한다`() {
-            val positions = listOf(
-                TrackingFixtures.openPosition(symbol = "BTC", id = 1L),
-                TrackingFixtures.openPosition(symbol = "ETH", id = 2L),
-            )
-
-            every { trackingRepository.findAllOpen() } returns positions
-
-            val result = service.findAllOpen()
-
-            assertThat(result).hasSize(2)
-            assertThat(result[0].symbol.code).isEqualTo("BTC")
-            assertThat(result[1].symbol.code).isEqualTo("ETH")
-        }
-
-        @Test
-        fun `열린 추적 기록이 없으면 빈 목록을 반환한다`() {
-            every { trackingRepository.findAllOpen() } returns emptyList()
-
-            val result = service.findAllOpen()
-
-            assertThat(result).isEmpty()
         }
     }
 

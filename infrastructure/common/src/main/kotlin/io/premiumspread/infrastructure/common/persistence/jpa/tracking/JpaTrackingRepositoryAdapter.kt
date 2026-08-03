@@ -12,13 +12,11 @@ class JpaTrackingRepositoryAdapter(private val trackingRepository: SpringDataTra
 
     override fun findById(id: Long): Tracking? = trackingRepository.findByIdAndDeletedAtIsNull(id)
 
-    override fun findAllByStatus(status: TrackingStatus): List<Tracking> = trackingRepository.findAllByStatus(status)
+    override fun findOwnedByIdForUpdate(id: Long, memberId: Long): Tracking? =
+        trackingRepository.findOwnedByIdForUpdate(id, memberId)
 
     override fun findAllByMemberIdAndStatus(memberId: Long, status: TrackingStatus): List<Tracking> =
-        trackingRepository.findAllByMemberIdAndStatus(
-            memberId,
-            status,
-        )
+        trackingRepository.findAllByMemberIdAndStatus(memberId, status)
 
     override fun countByMemberIdAndStatus(memberId: Long, status: TrackingStatus): Long =
         trackingRepository.countByMemberIdAndStatusAndDeletedAtIsNull(memberId, status)

@@ -222,7 +222,7 @@ class TrackingControllerE2ETest @Autowired constructor(
         createPosition(symbol = "BTC")
         createPosition(symbol = "ETH")
         val closedPosition = createPosition(symbol = "SOL")
-        closedPosition.close()
+        closedPosition.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
         trackingRepository.save(closedPosition)
         val accessToken = login()
 
@@ -271,13 +271,13 @@ class TrackingControllerE2ETest @Autowired constructor(
         }.andExpect {
             status { isOk() }
             jsonPath("$.trackingId") { value(tracking.id) }
-            jsonPath("$.currentPremiumRate") { value(-0.39) }
-            jsonPath("$.koreaPnl") { value(-6777343.344) }
-            jsonPath("$.foreignPnlKrw") { value(8585481.2175) }
-            jsonPath("$.totalPnlKrw") { value(1808137.8735) }
-            jsonPath("$.koreaCurrentValue") { value(18577182) }
-            jsonPath("$.totalPnlPercent") { value(9.73) }
-            jsonPath("$.isProfit") { value(true) }
+            jsonPath("$.referencePremiumRate") { value(-0.39) }
+            jsonPath("$.koreaLegGrossPnlKrw") { value(-6777343.344) }
+            jsonPath("$.foreignLegGrossPnlKrw") { value(8585481.2175) }
+            jsonPath("$.totalGrossPnlKrw") { value(1808137.8735) }
+            jsonPath("$.koreaLegNotionalKrw") { value(18577182) }
+            jsonPath("$.grossPnlPercentOfKoreaNotional") { value(9.73) }
+            jsonPath("$.isGrossProfit") { value(true) }
         }
     }
 
@@ -296,9 +296,9 @@ class TrackingControllerE2ETest @Autowired constructor(
         }.andExpect {
             status { isOk() }
             jsonPath("$.trackingId") { value(tracking.id) }
-            jsonPath("$.currentPremiumRate") { value(premium.premiumRate.toDouble()) }
-            jsonPath("$.totalPnlKrw") { exists() }
-            jsonPath("$.totalPnlPercent") { exists() }
+            jsonPath("$.referencePremiumRate") { value(premium.premiumRate.toDouble()) }
+            jsonPath("$.totalGrossPnlKrw") { exists() }
+            jsonPath("$.grossPnlPercentOfKoreaNotional") { exists() }
         }
     }
 
@@ -350,7 +350,7 @@ class TrackingControllerE2ETest @Autowired constructor(
         }
 
         val updated = trackingRepository.findById(tracking.id)
-        assertThat(updated?.status).isEqualTo(TrackingStatus.CLOSED)
+        assertThat(updated?.status).isEqualTo(TrackingStatus.ARCHIVED)
     }
 
     @Test

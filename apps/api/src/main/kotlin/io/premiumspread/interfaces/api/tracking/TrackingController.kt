@@ -88,9 +88,9 @@ class TrackingController(private val trackingFacade: TrackingFacade) {
     fun getGrossPnl(
         @PathVariable id: Long,
         @LoginMemberId memberId: Long,
-    ): ResponseEntity<TrackingResponse.Pnl> {
-        val result = trackingFacade.calculatePnl(TrackingCriteria.CalculatePnl(id, memberId))
-        return ResponseEntity.ok(TrackingResponse.Pnl.from(result))
+    ): ResponseEntity<TrackingResponse.GrossPnl> {
+        val result = trackingFacade.getGrossPnl(TrackingCriteria.GetGrossPnl(id, memberId))
+        return ResponseEntity.ok(TrackingResponse.GrossPnl.from(result))
     }
 
     @PostMapping("/{id}/archive")

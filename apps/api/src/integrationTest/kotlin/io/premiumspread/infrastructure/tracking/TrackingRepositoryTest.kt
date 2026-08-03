@@ -84,20 +84,20 @@ class TrackingRepositoryTest @Autowired constructor(
             assertThat(saved.koreaExchange.name).isEqualTo("UPBIT")
             assertThat(saved.koreaQuantity).isEqualByComparingTo(BigDecimal("0.5"))
             assertThat(saved.foreignExchange.name).isEqualTo("BINANCE")
-            assertThat(saved.status).isEqualTo(TrackingStatus.OPEN)
+            assertThat(saved.status).isEqualTo(TrackingStatus.ACTIVE)
         }
 
         @Test
         fun `should update tracking status`() {
             // given
             val saved = trackingRepository.save(createPosition())
-            saved.close()
+            saved.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
 
             // when
             val updated = trackingRepository.save(saved)
 
             // then
-            assertThat(updated.status).isEqualTo(TrackingStatus.CLOSED)
+            assertThat(updated.status).isEqualTo(TrackingStatus.ARCHIVED)
         }
     }
 
@@ -148,15 +148,15 @@ class TrackingRepositoryTest @Autowired constructor(
             trackingRepository.save(createPosition(symbol = "BTC"))
             trackingRepository.save(createPosition(symbol = "ETH"))
             val closedPosition = createPosition(symbol = "SOL")
-            closedPosition.close()
+            closedPosition.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
             trackingRepository.save(closedPosition)
 
             // when
-            val found = trackingRepository.findAllByStatus(TrackingStatus.OPEN)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.ACTIVE)
 
             // then
             assertThat(found).hasSize(2)
-            assertThat(found).allMatch { it.status == TrackingStatus.OPEN }
+            assertThat(found).allMatch { it.status == TrackingStatus.ACTIVE }
             assertThat(found.map { it.symbol.code }).containsExactlyInAnyOrder("BTC", "ETH")
         }
 
@@ -165,18 +165,18 @@ class TrackingRepositoryTest @Autowired constructor(
             // given
             trackingRepository.save(createPosition(symbol = "BTC"))
             val closedPosition1 = createPosition(symbol = "ETH")
-            closedPosition1.close()
+            closedPosition1.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
             trackingRepository.save(closedPosition1)
             val closedPosition2 = createPosition(symbol = "SOL")
-            closedPosition2.close()
+            closedPosition2.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
             trackingRepository.save(closedPosition2)
 
             // when
-            val found = trackingRepository.findAllByStatus(TrackingStatus.CLOSED)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.ARCHIVED)
 
             // then
             assertThat(found).hasSize(2)
-            assertThat(found).allMatch { it.status == TrackingStatus.CLOSED }
+            assertThat(found).allMatch { it.status == TrackingStatus.ARCHIVED }
             assertThat(found.map { it.symbol.code }).containsExactlyInAnyOrder("ETH", "SOL")
         }
 
@@ -186,7 +186,7 @@ class TrackingRepositoryTest @Autowired constructor(
             trackingRepository.save(createPosition(symbol = "BTC"))
 
             // when
-            val found = trackingRepository.findAllByStatus(TrackingStatus.CLOSED)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.ARCHIVED)
 
             // then
             assertThat(found).isEmpty()
@@ -202,7 +202,7 @@ class TrackingRepositoryTest @Autowired constructor(
             val p3 = trackingRepository.save(createPosition(symbol = "SOL"))
 
             // when
-            val found = trackingRepository.findAllByStatus(TrackingStatus.OPEN)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.ACTIVE)
 
             // then
             assertThat(found).hasSize(3)
@@ -218,8 +218,8 @@ class TrackingRepositoryTest @Autowired constructor(
             deleted.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
             trackingRepository.save(deleted)
 
-            val byStatus = trackingRepository.findAllByStatus(TrackingStatus.OPEN)
-            val byMember = trackingRepository.findAllByMemberIdAndStatus(memberId, TrackingStatus.OPEN)
+            val byStatus = trackingRepository.findAllByStatus(TrackingStatus.ACTIVE)
+            val byMember = trackingRepository.findAllByMemberIdAndStatus(memberId, TrackingStatus.ACTIVE)
 
             assertThat(byStatus.map(Tracking::id)).containsExactly(active.id)
             assertThat(byMember.map(Tracking::id)).containsExactly(active.id)
@@ -236,7 +236,7 @@ class TrackingRepositoryTest @Autowired constructor(
             deleted.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
             trackingRepository.save(deleted)
 
-            assertThat(trackingRepository.countByMemberIdAndStatus(memberId, TrackingStatus.OPEN)).isEqualTo(1)
+            assertThat(trackingRepository.countByMemberIdAndStatus(memberId, TrackingStatus.ACTIVE)).isEqualTo(1)
         }
     }
 }

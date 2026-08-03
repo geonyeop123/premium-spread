@@ -32,8 +32,10 @@ class TrackingService(private val trackingRepository: TrackingRepository) {
     @Transactional(readOnly = true)
     fun findById(id: Long): Tracking? = trackingRepository.findById(id)
 
-    @Transactional(readOnly = true)
-    fun findAllOpen(): List<Tracking> = trackingRepository.findAllOpen()
+    /** archive 전용. 소유자의 삭제되지 않은 행만 잠근다 (design.md §5.3.5). */
+    fun findOwnedByIdForUpdate(id: Long, memberId: Long): Tracking? =
+        trackingRepository.findOwnedByIdForUpdate(id, memberId)
+
 
     @Transactional(readOnly = true)
     fun findAllActiveByMemberId(memberId: Long): List<Tracking> = trackingRepository.findAllActiveByMemberId(memberId)

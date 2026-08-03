@@ -94,7 +94,7 @@ class TrackingControllerTest {
         }
     }
 
-    private fun detail(status: String = "OPEN") = TrackingResult.Detail(
+    private fun detail(status: String = "ACTIVE") = TrackingResult.Detail(
         id = 1L,
         memberId = 1L,
         symbol = "BTC",
@@ -109,5 +109,8 @@ class TrackingControllerTest {
         entryPremiumRate = BigDecimal.ONE,
         entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
         status = status,
+        closedAt = null,
+        closePriceSource = null,
+        hasConfirmedClose = false,
     )
 }

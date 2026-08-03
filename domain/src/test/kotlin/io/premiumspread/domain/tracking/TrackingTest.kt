@@ -31,7 +31,7 @@ class TrackingTest {
         assertThat(tracking.entryFxRate).isEqualByComparingTo(BigDecimal("1432.6"))
         assertThat(tracking.entryPremiumRate).isEqualByComparingTo(BigDecimal("1.04"))
         assertThat(tracking.entryObservedAt).isEqualTo(observedAt)
-        assertThat(tracking.status).isEqualTo(TrackingStatus.OPEN)
+        assertThat(tracking.status).isEqualTo(TrackingStatus.ACTIVE)
     }
 
     @Test
@@ -126,20 +126,20 @@ class TrackingTest {
     fun `추적 기록을 청산한다`() {
         val tracking = createPosition()
 
-        tracking.close()
+        tracking.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
 
-        assertThat(tracking.status).isEqualTo(TrackingStatus.CLOSED)
+        assertThat(tracking.status).isEqualTo(TrackingStatus.ARCHIVED)
     }
 
     @Test
-    fun `이미 청산된 추적 기록은 다시 청산할 수 없다`() {
+    fun `이미 종료된 추적 기록은 다시 종료할 수 없다`() {
         val tracking = createPosition()
-        tracking.close()
+        tracking.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
 
         assertThatThrownBy {
-            tracking.close()
+            tracking.archive(null, Instant.parse("2024-01-01T00:05:00Z"))
         }.isInstanceOf(InvalidTrackingException::class.java)
-            .hasMessageContaining("already closed")
+            .hasMessageContaining("already archived")
     }
 
     @Test
@@ -152,24 +152,26 @@ class TrackingTest {
             entryFxRate = BigDecimal("1521.6"),
         )
 
-        val pnl = tracking.calculatePnl(
-            currentKoreaPrice = BigDecimal("118326000"),
-            currentForeignPrice = BigDecimal("79699.1"),
-            currentFxRate = BigDecimal("1490.5"),
-            currentPremiumRate = BigDecimal("-0.39"),
+        val pnl = tracking.grossPnl(
+            koreaPrice = BigDecimal("118326000"),
+            foreignPrice = BigDecimal("79699.1"),
+            fxRate = BigDecimal("1490.5"),
+            premiumRate = BigDecimal("-0.39"),
+            observedAt = Instant.parse("2024-01-01T00:00:59Z"),
+            fxObservedAt = Instant.parse("2024-01-01T00:00:59Z"),
             calculatedAt = Instant.parse("2024-01-01T00:01:00Z"),
         )
 
-        assertThat(pnl.koreaPnl).isEqualByComparingTo(BigDecimal("-6777343.344"))
-        assertThat(pnl.foreignPnlKrw).isEqualByComparingTo(BigDecimal("8585481.2175"))
-        assertThat(pnl.totalPnlKrw).isEqualByComparingTo(BigDecimal("1808137.8735"))
-        assertThat(pnl.koreaCurrentValue).isEqualByComparingTo(BigDecimal("18577182"))
-        assertThat(pnl.totalPnlPercent).isEqualByComparingTo(BigDecimal("9.73"))
-        assertThat(pnl.isProfit()).isTrue()
+        assertThat(pnl.koreaLegGrossPnlKrw).isEqualByComparingTo(BigDecimal("-6777343.344"))
+        assertThat(pnl.foreignLegGrossPnlKrw).isEqualByComparingTo(BigDecimal("8585481.2175"))
+        assertThat(pnl.totalGrossPnlKrw).isEqualByComparingTo(BigDecimal("1808137.8735"))
+        assertThat(pnl.koreaLegNotionalKrw).isEqualByComparingTo(BigDecimal("18577182"))
+        assertThat(pnl.grossPnlPercentOfKoreaNotional).isEqualByComparingTo(BigDecimal("9.73"))
+        assertThat(pnl.isGrossProfit).isTrue()
     }
 
     @Test
-    fun `양쪽 손실일 때 totalPnlKrw 음수`() {
+    fun `양쪽 손실일 때 totalGrossPnlKrw 음수`() {
         val tracking = createPosition(
             koreaEntryPrice = BigDecimal("100000"),
             koreaQuantity = BigDecimal("1.0"),
@@ -178,22 +180,24 @@ class TrackingTest {
             entryFxRate = BigDecimal("1000"),
         )
 
-        val pnl = tracking.calculatePnl(
-            currentKoreaPrice = BigDecimal("90000"),
-            currentForeignPrice = BigDecimal("110"),
-            currentFxRate = BigDecimal("1000"),
-            currentPremiumRate = BigDecimal("-18.18"),
+        val pnl = tracking.grossPnl(
+            koreaPrice = BigDecimal("90000"),
+            foreignPrice = BigDecimal("110"),
+            fxRate = BigDecimal("1000"),
+            premiumRate = BigDecimal("-18.18"),
+            observedAt = Instant.parse("2024-01-01T00:00:59Z"),
+            fxObservedAt = Instant.parse("2024-01-01T00:00:59Z"),
             calculatedAt = Instant.parse("2024-01-01T00:01:00Z"),
         )
 
-        assertThat(pnl.koreaPnl).isNegative()
-        assertThat(pnl.foreignPnlKrw).isNegative()
-        assertThat(pnl.totalPnlKrw).isNegative()
-        assertThat(pnl.isProfit()).isFalse()
+        assertThat(pnl.koreaLegGrossPnlKrw).isNegative()
+        assertThat(pnl.foreignLegGrossPnlKrw).isNegative()
+        assertThat(pnl.totalGrossPnlKrw).isNegative()
+        assertThat(pnl.isGrossProfit).isFalse()
     }
 
     @Test
-    fun `isProfit은 totalPnlKrw 기준이며 premiumDiff와 부호 불일치 가능`() {
+    fun `isGrossProfit은 totalGrossPnlKrw 기준이며 premiumRateDelta와 부호 불일치 가능`() {
         val tracking = createPosition(
             koreaEntryPrice = BigDecimal("100000"),
             koreaQuantity = BigDecimal("1.0"),
@@ -202,30 +206,32 @@ class TrackingTest {
             entryFxRate = BigDecimal("1000"),
         )
 
-        val pnl = tracking.calculatePnl(
-            currentKoreaPrice = BigDecimal("120000"),
-            currentForeignPrice = BigDecimal("105"),
-            currentFxRate = BigDecimal("1000"),
-            currentPremiumRate = BigDecimal("15.00"),
+        val pnl = tracking.grossPnl(
+            koreaPrice = BigDecimal("120000"),
+            foreignPrice = BigDecimal("105"),
+            fxRate = BigDecimal("1000"),
+            premiumRate = BigDecimal("15.00"),
+            observedAt = Instant.parse("2024-01-01T00:00:59Z"),
+            fxObservedAt = Instant.parse("2024-01-01T00:00:59Z"),
             calculatedAt = Instant.parse("2024-01-01T00:01:00Z"),
         )
 
         assertThat(tracking.entryPremiumRate).isEqualByComparingTo(BigDecimal("0.00"))
-        assertThat(pnl.premiumDiff).isPositive()
-        assertThat(pnl.totalPnlKrw).isPositive()
-        assertThat(pnl.isProfit()).isEqualTo(pnl.totalPnlKrw > BigDecimal.ZERO)
+        assertThat(pnl.premiumRateDelta).isPositive()
+        assertThat(pnl.totalGrossPnlKrw).isPositive()
+        assertThat(pnl.isGrossProfit).isEqualTo(pnl.totalGrossPnlKrw > BigDecimal.ZERO)
     }
 
     @Test
     fun `시세가 0 이하면 IllegalArgumentException`() {
         val tracking = createPosition()
         val invalidCases = listOf(
-            { tracking.calculatePnl(BigDecimal.ZERO, BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { tracking.calculatePnl(BigDecimal("-1"), BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal.ZERO, BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal("-1"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal.ZERO, BigDecimal("1.00"), Instant.EPOCH) },
-            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal("-1"), BigDecimal("1.00"), Instant.EPOCH) },
+            { tracking.grossPnl(BigDecimal.ZERO, BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH, Instant.EPOCH, Instant.EPOCH) },
+            { tracking.grossPnl(BigDecimal("-1"), BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH, Instant.EPOCH, Instant.EPOCH) },
+            { tracking.grossPnl(BigDecimal("129555000"), BigDecimal.ZERO, BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH, Instant.EPOCH, Instant.EPOCH) },
+            { tracking.grossPnl(BigDecimal("129555000"), BigDecimal("-1"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH, Instant.EPOCH, Instant.EPOCH) },
+            { tracking.grossPnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal.ZERO, BigDecimal("1.00"), Instant.EPOCH, Instant.EPOCH, Instant.EPOCH) },
+            { tracking.grossPnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal("-1"), BigDecimal("1.00"), Instant.EPOCH, Instant.EPOCH, Instant.EPOCH) },
         )
 
         invalidCases.forEach { calculate ->

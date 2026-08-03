@@ -45,6 +45,9 @@ class TrackingResponse private constructor() {
         val entryPremiumRate: BigDecimal,
         val entryObservedAt: Instant,
         val status: String,
+        val closedAt: Instant?,
+        val closePriceSource: String?,
+        val hasConfirmedClose: Boolean,
     ) {
         companion object {
             fun from(result: TrackingResult.Detail): Detail = Detail(
@@ -61,36 +64,47 @@ class TrackingResponse private constructor() {
                 entryPremiumRate = result.entryPremiumRate,
                 entryObservedAt = result.entryObservedAt,
                 status = result.status,
+                closedAt = result.closedAt,
+                closePriceSource = result.closePriceSource,
+                hasConfirmedClose = result.hasConfirmedClose,
             )
         }
     }
 
-    data class Pnl(
+    data class GrossPnl(
         val trackingId: Long,
-        val premiumDiff: BigDecimal,
+        val priceBasis: String,
+        val pnlBasis: String,
         val entryPremiumRate: BigDecimal,
-        val currentPremiumRate: BigDecimal,
-        val koreaPnl: BigDecimal,
-        val foreignPnlKrw: BigDecimal,
-        val totalPnlKrw: BigDecimal,
-        val koreaCurrentValue: BigDecimal,
-        val totalPnlPercent: BigDecimal,
-        val isProfit: Boolean,
+        val referencePremiumRate: BigDecimal,
+        val premiumRateDelta: BigDecimal,
+        val koreaLegGrossPnlKrw: BigDecimal,
+        val foreignLegGrossPnlKrw: BigDecimal,
+        val totalGrossPnlKrw: BigDecimal,
+        val koreaLegNotionalKrw: BigDecimal,
+        val grossPnlPercentOfKoreaNotional: BigDecimal,
+        val isGrossProfit: Boolean,
         val calculatedAt: Instant,
+        val observedAt: Instant,
+        val fxObservedAt: Instant,
     ) {
         companion object {
-            fun from(result: TrackingResult.Pnl): Pnl = Pnl(
+            fun from(result: TrackingResult.GrossPnl): GrossPnl = GrossPnl(
                 trackingId = result.trackingId,
-                premiumDiff = result.premiumDiff,
+                priceBasis = result.priceBasis,
+                pnlBasis = result.pnlBasis,
                 entryPremiumRate = result.entryPremiumRate,
-                currentPremiumRate = result.currentPremiumRate,
-                koreaPnl = result.koreaPnl,
-                foreignPnlKrw = result.foreignPnlKrw,
-                totalPnlKrw = result.totalPnlKrw,
-                koreaCurrentValue = result.koreaCurrentValue,
-                totalPnlPercent = result.totalPnlPercent,
-                isProfit = result.isProfit,
+                referencePremiumRate = result.referencePremiumRate,
+                premiumRateDelta = result.premiumRateDelta,
+                koreaLegGrossPnlKrw = result.koreaLegGrossPnlKrw,
+                foreignLegGrossPnlKrw = result.foreignLegGrossPnlKrw,
+                totalGrossPnlKrw = result.totalGrossPnlKrw,
+                koreaLegNotionalKrw = result.koreaLegNotionalKrw,
+                grossPnlPercentOfKoreaNotional = result.grossPnlPercentOfKoreaNotional,
+                isGrossProfit = result.isGrossProfit,
                 calculatedAt = result.calculatedAt,
+                observedAt = result.observedAt,
+                fxObservedAt = result.fxObservedAt,
             )
         }
     }

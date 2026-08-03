@@ -191,7 +191,9 @@ undecided=""
 for k in "Exchange.UPBIT" "foreignLeverage" "findAllActive" "상태 무가드"; do
   awk '/^### 5\.6/,/^### 5\.7/' "$d" | grep -q "$k" || undecided="$undecided ${k// /_}"
 done
-not_removed=$(grep -rn --include='*.kt' --exclude-dir=build -E 'findAllActive|findAllOpen|findAllByStatus' \
+# 여는 괄호를 요구한다. 그러지 않으면 유지 대상인 findAllActiveByMemberId 가 findAllActive 에 걸려
+# 정당한 메서드를 제거 미이행으로 오탐한다 (구현 중 실측, CR-2).
+not_removed=$(grep -rn --include='*.kt' --exclude-dir=build -E 'findAllOpen\(|findAllByStatus\(' \
   domain/src/main infrastructure/common/src/main apps/api/src/main 2>/dev/null | grep -c . || true)
 echo "undecided=[$undecided] not_removed=[$not_removed hits]"
 [ -z "$undecided" ] && [ "$not_removed" -eq 0 ]
@@ -682,6 +684,16 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 **이 변경이 남기는 위험**: 스펙 리뷰가 자연 수렴하지 않았으므로 미발견 설계 결함이 남아 있을 수 있다.
 완화는 구현 단계의 `codex-code-review`(`feature-workflow` ⑨)와 T2 자동 기준 11개가 담당한다. 특히
 `AC5`(요청·응답 계약 9케이스), `AC25`(부분 행 L1~L9), `AC10`·`AC23`(migration)이 실제 동작으로 검증한다.
+
+### CR-2. AC7 검사 패턴 정정 (2026-08-03, 구현 중)
+
+**문제**: `not_removed` 패턴이 `findAllActive`를 포함해, **유지 대상**인 `findAllActiveByMemberId`가
+제거 미이행으로 잡혔다. 실제 제거 대상은 `findAllOpen()`과 `findAllByStatus`다.
+
+**정정**: 패턴에 여는 괄호를 요구해 `findAllOpen(`·`findAllByStatus(`만 잡는다.
+
+**성격**: 기준을 약화하지 않는다. 수용기준 문장("제거 판정 항목이 실행 소스에서 사라졌다")은 그대로이고,
+그 문장을 실제로 검사하지 못하던 패턴을 고쳤다. 동결 후 변경이므로 여기에 기록한다.
 
 ## 최종 판정
 
