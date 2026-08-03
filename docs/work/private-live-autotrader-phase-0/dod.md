@@ -664,7 +664,7 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC19 | GREEN — `rows=5 unassigned=[]` | GREEN — `rows=7 unassigned=[]` |
 | AC20 | 미실행 — `feature-workflow` ⑥ 대기 | **18라운드 완료.** 지적 45건 처리(critical 2·high 25·medium 18), REBUT 2건은 모두 codex가 ACCEPTED/MAINTAINED로 수렴. **critical·high 0은 달성하지 못했다** — 16~18R(도메인 초점)에서도 매 라운드 high가 나왔다. 아래 `## 변경 요청` 참조 |
 | AC21 | 미실행 — `feature-workflow` ⑦ 대기 | **승인됨 (2026-08-03).** §5.2 도메인 rename **포함** 확인. 함께 확인받은 항목: `apps/web` vitest 테스트 인프라 도입과 CI workflow 변경 포함, `AC20` 정지 규칙 변경(CR-1) 승인 |
-| AC22 | 미실행 — `feature-workflow` ⑩ 대기 | |
+| AC22 | 미실행 — `feature-workflow` ⑩ 대기 | **승인됨 (2026-08-03).** 전체 gate BUILD SUCCESSFUL 확인 후 사용자 승인. `progress.md`에 `FOUNDATION_ALIGNED` append |
 
 ## 변경 요청
 
@@ -713,13 +713,22 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 ## 최종 판정
 
-승인 시점(`feature-workflow` ⑦) 판정이다. 구현 후 ⑩에서 다시 채운다.
+⑩ 최종 확인 시점의 판정이다.
 
 ```text
-DoD VERDICT: private-live-autotrader-phase-0  (⑦ 승인 시점)
-  T1/T2 자동:      6/23 GREEN, 6 RED, 11 미실행(T2)   — 구현 전이므로 정상
+DoD VERDICT: private-live-autotrader-phase-0
+  T1/T2 자동:      22/22 PASS
+                   T1 12 (정적) + T2 10 (테스트·빌드)
   T3 기록 제출:    0건
-  T4 사람 확인:    3/4 (AC20 CR-1 승인, AC21 승인, AC27 선택 완료)
-                   AC22 는 ⑩ 대기
-  => FROZEN — 구현 착수 가능
+  T4 사람 확인:    4/4 충족
+                   AC20 외부 리뷰 18라운드 (CR-1 정지 규칙 승인)
+                   AC21 스펙 승인 + DoD 동결
+                   AC27 배포 단절 "그대로 수용" 선택
+                   AC22 구현 결과 승인
+  => VERIFIED
 ```
+
+**변경 요청 3건**(CR-1 정지 규칙, CR-2 AC7 패턴, CR-3 AC1 종료 코드)이 기록돼 있다. CR-2·CR-3 은 기준을
+약화하지 않고 검사가 주장하던 것을 실제로 검사하게 만든 정정이다. CR-1 은 리뷰가 자연 수렴하지 않은 채
+종료했음을 남기며, 그 위험은 ⑨ 코드 리뷰(지적 3건 중 2건 수용, 1건은 회귀를 만들어 되돌림)와 T2 자동
+기준이 담당했다.
