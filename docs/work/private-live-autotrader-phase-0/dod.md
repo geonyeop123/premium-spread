@@ -49,7 +49,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`가 **세 겹 fail-closed allowlist**를 통과한다: 문장 형태는 `ALTER`·`UPDATE`만, `ALTER` 연산은 `ADD COLUMN`만, `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만. 판독 불가한 대상은 버리지 않고 위반으로 센다. 검사기는 우회 표본 22종(CTE 접두 UPDATE·`INSERT`·`DELETE`·`TRUNCATE`·`DROP TABLE`·`CREATE INDEX`·`RENAME TABLE`·다중 SET·별칭·공백·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·정상 표본 3종)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1·9R high-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok bad_statement=[] rewrites_existing=[] unparseable=[] disallowed=[]` |
+| AC23 | `V15`가 **네 겹 fail-closed allowlist**를 통과한다: 문장 형태는 `ALTER`·`UPDATE`만, `ALTER` 연산은 `ADD COLUMN`만, `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만, 허용 문장 안에 다른 문장 키워드가 없어야 한다. 판독 불가한 대상은 버리지 않고 위반으로 센다. 검사기는 우회 표본 28종(줄 주석이 세미콜론을 먹는 `#`·`--` 형태와 블록·실행형 주석 포함)(CTE 접두 UPDATE·`INSERT`·`DELETE`·`TRUNCATE`·`DROP TABLE`·`CREATE INDEX`·`RENAME TABLE`·다중 SET·별칭·공백·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·정상 표본 3종)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1·9R high-1·10R critical-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok bad_statement=[] inner_keyword=[] rewrites_existing=[] unparseable=[] disallowed=[]` |
 | AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 `V15` 하나만 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query와 `position` 테이블 raw SQL이 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[] rawsql=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
@@ -63,7 +63,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC19 | 미해결 결정(§6)이 모두 이월 대상 Phase를 갖고, Phase 1 진입을 차단하지 않음이 명시된다. | 상위 spec §5 Phase 1 진입 조건 | T1 | 아래 `AC19 command` | exit 0, `unassigned=[]` |
 | AC20 | 외부 관점 스펙 리뷰가 수렴한다. 동일 렌즈 재검토에서 critical·high가 0이다. | `feature-workflow` ⑥ | T4 | `codex-spec-review` 재실행 후 verdict 기록 | 재검토 critical·high 0 |
 | AC21 | 사용자가 `design.md`·`plan.md`·`dod.md`를 승인하고 이 계약서가 `FROZEN`으로 전이한다. §5.2 도메인 rename 포함 여부를 명시적으로 확인받는다. | `feature-workflow` ⑦, `design.md` D1 단서 | T4 | 사용자 승인 기록 | `status: FROZEN` + `frozen_at` 기입 |
-| AC27 | 사용자가 §5.8의 **배포 중 Web 단절**을 인지하고 출시 방식을 명시 선택한다 (그대로 수용 / 배포 전 공지 / 원자 전환 절차 선행). 선택 결과를 `understanding.md`와 PR 본문에 적는다. | §5.8, codex 2R medium-3·4R high-1·8R high-2 | T4 | 사용자 선택 기록 | 선택지 중 하나가 기록됨 |
+| AC27 | 사용자가 §5.8의 **배포 중 Web 단절**을 인지하고 출시 방식을 명시 선택한다 (그대로 수용 / 배포 전 공지 / 원자 전환 절차 선행). **이 선택 전에는 배포하지 않는다** — 구현·병합은 막지 않는다. 선택 결과를 `understanding.md`와 PR 본문에 적는다. | §5.8, codex 2R medium-3·4R high-1·8R high-2·10R high-2 | T4 | 사용자 선택 기록 | 선택지 중 하나가 기록됨 |
 | AC22 | 사용자가 구현 결과를 확인하고 `progress.md`에 `FOUNDATION_ALIGNED`가 append된다. | `feature-workflow` ⑩, 상위 spec 종료 판정 | T4 | 사용자 승인 기록 + `progress.md` diff | `FOUNDATION_ALIGNED` 기록 |
 
 ### 검증 명령
@@ -261,7 +261,10 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
 
 #### AC23 command
 
-**세 겹 fail-closed allowlist**다. 각 겹은 "허용 목록에 없으면 위반"이며, 금지 목록을 늘리지 않는다.
+**네 겹 fail-closed allowlist**다. 각 겹은 "허용 목록에 없으면 위반"이며, 금지 목록을 늘리지 않는다.
+
+주석은 **줄 단위로 먼저** 제거한다. `--`만 제거하고 `#`를 남긴 채 줄바꿈을 평탄화하면, 주석이 먹은 줄바꿈
+뒤의 문장이 앞 문장에 붙어 하나의 허용 문장으로 보인다. `#`와 `--` 양쪽 모두에서 재현된다.
 
 1. **문장 형태**: `ALTER`와 `UPDATE`로 시작하는 문장만 허용한다. `WITH c AS (...) UPDATE ...`(MySQL 8의
    CTE 접두 DML)·`INSERT`·`DELETE`·`TRUNCATE`·`DROP`·`CREATE`·`RENAME`이 한 규칙에 전부 걸린다.
@@ -270,13 +273,22 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
    `COLUMN` 생략형이 전부 걸린다.
 3. **`UPDATE`의 `SET` 대상**: 같은 migration이 추가한 컬럼만 허용한다. **판독할 수 없는 대상은 버리지 않고
    위반으로 센다.**
+4. **문장 내부 키워드**: 허용된 문장 안에 `DELETE`·`DROP`·`TRUNCATE`·`INSERT`·`CREATE`·`RENAME`·
+   `GRANT`·`REVOKE`·`REPLACE`가 섞이면 위반이다. 주석·따옴표 처리가 앞으로 또 어긋나도 이 backstop이 남는다.
 
 검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다.
 
 ```bash
 unquote() { sed -E 's/[`"'"'"']//g'; }
-stmts() { sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.'; }
+# 줄 주석(-- 와 #)을 줄 단위로 먼저 제거한 뒤 평탄화한다.
+stmts() { sed -E 's/--.*$//; s/#.*$//' | tr '\n' ' ' | tr ';' '\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.'; }
 stmt_forms() { stmts | awk '{print toupper($1)}'; }
+
+# 허용된 문장 **안에** 다른 문장 키워드가 섞이면 위반이다.
+# 주석이 세미콜론을 먹어 두 문장이 하나로 붙는 경우를 잡는 backstop이다.
+inner_keywords() {
+  stmts | grep -inE '[[:space:]](DELETE|DROP|TRUNCATE|INSERT|CREATE|RENAME|GRANT|REVOKE|REPLACE)[[:space:]]' | cut -c1-45
+}
 
 alter_ops() {
   stmts | grep -iE '^ALTER[[:space:]]+TABLE' \
@@ -297,8 +309,9 @@ normalize_target() { sed -E 's/^[A-Za-z_][A-Za-z0-9_]*\.//' | tr '[:upper:]' '[:
 added_cols() { alter_ops | grep -iE '^ADD[[:space:]]+COLUMN[[:space:]]' | awk '{print $3}' | unquote | tr '[:upper:]' '[:lower:]' | sort -u; }
 
 judge() {   # 0 = 안전, 1 = 위반
-  local sql="$1" added raw bad="" unparseable="" disallowed="" badstmt="" r n
+  local sql="$1" added raw bad="" unparseable="" disallowed="" badstmt="" inner="" r n
   badstmt=$(printf '%s' "$sql" | stmt_forms | grep -vE '^(ALTER|UPDATE)$' | sort -u | tr '\n' ' ')
+  inner=$(printf '%s' "$sql" | inner_keywords | tr '\n' ';')
   disallowed=$(printf '%s' "$sql" | alter_ops | grep -ivE '^ADD[[:space:]]+COLUMN[[:space:]]' | cut -c1-45 | tr '\n' ';')
   added=$(printf '%s' "$sql" | added_cols)
   raw=$(printf '%s' "$sql" | set_targets_raw)
@@ -309,14 +322,24 @@ judge() {   # 0 = 안전, 1 = 위반
     elif ! printf '%s\n' "$added" | grep -qx "$n"; then bad="$bad $n"; fi
   done
   unset IFS
-  JB="$bad"; JU="$unparseable"; JD="$disallowed"; JS="$badstmt"
-  [ -z "$bad" ] && [ -z "$unparseable" ] && [ -z "$disallowed" ] && [ -z "$badstmt" ]
+  JB="$bad"; JU="$unparseable"; JD="$disallowed"; JS="$badstmt"; JI="$inner"
+  [ -z "$bad" ] && [ -z "$unparseable" ] && [ -z "$disallowed" ] && [ -z "$badstmt" ] && [ -z "$inner" ]
 }
 
 # --- self-test: 아래를 하나라도 놓치면 즉시 실패 ---
 A="ALTER TABLE position ADD COLUMN close_price_source VARCHAR(30) NULL;"
 u=""
 judge "$A WITH c AS (SELECT 1) UPDATE position SET status='ARCHIVED';" && u="$u cte-update"
+judge "$A
+UPDATE position SET close_price_source='X' # comment
+DELETE FROM position;"                                                 && u="$u hash-comment-swallow"
+judge "$A
+UPDATE position SET close_price_source='X' -- comment
+DELETE FROM position;"                                                 && u="$u dash-comment-swallow"
+judge "$A UPDATE position SET close_price_source='X'; # c
+DELETE FROM position;"                                                 && u="$u hash-then-delete"
+judge "$A /* c */ DELETE FROM position;"                               && u="$u block-comment-delete"
+judge "$A /*!40000 DELETE FROM position */;"                           && u="$u executable-comment"
 judge "$A INSERT INTO position (status) VALUES ('X');"                 && u="$u insert"
 judge "$A DELETE FROM position WHERE status='CLOSED';"                 && u="$u delete"
 judge "$A TRUNCATE TABLE position;"                                    && u="$u truncate"
@@ -345,7 +368,7 @@ if [ -n "$u" ]; then echo "self_test_failed=[$u]"; exit 1; fi
 m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
 [ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
 judge "$(cat "$m")"; rc=$?
-echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] bad_statement=[$JS] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD]"
+echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] bad_statement=[$JS] inner_keyword=[$JI] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD]"
 exit $rc
 ```
 
