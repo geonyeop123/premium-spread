@@ -49,7 +49,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`가 **네 겹 fail-closed allowlist**를 통과한다: 문장 형태는 `ALTER`·`UPDATE`만, `ALTER` 연산은 `ADD COLUMN`만, `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만, 허용 문장 안에 다른 문장 키워드가 없어야 한다. 판독 불가한 대상은 버리지 않고 위반으로 센다. 검사기는 우회 표본 28종(줄 주석이 세미콜론을 먹는 `#`·`--` 형태와 블록·실행형 주석 포함)(CTE 접두 UPDATE·`INSERT`·`DELETE`·`TRUNCATE`·`DROP TABLE`·`CREATE INDEX`·`RENAME TABLE`·다중 SET·별칭·공백·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·정상 표본 3종)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1·9R high-1·10R critical-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok bad_statement=[] inner_keyword=[] rewrites_existing=[] unparseable=[] disallowed=[]` |
+| AC23 | `V15`가 **다섯 겹 fail-closed allowlist**를 통과한다: 문장 형태는 `ALTER`·`UPDATE`만, 대상 테이블은 정확히 `position`만(다중 테이블·`JOIN` 거부), `ALTER` 연산은 `ADD COLUMN`만, `SET` 대상은 같은 migration이 추가한 컬럼만, 허용 문장 안에 다른 문장 키워드가 없어야 한다. 판독 불가한 대상은 버리지 않고 위반으로 센다. 검사기는 우회 표본 32종(무관 테이블·교차 테이블·다중 테이블·`JOIN`, 줄 주석이 세미콜론을 먹는 `#`·`--` 형태, 블록·실행형 주석, 정상 표본 5종(`DECIMAL(30, 10)`처럼 타입 안 콤마가 있는 형태 포함) 포함)(CTE 접두 UPDATE·`INSERT`·`DELETE`·`TRUNCATE`·`DROP TABLE`·`CREATE INDEX`·`RENAME TABLE`·다중 SET·별칭·공백·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·정상 표본 3종)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1·9R high-1·10R critical-1·11R high-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok bad_table=[] bad_statement=[] inner_keyword=[] rewrites_existing=[] unparseable=[] disallowed=[]` |
 | AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 `V15` 하나만 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query와 `position` 테이블 raw SQL이 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[] rawsql=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
@@ -261,57 +261,50 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
 
 #### AC23 command
 
-**네 겹 fail-closed allowlist**다. 각 겹은 "허용 목록에 없으면 위반"이며, 금지 목록을 늘리지 않는다.
+**다섯 겹 fail-closed allowlist**다. 각 겹은 "허용 목록에 없으면 위반"이며 금지 목록을 늘리지 않는다.
 
-주석은 **줄 단위로 먼저** 제거한다. `--`만 제거하고 `#`를 남긴 채 줄바꿈을 평탄화하면, 주석이 먹은 줄바꿈
-뒤의 문장이 앞 문장에 붙어 하나의 허용 문장으로 보인다. `#`와 `--` 양쪽 모두에서 재현된다.
+1. **문장 형태**: `ALTER`·`UPDATE`로 시작하는 문장만. CTE 접두 DML(`WITH ... UPDATE`)·`INSERT`·`DELETE`·
+   `TRUNCATE`·`DROP`·`CREATE`·`RENAME`이 한 규칙에 전부 걸린다.
+2. **대상 테이블**: `ALTER TABLE`과 `UPDATE`의 대상이 **정확히 `position`**이어야 한다. 별칭은 허용하고
+   다중 테이블·`JOIN` 형태는 거부한다. 이 겹이 없으면 무관한 테이블을 바꾸는 migration이 통과한다.
+3. **`ALTER` 연산**: `ADD COLUMN`만. `MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`과 `COLUMN` 생략형이
+   전부 걸린다.
+4. **`UPDATE`의 `SET` 대상**: 같은 migration이 추가한 컬럼만. **판독할 수 없는 대상은 버리지 않고 위반으로
+   센다.**
+5. **문장 내부 키워드**: 허용 문장 안에 `DELETE`·`DROP`·`TRUNCATE`·`INSERT`·`CREATE`·`RENAME`·`GRANT`·
+   `REVOKE`·`REPLACE`·`JOIN`이 섞이면 위반이다. 앞의 겹들이 파싱에서 어긋나도 남는 backstop이다.
 
-1. **문장 형태**: `ALTER`와 `UPDATE`로 시작하는 문장만 허용한다. `WITH c AS (...) UPDATE ...`(MySQL 8의
-   CTE 접두 DML)·`INSERT`·`DELETE`·`TRUNCATE`·`DROP`·`CREATE`·`RENAME`이 한 규칙에 전부 걸린다.
-   초안은 `UPDATE`로 **시작하는** 문장만 인식해 CTE 접두형이 통과했다.
-2. **`ALTER` 연산**: `ADD COLUMN`만 허용한다. `MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`과
-   `COLUMN` 생략형이 전부 걸린다.
-3. **`UPDATE`의 `SET` 대상**: 같은 migration이 추가한 컬럼만 허용한다. **판독할 수 없는 대상은 버리지 않고
-   위반으로 센다.**
-4. **문장 내부 키워드**: 허용된 문장 안에 `DELETE`·`DROP`·`TRUNCATE`·`INSERT`·`CREATE`·`RENAME`·
-   `GRANT`·`REVOKE`·`REPLACE`가 섞이면 위반이다. 주석·따옴표 처리가 앞으로 또 어긋나도 이 backstop이 남는다.
+줄 주석은 `--`와 `#` **양쪽 모두 줄 단위로 먼저** 제거한다. 한쪽만 제거하고 줄바꿈을 평탄화하면 주석이 먹은
+줄바꿈 뒤의 문장이 앞 문장에 붙어 하나의 허용 문장으로 보인다.
 
-검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다.
+검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다. self-test가 실패하면 본 검사
+결과를 신뢰하지 않는다.
 
 ```bash
 unquote() { sed -E 's/[`"'"'"']//g'; }
-# 줄 주석(-- 와 #)을 줄 단위로 먼저 제거한 뒤 평탄화한다.
 stmts() { sed -E 's/--.*$//; s/#.*$//' | tr '\n' ' ' | tr ';' '\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.'; }
 stmt_forms() { stmts | awk '{print toupper($1)}'; }
-
-# 허용된 문장 **안에** 다른 문장 키워드가 섞이면 위반이다.
-# 주석이 세미콜론을 먹어 두 문장이 하나로 붙는 경우를 잡는 backstop이다.
-inner_keywords() {
-  stmts | grep -inE '[[:space:]](DELETE|DROP|TRUNCATE|INSERT|CREATE|RENAME|GRANT|REVOKE|REPLACE)[[:space:]]' | cut -c1-45
-}
-
-alter_ops() {
-  stmts | grep -iE '^ALTER[[:space:]]+TABLE' \
-  | sed -E 's/^[Aa][Ll][Tt][Ee][Rr][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+[^[:space:]]+[[:space:]]+//' \
-  | tr ',' '\n' | sed -E 's/^[[:space:]]*//; s/[[:space:]]+$//' | grep -E '.'
-}
-
-set_targets_raw() {
-  stmts | grep -iE '^UPDATE' \
-  | sed -E 's/[[:space:]][Ww][Hh][Ee][Rr][Ee][[:space:]].*$//' \
-  | sed -E 's/^.*[[:space:]][Ss][Ee][Tt][[:space:]]//' \
-  | tr ',' '\n' | sed -E 's/[[:space:]]*=.*$//' | unquote \
-  | sed -E 's/[[:space:]]*\.[[:space:]]*/./g' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
-  | grep -E '.' | sort -u
-}
-
+# 최상위(괄호 밖) 콤마로만 분리한다 — DECIMAL(30, 10)이나 ROUND(x, 2)를 쪼개면 안 된다.
+split_top_commas() { awk '{ depth=0; buf="";
+  for (i=1; i<=length($0); i++) { c = substr($0,i,1);
+    if (c=="(") depth++; else if (c==")") depth--;
+    if (c=="," && depth==0) { print buf; buf="" } else buf = buf c }
+  print buf }'; }
+inner_keywords() { stmts | grep -inE '[[:space:]](DELETE|DROP|TRUNCATE|INSERT|CREATE|RENAME|GRANT|REVOKE|REPLACE|JOIN)[[:space:]]' | cut -c1-45; }
+alter_tables() { stmts | grep -iE '^ALTER[[:space:]]+TABLE' | awk '{print $3}' | unquote | tr '[:upper:]' '[:lower:]' | sort -u; }
+update_targets() { stmts | grep -iE '^UPDATE' | sed -E 's/^[Uu][Pp][Dd][Aa][Tt][Ee][[:space:]]+//' | sed -E 's/[[:space:]][Ss][Ee][Tt][[:space:]].*$//' | unquote | tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.' | sort -u; }
+alter_ops() { stmts | grep -iE '^ALTER[[:space:]]+TABLE' | sed -E 's/^[Aa][Ll][Tt][Ee][Rr][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+[^[:space:]]+[[:space:]]+//' | split_top_commas | sed -E 's/^[[:space:]]*//; s/[[:space:]]+$//' | grep -E '.'; }
+set_targets_raw() { stmts | grep -iE '^UPDATE' | sed -E 's/[[:space:]][Ww][Hh][Ee][Rr][Ee][[:space:]].*$//' | sed -E 's/^.*[[:space:]][Ss][Ee][Tt][[:space:]]//' | split_top_commas | sed -E 's/[[:space:]]*=.*$//' | unquote | sed -E 's/[[:space:]]*\.[[:space:]]*/./g' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.' | sort -u; }
 normalize_target() { sed -E 's/^[A-Za-z_][A-Za-z0-9_]*\.//' | tr '[:upper:]' '[:lower:]'; }
 added_cols() { alter_ops | grep -iE '^ADD[[:space:]]+COLUMN[[:space:]]' | awk '{print $3}' | unquote | tr '[:upper:]' '[:lower:]' | sort -u; }
 
 judge() {   # 0 = 안전, 1 = 위반
-  local sql="$1" added raw bad="" unparseable="" disallowed="" badstmt="" inner="" r n
+  local sql="$1" added raw bad="" unparseable="" disallowed="" badstmt="" inner="" badtable="" r n
   badstmt=$(printf '%s' "$sql" | stmt_forms | grep -vE '^(ALTER|UPDATE)$' | sort -u | tr '\n' ' ')
   inner=$(printf '%s' "$sql" | inner_keywords | tr '\n' ';')
+  badtable=$(printf '%s' "$sql" | alter_tables | grep -vx 'position' | tr '\n' ' ')
+  badtable="$badtable$(printf '%s' "$sql" | update_targets | grep -vE '^position([[:space:]]+[a-z_][a-z0-9_]*)?$' | tr '\n' ' ')"
+  badtable=$(printf '%s' "$badtable" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
   disallowed=$(printf '%s' "$sql" | alter_ops | grep -ivE '^ADD[[:space:]]+COLUMN[[:space:]]' | cut -c1-45 | tr '\n' ';')
   added=$(printf '%s' "$sql" | added_cols)
   raw=$(printf '%s' "$sql" | set_targets_raw)
@@ -322,13 +315,17 @@ judge() {   # 0 = 안전, 1 = 위반
     elif ! printf '%s\n' "$added" | grep -qx "$n"; then bad="$bad $n"; fi
   done
   unset IFS
-  JB="$bad"; JU="$unparseable"; JD="$disallowed"; JS="$badstmt"; JI="$inner"
-  [ -z "$bad" ] && [ -z "$unparseable" ] && [ -z "$disallowed" ] && [ -z "$badstmt" ] && [ -z "$inner" ]
+  JB="$bad"; JU="$unparseable"; JD="$disallowed"; JS="$badstmt"; JI="$inner"; JT="$badtable"
+  [ -z "$bad" ] && [ -z "$unparseable" ] && [ -z "$disallowed" ] && [ -z "$badstmt" ] && [ -z "$inner" ] && [ -z "$badtable" ]
 }
 
 # --- self-test: 아래를 하나라도 놓치면 즉시 실패 ---
 A="ALTER TABLE position ADD COLUMN close_price_source VARCHAR(30) NULL;"
 u=""
+judge "ALTER TABLE member ADD COLUMN audit_note VARCHAR(20) NULL; UPDATE member SET audit_note=1;" && u="$u unrelated-table"
+judge "$A UPDATE member SET close_price_source=1;"                     && u="$u cross-table-update"
+judge "$A UPDATE position, member SET close_price_source=1;"           && u="$u multi-table-update"
+judge "$A UPDATE position p JOIN member m ON p.member_id=m.id SET p.close_price_source=1;" && u="$u join-update"
 judge "$A WITH c AS (SELECT 1) UPDATE position SET status='ARCHIVED';" && u="$u cte-update"
 judge "$A
 UPDATE position SET close_price_source='X' # comment
@@ -336,8 +333,6 @@ DELETE FROM position;"                                                 && u="$u 
 judge "$A
 UPDATE position SET close_price_source='X' -- comment
 DELETE FROM position;"                                                 && u="$u dash-comment-swallow"
-judge "$A UPDATE position SET close_price_source='X'; # c
-DELETE FROM position;"                                                 && u="$u hash-then-delete"
 judge "$A /* c */ DELETE FROM position;"                               && u="$u block-comment-delete"
 judge "$A /*!40000 DELETE FROM position */;"                           && u="$u executable-comment"
 judge "$A INSERT INTO position (status) VALUES ('X');"                 && u="$u insert"
@@ -359,16 +354,18 @@ judge "$A ALTER TABLE position DROP status;"                           && u="$u 
 judge "$A ALTER TABLE position CHANGE status state VARCHAR(30);"       && u="$u change-no-keyword"
 judge "$A ALTER TABLE position RENAME COLUMN status TO state;"         && u="$u rename-column"
 judge "$A ALTER TABLE position ALTER COLUMN status SET DEFAULT 'A';"   && u="$u alter-column"
-judge "$A" || u="$u false-positive-on-clean"
-judge "ALTER TABLE position ADD COLUMN a INT NULL; UPDATE position p SET p.a = 1;" || u="$u false-positive-alias-ok"
-judge "ALTER TABLE position ADD COLUMN a INT NULL, ADD COLUMN b INT NULL;"         || u="$u false-positive-multi-add"
+judge "$A" || u="$u fp-clean"
+judge "ALTER TABLE position ADD COLUMN a INT NULL; UPDATE position p SET p.a = 1;"      || u="$u fp-alias-ok"
+judge "ALTER TABLE position ADD COLUMN a INT NULL, ADD COLUMN b INT NULL;"              || u="$u fp-multi-add"
+judge 'ALTER TABLE `position` ADD COLUMN a INT NULL; UPDATE `position` SET a=1;'        || u="$u fp-backtick-table"
+judge "ALTER TABLE position ADD COLUMN p DECIMAL(30, 10) NULL AFTER status, ADD COLUMN q DECIMAL(20, 6) NULL AFTER p; UPDATE position SET p = 1, q = 2;" || u="$u fp-decimal-comma"
 if [ -n "$u" ]; then echo "self_test_failed=[$u]"; exit 1; fi
 
 # --- 본 검사 ---
 m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
 [ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
 judge "$(cat "$m")"; rc=$?
-echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] bad_statement=[$JS] inner_keyword=[$JI] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD]"
+echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] bad_table=[$JT] bad_statement=[$JS] inner_keyword=[$JI] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD]"
 exit $rc
 ```
 
