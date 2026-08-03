@@ -61,7 +61,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC17 | 동결 산출물(마스터 spec 4종, Phase -1 3종)이 이 브랜치에서 변경되지 않았다. | 범위 제외 "동결 산출물 변경" | T1 | 아래 `AC17 command` | exit 0, `modified=[]` |
 | AC18 | §7 outcome 추적표가 상위 동결 spec이 Phase 0에 배정한 **11개 ID와 정확히 일치**하고(누락·초과 0), 각 행이 근거 절과 검증 AC를 가지며, 참조된 AC가 이 계약서에 실재한다. | 상위 spec §8 Phase 0 배정, codex 6R medium-3 | T1 | 아래 `AC18 command` | exit 0, `missing=[] extra=[] empty_cells=[] dangling_ac=[]` |
 | AC19 | 미해결 결정(§6)이 모두 이월 대상 Phase를 갖고, Phase 1 진입을 차단하지 않음이 명시된다. | 상위 spec §5 Phase 1 진입 조건 | T1 | 아래 `AC19 command` | exit 0, `unassigned=[]` |
-| AC20 | 외부 관점 스펙 리뷰가 수렴한다. 동일 렌즈 재검토에서 critical·high가 0이다. | `feature-workflow` ⑥ | T4 | `codex-spec-review` 재실행 후 verdict 기록 | 재검토 critical·high 0 |
+| AC20 | 외부 관점 스펙 리뷰를 **합의된 정지 규칙까지** 수행한다. 초안 기준(critical·high 0)은 달성하지 못했고, 사용자가 18라운드 종료를 선택했다. 아래 `## 변경 요청`을 참조한다. | `feature-workflow` ⑥, 사용자 선택(2026-08-03) | T4 | 라운드별 지적·처리 기록 | 18라운드 완료 + 라운드 이력이 증거 로그에 기록됨 |
 | AC21 | 사용자가 `design.md`·`plan.md`·`dod.md`를 승인하고 이 계약서가 `FROZEN`으로 전이한다. §5.2 도메인 rename 포함 여부를 명시적으로 확인받는다. | `feature-workflow` ⑦, `design.md` D1 단서 | T4 | 사용자 승인 기록 | `status: FROZEN` + `frozen_at` 기입 |
 | AC27 | 사용자가 §5.8의 **배포 중 Web 단절**을 인지하고 출시 방식을 명시 선택한다 (그대로 수용 / 배포 전 공지 / 원자 전환 절차 선행). **이 선택 전에는 배포하지 않는다** — 구현·병합은 막지 않는다. 선택 결과를 `understanding.md`와 PR 본문에 적는다. | §5.8, codex 2R medium-3·4R high-1·8R high-2·10R high-2 | T4 | 사용자 선택 기록 | 선택지 중 하나가 기록됨 |
 | AC22 | 사용자가 구현 결과를 확인하고 `progress.md`에 `FOUNDATION_ALIGNED`가 append된다. | `feature-workflow` ⑩, 상위 spec 종료 판정 | T4 | 사용자 승인 기록 + `progress.md` diff | `FOUNDATION_ALIGNED` 기록 |
@@ -655,9 +655,33 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 | AC17 | GREEN — `modified=[]` | |
 | AC18 | GREEN — `rows=11 empty_cells=[] dangling_ac=[]` | |
 | AC19 | GREEN — `rows=5 unassigned=[]` | |
-| AC20 | 미실행 — `feature-workflow` ⑥ 대기 | |
+| AC20 | 미실행 — `feature-workflow` ⑥ 대기 | **18라운드 완료.** 지적 45건 처리(critical 2·high 25·medium 18), REBUT 2건은 모두 codex가 ACCEPTED/MAINTAINED로 수렴. **critical·high 0은 달성하지 못했다** — 16~18R(도메인 초점)에서도 매 라운드 high가 나왔다. 아래 `## 변경 요청` 참조 |
 | AC21 | 미실행 — `feature-workflow` ⑦ 대기 | |
 | AC22 | 미실행 — `feature-workflow` ⑩ 대기 | |
+
+## 변경 요청
+
+### CR-1. AC20의 정지 규칙 변경 (2026-08-03)
+
+**초안 기준**: 동일 렌즈 재검토에서 critical·high가 0.
+
+**실제**: 18라운드를 수행했으나 마지막 라운드까지 high가 나왔다. 지적의 성격은 라운드가 갈수록 바뀌었다.
+
+| 구간 | 지적 대상 | 성격 |
+|---|---|---|
+| 1R~9R | 설계 결정, 상태 모델, 배포 계약 | 스펙 실질 |
+| 10R~13R | AC23 SQL 파서 (6회 반복) | 검증 도구 |
+| 14R~15R | verify.sh 러너, T4 게이팅 | 검증 도구 |
+| 16R~18R | FX 신선도, 잠금 인가, V15 원자성, quote 정규화 | **스펙 실질** |
+
+10R~15R의 검증 도구 결함은 13R의 접근 전환(파서 의존 → 내용 대조 gate)으로 멈췄다. 16R부터 리뷰 초점을
+도메인으로 좁히자 다시 실질 결함이 나왔고, **매 라운드 새로운 실질 결함이 나오는 상태에서 종료한다.**
+
+**사용자 선택 (2026-08-03)**: 도메인 초점으로 3라운드(16R~18R) 추가 수행 후 승인 단계로 이동.
+
+**이 변경이 남기는 위험**: 스펙 리뷰가 자연 수렴하지 않았으므로 미발견 설계 결함이 남아 있을 수 있다.
+완화는 구현 단계의 `codex-code-review`(`feature-workflow` ⑨)와 T2 자동 기준 11개가 담당한다. 특히
+`AC5`(요청·응답 계약 9케이스), `AC25`(부분 행 L1~L9), `AC10`·`AC23`(migration)이 실제 동작으로 검증한다.
 
 ## 최종 판정
 
