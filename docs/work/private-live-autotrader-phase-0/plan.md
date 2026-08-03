@@ -267,13 +267,20 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC11 AC23 AC24
 `TrackingResponse.GrossPnl` 필드는 `design.md` §5.3.3 표를 그대로 따른다. `TrackingResult.GrossPnl`과
 `TrackingGrossPnl`도 같은 이름 체계를 쓴다.
 
-**계산 분기**
+**계산 분기** — `design.md` §5.3.2의 확정 판정 규칙 하나만 본다. 조건을 여기서 다시 풀어 쓰지 않는다.
+초안은 `ARCHIVED` + `MARKET_SNAPSHOT`이면 확정으로 취급해, 6개 필드 중 하나가 `NULL`인 부분 행에 대해
+design(409)과 plan(200)이 서로 다른 말을 했다.
 
-| 상태 | `priceBasis` | 입력 |
-|---|---|---|
-| `ACTIVE` | `CURRENT_MARKET` | 최신 premium snapshot |
-| `ARCHIVED` + `MARKET_SNAPSHOT` | `ARCHIVED_SNAPSHOT` | 저장된 청산 스냅샷 |
-| `ARCHIVED` + `SNAPSHOT_UNAVAILABLE`·`LEGACY_UNKNOWN` | — | `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE` |
+```kotlin
+when {
+    status == TrackingStatus.ACTIVE -> current(snapshot)          // priceBasis = CURRENT_MARKET
+    hasConfirmedClose               -> archived(closeSnapshot)    // priceBasis = ARCHIVED_SNAPSHOT
+    else -> throw ApplicationException(ApplicationError.TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE)  // 409
+}
+```
+
+`hasConfirmedClose`가 아닌 모든 `ARCHIVED` 조합은 `close_price_source` 값과 무관하게 `409`다
+(`SNAPSHOT_UNAVAILABLE`·`LEGACY_UNKNOWN`·`NULL`·`MARKET_SNAPSHOT`이지만 필드가 빠진 경우 전부).
 
 `pnlBasis`는 상수 `GROSS_EXCLUDING_FEES_FUNDING_SLIPPAGE_FX_SPREAD`. **계산식 자체는 바꾸지 않는다** —
 Phase 0은 손익 모델을 바꾸지 않는다 (`design.md` §1.3).

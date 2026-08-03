@@ -49,7 +49,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`의 `ALTER` 연산이 **`ADD COLUMN`뿐**이고 모든 `UPDATE`의 모든 `SET` 대상이 같은 migration이 추가한 컬럼이다(fail-closed allowlist). **판독 불가한 `SET` 대상은 버리지 않고 위반으로 센다.** 검사기는 우회 표본 16종(다중 SET·별칭·별칭 주위 공백·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·`DELETE FROM`·정상 표본 2종)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok rewrites_existing=[] unparseable=[] disallowed=[] destructive=[]` |
+| AC23 | `V15`가 **세 겹 fail-closed allowlist**를 통과한다: 문장 형태는 `ALTER`·`UPDATE`만, `ALTER` 연산은 `ADD COLUMN`만, `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만. 판독 불가한 대상은 버리지 않고 위반으로 센다. 검사기는 우회 표본 22종(CTE 접두 UPDATE·`INSERT`·`DELETE`·`TRUNCATE`·`DROP TABLE`·`CREATE INDEX`·`RENAME TABLE`·다중 SET·별칭·공백·따옴표·복수 문장·`MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`·`COLUMN` 생략형·정상 표본 3종)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1·9R high-1 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok bad_statement=[] rewrites_existing=[] unparseable=[] disallowed=[]` |
 | AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 `V15` 하나만 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query와 `position` 테이블 raw SQL이 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[] rawsql=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
@@ -99,15 +99,18 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 `TrackingRouteContractTest`(`apps/api/src/integrationTest`)가 **인증된** 요청으로 다음을 확인한다.
 인증 없이 호출하면 `PublicEndpointPolicy`에 없는 경로라 `404` 이전에 `401`이 나오므로 판정이 무의미하다.
 
-| 요청 | 기대 |
+D1이 제거하는 옛 경로는 **8개**다. 그중 일부만 검사하면 남은 handler가 매핑된 채로 GREEN이 된다.
+
+| 옛 경로 (전부 `404`) | 대체 endpoint (전부 정상 응답) |
 |---|---|
-| `GET /api/v1/positions` | `404` |
-| `GET /api/v1/positions/1` | `404` |
-| `POST /api/v1/positions/auto` | `404` |
-| `POST /api/v1/positions/manual` | `404` |
-| `POST /api/v1/positions/1/close` | `404` |
-| `GET /api/v1/positions/1/pnl` | `404` |
-| `GET /api/v1/trackings` | `200` |
+| `GET /api/v1/positions` | `GET /api/v1/trackings` |
+| `GET /api/v1/positions/history` | `GET /api/v1/trackings/archived` |
+| `GET /api/v1/positions/summary` | `GET /api/v1/trackings/summary` |
+| `GET /api/v1/positions/{id}` | `GET /api/v1/trackings/{id}` |
+| `GET /api/v1/positions/{id}/pnl` | `GET /api/v1/trackings/{id}/gross-pnl` |
+| `POST /api/v1/positions/auto` | `POST /api/v1/trackings/from-market` |
+| `POST /api/v1/positions/manual` | `POST /api/v1/trackings` |
+| `POST /api/v1/positions/{id}/close` | `POST /api/v1/trackings/{id}/archive` |
 
 ```bash
 ./gradlew :apps:api:integrationTest --tests '*TrackingRouteContract*' --offline --no-daemon
@@ -258,91 +261,91 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
 
 #### AC23 command
 
-금지 토큰 나열(blacklist)은 문법 변형에 뚫린다. MySQL은 `DROP status`·`CHANGE status ...`처럼 `COLUMN`을
-생략할 수 있고, 식별자를 따옴표로 감쌀 수 있으며, `SET p . status`처럼 한정자 주위에 공백을 둘 수 있다.
-그래서 **두 겹으로 fail-closed**로 만든다.
+**세 겹 fail-closed allowlist**다. 각 겹은 "허용 목록에 없으면 위반"이며, 금지 목록을 늘리지 않는다.
 
-1. `ALTER` 연산은 `ADD COLUMN`만 허용한다. 그 밖의 연산은 종류를 묻지 않고 위반이다.
-2. `UPDATE`의 `SET` 대상은 같은 migration이 추가한 컬럼만 허용한다. **판독할 수 없는 대상은 버리지 않고
-   위반으로 센다** — 초안은 bare identifier가 아닌 값을 조용히 걸러내 `SET p . status`가 `targets=[]`로
-   통과했다.
+1. **문장 형태**: `ALTER`와 `UPDATE`로 시작하는 문장만 허용한다. `WITH c AS (...) UPDATE ...`(MySQL 8의
+   CTE 접두 DML)·`INSERT`·`DELETE`·`TRUNCATE`·`DROP`·`CREATE`·`RENAME`이 한 규칙에 전부 걸린다.
+   초안은 `UPDATE`로 **시작하는** 문장만 인식해 CTE 접두형이 통과했다.
+2. **`ALTER` 연산**: `ADD COLUMN`만 허용한다. `MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`과
+   `COLUMN` 생략형이 전부 걸린다.
+3. **`UPDATE`의 `SET` 대상**: 같은 migration이 추가한 컬럼만 허용한다. **판독할 수 없는 대상은 버리지 않고
+   위반으로 센다.**
 
 검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다.
 
 ```bash
 unquote() { sed -E 's/[`"'"'"']//g'; }
+stmts() { sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.'; }
+stmt_forms() { stmts | awk '{print toupper($1)}'; }
 
 alter_ops() {
-  sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' \
-  | grep -iE '^[[:space:]]*ALTER[[:space:]]+TABLE' \
-  | sed -E 's/^[[:space:]]*[Aa][Ll][Tt][Ee][Rr][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+[^[:space:]]+[[:space:]]+//' \
+  stmts | grep -iE '^ALTER[[:space:]]+TABLE' \
+  | sed -E 's/^[Aa][Ll][Tt][Ee][Rr][[:space:]]+[Tt][Aa][Bb][Ll][Ee][[:space:]]+[^[:space:]]+[[:space:]]+//' \
   | tr ',' '\n' | sed -E 's/^[[:space:]]*//; s/[[:space:]]+$//' | grep -E '.'
 }
 
-set_targets_raw() {   # SET 대상 원문. 판정은 호출자가 한다 (여기서 버리지 않는다).
-  sed -E 's/--.*$//' | tr '\n' ' ' | tr ';' '\n' \
-  | grep -iE '^[[:space:]]*UPDATE' \
+set_targets_raw() {
+  stmts | grep -iE '^UPDATE' \
   | sed -E 's/[[:space:]][Ww][Hh][Ee][Rr][Ee][[:space:]].*$//' \
   | sed -E 's/^.*[[:space:]][Ss][Ee][Tt][[:space:]]//' \
   | tr ',' '\n' | sed -E 's/[[:space:]]*=.*$//' | unquote \
-  | sed -E 's/[[:space:]]*\.[[:space:]]*/./g' \
-  | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | grep -E '.' | sort -u
+  | sed -E 's/[[:space:]]*\.[[:space:]]*/./g' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' \
+  | grep -E '.' | sort -u
 }
 
 normalize_target() { sed -E 's/^[A-Za-z_][A-Za-z0-9_]*\.//' | tr '[:upper:]' '[:lower:]'; }
-
-added_cols() {
-  alter_ops | grep -iE '^ADD[[:space:]]+COLUMN[[:space:]]' \
-  | awk '{print $3}' | unquote | tr '[:upper:]' '[:lower:]' | sort -u
-}
+added_cols() { alter_ops | grep -iE '^ADD[[:space:]]+COLUMN[[:space:]]' | awk '{print $3}' | unquote | tr '[:upper:]' '[:lower:]' | sort -u; }
 
 judge() {   # 0 = 안전, 1 = 위반
-  local sql="$1" added raw bad="" unparseable="" disallowed="" destructive="" r n
-  disallowed=$(printf '%s' "$sql" | alter_ops | grep -ivE '^ADD[[:space:]]+COLUMN[[:space:]]' | cut -c1-50 || true)
+  local sql="$1" added raw bad="" unparseable="" disallowed="" badstmt="" r n
+  badstmt=$(printf '%s' "$sql" | stmt_forms | grep -vE '^(ALTER|UPDATE)$' | sort -u | tr '\n' ' ')
+  disallowed=$(printf '%s' "$sql" | alter_ops | grep -ivE '^ADD[[:space:]]+COLUMN[[:space:]]' | cut -c1-45 | tr '\n' ';')
   added=$(printf '%s' "$sql" | added_cols)
   raw=$(printf '%s' "$sql" | set_targets_raw)
   local IFS=$'\n'
   for r in $raw; do
     n=$(printf '%s' "$r" | normalize_target)
-    if ! printf '%s' "$n" | grep -qE '^[a-z_][a-z0-9_]*$'; then
-      unparseable="$unparseable [$r]"
-    elif ! printf '%s\n' "$added" | grep -qx "$n"; then
-      bad="$bad $n"
-    fi
+    if ! printf '%s' "$n" | grep -qE '^[a-z_][a-z0-9_]*$'; then unparseable="$unparseable [$r]"
+    elif ! printf '%s\n' "$added" | grep -qx "$n"; then bad="$bad $n"; fi
   done
   unset IFS
-  destructive=$(printf '%s' "$sql" | sed -E 's/--.*$//' \
-    | grep -inE 'TRUNCATE|DROP[[:space:]]+TABLE|RENAME[[:space:]]+TABLE|DELETE[[:space:]]+FROM' | cut -c1-50 || true)
-  JB="$bad"; JU="$unparseable"; JD=$(printf '%s' "$disallowed" | tr '\n' ';'); JX=$(printf '%s' "$destructive" | tr '\n' ';')
-  [ -z "$bad" ] && [ -z "$unparseable" ] && [ -z "$disallowed" ] && [ -z "$destructive" ]
+  JB="$bad"; JU="$unparseable"; JD="$disallowed"; JS="$badstmt"
+  [ -z "$bad" ] && [ -z "$unparseable" ] && [ -z "$disallowed" ] && [ -z "$badstmt" ]
 }
 
 # --- self-test: 아래를 하나라도 놓치면 즉시 실패 ---
 A="ALTER TABLE position ADD COLUMN close_price_source VARCHAR(30) NULL;"
 u=""
-judge "$A UPDATE position SET close_price_source='X', status='ARCHIVED';"        && u="$u multi-set"
-judge "$A UPDATE position p SET p.status='ACTIVE';"                              && u="$u alias-set"
-judge "$A UPDATE position p SET p . status = 'ARCHIVED';"                        && u="$u alias-spaced-dot"
-judge "$A UPDATE position p SET p .status = 'ARCHIVED';"                         && u="$u alias-spaced-left"
-judge "$A UPDATE position p SET p.\"status\" = 'ARCHIVED';"                      && u="$u alias-quoted"
-judge "$A UPDATE position SET \"status\" = 'ARCHIVED';"                          && u="$u quoted-set"
+judge "$A WITH c AS (SELECT 1) UPDATE position SET status='ARCHIVED';" && u="$u cte-update"
+judge "$A INSERT INTO position (status) VALUES ('X');"                 && u="$u insert"
+judge "$A DELETE FROM position WHERE status='CLOSED';"                 && u="$u delete"
+judge "$A TRUNCATE TABLE position;"                                    && u="$u truncate"
+judge "$A DROP TABLE position;"                                        && u="$u drop-table"
+judge "$A CREATE INDEX ix ON position (status);"                       && u="$u create-index"
+judge "$A RENAME TABLE position TO tracking;"                          && u="$u rename-table"
+judge "$A UPDATE position SET close_price_source='X', status='A';"     && u="$u multi-set"
+judge "$A UPDATE position p SET p.status='ACTIVE';"                    && u="$u alias-set"
+judge "$A UPDATE position p SET p . status = 'ARCHIVED';"              && u="$u alias-spaced-dot"
+judge "$A UPDATE position p SET p .status = 'ARCHIVED';"               && u="$u alias-spaced-left"
+judge "$A UPDATE position p SET p.\"status\" = 'ARCHIVED';"            && u="$u alias-quoted"
+judge "$A UPDATE position SET \"status\" = 'ARCHIVED';"                && u="$u quoted-set"
 judge "$A UPDATE position SET close_price_source='X'; UPDATE position SET status='A';" && u="$u second-update"
-judge "$A ALTER TABLE position MODIFY COLUMN status VARCHAR(30) NOT NULL;"       && u="$u modify-column"
-judge "$A ALTER TABLE position DROP COLUMN status;"                              && u="$u drop-column"
-judge "$A ALTER TABLE position DROP status;"                                     && u="$u drop-no-keyword"
-judge "$A ALTER TABLE position CHANGE status state VARCHAR(30);"                 && u="$u change-no-keyword"
-judge "$A ALTER TABLE position RENAME COLUMN status TO state;"                   && u="$u rename-column"
-judge "$A ALTER TABLE position ALTER COLUMN status SET DEFAULT 'ACTIVE';"        && u="$u alter-column"
-judge "$A DELETE FROM position WHERE status='CLOSED';"                           && u="$u delete-from"
+judge "$A ALTER TABLE position MODIFY COLUMN status VARCHAR(30) NOT NULL;" && u="$u modify-column"
+judge "$A ALTER TABLE position DROP COLUMN status;"                    && u="$u drop-column"
+judge "$A ALTER TABLE position DROP status;"                           && u="$u drop-no-keyword"
+judge "$A ALTER TABLE position CHANGE status state VARCHAR(30);"       && u="$u change-no-keyword"
+judge "$A ALTER TABLE position RENAME COLUMN status TO state;"         && u="$u rename-column"
+judge "$A ALTER TABLE position ALTER COLUMN status SET DEFAULT 'A';"   && u="$u alter-column"
 judge "$A" || u="$u false-positive-on-clean"
-judge "ALTER TABLE position ADD COLUMN a INT NULL; UPDATE position p SET p.a = 1;" || u="$u false-positive-on-alias-ok"
+judge "ALTER TABLE position ADD COLUMN a INT NULL; UPDATE position p SET p.a = 1;" || u="$u false-positive-alias-ok"
+judge "ALTER TABLE position ADD COLUMN a INT NULL, ADD COLUMN b INT NULL;"         || u="$u false-positive-multi-add"
 if [ -n "$u" ]; then echo "self_test_failed=[$u]"; exit 1; fi
 
 # --- 본 검사 ---
 m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
 [ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
 judge "$(cat "$m")"; rc=$?
-echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD] destructive=[$JX]"
+echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] bad_statement=[$JS] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD]"
 exit $rc
 ```
 
