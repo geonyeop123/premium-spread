@@ -240,8 +240,16 @@ val hasConfirmedClose: Boolean
 자연히 fail-closed 처리되고, `closedAt`이 `NULL`이면 화면이 "종료 시각 불명"을 표시한다. `updatedAt`으로
 대체하지 않는다.
 
-**Facade `archive`**: 행을 잠근 뒤 최신 premium snapshot을 조회해 60초 이내면 `TrackingCloseSnapshot`,
-아니면 `null`을 넘긴다. **snapshot 부재·stale을 이유로 archive를 거절하지 않는다.** `409`는 archive가 아니라
+**Facade `archive`**: 행을 잠근 뒤 최신 premium snapshot을 조회해 **양방향 유계**(`design.md` §5.3.2)를
+만족하면 `TrackingCloseSnapshot`, 아니면 `null`을 넘긴다.
+
+```kotlin
+val age = Duration.between(snapshot.observedAt, clock.instant())
+val fresh = !age.isNegative && age <= SNAPSHOT_MAX_AGE   // 미래 시각도 stale 로 본다
+```
+
+`recordFromMarket`의 기존 검사도 같은 규칙으로 바꾼다 — 지금은 `age > SNAPSHOT_MAX_AGE`만 보아 미래
+시각이 통과한다. **snapshot 부재·stale을 이유로 archive를 거절하지 않는다.** `409`는 archive가 아니라
 그 추적의 `gross-pnl` 조회에서만 나온다 — 요청·응답 계약의 단일 출처는 `design.md` §5.3.2 표다.
 
 **검증**
