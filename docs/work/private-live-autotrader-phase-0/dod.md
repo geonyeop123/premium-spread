@@ -49,7 +49,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`가 **다섯 겹 fail-closed allowlist**를 통과한다: ① 문장 형태는 `ALTER`·`UPDATE`만 ② 대상 테이블은 정확히 `position`만(별칭 `p`·`AS p` 허용, 다중 테이블·`JOIN` 거부) ③ `ALTER` 연산은 `ADD COLUMN`만 ④ `SET` 대상은 같은 migration이 추가한 컬럼만(판독 불가는 위반) ⑤ 허용 문장 안에 다른 문장 키워드 없음. 문장 분리는 인용·주석 상태를 추적하는 lexer가 한다. 검사기는 우회·정상 표본 37종을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2·6R high-1·7R high-1·9R high-1·10R critical-1·11R high-1·12R high-1·medium-2 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok` 이후 모든 위반 버킷이 빈 값 |
+| AC23 | `V15`가 **두 독립 gate**를 통과한다. **Gate 1**: 파일이 `design.md` §5.3.1의 승인된 SQL 블록과 공백 정규화 후 정확히 일치한다(파싱 없음 — 어떤 문법 변형도 통과 불가). **Gate 2**: 그 승인 블록이 다섯 겹 allowlist를 통과한다(문장 형태·대상 테이블·`ALTER` 연산·`SET` 대상·문장 내부 키워드). 검사기는 우회·정상 표본 38종을 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R~13R (파서 결함 6회 반복 후 내용 대조로 전환) | T1 | 아래 `AC23 command` | exit 0, `self_test=ok gate1=MATCH` 이후 모든 위반 버킷이 빈 값 |
 | AC26 | 범위 **제외** 선언이 실제로 지켜졌다. `MarketPair`·`modules/redis`·Redis runbook·premium·notification 무변경, ticker 도메인은 `Exchange.kt`의 **주석 추가만**, migration은 `V15` 하나만 추가, `@Table(name = "position")` 1개 유지. | 범위 제외 절, codex 6R medium-2·7R medium-3 | T1 | 아래 `AC26 command` | exit 0, 모든 항목 빈 값 + `table=1` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query와 `position` 테이블 raw SQL이 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[] rawsql=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
@@ -261,28 +261,24 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
 
 #### AC23 command
 
-**다섯 겹 fail-closed allowlist**다. 각 겹은 "허용 목록에 없으면 위반"이며 금지 목록을 늘리지 않는다.
+**두 개의 독립 gate**로 확인한다. 12라운드 동안 SQL 파서에서만 6번 결함이 나왔다 — `#` 주석, `--` 주석,
+문자열 안 표식, CTE 접두, 실행형 주석, MySQL의 `--1` 산술식. 파서를 계속 고치는 것은 문법 변형과의 경주이며
+이길 수 없다. 그래서 **파서에 의존하지 않는 gate를 1차로 둔다.**
 
-1. **문장 형태**: `ALTER`·`UPDATE`로 시작하는 문장만. CTE 접두 DML(`WITH ... UPDATE`)·`INSERT`·`DELETE`·
-   `TRUNCATE`·`DROP`·`CREATE`·`RENAME`이 한 규칙에 전부 걸린다.
-2. **대상 테이블**: `ALTER TABLE`과 `UPDATE`의 대상이 **정확히 `position`**이어야 한다. 별칭은
-   `position p`와 `position AS p` 둘 다 허용하고, 다중 테이블·`JOIN` 형태는 거부한다. 이 겹이 없으면 무관한 테이블을 바꾸는 migration이 통과한다.
-3. **`ALTER` 연산**: `ADD COLUMN`만. `MODIFY`/`DROP`/`CHANGE`/`RENAME`/`ALTER COLUMN`과 `COLUMN` 생략형이
-   전부 걸린다.
-4. **`UPDATE`의 `SET` 대상**: 같은 migration이 추가한 컬럼만. **판독할 수 없는 대상은 버리지 않고 위반으로
-   센다.**
-5. **문장 내부 키워드**: 허용 문장 안에 `DELETE`·`DROP`·`TRUNCATE`·`INSERT`·`CREATE`·`RENAME`·`GRANT`·
-   `REVOKE`·`REPLACE`·`JOIN`이 섞이면 위반이다. 앞의 겹들이 파싱에서 어긋나도 남는 backstop이다.
+**Gate 1 — 내용 동일성 (파싱 없음).** `V15` 파일이 `design.md` §5.3.1의 승인된 SQL 블록과 공백 정규화 후
+정확히 일치한다. 어떤 문법 변형도 이 gate를 통과할 수 없다. SQL을 바꾸려면 설계를 먼저 바꿔야 하고, 그러면
+`AC20`(외부 리뷰)과 `AC21`(사용자 승인)을 다시 거친다.
 
-덧붙여 MySQL 실행형 주석 `/*! ... */`은 **존재 자체가 위반**이다. 내용이 실제로 실행되므로 일반 주석으로
-지우면 안 되고, Phase 0 migration에서 쓸 이유도 없다.
+**Gate 2 — allowlist 파서 (설계 블록 대상).** 승인된 블록 자체가 다섯 겹 allowlist를 통과한다.
+① 문장 형태는 `ALTER`·`UPDATE`만 ② 대상 테이블은 정확히 `position`만(별칭 `p`·`AS p` 허용, 다중 테이블·
+`JOIN` 거부) ③ `ALTER` 연산은 `ADD COLUMN`만 ④ `SET` 대상은 같은 migration이 추가한 컬럼만(판독 불가는
+위반) ⑤ 허용 문장 안에 다른 문장 키워드 없음. 실행형 주석 `/*! ... */`은 존재 자체가 위반이다.
 
-문장 분리는 **인용 상태를 추적하는 lexer**가 한다. 정규식으로 주석을 지우면 문자열 안의 `'x # '`이나
-`'x -- y'`를 주석 시작으로 오인해 **그 뒤의 파괴적 문장을 통째로 삭제하고 안전하다고 판정한다.** 반대로
-문자열 안의 `;`로 문장을 잘못 쪼개면 정당한 migration을 막는다. 둘 다 상태 추적으로만 해결된다.
+Gate 1은 파일이 승인본에서 벗어나는 것을, Gate 2는 승인본 자체가 파괴적으로 편집되는 것을 막는다. 어느
+한쪽이 뚫려도 다른 쪽이 남는다.
 
-검사기가 우회 표본을 실제로 잡는지 **self-test로 먼저 증명한 뒤** V15를 본다. self-test가 실패하면 본 검사
-결과를 신뢰하지 않는다.
+문장 분리는 인용·주석 상태를 추적하는 lexer가 한다. `--`는 **뒤에 공백·제어문자가 올 때만** 주석이다 —
+MySQL에서 `--1`은 주석이 아니라 `- (-1)` 산술식이다.
 
 ```bash
 unquote() { sed -E 's/[`"'"'"']//g'; }
@@ -294,7 +290,10 @@ stmts() {
     for (i = 1; i <= n; i++) {
       c = substr(acc, i, 1); c2 = substr(acc, i, 2)
       if (st == "N") {
-        if (c2 == "--") { st = "L"; i++; continue }
+        if (c2 == "--") {
+          nc = substr(acc, i+2, 1)
+          if (nc == "" || nc == " " || nc == "\t" || nc == "\n" || nc == "\r") { st = "L"; i++; continue }
+        }
         if (c == "#")   { st = "L"; continue }
         if (c2 == "/*") { st = "C"; i++; continue }
         if (c == "\047") { st = "S"; out = out c; continue }
@@ -375,6 +374,7 @@ DELETE FROM position;"                                                 && u="$u 
 judge "$A
 UPDATE position SET close_price_source='X' -- comment
 DELETE FROM position;"                                                 && u="$u dash-comment-swallow"
+judge "$A UPDATE position SET close_price_source = close_price_source--1; DELETE FROM position;" && u="$u mysql-decrement"
 judge "$A UPDATE position SET close_price_source = 'x # '; DELETE FROM position;"  && u="$u string-hash-swallow"
 judge "$A UPDATE position SET close_price_source = 'x -- y'; DELETE FROM position;" && u="$u string-dash-swallow"
 judge "$A /* c */ DELETE FROM position;"                               && u="$u block-comment-delete"
@@ -407,11 +407,20 @@ judge "ALTER TABLE position ADD COLUMN a INT NULL; UPDATE position AS p SET p.a 
 judge "ALTER TABLE position ADD COLUMN a VARCHAR(20) NULL; UPDATE position SET a = 'x;y' WHERE status = 'CLOSED';" || u="$u fp-string-semicolon"
 if [ -n "$u" ]; then echo "self_test_failed=[$u]"; exit 1; fi
 
-# --- 본 검사 ---
+# --- Gate 1: 내용 동일성 (파싱 없음) ---
+norm() { tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'; }
+approved=$(awk '/^#### 5\.3\.1/,/^#### 5\.3\.2/' docs/work/private-live-autotrader-phase-0/design.md \
+  | awk '/^```sql$/{f=1;next} f&&/^```$/{exit} f')
+[ -n "$approved" ] || { echo "self_test=ok design.md §5.3.1 SQL 블록 없음"; exit 1; }
 m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
 [ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
-judge "$(cat "$m")"; rc=$?
-echo "self_test=ok added=[$(added_cols < "$m" | tr '\n' ' ')] bad_table=[$JT] bad_statement=[$JS] inner_keyword=[$JI] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD] exec_comment=[$JE]"
+if [ "$(printf '%s' "$approved" | norm)" != "$(norm < "$m")" ]; then
+  echo "self_test=ok gate1=MISMATCH (V15가 design.md §5.3.1 승인본과 다르다)"; exit 1
+fi
+
+# --- Gate 2: 승인된 블록이 allowlist 를 통과하는가 ---
+judge "$approved"; rc=$?
+echo "self_test=ok gate1=MATCH added=[$(printf '%s' "$approved" | added_cols | tr '\n' ' ')] bad_table=[$JT] bad_statement=[$JS] inner_keyword=[$JI] rewrites_existing=[$JB] unparseable=[$JU] disallowed=[$JD] exec_comment=[$JE]"
 exit $rc
 ```
 

@@ -160,6 +160,9 @@ class TrackingStatusConverter : AttributeConverter<TrackingStatus, String> {
 
 **`infrastructure/common/src/main/resources/db/migration/V15__add_tracking_close_snapshot.sql`**
 
+이 파일의 내용은 `design.md` §5.3.1의 SQL 블록과 **정확히 일치해야 한다** (공백 정규화 후). `AC23`의 Gate 1이
+기계 검사한다. SQL을 바꿔야 한다면 설계를 먼저 바꾸고 `AC20`·`AC21`을 다시 거친다 — 파일만 고치는 경로는 없다.
+
 ```sql
 -- V15: 추적 종료 시점의 시세를 확정 저장한다.
 -- 기존 컬럼의 값을 재작성하지 않는다 — 이전 application image 롤백 호환을 유지해야 한다
