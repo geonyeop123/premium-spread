@@ -36,15 +36,15 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC2 | 실행 소스의 Kotlin 타입·패키지에 `Position` 식별자가 남아 있지 않다 (`@Table(name = "position")`과 V12 동결 guard 제외). | D1, `SEM-2` | T1 | 아래 `AC2 command` | exit 0, `leftover=[0 hits]` |
 | AC3 | **실제 HTTP 응답**이 `pnlBasis`·`priceBasis`·`observedAt`과 분모를 드러낸 필드명을 갖고, 옛 필드명이 응답에 없다. 파일 텍스트가 아니라 응답 body를 검증한다. | `P0-O2`, `SEM-4`, D3 | T2 | 아래 `AC3 command` | exit 0 |
 | AC4 | 목록·상세 화면 **렌더 결과**에 비주문 고지, gross 각주(수수료·펀딩비·슬리피지·환전 스프레드 제외, 계정 손익 아님), 레버리지 무관성 각주, 프리미엄 방향 설명, 분모 라벨이 나타난다. 문자열 존재가 아니라 DOM 출현을 검증한다. | `SEM-1`, `SEM-3`, `SEM-4` | T2 | 아래 `AC4 command` | exit 0 |
-| AC5 | `design.md` §5.3.2 "요청·응답 계약" 표의 6행이 실제 응답으로 성립한다. 특히 **`archive`는 snapshot 부재·stale에도 `200`을 반환하고**, `409`는 그 추적의 `gross-pnl` 조회에서만 나온다. 동시 archive 중 정확히 하나만 확정하고 나머지는 `400 INVALID_TRACKING`을 받는다. | §3.3 실제 결함, D2, §5.3.2, §5.3.5 | T2 | 아래 `AC5 command` | exit 0, 6행 전부 + 동시성 통과 |
+| AC5 | `design.md` §5.3.2 "요청·응답 계약"이 실제 응답으로 성립하고, 잠금 경로가 soft-delete 필터와 소유권 검증을 유지한다. 특히 **`archive`는 snapshot 부재·stale에도 `200`을 반환하고**, `409`는 그 추적의 `gross-pnl` 조회에서만 나온다. 동시 archive 중 정확히 하나만 확정하고 나머지는 `400 INVALID_TRACKING`을 받는다. | §3.3 실제 결함, D2, §5.3.2, §5.3.5 | T2 | 아래 `AC5 command` | exit 0, 케이스 1~8 전부 통과 |
 | AC6 | identity 판정이 4개 누락 항목(양 leg의 instrument class·quote currency), 기존 자산의 유효 범위, 확장 담당 Phase를 모두 명시한다. | `P0-O3`, `ARCH-9`, D5 | T1 | 아래 `AC6 command` | exit 0, `missing=[]` |
 | AC7 | dead·미연결 계약 4건이 각각 유지/수정/제거로 판정되고, 제거 판정 항목이 실행 소스에서 사라졌다. | `P0-O4` | T1 | 아래 `AC7 command` | exit 0, `undecided=[] not_removed=[]` |
 | AC8 | As-Is 문서에 `Planned capability` 절과 Planned 문서 링크가 있고, Planned 문서에서 As-Is 문서로의 역참조가 있다. | `P0-O5`, `ARCH-7` | T1 | 아래 `AC8 command` | exit 0, `missing=[]` |
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
-| AC25 | **`V15` 적용 후 이전 image가 종료시킨 행**(`status='CLOSED'`, 신규 컬럼 전부 `NULL`)을 새 code가 fail-closed로 읽는다. `gross-pnl`은 `409`, 종료 시각은 "불명"이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1 | T2 | 아래 `AC25 command` | exit 0 |
+| AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
 | AC23 | `V15`가 기존 컬럼을 재작성·변경·삭제하지 않는다. `UPDATE`의 대상 컬럼이 모두 같은 migration이 추가한 컬럼이다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8 | T1 | 아래 `AC23 command` | exit 0, `rewrites_existing=[] forbidden=[]` |
-| AC24 | 상태 변환 경계가 converter 한 곳에 모이고, 도메인·API가 `ACTIVE`/`ARCHIVED`를 쓰는 동안 DB 저장값은 `OPEN`/`CLOSED`다. | D4, §5.8 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[]` |
+| AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query가 없다. | D4, §5.8, codex 3R medium-3 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
 | AC12 | unit·contract test와 architecture 경계 test가 통과한다. | 기존 repository gate, `.ai/rules/architecture.md` | T2 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 |
 | AC13 | API·batch·infrastructure 통합 test가 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --offline --no-daemon` | exit 0 |
@@ -197,6 +197,8 @@ grep -qi "tracking" infrastructure/api/src/main/kotlin/io/premiumspread/infrastr
 | 4 | 케이스 1 뒤 시세를 바꾸고 `GET /gross-pnl` | `200`, `priceBasis=ARCHIVED_SNAPSHOT`, 금액이 archive 시점과 **동일** |
 | 5 | 케이스 2 뒤 `GET /gross-pnl` | `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE` |
 | 6 | 동시 `POST /archive` × N | 정확히 1건 `200`, 나머지 `400 INVALID_TRACKING`, DB의 확정값은 성공한 1건과 일치 |
+| 7 | soft-deleted 추적에 `POST /archive` | `TRACKING_NOT_FOUND`, DB의 `status`·`close_*`가 **변하지 않음** |
+| 8 | 타인 소유 추적에 `POST /archive` | `TRACKING_NOT_FOUND`, DB 무변경 (잠금 뒤에도 소유권을 검증한다) |
 
 ```bash
 ./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon
@@ -204,16 +206,23 @@ grep -qi "tracking" infrastructure/api/src/main/kotlin/io/premiumspread/infrastr
 
 #### AC25 command
 
-`TrackingLegacyRowIntegrationTest`가 이전 image가 남긴 행을 SQL로 직접 만들어(`status='CLOSED'`,
-`closed_at`·`close_price_source`·`close_*` 전부 `NULL`) 새 code로 읽는다.
+`TrackingLegacyRowIntegrationTest`가 SQL로 행을 직접 심어 새 code로 읽는다. **전부 `NULL`인 행만으로는
+부족하다** — `MARKET_SNAPSHOT`이면서 한 컬럼만 `NULL`인 부분 행이 fail-open으로 통과할 수 있기 때문이다.
+
+| 케이스 | 행 상태 | 기대 |
+|---|---|---|
+| L1 | `status='CLOSED'`, 신규 컬럼 전부 `NULL` (이전 image가 종료) | 조회 `200`·`ARCHIVED`, `closedAt=null`, `gross-pnl` `409` |
+| L2 | `close_price_source='LEGACY_UNKNOWN'` | `gross-pnl` `409` |
+| L3~L8 | `close_price_source='MARKET_SNAPSHOT'` + 나머지 6개 중 **정확히 하나만 `NULL`** (`closed_at`, `close_observed_at`, `close_korea_price`, `close_foreign_price`, `close_fx_rate`, `close_premium_rate`) | 각각 `gross-pnl` `409` |
+
+L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 parameterized test다. 규칙에 필드를 추가하면 케이스도
+함께 늘어난다.
 
 ```bash
 ./gradlew :apps:api:integrationTest --tests '*TrackingLegacyRow*' --offline --no-daemon
 ```
 
-기대: 목록·상세 조회가 `200`으로 성공하고 상태가 `ARCHIVED`, `GET /gross-pnl`이
-`409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE`, `closedAt`이 `null`이며 어떤 경로에서도 `NullPointerException`이나
-`IllegalStateException`이 발생하지 않는다.
+어떤 케이스에서도 `NullPointerException`·`IllegalStateException`이 발생하지 않는다.
 
 #### AC23 command
 
@@ -231,6 +240,10 @@ echo "added=[$(printf '%s' "$added" | tr '\n' ' ')] rewrites_existing=[$bad] for
 
 #### AC24 command
 
+저장값 리터럴이 정당한 곳은 **converter와 Flyway migration 둘뿐**이다 (`V3__create_position_table.sql`의
+`DEFAULT 'OPEN'`은 D4에서도 그대로 유효하다). 그 밖의 어디에 나타나든 converter 우회다. 검사 범위를
+실행 소스 전체와 SQL resource까지 넓히고, converter를 건너뛰는 native query 자체를 금지한다.
+
 ```bash
 conv=$(find domain/src/main infrastructure/common/src/main -name 'TrackingStatusConverter.kt' 2>/dev/null | head -1)
 missing=""
@@ -238,12 +251,25 @@ missing=""
 if [ -n "$conv" ]; then
   for v in ACTIVE ARCHIVED OPEN CLOSED; do grep -q "$v" "$conv" || missing="$missing $v"; done
 fi
-# 저장값 리터럴이 converter 밖으로 새지 않아야 한다.
-leaked=$(grep -rn --include='*.kt' --exclude-dir=build -E '"(OPEN|CLOSED)"' \
-  domain/src/main apps/api/src/main infrastructure/common/src/main 2>/dev/null \
-  | grep -v 'TrackingStatusConverter' | grep -v 'V12MigrationSafety' | cut -c1-80 || true)
-echo "missing=[$missing] leaked=[$leaked]"
-[ -z "$missing" ] && [ -z "$leaked" ]
+
+# 1) 저장값 리터럴 유출 — 실행 소스 전체 + SQL resource. 허용: converter, Flyway migration, V12 동결 guard.
+leaked=$(grep -rn --exclude-dir=build --exclude-dir=node_modules --exclude-dir=.next \
+  --include='*.kt' --include='*.kts' --include='*.java' --include='*.sql' --include='*.yml' \
+  -E "['\"](OPEN|CLOSED)['\"]" \
+  apps/api/src/main apps/batch/src/main domain/src/main \
+  infrastructure/api/src/main infrastructure/batch/src/main infrastructure/common/src/main 2>/dev/null \
+  | grep -v 'TrackingStatusConverter' \
+  | grep -v 'V12MigrationSafety' \
+  | grep -v '/db/migration/' \
+  | cut -c1-90 || true)
+
+# 2) converter를 우회하는 native query 금지 (추적 영속화 경로).
+native=$(grep -rn --exclude-dir=build --include='*.kt' -E 'nativeQuery[[:space:]]*=[[:space:]]*true|createNativeQuery' \
+  infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jpa/tracking \
+  apps/api/src/main domain/src/main 2>/dev/null | cut -c1-90 || true)
+
+echo "missing=[$missing] leaked=[$leaked] native=[$native]"
+[ -z "$missing" ] && [ -z "$leaked" ] && [ -z "$native" ]
 ```
 
 #### AC15 command

@@ -128,7 +128,7 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC2
 bash docs/work/private-live-autotrader-phase-0/verify.sh AC1
 ```
 
-예상: exit 0. AC1은 `web=6 web_route_dir=1`이 남아 여전히 RED다 (T6이 처리).
+예상: exit 0. AC1은 `web`·`old_route`·`new_route`가 남아 여전히 RED다 (T6이 처리).
 
 ### T3. 상태 표현 정렬 + `V15` + 청산 스냅샷 + 확정 단일성
 
@@ -151,7 +151,9 @@ class TrackingStatusConverter : AttributeConverter<TrackingStatus, String> {
 ```
 
 `Tracking.status`는 `@Enumerated`를 떼고 `@Convert(converter = TrackingStatusConverter::class)`를 쓴다.
-저장값 리터럴 `"OPEN"`·`"CLOSED"`는 이 파일 밖에 나타나지 않는다 (`dod.md` AC24가 기계 검사).
+저장값 리터럴 `"OPEN"`·`"CLOSED"`가 정당한 곳은 **이 converter와 Flyway migration 둘뿐**이다
+(`V3__create_position_table.sql`의 `DEFAULT 'OPEN'`은 D4에서도 유효하다). 실행 소스와 SQL resource 어디에
+나타나든 converter 우회이며 `dod.md` AC24가 기계 검사한다. converter를 건너뛰는 native query도 금지다.
 
 **`infrastructure/common/src/main/resources/db/migration/V15__add_tracking_close_snapshot.sql`**
 
@@ -176,12 +178,23 @@ UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED
 
 ```kotlin
 // TrackingRepository
-fun findByIdForUpdate(id: Long): Tracking?
+fun findByIdAndDeletedAtIsNullForUpdate(id: Long): Tracking?
 ```
 
-`SpringDataTrackingRepository`에 `@Lock(LockModeType.PESSIMISTIC_WRITE)` 쿼리를 추가하고
-`JpaTrackingRepositoryAdapter`가 노출한다. Facade의 `archive`만 이 경로를 쓴다. 조회 경로는 잠그지 않는다.
-경쟁에서 진 요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다.
+```kotlin
+// SpringDataTrackingRepository
+@Lock(LockModeType.PESSIMISTIC_WRITE)
+@Query("SELECT t FROM Tracking t WHERE t.id = :id AND t.deletedAt IS NULL")
+fun findByIdAndDeletedAtIsNullForUpdate(@Param("id") id: Long): Tracking?
+```
+
+`JpaTrackingRepositoryAdapter`가 노출하고 Facade의 `archive`만 이 경로를 쓴다. 조회 경로는 잠그지 않는다.
+
+**`deletedAt IS NULL`을 이름과 쿼리 양쪽에 둔다.** 기존 조회는 전부 이 필터를 걸므로, 잠금 경로만 빠뜨리면
+이미 삭제돼 보이지 않는 record를 archive할 수 있다 (`design.md` §5.3.5).
+
+**잠금 뒤에도 소유권을 검증한다.** 순서는 잠금 → `verifyOwnership` → 상태 검사 → snapshot 조회 → 확정 →
+저장이며 전부 한 트랜잭션이다. 경쟁에서 진 요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다.
 
 **도메인**
 
@@ -207,10 +220,11 @@ fun archive(snapshot: TrackingCloseSnapshot?, archivedAt: Instant)
 **확정 판정은 한 곳에만 둔다** (`design.md` §5.3.2). 값별 분기를 흩뿌리지 않는다.
 
 ```kotlin
-// Tracking
+// Tracking — 확정 응답이 노출하는 모든 값의 원천을 빠짐없이 포함한다 (design.md §5.3.2)
 val hasConfirmedClose: Boolean
     get() = status == TrackingStatus.ARCHIVED &&
         closePriceSource == TrackingClosePriceSource.MARKET_SNAPSHOT &&
+        closedAt != null && closeObservedAt != null &&
         closeKoreaPrice != null && closeForeignPrice != null &&
         closeFxRate != null && closePremiumRate != null
 ```
@@ -239,7 +253,8 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC11 AC23 AC24
 - `V15*` 통합 test — 빈 DB latest, `V14`→`V15` 경로, **`status` 값 보존**, `LEGACY_UNKNOWN` 백필 (`AC10`)
 - `TrackingArchive*` — `design.md` §5.3.2 요청·응답 계약 표의 6행 (`AC5`). archive는 어떤 경우에도 시세를
   이유로 `409`를 내지 않는다
-- `TrackingLegacyRow*` — 이전 image가 남긴 `NULL` 행을 SQL로 직접 심고 fail-closed 읽기를 검증 (`AC25`)
+- `TrackingLegacyRow*` — 확정 판정 6개 필드 중 하나만 `NULL`인 부분 행까지 포함해 fail-closed 읽기를 검증
+  (`AC25` L1~L8). 전부-`NULL` 행만으로는 부분 행의 fail-open을 잡지 못한다
 
 `verifyMigrations`의 destructive gate는 `TRUNCATE TABLE`·`DROP TABLE`만 검사하므로
 (`infrastructure/common/build.gradle.kts:85`) 기존 컬럼 값 재작성을 잡지 못한다. 그 공백을 `AC23`이 메운다.

@@ -337,11 +337,29 @@ UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED
 ```text
 status == ARCHIVED
   AND close_price_source == 'MARKET_SNAPSHOT'
-  AND close_korea_price, close_foreign_price, close_fx_rate, close_premium_rate 가 모두 non-null
+  AND closed_at, close_observed_at,
+      close_korea_price, close_foreign_price, close_fx_rate, close_premium_rate
+      6개가 모두 non-null
 ```
 
 하나라도 아니면 **확정 손익을 제공하지 않는다**(fail-closed). `close_price_source`가 `NULL`인 경우도 여기
 포함된다. 이 규칙 하나가 아래 모든 조합을 덮으므로 값마다 분기를 따로 두지 않는다.
+
+**규칙의 구성 원칙:** 확정 판정은 **확정 응답이 노출하는 모든 값의 원천을 빠짐없이 포함한다.** 응답 계약에
+필드를 추가하면 그 원천 컬럼도 이 규칙에 들어가야 한다. 초안은 가격 4개만 검사해 `close_observed_at`이
+`NULL`인 부분 행이 `observedAt` 없이 `200 ARCHIVED_SNAPSHOT`으로 통과할 수 있었다 — 관측 시각을 모르는 값을
+"확정 시점 값"으로 표시하는 fail-open이다.
+
+| 확정 응답 필드 | 원천 | 규칙 포함 |
+|---|---|---|
+| `observedAt` | `close_observed_at` | O |
+| `referencePremiumRate`, `premiumRateDelta` | `close_premium_rate` | O |
+| `koreaLegGrossPnlKrw`, `koreaLegNotionalKrw` | `close_korea_price` | O |
+| `foreignLegGrossPnlKrw` | `close_foreign_price`, `close_fx_rate` | O |
+| `totalGrossPnlKrw`, `grossPnlPercentOfKoreaNotional`, `isGrossProfit` | 위 값들의 파생 | O |
+| `Detail.closedAt` | `closed_at` | O |
+| `entryPremiumRate` | 진입 시 확정, `NOT NULL` | 해당 없음 |
+| `priceBasis`, `pnlBasis`, `calculatedAt` | 파생·상수·`Clock` | 해당 없음 |
 
 | `close_price_source` | 생성 경로 | 확정 손익 |
 |---|---|---|
@@ -439,14 +457,22 @@ optimistic lock version이 없다. 두 요청이 같은 추적을 동시에 arch
 
 ```kotlin
 // TrackingRepository
-fun findByIdForUpdate(id: Long): Tracking?   // SELECT ... FOR UPDATE
+fun findByIdAndDeletedAtIsNullForUpdate(id: Long): Tracking?   // SELECT ... FOR UPDATE
 ```
 
-- 잠금 → 상태 검사 → snapshot 조회 → 확정 → 저장을 하나의 트랜잭션에서 수행한다
+- **이름과 쿼리가 soft-delete 필터를 함께 가진다.** 기존 조회는 전부 `deletedAt IS NULL`을 건다
+  (`findByIdAndDeletedAtIsNull`, `SpringDataPositionRepository`의 두 JPQL). 잠금 경로만 이 필터를 빠뜨리면
+  **이미 삭제돼 보이지 않는 record를 archive해 상태와 스냅샷을 바꿀 수 있다** — 기존 가시성 경계를 archive
+  경로에서만 우회하는 결과다. `findByIdForUpdate`라는 이름은 그 필터를 강제하지 못하므로 쓰지 않는다
+- **잠금 뒤에도 소유권을 검증한다.** 잠금은 동시성을 위한 것이지 인가가 아니다. 순서는
+  잠금 → 소유권 검증 → 상태 검사 → snapshot 조회 → 확정 → 저장이며 전부 한 트랜잭션이다
 - 경쟁에서 진 요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다. 조용히 성공시키지 않는다
 - `BaseEntity`에 `@Version`을 추가하지 않는다. 모든 Entity에 파급되는 변경이고 Phase 0 범위 밖이다.
   필요한 것은 이 한 경로의 선형화이므로 행 잠금이 정확한 도구다
 - 조회 경로(`findById`, 목록, `gross-pnl`)는 잠그지 않는다
+
+**부류 규칙:** 이 Phase가 추가하는 모든 조회 경로는 기존 경로가 거는 필터(`deletedAt IS NULL`)와 인가
+검사(소유권)를 그대로 갖는다. 새 경로가 기존 계약의 예외가 되지 않는다.
 
 `gross-pnl`은 확정 이후 읽기 전용이므로 추가 잠금이 필요 없다. 기록 생성은 확정 계약이 아니므로 대상이
 아니다 — 같은 추적을 두 번 기록하면 두 개의 독립 record가 생기는 것이 맞다.
