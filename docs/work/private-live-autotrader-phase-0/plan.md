@@ -18,6 +18,9 @@
 - 명령은 `grep`·`awk`·`sed`·`find`·`git`·`gradlew`·`npm`만 쓴다. `rg`는 비대화형 셸과 CI runner의 PATH에
   없어 조용히 통과시킨다 (`dod.md` 도구 제약).
 - 로컬 gradle은 `--offline --no-daemon`을 붙인다 (`.ai/rules/testing.md`).
+- whitespace 검사는 **반드시 `git diff --check origin/dev...HEAD`** 형태로 쓴다. 인자 없는
+  `git diff --check`는 working tree의 unstaged 변경만 보므로 커밋 뒤에는 언제나 통과한다
+  (`dod.md` AC15).
 
 **사전 확인된 사실** — 계획 수립 중 실측했다. 구현자가 다시 확인할 필요 없다.
 
@@ -372,7 +375,7 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC1
 **검증**
 
 ```bash
-bash docs/check-documentation.sh && git diff --check
+bash docs/check-documentation.sh && git diff --check origin/dev...HEAD
 bash docs/work/private-live-autotrader-phase-0/verify.sh AC8 AC15 AC16 AC17
 ```
 
@@ -386,7 +389,7 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC8 AC15 AC16 AC17
 ./gradlew :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --offline --no-daemon
 cd apps/web && npm ci && npm run lint && npm run test && npm run build && cd ../..
 bash ci/quality-gate-contract-test.sh
-bash docs/check-documentation.sh && git diff --check
+bash docs/check-documentation.sh && git diff --check origin/dev...HEAD
 bash docs/work/private-live-autotrader-phase-0/verify.sh
 ```
 

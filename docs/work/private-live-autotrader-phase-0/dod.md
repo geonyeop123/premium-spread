@@ -43,7 +43,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC9 | 추적 endpoint 8개가 모두 인증을 요구한다. `PublicEndpointPolicy`에 추적 경로가 추가되지 않았다. | 범위 제외 "인증 경계 변경", `.ai/rules/http.md` | T2 | 아래 `AC9 command` | exit 0, 미인증 요청 전부 401 |
 | AC10 | `V15`가 빈 DB latest 경로와 `V14`→`V15` 경로에서 모두 적용되고, 기존 종료 행이 `LEGACY_UNKNOWN`을 가지며, `status` 컬럼 값이 `OPEN`/`CLOSED`로 **보존**된다. | D2, D4, `.ai/rules/testing.md` migration 검증 | T2 | `./gradlew :infrastructure:common:integrationTest --tests '*V15*' --offline --no-daemon` | exit 0 |
 | AC25 | 확정 판정 규칙의 6개 필드 중 **어느 하나라도 `NULL`인 행**이 전부 fail-closed로 읽힌다. 이전 image가 종료시킨 전부-`NULL` 행과 `MARKET_SNAPSHOT` 부분 행 모두 `gross-pnl` `409`이며 예외로 죽지 않는다. | §5.3.2 확정 판정 규칙, §5.8, codex 2R high-1·3R high-1 | T2 | 아래 `AC25 command` | exit 0, L1~L8 전부 통과 |
-| AC23 | `V15`가 기존 컬럼을 재작성·변경·삭제하지 않는다. `UPDATE`의 대상 컬럼이 모두 같은 migration이 추가한 컬럼이다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8 | T1 | 아래 `AC23 command` | exit 0, `rewrites_existing=[] forbidden=[]` |
+| AC23 | `V15`가 기존 컬럼을 재작성·변경·삭제하지 않는다. 모든 `UPDATE` 문의 **모든** `SET` 대상이 같은 migration이 추가한 컬럼이다. 검사기는 우회 표본(다중 SET·별칭·복수 문장·`MODIFY COLUMN`)을 실제로 잡는지 self-test로 먼저 증명한다. | `docs/runbooks/deployment.md` Rollback 제약, D4, §5.8, codex 5R medium-2 | T1 | 아래 `AC23 command` | exit 0, `self_test=ok rewrites_existing=[] forbidden=[]` |
 | AC24 | 상태 변환 경계가 converter 한 곳에 모인다. 저장값 리터럴이 **실행 소스 전체와 SQL resource** 어디에도 없고(converter와 Flyway migration만 예외), converter를 우회하는 native query가 **모든 실행 모듈**에 없다. | D4, §5.8, codex 3R medium-3·4R high-2 | T1 | 아래 `AC24 command` | exit 0, `missing=[] leaked=[] native=[]` |
 | AC11 | Flyway version uniqueness와 destructive SQL gate를 통과한다. | 기존 repository gate | T2 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
 | AC12 | unit·contract test와 architecture 경계 test가 통과한다. | 기존 repository gate, `.ai/rules/architecture.md` | T2 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 |
@@ -226,16 +226,51 @@ L3~L8은 §5.3.2 확정 판정 규칙의 6개 필드에 1:1 대응하는 paramet
 
 #### AC23 command
 
+`SET` 바로 뒤 첫 컬럼만 보는 검사는 `SET close_price_source='X', status='Y'`나 `SET p.status=...`,
+두 번째 `UPDATE` 문으로 쉽게 우회된다. SET 절 전체를 컬럼 단위로 분해하고, **검사기 자신이 우회 표본을
+실제로 잡는지 먼저 확인한 뒤** V15를 검사한다. self-test가 실패하면 본 검사 결과를 믿지 않는다.
+
 ```bash
+set_targets() {   # UPDATE 문의 SET 대상 컬럼을 전부 수집 (다중 SET·별칭·복수 문장·주석 대응)
+  sed -E 's/--.*$//' \
+  | tr '\n' ' ' | tr ';' '\n' \
+  | grep -iE '^[[:space:]]*UPDATE' \
+  | sed -E 's/[[:space:]][Ww][Hh][Ee][Rr][Ee][[:space:]].*$//' \
+  | sed -E 's/^.*[[:space:]][Ss][Ee][Tt][[:space:]]//' \
+  | tr ',' '\n' \
+  | sed -E 's/^[[:space:]]*//; s/[[:space:]]*=.*$//; s/^[A-Za-z_][A-Za-z0-9_]*\.//' \
+  | tr '[:upper:]' '[:lower:]' \
+  | grep -E '^[a-z_][a-z0-9_]*$' | sort -u
+}
+added_cols() { grep -oiE 'ADD COLUMN[[:space:]]+[a-zA-Z_]+' | awk '{print tolower($3)}' | sort -u; }
+
+judge() {   # 0 = 안전, 1 = 위반
+  local sql="$1" added targets bad="" forbidden
+  added=$(printf '%s' "$sql" | added_cols)
+  targets=$(printf '%s' "$sql" | set_targets)
+  for tgt in $targets; do printf '%s\n' "$added" | grep -qx "$tgt" || bad="$bad $tgt"; done
+  forbidden=$(printf '%s' "$sql" | grep -inE 'MODIFY COLUMN|CHANGE COLUMN|DROP COLUMN|TRUNCATE|DROP TABLE' || true)
+  JUDGE_BAD="$bad"; JUDGE_FORBIDDEN=$(printf '%s' "$forbidden" | cut -c1-60)
+  [ -z "$bad" ] && [ -z "$forbidden" ]
+}
+
+# --- self-test: 우회 표본을 반드시 잡아야 한다 ---
+A="ALTER TABLE position ADD COLUMN close_price_source VARCHAR(30) NULL;"
+undetected=""
+judge "$A UPDATE position SET close_price_source='X', status='ARCHIVED';" && undetected="$undetected multi-set"
+judge "$A UPDATE position p SET p.status='ACTIVE';"                       && undetected="$undetected alias-set"
+judge "$A UPDATE position SET close_price_source='X'; UPDATE position SET status='ARCHIVED';" && undetected="$undetected second-update"
+judge "$A ALTER TABLE position MODIFY COLUMN status VARCHAR(30) NOT NULL;" && undetected="$undetected modify-column"
+judge "$A" || undetected="$undetected false-positive-on-clean"
+if [ -n "$undetected" ]; then echo "self_test_failed=[$undetected]"; exit 1; fi
+
+# --- 본 검사 ---
 m=$(ls infrastructure/common/src/main/resources/db/migration/V15__*.sql 2>/dev/null | head -1)
-[ -n "$m" ] || { echo "V15 없음"; exit 1; }
-added=$(grep -oiE 'ADD COLUMN[[:space:]]+[a-zA-Z_]+' "$m" | awk '{print tolower($3)}' | sort -u)
-targets=$(grep -oiE 'SET[[:space:]]+[a-zA-Z_]+' "$m" | awk '{print tolower($2)}' | sort -u)
-bad=""
-for t in $targets; do printf '%s\n' "$added" | grep -qx "$t" || bad="$bad $t"; done
-forbidden=$(grep -inE 'MODIFY COLUMN|CHANGE COLUMN|DROP COLUMN|TRUNCATE|DROP TABLE' "$m" | cut -c1-60 || true)
-echo "added=[$(printf '%s' "$added" | tr '\n' ' ')] rewrites_existing=[$bad] forbidden=[$forbidden]"
-[ -z "$bad" ] && [ -z "$forbidden" ]
+[ -n "$m" ] || { echo "self_test=ok V15 없음"; exit 1; }
+judge "$(cat "$m")"
+rc=$?
+echo "self_test=ok added=[$(cat "$m" | added_cols | tr '\n' ' ')] rewrites_existing=[$JUDGE_BAD] forbidden=[$JUDGE_FORBIDDEN]"
+exit $rc
 ```
 
 #### AC24 command
