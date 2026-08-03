@@ -42,7 +42,7 @@ source: docs/work/private-live-autotrader/design.md §5 Phase 0 (P0-O1~P0-O5, SE
 | AC2 | 실행 소스의 Kotlin 타입·패키지에 `Position` 식별자가 남아 있지 않다 (`@Table(name = "position")`과 V12 동결 guard 제외). | D1, `SEM-2` | T1 | 아래 `AC2 command` | exit 0, `leftover=[0 hits]` |
 | AC3 | **실제 HTTP 응답**이 `pnlBasis`·`priceBasis`·`observedAt`·`fxObservedAt`과 분모를 드러낸 필드명을 갖고, 옛 필드명이 응답에 없다. 파일 텍스트가 아니라 응답 body를 검증한다. | `P0-O2`, `SEM-4`, D3 | T2 | 아래 `AC3 command` | exit 0 |
 | AC4 | 목록·상세 화면 **렌더 결과**에 비주문 고지, gross 각주(수수료·펀딩비·슬리피지·환전 스프레드 제외, 계정 손익 아님), 레버리지 무관성 각주, 프리미엄 방향 설명, 분모 라벨이 나타난다. 문자열 존재가 아니라 DOM 출현을 검증한다. | `SEM-1`, `SEM-3`, `SEM-4` | T2 | 아래 `AC4 command` | exit 0 |
-| AC5 | `design.md` §5.3.2 "요청·응답 계약"이 실제 응답으로 성립하고, 잠금 경로가 soft-delete 필터와 소유권 검증을 유지한다. 특히 **`archive`는 snapshot 부재·stale에도 `200`을 반환하고**, `409`는 그 추적의 `gross-pnl` 조회에서만 나온다. 동시 archive 중 정확히 하나만 확정하고 나머지는 `400 INVALID_TRACKING`을 받는다. | §3.3 실제 결함, D2, §5.3.2, §5.3.5 | T2 | 아래 `AC5 command` | exit 0, 케이스 1~8(+5b·5c·5d·5e) 전부 통과 |
+| AC5 | `design.md` §5.3.2 "요청·응답 계약"이 실제 응답으로 성립하고, 잠금 경로가 soft-delete 필터와 소유권 검증을 유지한다. 특히 **`archive`는 snapshot 부재·stale에도 `200`을 반환하고**, `409`는 그 추적의 `gross-pnl` 조회에서만 나온다. 동시 archive 중 정확히 하나만 확정하고 나머지는 `400 INVALID_TRACKING`을 받는다. | §3.3 실제 결함, D2, §5.3.2, §5.3.5 | T2 | 아래 `AC5 command` | exit 0, 케이스 1~9(+5b·5c·5d·5e) 전부 통과 |
 | AC6 | identity 판정이 4개 누락 항목(양 leg의 instrument class·quote currency), 기존 자산의 유효 범위, 확장 담당 Phase를 모두 명시한다. | `P0-O3`, `ARCH-9`, D5 | T1 | 아래 `AC6 command` | exit 0, `missing=[]` |
 | AC7 | dead·미연결 계약 4건이 각각 유지/수정/제거로 판정되고, 제거 판정 항목이 실행 소스에서 사라졌다. | `P0-O4` | T1 | 아래 `AC7 command` | exit 0, `undecided=[] not_removed=[]` |
 | AC8 | As-Is 문서에 `Planned capability` 절과 Planned 문서 링크가 있고, Planned 문서에서 As-Is 문서로의 역참조가 있다. | `P0-O5`, `ARCH-7` | T1 | 아래 `AC8 command` | exit 0, `missing=[]` |
@@ -237,7 +237,8 @@ grep -qi "tracking" infrastructure/api/src/main/kotlin/io/premiumspread/infrastr
 | 5e | 같은 상태에서 `POST /trackings/from-market` | `STALE_PREMIUM_SNAPSHOT` 거절 |
 | 6 | 동시 `POST /archive` × N | 정확히 1건 `200`, 나머지 `400 INVALID_TRACKING`, DB의 확정값은 성공한 1건과 일치 |
 | 7 | soft-deleted 추적에 `POST /archive` | `TRACKING_NOT_FOUND`, DB의 `status`·`close_*`가 **변하지 않음** |
-| 8 | 타인 소유 추적에 `POST /archive` | `TRACKING_NOT_FOUND`, DB 무변경 (잠금 뒤에도 소유권을 검증한다) |
+| 8 | 타인 소유 추적에 `POST /archive` | `TRACKING_NOT_FOUND`, DB 무변경. **행 잠금이 획득되지 않는다** — 소유권이 잠금 술어에 결합돼 있다 |
+| 9 | `ACTIVE` + snapshot이 신선도 범위 밖에서 `GET /gross-pnl` | `200`, `priceBasis=STALE_MARKET` (현재 시세로 부르지 않는다) |
 
 ```bash
 ./gradlew :apps:api:integrationTest --tests '*TrackingArchive*' --offline --no-daemon

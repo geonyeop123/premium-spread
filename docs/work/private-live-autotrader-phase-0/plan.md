@@ -185,23 +185,24 @@ UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED
 
 ```kotlin
 // TrackingRepository
-fun findByIdAndDeletedAtIsNullForUpdate(id: Long): Tracking?
+fun findOwnedByIdForUpdate(id: Long, memberId: Long): Tracking?
 ```
 
 ```kotlin
 // SpringDataTrackingRepository
 @Lock(LockModeType.PESSIMISTIC_WRITE)
-@Query("SELECT t FROM Tracking t WHERE t.id = :id AND t.deletedAt IS NULL")
-fun findByIdAndDeletedAtIsNullForUpdate(@Param("id") id: Long): Tracking?
+@Query("SELECT t FROM Tracking t WHERE t.id = :id AND t.memberId = :memberId AND t.deletedAt IS NULL")
+fun findOwnedByIdForUpdate(@Param("id") id: Long, @Param("memberId") memberId: Long): Tracking?
 ```
 
 `JpaTrackingRepositoryAdapter`가 노출하고 Facade의 `archive`만 이 경로를 쓴다. 조회 경로는 잠그지 않는다.
 
-**`deletedAt IS NULL`을 이름과 쿼리 양쪽에 둔다.** 기존 조회는 전부 이 필터를 걸므로, 잠금 경로만 빠뜨리면
-이미 삭제돼 보이지 않는 record를 archive할 수 있다 (`design.md` §5.3.5).
+**소유권과 soft-delete를 잠금 술어에 함께 넣는다** (`design.md` §5.3.5). 잠근 뒤 검사하면 남의 행을 먼저
+잠그게 되어, ID를 추측한 반복 호출로 소유자의 archive를 lock wait에 빠뜨릴 수 있다. 결과 없음은 소유·존재·
+삭제를 구분하지 않고 `TRACKING_NOT_FOUND`다.
 
-**잠금 뒤에도 소유권을 검증한다.** 순서는 잠금 → `verifyOwnership` → 상태 검사 → snapshot 조회 → 확정 →
-저장이며 전부 한 트랜잭션이다. 경쟁에서 진 요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다.
+순서는 잠금(소유 행만) → 상태 검사 → snapshot 조회 → 확정 → 저장이며 전부 한 트랜잭션이다. 경쟁에서 진
+요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다.
 
 **도메인**
 
@@ -298,7 +299,7 @@ design(409)과 plan(200)이 서로 다른 말을 했다.
 
 ```kotlin
 when {
-    status == TrackingStatus.ACTIVE -> current(snapshot)          // priceBasis = CURRENT_MARKET
+    status == TrackingStatus.ACTIVE -> current(snapshot)          // fresh ? CURRENT_MARKET : STALE_MARKET
     hasConfirmedClose               -> archived(closeSnapshot)    // priceBasis = ARCHIVED_SNAPSHOT
     else -> throw ApplicationException(ApplicationError.TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE)  // 409
 }

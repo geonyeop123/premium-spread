@@ -407,6 +407,7 @@ FX 한도는 **수집 주기에서 유도한다.** `batch.scheduling.exchange-ra
 |---|---|
 | 기록 생성 (`from-market`) | `STALE_PREMIUM_SNAPSHOT` 거절 |
 | 종료 (`archive`) | 거절하지 않고 `SNAPSHOT_UNAVAILABLE`로 기록 |
+| `ACTIVE` 조회 (`gross-pnl`) | 거절하지 않고 `priceBasis = STALE_MARKET`으로 표기 |
 
 생성은 사용자가 재시도하면 되지만 종료는 사용자의 실제 행위를 사후 기록하는 것이라 막을 근거가 없다.
 clock skew 허용치를 두지 않는다 — 필요해지면 명시적 결정으로 추가한다.
@@ -418,7 +419,8 @@ clock skew 허용치를 두지 않는다 — 필요해지면 명시적 결정으
 | `POST /trackings/{id}/archive` | snapshot 신선 | `200` + `close_price_source = MARKET_SNAPSHOT` |
 | `POST /trackings/{id}/archive` | snapshot 부재·stale | **`200`** + `close_price_source = SNAPSHOT_UNAVAILABLE` |
 | `POST /trackings/{id}/archive` | 이미 `ARCHIVED` (동시 요청의 패자 포함) | `400 INVALID_TRACKING` |
-| `GET /trackings/{id}/gross-pnl` | `ACTIVE` | `200`, `priceBasis = CURRENT_MARKET` |
+| `GET /trackings/{id}/gross-pnl` | `ACTIVE`, snapshot이 신선도 범위 안 | `200`, `priceBasis = CURRENT_MARKET` |
+| `GET /trackings/{id}/gross-pnl` | `ACTIVE`, snapshot이 범위 밖(오래됨·미래) | `200`, `priceBasis = STALE_MARKET` |
 | `GET /trackings/{id}/gross-pnl` | `ARCHIVED` + 확정 판정 통과 | `200`, `priceBasis = ARCHIVED_SNAPSHOT` |
 | `GET /trackings/{id}/gross-pnl` | `ARCHIVED` + 확정 판정 실패 | `409 TRACKING_CLOSE_SNAPSHOT_UNAVAILABLE` |
 
@@ -460,14 +462,21 @@ clock skew 허용치를 두지 않는다 — 필요해지면 명시적 결정으
 | `koreaCurrentValue` | `koreaLegNotionalKrw` | 명목가임을 명시 |
 | `totalPnlPercent` | `grossPnlPercentOfKoreaNotional` | **분모가 무엇인지 이름이 말한다** (`SEM-4`) |
 | `isProfit` | `isGrossProfit` | gross 기준 판정임을 명시 |
-| — | `priceBasis` | `CURRENT_MARKET` \| `ARCHIVED_SNAPSHOT` |
+| — | `priceBasis` | `CURRENT_MARKET` \| `STALE_MARKET` \| `ARCHIVED_SNAPSHOT` |
 | — | `pnlBasis` | 제외 항목을 값 자체가 열거 |
 | — | `observedAt` | 계산에 쓴 시세의 관측 시각 |
 | — | `fxObservedAt` | 계산에 쓴 **환율의** 관측 시각. `observedAt`과 다를 수 있고, 다르다는 사실 자체가 소비자가 알아야 할 정보다 |
 
-`ACTIVE`는 `priceBasis: CURRENT_MARKET`으로 최신 snapshot을 쓰고, `ARCHIVED`는
-`priceBasis: ARCHIVED_SNAPSHOT`으로 저장된 확정값만 쓴다. 계산식 자체는 바뀌지 않는다 — Phase 0은 손익
-**모델**을 바꾸지 않는다.
+`ACTIVE`는 최신 snapshot을 쓰되 **신선도 판정 결과를 `priceBasis`로 드러낸다.** 범위 안이면
+`CURRENT_MARKET`, 오래됐거나 미래 시각이면 `STALE_MARKET`이다. 값을 감추지 않는 이유는 추적 도구에서
+마지막 관측값 자체가 여전히 유용하기 때문이고, 라벨을 붙이는 이유는 그것을 "현재 시세"라고 부르면
+거짓이기 때문이다. `ARCHIVED`는 `ARCHIVED_SNAPSHOT`으로 저장된 확정값만 쓴다.
+
+신선도를 판단하는 경로는 이제 셋이다 — 기록 생성, 종료, **그리고 `ACTIVE` 조회.** §5.3.2의 양방향 유계를
+셋 모두에 같은 정의로 적용한다. 조회 경로만 빠뜨리면 수집이 멈추거나 DB fallback이 오래된 관측을 돌려줄 때
+화면이 그것을 현재 시세 손익으로 표시한다.
+
+계산식 자체는 바뀌지 않는다 — Phase 0은 손익 **모델**을 바꾸지 않는다.
 
 #### 5.3.3-1 `Detail` 응답의 종료 정보
 
@@ -506,15 +515,19 @@ optimistic lock version이 없다. 두 요청이 같은 추적을 동시에 arch
 
 ```kotlin
 // TrackingRepository
-fun findByIdAndDeletedAtIsNullForUpdate(id: Long): Tracking?   // SELECT ... FOR UPDATE
+fun findOwnedByIdForUpdate(id: Long, memberId: Long): Tracking?   // SELECT ... FOR UPDATE
 ```
 
-- **이름과 쿼리가 soft-delete 필터를 함께 가진다.** 기존 조회는 전부 `deletedAt IS NULL`을 건다
-  (`findByIdAndDeletedAtIsNull`, `SpringDataPositionRepository`의 두 JPQL). 잠금 경로만 이 필터를 빠뜨리면
-  **이미 삭제돼 보이지 않는 record를 archive해 상태와 스냅샷을 바꿀 수 있다** — 기존 가시성 경계를 archive
-  경로에서만 우회하는 결과다. `findByIdForUpdate`라는 이름은 그 필터를 강제하지 못하므로 쓰지 않는다
-- **잠금 뒤에도 소유권을 검증한다.** 잠금은 동시성을 위한 것이지 인가가 아니다. 순서는
-  잠금 → 소유권 검증 → 상태 검사 → snapshot 조회 → 확정 → 저장이며 전부 한 트랜잭션이다
+- **잠금 술어에 소유권을 결합한다.** 잠근 뒤에 소유권을 검사하면, 다른 인증 사용자가 ID를 추측해 archive를
+  반복 호출하는 것만으로 **피해자의 행을 먼저 잠글 수 있다.** 결과가 `TRACKING_NOT_FOUND`로 끝나더라도
+  잠금은 이미 획득했고, 그 사이 snapshot 조회(Redis·DB)가 잠금 보유 중 수행되므로 소유자의 archive가
+  lock wait에 걸린다. 인가를 잠금 **뒤**에 두면 남의 행을 잠글 권한을 주는 것과 같다
+- **soft-delete 필터도 같은 술어에 넣는다.** 기존 조회는 전부 `deletedAt IS NULL`을 건다
+  (`findByIdAndDeletedAtIsNull`, `SpringDataPositionRepository`의 두 JPQL). 잠금 경로만 빠뜨리면 이미
+  삭제돼 보이지 않는 record를 archive할 수 있다
+- 즉 술어는 `id = :id AND memberId = :memberId AND deletedAt IS NULL`이고, 결과 없음은 소유·존재·삭제를
+  구분하지 않고 `TRACKING_NOT_FOUND`다. 존재 여부를 노출하지 않는다
+- 순서는 **잠금(소유 행만) → 상태 검사 → snapshot 조회 → 확정 → 저장**이며 전부 한 트랜잭션이다
 - 경쟁에서 진 요청은 `ARCHIVED`를 보고 `INVALID_TRACKING`을 받는다. 조용히 성공시키지 않는다
 - `BaseEntity`에 `@Version`을 추가하지 않는다. 모든 Entity에 파급되는 변경이고 Phase 0 범위 밖이다.
   필요한 것은 이 한 경로의 선형화이므로 행 잠금이 정확한 도구다
@@ -556,6 +569,7 @@ fun findByIdAndDeletedAtIsNullForUpdate(id: Long): Tracking?   // SELECT ... FOR
 | 레버리지 행 | `레버리지` | `레버리지` + 각주 `필요 증거금에만 영향을 주며 위 손익 금액에는 반영되지 않습니다.` |
 | 프리미엄 변화 | `premiumDiff` 숫자만 | `진입 대비 프리미엄 변화` + `이 조합(한국 롱 / 해외 숏)은 프리미엄이 축소될 때 이익입니다.` |
 | `ARCHIVED` 손익 | 현재 시세로 계산된 변동값 | `종료 시점(<close_observed_at>) 확정값` 배지와 함께 고정 표시 |
+| `STALE_MARKET` | (해당 없음) | `<observedAt> 기준 — 현재 시세가 아닙니다` 배지. 손익 숫자는 그대로 보여주되 현재값으로 부르지 않는다 |
 | `LEGACY_UNKNOWN`·`SNAPSHOT_UNAVAILABLE` | (해당 없음) | `종료 시점 시세를 확정하지 못해 손익을 제공하지 않습니다.` |
 
 `SEM-3`은 이미 폼의 `한국 (롱)`·`해외 (숏)`이 충족한다. 부족한 것은 **그 방향이 프리미엄과 어떤 부호
