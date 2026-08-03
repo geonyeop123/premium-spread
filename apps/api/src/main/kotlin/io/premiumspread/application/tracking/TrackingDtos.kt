@@ -1,10 +1,10 @@
-package io.premiumspread.application.position
+package io.premiumspread.application.tracking
 
 import java.math.BigDecimal
 import java.time.Instant
 
-class PositionCriteria private constructor() {
-    data class OpenAuto(
+class TrackingCriteria private constructor() {
+    data class RecordFromMarket(
         val memberId: Long,
         val symbol: String,
         val koreaExchange: String,
@@ -14,7 +14,7 @@ class PositionCriteria private constructor() {
         val foreignLeverage: Int,
     )
 
-    data class OpenManual(
+    data class Record(
         val memberId: Long,
         val symbol: String,
         val koreaExchange: String,
@@ -28,15 +28,15 @@ class PositionCriteria private constructor() {
         val entryObservedAt: Instant,
     )
 
-    data class FindById(val positionId: Long, val memberId: Long)
-    data class FindAllOpen(val memberId: Long)
-    data class FindAllClosed(val memberId: Long)
-    data class CalculatePnl(val positionId: Long, val memberId: Long)
+    data class FindById(val trackingId: Long, val memberId: Long)
+    data class FindAllActive(val memberId: Long)
+    data class FindAllArchived(val memberId: Long)
+    data class CalculatePnl(val trackingId: Long, val memberId: Long)
     data class Summary(val memberId: Long)
-    data class Close(val positionId: Long, val memberId: Long)
+    data class Archive(val trackingId: Long, val memberId: Long)
 }
 
-class PositionResult private constructor() {
+class TrackingResult private constructor() {
     data class Detail(
         val id: Long,
         val memberId: Long,
@@ -57,7 +57,7 @@ class PositionResult private constructor() {
     data class Details(val items: List<Detail>)
 
     data class Pnl(
-        val positionId: Long,
+        val trackingId: Long,
         val premiumDiff: BigDecimal,
         val entryPremiumRate: BigDecimal,
         val currentPremiumRate: BigDecimal,
@@ -70,5 +70,5 @@ class PositionResult private constructor() {
         val calculatedAt: Instant,
     )
 
-    data class Summary(val totalPositions: Int, val openPositions: Int, val closedPositions: Int)
+    data class Summary(val totalTrackings: Int, val activeTrackings: Int, val archivedTrackings: Int)
 }

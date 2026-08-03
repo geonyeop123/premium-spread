@@ -3,8 +3,8 @@ package io.premiumspread
 import io.premiumspread.domain.BaseEntity
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.member.Member
-import io.premiumspread.domain.position.Position
-import io.premiumspread.domain.position.PositionOpenSpec
+import io.premiumspread.domain.tracking.Tracking
+import io.premiumspread.domain.tracking.TrackingRecordSpec
 import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
@@ -70,7 +70,7 @@ object TickerFixtures {
         ).withId(id)
 }
 
-object PositionFixtures {
+object TrackingFixtures {
     fun openPosition(
         memberId: Long = 1L,
         symbol: String = "BTC",
@@ -84,9 +84,9 @@ object PositionFixtures {
         entryFxRate: BigDecimal = BigDecimal("1432.6"),
         entryObservedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
         id: Long? = 1L,
-    ): Position {
-        val position = Position.create(
-            PositionOpenSpec(
+    ): Tracking {
+        val tracking = Tracking.create(
+            TrackingRecordSpec(
                 memberId = memberId,
                 pair = MarketPair(Symbol(symbol), koreaExchange, foreignExchange),
                 koreaQuantity = koreaQuantity,
@@ -98,7 +98,7 @@ object PositionFixtures {
                 entryObservedAt = entryObservedAt,
             ),
         )
-        return id?.let { position.withId(it) } ?: position
+        return id?.let { tracking.withId(it) } ?: tracking
     }
 }
 

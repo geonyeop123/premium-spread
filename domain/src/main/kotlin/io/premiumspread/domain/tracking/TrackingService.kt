@@ -1,4 +1,4 @@
-package io.premiumspread.domain.position
+package io.premiumspread.domain.tracking
 
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.ticker.Symbol
@@ -6,12 +6,12 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
-class PositionService(private val positionRepository: PositionRepository) {
+class TrackingService(private val trackingRepository: TrackingRepository) {
 
     @Transactional
-    fun create(command: PositionCommand.Create): Position {
-        val position = Position.create(
-            PositionOpenSpec(
+    fun create(command: TrackingCommand.Create): Tracking {
+        val tracking = Tracking.create(
+            TrackingRecordSpec(
                 memberId = command.memberId,
                 pair = MarketPair(Symbol(command.symbol), command.koreaExchange, command.foreignExchange),
                 koreaQuantity = command.koreaQuantity,
@@ -23,27 +23,27 @@ class PositionService(private val positionRepository: PositionRepository) {
                 entryObservedAt = command.entryObservedAt,
             ),
         )
-        return positionRepository.save(position)
+        return trackingRepository.save(tracking)
     }
 
     @Transactional
-    fun save(position: Position): Position = positionRepository.save(position)
+    fun save(tracking: Tracking): Tracking = trackingRepository.save(tracking)
 
     @Transactional(readOnly = true)
-    fun findById(id: Long): Position? = positionRepository.findById(id)
+    fun findById(id: Long): Tracking? = trackingRepository.findById(id)
 
     @Transactional(readOnly = true)
-    fun findAllOpen(): List<Position> = positionRepository.findAllOpen()
+    fun findAllOpen(): List<Tracking> = trackingRepository.findAllOpen()
 
     @Transactional(readOnly = true)
-    fun findAllOpenByMemberId(memberId: Long): List<Position> = positionRepository.findAllOpenByMemberId(memberId)
+    fun findAllActiveByMemberId(memberId: Long): List<Tracking> = trackingRepository.findAllActiveByMemberId(memberId)
 
     @Transactional(readOnly = true)
-    fun findAllClosedByMemberId(memberId: Long): List<Position> = positionRepository.findAllClosedByMemberId(memberId)
+    fun findAllArchivedByMemberId(memberId: Long): List<Tracking> = trackingRepository.findAllArchivedByMemberId(memberId)
 
     @Transactional(readOnly = true)
-    fun countOpenByMemberId(memberId: Long): Long = positionRepository.countOpenByMemberId(memberId)
+    fun countActiveByMemberId(memberId: Long): Long = trackingRepository.countActiveByMemberId(memberId)
 
     @Transactional(readOnly = true)
-    fun countClosedByMemberId(memberId: Long): Long = positionRepository.countClosedByMemberId(memberId)
+    fun countArchivedByMemberId(memberId: Long): Long = trackingRepository.countArchivedByMemberId(memberId)
 }

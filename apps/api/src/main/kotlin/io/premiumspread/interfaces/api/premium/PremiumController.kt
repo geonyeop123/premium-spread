@@ -28,7 +28,7 @@ class PremiumController(private val premiumFacade: PremiumFacade) {
     }
 
     @GetMapping("/history/{symbol}")
-    fun getHistory(
+    fun findAllArchived(
         @PathVariable symbol: String,
         @RequestParam from: Instant,
         @RequestParam to: Instant,

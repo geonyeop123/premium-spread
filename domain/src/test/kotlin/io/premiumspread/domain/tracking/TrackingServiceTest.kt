@@ -1,10 +1,10 @@
-package io.premiumspread.domain.position
+package io.premiumspread.domain.tracking
 
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.premiumspread.PositionFixtures
+import io.premiumspread.TrackingFixtures
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.withId
 import org.assertj.core.api.Assertions.assertThat
@@ -16,13 +16,13 @@ import java.time.Instant
 
 class PositionServiceTest {
 
-    private lateinit var positionRepository: PositionRepository
-    private lateinit var service: PositionService
+    private lateinit var trackingRepository: TrackingRepository
+    private lateinit var service: TrackingService
 
     @BeforeEach
     fun setUp() {
-        positionRepository = mockk()
-        service = PositionService(positionRepository)
+        trackingRepository = mockk()
+        service = TrackingService(trackingRepository)
     }
 
     @Nested
@@ -30,7 +30,7 @@ class PositionServiceTest {
 
         @Test
         fun `Command로 포지션을 생성한다`() {
-            val command = PositionCommand.Create(
+            val command = TrackingCommand.Create(
                 memberId = 1L,
                 symbol = "BTC",
                 koreaExchange = Exchange.UPBIT,
@@ -44,8 +44,8 @@ class PositionServiceTest {
                 entryObservedAt = Instant.parse("2024-01-01T00:00:00Z"),
             )
 
-            val positionSlot = slot<Position>()
-            every { positionRepository.save(capture(positionSlot)) } answers {
+            val positionSlot = slot<Tracking>()
+            every { trackingRepository.save(capture(positionSlot)) } answers {
                 positionSlot.captured.withId(1L)
             }
 
@@ -60,9 +60,9 @@ class PositionServiceTest {
             assertThat(result.foreignQuantity).isEqualByComparingTo(BigDecimal("0.5"))
             assertThat(result.foreignEntryPrice).isEqualByComparingTo(BigDecimal("89500"))
             assertThat(result.foreignLeverage).isEqualTo(1)
-            assertThat(result.status).isEqualTo(PositionStatus.OPEN)
+            assertThat(result.status).isEqualTo(TrackingStatus.OPEN)
 
-            verify(exactly = 1) { positionRepository.save(any()) }
+            verify(exactly = 1) { trackingRepository.save(any()) }
         }
     }
 
@@ -71,14 +71,14 @@ class PositionServiceTest {
 
         @Test
         fun `포지션을 저장한다`() {
-            val position = PositionFixtures.openPosition()
+            val tracking = TrackingFixtures.openPosition()
 
-            every { positionRepository.save(position) } returns position
+            every { trackingRepository.save(tracking) } returns tracking
 
-            val result = service.save(position)
+            val result = service.save(tracking)
 
-            assertThat(result).isEqualTo(position)
-            verify(exactly = 1) { positionRepository.save(position) }
+            assertThat(result).isEqualTo(tracking)
+            verify(exactly = 1) { trackingRepository.save(tracking) }
         }
     }
 
@@ -87,18 +87,18 @@ class PositionServiceTest {
 
         @Test
         fun `ID로 포지션을 조회한다`() {
-            val position = PositionFixtures.openPosition(id = 1L)
+            val tracking = TrackingFixtures.openPosition(id = 1L)
 
-            every { positionRepository.findById(1L) } returns position
+            every { trackingRepository.findById(1L) } returns tracking
 
             val result = service.findById(1L)
 
-            assertThat(result).isEqualTo(position)
+            assertThat(result).isEqualTo(tracking)
         }
 
         @Test
         fun `포지션이 없으면 null을 반환한다`() {
-            every { positionRepository.findById(999L) } returns null
+            every { trackingRepository.findById(999L) } returns null
 
             val result = service.findById(999L)
 
@@ -107,16 +107,16 @@ class PositionServiceTest {
     }
 
     @Nested
-    inner class FindAllOpen {
+    inner class FindAllActive {
 
         @Test
         fun `열린 포지션 목록을 조회한다`() {
             val positions = listOf(
-                PositionFixtures.openPosition(symbol = "BTC", id = 1L),
-                PositionFixtures.openPosition(symbol = "ETH", id = 2L),
+                TrackingFixtures.openPosition(symbol = "BTC", id = 1L),
+                TrackingFixtures.openPosition(symbol = "ETH", id = 2L),
             )
 
-            every { positionRepository.findAllOpen() } returns positions
+            every { trackingRepository.findAllOpen() } returns positions
 
             val result = service.findAllOpen()
 
@@ -127,7 +127,7 @@ class PositionServiceTest {
 
         @Test
         fun `열린 포지션이 없으면 빈 목록을 반환한다`() {
-            every { positionRepository.findAllOpen() } returns emptyList()
+            every { trackingRepository.findAllOpen() } returns emptyList()
 
             val result = service.findAllOpen()
 
@@ -140,15 +140,15 @@ class PositionServiceTest {
 
         @Test
         fun `회원의 상태별 포지션을 엔티티 로딩 없이 집계한다`() {
-            every { positionRepository.countOpenByMemberId(7L) } returns 2L
-            every { positionRepository.countClosedByMemberId(7L) } returns 3L
+            every { trackingRepository.countActiveByMemberId(7L) } returns 2L
+            every { trackingRepository.countArchivedByMemberId(7L) } returns 3L
 
-            assertThat(service.countOpenByMemberId(7L)).isEqualTo(2L)
-            assertThat(service.countClosedByMemberId(7L)).isEqualTo(3L)
+            assertThat(service.countActiveByMemberId(7L)).isEqualTo(2L)
+            assertThat(service.countArchivedByMemberId(7L)).isEqualTo(3L)
 
-            verify(exactly = 1) { positionRepository.countOpenByMemberId(7L) }
-            verify(exactly = 1) { positionRepository.countClosedByMemberId(7L) }
-            verify(exactly = 0) { positionRepository.findAllByMemberIdAndStatus(any(), any()) }
+            verify(exactly = 1) { trackingRepository.countActiveByMemberId(7L) }
+            verify(exactly = 1) { trackingRepository.countArchivedByMemberId(7L) }
+            verify(exactly = 0) { trackingRepository.findAllByMemberIdAndStatus(any(), any()) }
         }
     }
 
@@ -159,13 +159,13 @@ class PositionServiceTest {
         fun `회원별 열린 포지션 목록을 조회한다`() {
             val memberId = 1L
             val positions = listOf(
-                PositionFixtures.openPosition(memberId = memberId, symbol = "BTC", id = 1L),
-                PositionFixtures.openPosition(memberId = memberId, symbol = "ETH", id = 2L),
+                TrackingFixtures.openPosition(memberId = memberId, symbol = "BTC", id = 1L),
+                TrackingFixtures.openPosition(memberId = memberId, symbol = "ETH", id = 2L),
             )
 
-            every { positionRepository.findAllOpenByMemberId(memberId) } returns positions
+            every { trackingRepository.findAllActiveByMemberId(memberId) } returns positions
 
-            val result = service.findAllOpenByMemberId(memberId)
+            val result = service.findAllActiveByMemberId(memberId)
 
             assertThat(result).hasSize(2)
             assertThat(result[0].symbol.code).isEqualTo("BTC")
@@ -174,9 +174,9 @@ class PositionServiceTest {
 
         @Test
         fun `회원의 열린 포지션이 없으면 빈 목록을 반환한다`() {
-            every { positionRepository.findAllOpenByMemberId(999L) } returns emptyList()
+            every { trackingRepository.findAllActiveByMemberId(999L) } returns emptyList()
 
-            val result = service.findAllOpenByMemberId(999L)
+            val result = service.findAllActiveByMemberId(999L)
 
             assertThat(result).isEmpty()
         }

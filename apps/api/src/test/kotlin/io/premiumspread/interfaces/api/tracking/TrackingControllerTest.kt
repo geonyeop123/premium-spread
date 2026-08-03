@@ -1,13 +1,13 @@
-package io.premiumspread.interfaces.api.position
+package io.premiumspread.interfaces.api.tracking
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
 import io.premiumspread.application.common.ApplicationError
 import io.premiumspread.application.common.ApplicationException
-import io.premiumspread.application.position.PositionCriteria
-import io.premiumspread.application.position.PositionFacade
-import io.premiumspread.application.position.PositionResult
+import io.premiumspread.application.tracking.TrackingCriteria
+import io.premiumspread.application.tracking.TrackingFacade
+import io.premiumspread.application.tracking.TrackingResult
 import io.premiumspread.interfaces.api.config.WebMvcConfig
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -22,7 +22,7 @@ import java.math.BigDecimal
 import java.security.Principal
 import java.time.Instant
 
-@WebMvcTest(PositionController::class)
+@WebMvcTest(TrackingController::class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import(WebMvcConfig::class)
 class PositionControllerTest {
@@ -30,14 +30,14 @@ class PositionControllerTest {
 
     @Autowired lateinit var objectMapper: ObjectMapper
 
-    @MockkBean lateinit var facade: PositionFacade
+    @MockkBean lateinit var facade: TrackingFacade
     private val principal = Principal { "1" }
 
     @Test
     fun `AUTO 생성은 Request를 primitive Criteria로 변환하고 201을 반환한다`() {
-        val request = PositionRequest.OpenAuto("BTC", "UPBIT", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1)
+        val request = TrackingRequest.RecordFromMarket("BTC", "UPBIT", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1)
         every {
-            facade.openAutoPosition(PositionCriteria.OpenAuto(1L, "BTC", "UPBIT", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1))
+            facade.recordFromMarket(TrackingCriteria.RecordFromMarket(1L, "BTC", "UPBIT", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1))
         } returns detail()
 
         mockMvc.post("/api/v1/positions/auto") {
@@ -52,7 +52,7 @@ class PositionControllerTest {
 
     @Test
     fun `DTO validation 오류는 transport 400이다`() {
-        val request = PositionRequest.OpenAuto("", "UPBIT", BigDecimal.ZERO, "BINANCE", BigDecimal.ONE, 1)
+        val request = TrackingRequest.RecordFromMarket("", "UPBIT", BigDecimal.ZERO, "BINANCE", BigDecimal.ONE, 1)
         mockMvc.post("/api/v1/positions/auto") {
             principal = this@PositionControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
@@ -62,8 +62,8 @@ class PositionControllerTest {
 
     @Test
     fun `도메인 semantic 오류는 422다`() {
-        every { facade.openAutoPosition(any()) } throws ApplicationException(ApplicationError.INVALID_POSITION)
-        val request = PositionRequest.OpenAuto("BTC", "BINANCE", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1)
+        every { facade.recordFromMarket(any()) } throws ApplicationException(ApplicationError.INVALID_POSITION)
+        val request = TrackingRequest.RecordFromMarket("BTC", "BINANCE", BigDecimal.ONE, "BINANCE", BigDecimal.ONE, 1)
         mockMvc.post("/api/v1/positions/auto") {
             principal = this@PositionControllerTest.principal
             contentType = MediaType.APPLICATION_JSON
@@ -76,7 +76,7 @@ class PositionControllerTest {
 
     @Test
     fun `단건 미발견은 404 envelope다`() {
-        every { facade.findById(PositionCriteria.FindById(99L, 1L)) } throws
+        every { facade.findById(TrackingCriteria.FindById(99L, 1L)) } throws
             ApplicationException(ApplicationError.POSITION_NOT_FOUND)
         mockMvc.get("/api/v1/positions/99") { principal = this@PositionControllerTest.principal }.andExpect {
             status { isNotFound() }
@@ -86,15 +86,15 @@ class PositionControllerTest {
 
     @Test
     fun `목록 Details Result를 기존 배열 Response로 변환한다`() {
-        every { facade.findAllOpenByMemberId(PositionCriteria.FindAllOpen(1L)) } returns
-            PositionResult.Details(listOf(detail()))
+        every { facade.findAllActiveByMemberId(TrackingCriteria.FindAllActive(1L)) } returns
+            TrackingResult.Details(listOf(detail()))
         mockMvc.get("/api/v1/positions") { principal = this@PositionControllerTest.principal }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
         }
     }
 
-    private fun detail(status: String = "OPEN") = PositionResult.Detail(
+    private fun detail(status: String = "OPEN") = TrackingResult.Detail(
         id = 1L,
         memberId = 1L,
         symbol = "BTC",

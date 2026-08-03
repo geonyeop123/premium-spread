@@ -1,12 +1,12 @@
-package io.premiumspread.infrastructure.position
+package io.premiumspread.infrastructure.tracking
 
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
-import io.premiumspread.domain.position.Position
-import io.premiumspread.domain.position.PositionOpenSpec
-import io.premiumspread.domain.position.PositionRepository
-import io.premiumspread.domain.position.PositionStatus
+import io.premiumspread.domain.tracking.Tracking
+import io.premiumspread.domain.tracking.TrackingRecordSpec
+import io.premiumspread.domain.tracking.TrackingRepository
+import io.premiumspread.domain.tracking.TrackingStatus
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.testcontainers.MySqlTestContainersConfig
@@ -31,7 +31,7 @@ import java.time.Instant
 @ActiveProfiles("test")
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, io.premiumspread.config.TestConfig::class)
 class PositionRepositoryTest @Autowired constructor(
-    private val positionRepository: PositionRepository,
+    private val trackingRepository: TrackingRepository,
     private val memberRepository: MemberRepository,
     private val passwordEncoder: PasswordEncoder,
     private val databaseCleanUp: DatabaseCleanUp,
@@ -53,8 +53,8 @@ class PositionRepositoryTest @Autowired constructor(
 
     private fun createPosition(
         symbol: String = "BTC",
-    ): Position = Position.create(
-        PositionOpenSpec(
+    ): Tracking = Tracking.create(
+        TrackingRecordSpec(
             memberId = memberId,
             pair = MarketPair(Symbol(symbol), Exchange.UPBIT, Exchange.BINANCE),
             koreaQuantity = BigDecimal("0.5"),
@@ -71,12 +71,12 @@ class PositionRepositoryTest @Autowired constructor(
     @DisplayName("save")
     inner class Save {
         @Test
-        fun `should save position and return with id`() {
+        fun `should save tracking and return with id`() {
             // given
-            val position = createPosition()
+            val tracking = createPosition()
 
             // when
-            val saved = positionRepository.save(position)
+            val saved = trackingRepository.save(tracking)
 
             // then
             assertThat(saved.id).isGreaterThan(0)
@@ -84,20 +84,20 @@ class PositionRepositoryTest @Autowired constructor(
             assertThat(saved.koreaExchange.name).isEqualTo("UPBIT")
             assertThat(saved.koreaQuantity).isEqualByComparingTo(BigDecimal("0.5"))
             assertThat(saved.foreignExchange.name).isEqualTo("BINANCE")
-            assertThat(saved.status).isEqualTo(PositionStatus.OPEN)
+            assertThat(saved.status).isEqualTo(TrackingStatus.OPEN)
         }
 
         @Test
-        fun `should update position status`() {
+        fun `should update tracking status`() {
             // given
-            val saved = positionRepository.save(createPosition())
+            val saved = trackingRepository.save(createPosition())
             saved.close()
 
             // when
-            val updated = positionRepository.save(saved)
+            val updated = trackingRepository.save(saved)
 
             // then
-            assertThat(updated.status).isEqualTo(PositionStatus.CLOSED)
+            assertThat(updated.status).isEqualTo(TrackingStatus.CLOSED)
         }
     }
 
@@ -105,12 +105,12 @@ class PositionRepositoryTest @Autowired constructor(
     @DisplayName("findById")
     inner class FindById {
         @Test
-        fun `should return position when exists`() {
+        fun `should return tracking when exists`() {
             // given
-            val saved = positionRepository.save(createPosition())
+            val saved = trackingRepository.save(createPosition())
 
             // when
-            val found = positionRepository.findById(saved.id)
+            val found = trackingRepository.findById(saved.id)
 
             // then
             assertThat(found).isNotNull
@@ -123,19 +123,19 @@ class PositionRepositoryTest @Autowired constructor(
         @Test
         fun `should return null when not exists`() {
             // when
-            val found = positionRepository.findById(999L)
+            val found = trackingRepository.findById(999L)
 
             // then
             assertThat(found).isNull()
         }
 
         @Test
-        fun `soft-deleted position은 ID로 조회되지 않는다`() {
-            val saved = positionRepository.save(createPosition())
+        fun `soft-deleted tracking은 ID로 조회되지 않는다`() {
+            val saved = trackingRepository.save(createPosition())
             saved.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
-            positionRepository.save(saved)
+            trackingRepository.save(saved)
 
-            assertThat(positionRepository.findById(saved.id)).isNull()
+            assertThat(trackingRepository.findById(saved.id)).isNull()
         }
     }
 
@@ -145,48 +145,48 @@ class PositionRepositoryTest @Autowired constructor(
         @Test
         fun `should return all open positions`() {
             // given
-            positionRepository.save(createPosition(symbol = "BTC"))
-            positionRepository.save(createPosition(symbol = "ETH"))
+            trackingRepository.save(createPosition(symbol = "BTC"))
+            trackingRepository.save(createPosition(symbol = "ETH"))
             val closedPosition = createPosition(symbol = "SOL")
             closedPosition.close()
-            positionRepository.save(closedPosition)
+            trackingRepository.save(closedPosition)
 
             // when
-            val found = positionRepository.findAllByStatus(PositionStatus.OPEN)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.OPEN)
 
             // then
             assertThat(found).hasSize(2)
-            assertThat(found).allMatch { it.status == PositionStatus.OPEN }
+            assertThat(found).allMatch { it.status == TrackingStatus.OPEN }
             assertThat(found.map { it.symbol.code }).containsExactlyInAnyOrder("BTC", "ETH")
         }
 
         @Test
         fun `should return all closed positions`() {
             // given
-            positionRepository.save(createPosition(symbol = "BTC"))
+            trackingRepository.save(createPosition(symbol = "BTC"))
             val closedPosition1 = createPosition(symbol = "ETH")
             closedPosition1.close()
-            positionRepository.save(closedPosition1)
+            trackingRepository.save(closedPosition1)
             val closedPosition2 = createPosition(symbol = "SOL")
             closedPosition2.close()
-            positionRepository.save(closedPosition2)
+            trackingRepository.save(closedPosition2)
 
             // when
-            val found = positionRepository.findAllByStatus(PositionStatus.CLOSED)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.CLOSED)
 
             // then
             assertThat(found).hasSize(2)
-            assertThat(found).allMatch { it.status == PositionStatus.CLOSED }
+            assertThat(found).allMatch { it.status == TrackingStatus.CLOSED }
             assertThat(found.map { it.symbol.code }).containsExactlyInAnyOrder("ETH", "SOL")
         }
 
         @Test
         fun `should return empty list when no matching positions`() {
             // given
-            positionRepository.save(createPosition(symbol = "BTC"))
+            trackingRepository.save(createPosition(symbol = "BTC"))
 
             // when
-            val found = positionRepository.findAllByStatus(PositionStatus.CLOSED)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.CLOSED)
 
             // then
             assertThat(found).isEmpty()
@@ -195,14 +195,14 @@ class PositionRepositoryTest @Autowired constructor(
         @Test
         fun `should return positions ordered by createdAt desc`() {
             // given
-            val p1 = positionRepository.save(createPosition(symbol = "BTC"))
+            val p1 = trackingRepository.save(createPosition(symbol = "BTC"))
             Thread.sleep(10) // ensure different createdAt
-            val p2 = positionRepository.save(createPosition(symbol = "ETH"))
+            val p2 = trackingRepository.save(createPosition(symbol = "ETH"))
             Thread.sleep(10)
-            val p3 = positionRepository.save(createPosition(symbol = "SOL"))
+            val p3 = trackingRepository.save(createPosition(symbol = "SOL"))
 
             // when
-            val found = positionRepository.findAllByStatus(PositionStatus.OPEN)
+            val found = trackingRepository.findAllByStatus(TrackingStatus.OPEN)
 
             // then
             assertThat(found).hasSize(3)
@@ -212,17 +212,17 @@ class PositionRepositoryTest @Autowired constructor(
         }
 
         @Test
-        fun `status와 member 목록은 soft-deleted position을 제외한다`() {
-            val active = positionRepository.save(createPosition(symbol = "BTC"))
-            val deleted = positionRepository.save(createPosition(symbol = "ETH"))
+        fun `status와 member 목록은 soft-deleted tracking을 제외한다`() {
+            val active = trackingRepository.save(createPosition(symbol = "BTC"))
+            val deleted = trackingRepository.save(createPosition(symbol = "ETH"))
             deleted.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
-            positionRepository.save(deleted)
+            trackingRepository.save(deleted)
 
-            val byStatus = positionRepository.findAllByStatus(PositionStatus.OPEN)
-            val byMember = positionRepository.findAllByMemberIdAndStatus(memberId, PositionStatus.OPEN)
+            val byStatus = trackingRepository.findAllByStatus(TrackingStatus.OPEN)
+            val byMember = trackingRepository.findAllByMemberIdAndStatus(memberId, TrackingStatus.OPEN)
 
-            assertThat(byStatus.map(Position::id)).containsExactly(active.id)
-            assertThat(byMember.map(Position::id)).containsExactly(active.id)
+            assertThat(byStatus.map(Tracking::id)).containsExactly(active.id)
+            assertThat(byMember.map(Tracking::id)).containsExactly(active.id)
         }
     }
 
@@ -231,12 +231,12 @@ class PositionRepositoryTest @Autowired constructor(
 
         @Test
         fun `soft-deleted row를 제외하고 상태별 count를 반환한다`() {
-            positionRepository.save(createPosition("BTC"))
-            val deleted = positionRepository.save(createPosition("ETH"))
+            trackingRepository.save(createPosition("BTC"))
+            val deleted = trackingRepository.save(createPosition("ETH"))
             deleted.delete(java.time.Instant.parse("2026-07-14T03:00:00Z"))
-            positionRepository.save(deleted)
+            trackingRepository.save(deleted)
 
-            assertThat(positionRepository.countByMemberIdAndStatus(memberId, PositionStatus.OPEN)).isEqualTo(1)
+            assertThat(trackingRepository.countByMemberIdAndStatus(memberId, TrackingStatus.OPEN)).isEqualTo(1)
         }
     }
 }

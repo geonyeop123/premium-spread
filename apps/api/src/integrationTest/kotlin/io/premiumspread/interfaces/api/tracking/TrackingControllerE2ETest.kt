@@ -1,14 +1,14 @@
-package io.premiumspread.interfaces.api.position
+package io.premiumspread.interfaces.api.tracking
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.config.TestConfig
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberRepository
-import io.premiumspread.domain.position.Position
-import io.premiumspread.domain.position.PositionOpenSpec
-import io.premiumspread.domain.position.PositionRepository
-import io.premiumspread.domain.position.PositionStatus
+import io.premiumspread.domain.tracking.Tracking
+import io.premiumspread.domain.tracking.TrackingRecordSpec
+import io.premiumspread.domain.tracking.TrackingRepository
+import io.premiumspread.domain.tracking.TrackingStatus
 import io.premiumspread.domain.premium.Premium
 import io.premiumspread.domain.premium.PremiumRepository
 import io.premiumspread.domain.ticker.Currency
@@ -48,7 +48,7 @@ class PositionControllerE2ETest @Autowired constructor(
     private val objectMapper: ObjectMapper,
     private val databaseCleanUp: DatabaseCleanUp,
     private val redisTemplate: StringRedisTemplate,
-    private val positionRepository: PositionRepository,
+    private val trackingRepository: TrackingRepository,
     private val memberRepository: MemberRepository,
     private val passwordEncoder: PasswordEncoder,
     private val tickerRepository: TickerRepository,
@@ -223,7 +223,7 @@ class PositionControllerE2ETest @Autowired constructor(
         createPosition(symbol = "ETH")
         val closedPosition = createPosition(symbol = "SOL")
         closedPosition.close()
-        positionRepository.save(closedPosition)
+        trackingRepository.save(closedPosition)
         val accessToken = login()
 
         mockMvc.get("/api/v1/positions") {
@@ -251,7 +251,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `PnL 계산 성공 - 최신 스냅샷 페어 가격으로 KRW 손익 계산`() {
-        val position = createPosition(
+        val tracking = createPosition(
             koreaQuantity = BigDecimal("0.157"),
             koreaEntryPrice = BigDecimal("161493792"),
             foreignQuantity = BigDecimal("0.15"),
@@ -266,11 +266,11 @@ class PositionControllerE2ETest @Autowired constructor(
             observedAt = Instant.now(),
         )
 
-        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
-            jsonPath("$.positionId") { value(position.id) }
+            jsonPath("$.trackingId") { value(tracking.id) }
             jsonPath("$.currentPremiumRate") { value(-0.39) }
             jsonPath("$.koreaPnl") { value(-6777343.344) }
             jsonPath("$.foreignPnlKrw") { value(8585481.2175) }
@@ -283,7 +283,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `DB 스냅샷으로 PnL 계산 - Redis 비어 있을 때 DB premium 사용`() {
-        val position = createPosition(
+        val tracking = createPosition(
             koreaEntryPrice = BigDecimal("101000"),
             foreignEntryPrice = BigDecimal("100"),
             entryFxRate = BigDecimal("1000"),
@@ -291,11 +291,11 @@ class PositionControllerE2ETest @Autowired constructor(
         val premium = savePremiumWithTickers()
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
-            jsonPath("$.positionId") { value(position.id) }
+            jsonPath("$.trackingId") { value(tracking.id) }
             jsonPath("$.currentPremiumRate") { value(premium.premiumRate.toDouble()) }
             jsonPath("$.totalPnlKrw") { exists() }
             jsonPath("$.totalPnlPercent") { exists() }
@@ -304,10 +304,10 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `프리미엄 없으면 404 반환`() {
-        val position = createPosition()
+        val tracking = createPosition()
         val accessToken = login()
 
-        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
@@ -317,7 +317,7 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `다른 회원의 포지션 PnL 조회 시 404 반환`() {
-        val position = createPosition()
+        val tracking = createPosition()
         val otherEmail = "other@example.com"
         memberRepository.save(
             Member.create(
@@ -328,7 +328,7 @@ class PositionControllerE2ETest @Autowired constructor(
         val accessToken = login(email = otherEmail)
         savePremiumWithTickers(observedAt = Instant.now())
 
-        mockMvc.get("/api/v1/positions/${position.id}/pnl") {
+        mockMvc.get("/api/v1/positions/${tracking.id}/pnl") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isNotFound() }
@@ -338,19 +338,19 @@ class PositionControllerE2ETest @Autowired constructor(
 
     @Test
     fun `포지션 청산 성공 - DB CLOSED 상태 저장`() {
-        val position = createPosition()
+        val tracking = createPosition()
         val accessToken = login()
 
-        mockMvc.post("/api/v1/positions/${position.id}/close") {
+        mockMvc.post("/api/v1/positions/${tracking.id}/close") {
             header("Authorization", "Bearer $accessToken")
         }.andExpect {
             status { isOk() }
-            jsonPath("$.id") { value(position.id) }
+            jsonPath("$.id") { value(tracking.id) }
             jsonPath("$.status") { value("CLOSED") }
         }
 
-        val updated = positionRepository.findById(position.id)
-        assertThat(updated?.status).isEqualTo(PositionStatus.CLOSED)
+        val updated = trackingRepository.findById(tracking.id)
+        assertThat(updated?.status).isEqualTo(TrackingStatus.CLOSED)
     }
 
     @Test
@@ -382,9 +382,9 @@ class PositionControllerE2ETest @Autowired constructor(
         foreignQuantity: BigDecimal = BigDecimal("0.5"),
         foreignEntryPrice: BigDecimal = BigDecimal("89500"),
         entryFxRate: BigDecimal = BigDecimal("1432.6"),
-    ): Position = positionRepository.save(
-        Position.create(
-            PositionOpenSpec(
+    ): Tracking = trackingRepository.save(
+        Tracking.create(
+            TrackingRecordSpec(
                 memberId = memberId,
                 pair = MarketPair(Symbol(symbol), Exchange.BITHUMB, Exchange.BINANCE),
                 koreaQuantity = koreaQuantity,

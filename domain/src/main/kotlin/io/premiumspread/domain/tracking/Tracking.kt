@@ -1,4 +1,4 @@
-package io.premiumspread.domain.position
+package io.premiumspread.domain.tracking
 
 import io.premiumspread.domain.BaseEntity
 import io.premiumspread.domain.market.MarketPair
@@ -16,7 +16,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
 
-data class PositionOpenSpec(
+data class TrackingRecordSpec(
     val memberId: Long,
     val pair: MarketPair,
     val koreaQuantity: BigDecimal,
@@ -32,7 +32,7 @@ data class PositionOpenSpec(
 @Suppress("LongParameterList")
 @Entity
 @Table(name = "position")
-class Position private constructor(
+class Tracking private constructor(
     @Embedded
     @AttributeOverride(name = "code", column = Column(name = "symbol"))
     val symbol: Symbol,
@@ -71,7 +71,7 @@ class Position private constructor(
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    var status: PositionStatus = PositionStatus.OPEN,
+    var status: TrackingStatus = TrackingStatus.OPEN,
 
     @Column(name = "member_id", nullable = false)
     val memberId: Long,
@@ -86,7 +86,7 @@ class Position private constructor(
         currentFxRate: BigDecimal,
         currentPremiumRate: BigDecimal,
         calculatedAt: Instant,
-    ): PositionPnl {
+    ): TrackingGrossPnl {
         require(currentKoreaPrice > BigDecimal.ZERO) { "currentKoreaPrice must be positive" }
         require(currentForeignPrice > BigDecimal.ZERO) { "currentForeignPrice must be positive" }
         require(currentFxRate > BigDecimal.ZERO) { "currentFxRate must be positive" }
@@ -108,7 +108,7 @@ class Position private constructor(
             .setScale(2, RoundingMode.HALF_UP)
         val premiumDiff = currentPremiumRate.subtract(entryPremiumRate)
 
-        return PositionPnl(
+        return TrackingGrossPnl(
             premiumDiff = premiumDiff,
             entryPremiumRate = entryPremiumRate,
             currentPremiumRate = currentPremiumRate,
@@ -122,14 +122,14 @@ class Position private constructor(
     }
 
     fun close() {
-        if (status == PositionStatus.CLOSED) {
-            throw InvalidPositionException("Position is already closed.")
+        if (status == TrackingStatus.CLOSED) {
+            throw InvalidTrackingException("Tracking is already closed.")
         }
-        status = PositionStatus.CLOSED
+        status = TrackingStatus.CLOSED
     }
 
     companion object {
-        fun create(spec: PositionOpenSpec): Position {
+        fun create(spec: TrackingRecordSpec): Tracking {
             validatePositive("koreaQuantity", spec.koreaQuantity)
             validatePositive("koreaEntryPrice", spec.koreaEntryPrice)
             validatePositive("foreignQuantity", spec.foreignQuantity)
@@ -143,7 +143,7 @@ class Position private constructor(
                 fxRate = spec.entryFxRate,
             ).entityPremiumRate
 
-            return Position(
+            return Tracking(
                 symbol = spec.pair.symbol,
                 koreaExchange = spec.pair.koreaExchange,
                 koreaQuantity = spec.koreaQuantity,
@@ -161,13 +161,13 @@ class Position private constructor(
 
         private fun validatePositive(name: String, value: BigDecimal) {
             if (value <= BigDecimal.ZERO) {
-                throw InvalidPositionException("Position $name must be positive.")
+                throw InvalidTrackingException("Tracking $name must be positive.")
             }
         }
 
         private fun validateLeverage(leverage: Int) {
             if (leverage < 1 || leverage > 125) {
-                throw InvalidPositionException("Foreign leverage must be between 1 and 125.")
+                throw InvalidTrackingException("Foreign leverage must be between 1 and 125.")
             }
         }
     }

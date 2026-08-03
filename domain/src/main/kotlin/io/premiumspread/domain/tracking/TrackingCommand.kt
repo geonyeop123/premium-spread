@@ -1,10 +1,10 @@
-package io.premiumspread.domain.position
+package io.premiumspread.domain.tracking
 
 import io.premiumspread.domain.ticker.Exchange
 import java.math.BigDecimal
 import java.time.Instant
 
-class PositionCommand private constructor() {
+class TrackingCommand private constructor() {
     data class Create(
         val memberId: Long,
         val symbol: String,

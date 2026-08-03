@@ -1,13 +1,13 @@
-package io.premiumspread.application.position
+package io.premiumspread.application.tracking
 
 import io.premiumspread.application.common.ApplicationError
 import io.premiumspread.application.common.ApplicationException
 import io.premiumspread.domain.market.MarketPair
-import io.premiumspread.domain.position.InvalidPositionException
-import io.premiumspread.domain.position.Position
-import io.premiumspread.domain.position.PositionPnl
-import io.premiumspread.domain.position.PositionCommand
-import io.premiumspread.domain.position.PositionService
+import io.premiumspread.domain.tracking.InvalidTrackingException
+import io.premiumspread.domain.tracking.Tracking
+import io.premiumspread.domain.tracking.TrackingGrossPnl
+import io.premiumspread.domain.tracking.TrackingCommand
+import io.premiumspread.domain.tracking.TrackingService
 import io.premiumspread.domain.premium.PremiumPolicy
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.Symbol
@@ -19,8 +19,8 @@ import java.time.Duration
 import java.time.Instant
 
 @Service
-class PositionFacade(
-    private val positionService: PositionService,
+class TrackingFacade(
+    private val trackingService: TrackingService,
     private val premiumService: PremiumService,
     private val clock: Clock,
 ) {
@@ -31,7 +31,7 @@ class PositionFacade(
     }
 
     @Transactional
-    fun openAutoPosition(criteria: PositionCriteria.OpenAuto): PositionResult.Detail = translateInvalidPosition {
+    fun recordFromMarket(criteria: TrackingCriteria.RecordFromMarket): TrackingResult.Detail = translateInvalidTracking {
         val pair = parsePair(criteria.symbol, criteria.koreaExchange, criteria.foreignExchange)
         val snapshot = premiumService.findLatestSnapshot(pair)
             ?: throw ApplicationException(ApplicationError.PREMIUM_SNAPSHOT_NOT_AVAILABLE)
@@ -41,7 +41,7 @@ class PositionFacade(
             throw ApplicationException(ApplicationError.STALE_PREMIUM_SNAPSHOT)
         }
 
-        val command = PositionCommand.Create(
+        val command = TrackingCommand.Create(
             memberId = criteria.memberId,
             symbol = criteria.symbol,
             koreaExchange = pair.koreaExchange,
@@ -54,15 +54,15 @@ class PositionFacade(
             entryFxRate = snapshot.fxRate,
             entryObservedAt = snapshot.observedAt,
         )
-        val position = positionService.create(command)
+        val tracking = trackingService.create(command)
 
-        toDetail(position)
+        toDetail(tracking)
     }
 
     @Transactional
-    fun openManualPosition(criteria: PositionCriteria.OpenManual): PositionResult.Detail = translateInvalidPosition {
+    fun record(criteria: TrackingCriteria.Record): TrackingResult.Detail = translateInvalidTracking {
         val pair = parsePair(criteria.symbol, criteria.koreaExchange, criteria.foreignExchange)
-        val command = PositionCommand.Create(
+        val command = TrackingCommand.Create(
             memberId = criteria.memberId,
             symbol = pair.symbol.code,
             koreaExchange = pair.koreaExchange,
@@ -75,96 +75,96 @@ class PositionFacade(
             entryFxRate = criteria.entryFxRate,
             entryObservedAt = criteria.entryObservedAt,
         )
-        val position = positionService.create(command)
+        val tracking = trackingService.create(command)
 
-        toDetail(position)
+        toDetail(tracking)
     }
 
     @Transactional(readOnly = true)
-    fun findById(criteria: PositionCriteria.FindById): PositionResult.Detail {
-        val position = positionService.findById(criteria.positionId)
+    fun findById(criteria: TrackingCriteria.FindById): TrackingResult.Detail {
+        val tracking = trackingService.findById(criteria.trackingId)
             ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
-        verifyOwnership(position, criteria.memberId)
-        return toDetail(position)
+        verifyOwnership(tracking, criteria.memberId)
+        return toDetail(tracking)
     }
 
     @Transactional(readOnly = true)
-    fun findAllOpenByMemberId(criteria: PositionCriteria.FindAllOpen): PositionResult.Details = PositionResult.Details(
-            positionService.findAllOpenByMemberId(criteria.memberId).map(::toDetail),
+    fun findAllActiveByMemberId(criteria: TrackingCriteria.FindAllActive): TrackingResult.Details = TrackingResult.Details(
+            trackingService.findAllActiveByMemberId(criteria.memberId).map(::toDetail),
         )
 
     @Transactional(readOnly = true)
-    fun findAllClosedByMemberId(criteria: PositionCriteria.FindAllClosed): PositionResult.Details = PositionResult.Details(
-            positionService.findAllClosedByMemberId(criteria.memberId).map(::toDetail),
+    fun findAllArchivedByMemberId(criteria: TrackingCriteria.FindAllArchived): TrackingResult.Details = TrackingResult.Details(
+            trackingService.findAllArchivedByMemberId(criteria.memberId).map(::toDetail),
         )
 
     @Transactional(readOnly = true)
-    fun calculatePnl(criteria: PositionCriteria.CalculatePnl): PositionResult.Pnl = translateInvalidPosition {
-        val position = positionService.findById(criteria.positionId)
+    fun calculatePnl(criteria: TrackingCriteria.CalculatePnl): TrackingResult.Pnl = translateInvalidTracking {
+        val tracking = trackingService.findById(criteria.trackingId)
             ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
-        verifyOwnership(position, criteria.memberId)
+        verifyOwnership(tracking, criteria.memberId)
 
-        val snapshot = premiumService.findLatestSnapshot(position.pair)
+        val snapshot = premiumService.findLatestSnapshot(tracking.pair)
             ?: throw ApplicationException(ApplicationError.PREMIUM_NOT_FOUND)
 
-        val pnl = position.calculatePnl(
+        val pnl = tracking.calculatePnl(
             currentKoreaPrice = snapshot.koreaPrice,
             currentForeignPrice = snapshot.foreignPrice,
             currentFxRate = snapshot.fxRate,
             currentPremiumRate = PremiumPolicy.normalizeEntity(snapshot.premiumRate),
             calculatedAt = clock.instant(),
         )
-        toPnl(criteria.positionId, pnl)
+        toPnl(criteria.trackingId, pnl)
     }
 
     @Transactional(readOnly = true)
-    fun getSummary(criteria: PositionCriteria.Summary): PositionResult.Summary {
-        val openCount = positionService.countOpenByMemberId(criteria.memberId)
-        val closedCount = positionService.countClosedByMemberId(criteria.memberId)
-        return PositionResult.Summary(
-            totalPositions = Math.toIntExact(openCount + closedCount),
-            openPositions = Math.toIntExact(openCount),
-            closedPositions = Math.toIntExact(closedCount),
+    fun getSummary(criteria: TrackingCriteria.Summary): TrackingResult.Summary {
+        val openCount = trackingService.countActiveByMemberId(criteria.memberId)
+        val closedCount = trackingService.countArchivedByMemberId(criteria.memberId)
+        return TrackingResult.Summary(
+            totalTrackings = Math.toIntExact(openCount + closedCount),
+            activeTrackings = Math.toIntExact(openCount),
+            archivedTrackings = Math.toIntExact(closedCount),
         )
     }
 
     @Transactional
-    fun closePosition(criteria: PositionCriteria.Close): PositionResult.Detail = translateInvalidPosition {
-        val position = positionService.findById(criteria.positionId)
+    fun archive(criteria: TrackingCriteria.Archive): TrackingResult.Detail = translateInvalidTracking {
+        val tracking = trackingService.findById(criteria.trackingId)
             ?: throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
-        verifyOwnership(position, criteria.memberId)
+        verifyOwnership(tracking, criteria.memberId)
 
-        position.close()
-        val savedPosition = positionService.save(position)
+        tracking.close()
+        val savedTracking = trackingService.save(tracking)
 
-        toDetail(savedPosition)
+        toDetail(savedTracking)
     }
 
-    private fun verifyOwnership(position: Position, memberId: Long) {
-        if (position.memberId != memberId) {
+    private fun verifyOwnership(tracking: Tracking, memberId: Long) {
+        if (tracking.memberId != memberId) {
             throw ApplicationException(ApplicationError.POSITION_NOT_FOUND)
         }
     }
 
-    private fun toDetail(position: Position): PositionResult.Detail = PositionResult.Detail(
-        id = position.id,
-        memberId = position.memberId,
-        symbol = position.symbol.code,
-        koreaExchange = position.koreaExchange.name,
-        koreaQuantity = position.koreaQuantity,
-        koreaEntryPrice = position.koreaEntryPrice,
-        foreignExchange = position.foreignExchange.name,
-        foreignQuantity = position.foreignQuantity,
-        foreignEntryPrice = position.foreignEntryPrice,
-        foreignLeverage = position.foreignLeverage,
-        entryFxRate = position.entryFxRate,
-        entryPremiumRate = position.entryPremiumRate,
-        entryObservedAt = position.entryObservedAt,
-        status = position.status.name,
+    private fun toDetail(tracking: Tracking): TrackingResult.Detail = TrackingResult.Detail(
+        id = tracking.id,
+        memberId = tracking.memberId,
+        symbol = tracking.symbol.code,
+        koreaExchange = tracking.koreaExchange.name,
+        koreaQuantity = tracking.koreaQuantity,
+        koreaEntryPrice = tracking.koreaEntryPrice,
+        foreignExchange = tracking.foreignExchange.name,
+        foreignQuantity = tracking.foreignQuantity,
+        foreignEntryPrice = tracking.foreignEntryPrice,
+        foreignLeverage = tracking.foreignLeverage,
+        entryFxRate = tracking.entryFxRate,
+        entryPremiumRate = tracking.entryPremiumRate,
+        entryObservedAt = tracking.entryObservedAt,
+        status = tracking.status.name,
     )
 
-    private fun toPnl(positionId: Long, pnl: PositionPnl): PositionResult.Pnl = PositionResult.Pnl(
-        positionId = positionId,
+    private fun toPnl(trackingId: Long, pnl: TrackingGrossPnl): TrackingResult.Pnl = TrackingResult.Pnl(
+        trackingId = trackingId,
         premiumDiff = pnl.premiumDiff,
         entryPremiumRate = pnl.entryPremiumRate,
         currentPremiumRate = pnl.currentPremiumRate,
@@ -177,12 +177,12 @@ class PositionFacade(
         calculatedAt = pnl.calculatedAt,
     )
 
-    private inline fun <T> translateInvalidPosition(block: () -> T): T =
+    private inline fun <T> translateInvalidTracking(block: () -> T): T =
         try {
             block()
         } catch (ex: ApplicationException) {
             throw ex
-        } catch (ex: InvalidPositionException) {
+        } catch (ex: InvalidTrackingException) {
             throw ApplicationException(ApplicationError.INVALID_POSITION, ex)
         }
 

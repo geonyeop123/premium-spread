@@ -1,4 +1,4 @@
-package io.premiumspread.domain.position
+package io.premiumspread.domain.tracking
 
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumPolicy
@@ -17,26 +17,26 @@ class PositionTest {
     fun `포지션을 페어 모델로 정상 생성한다`() {
         val observedAt = Instant.parse("2024-01-01T00:00:00Z")
 
-        val position = createPosition(entryObservedAt = observedAt)
+        val tracking = createPosition(entryObservedAt = observedAt)
 
-        assertThat(position.memberId).isEqualTo(1L)
-        assertThat(position.symbol).isEqualTo(Symbol("BTC"))
-        assertThat(position.koreaExchange).isEqualTo(Exchange.UPBIT)
-        assertThat(position.koreaQuantity).isEqualByComparingTo(BigDecimal("0.5"))
-        assertThat(position.koreaEntryPrice).isEqualByComparingTo(BigDecimal("129555000"))
-        assertThat(position.foreignExchange).isEqualTo(Exchange.BINANCE)
-        assertThat(position.foreignQuantity).isEqualByComparingTo(BigDecimal("0.5"))
-        assertThat(position.foreignEntryPrice).isEqualByComparingTo(BigDecimal("89500"))
-        assertThat(position.foreignLeverage).isEqualTo(1)
-        assertThat(position.entryFxRate).isEqualByComparingTo(BigDecimal("1432.6"))
-        assertThat(position.entryPremiumRate).isEqualByComparingTo(BigDecimal("1.04"))
-        assertThat(position.entryObservedAt).isEqualTo(observedAt)
-        assertThat(position.status).isEqualTo(PositionStatus.OPEN)
+        assertThat(tracking.memberId).isEqualTo(1L)
+        assertThat(tracking.symbol).isEqualTo(Symbol("BTC"))
+        assertThat(tracking.koreaExchange).isEqualTo(Exchange.UPBIT)
+        assertThat(tracking.koreaQuantity).isEqualByComparingTo(BigDecimal("0.5"))
+        assertThat(tracking.koreaEntryPrice).isEqualByComparingTo(BigDecimal("129555000"))
+        assertThat(tracking.foreignExchange).isEqualTo(Exchange.BINANCE)
+        assertThat(tracking.foreignQuantity).isEqualByComparingTo(BigDecimal("0.5"))
+        assertThat(tracking.foreignEntryPrice).isEqualByComparingTo(BigDecimal("89500"))
+        assertThat(tracking.foreignLeverage).isEqualTo(1)
+        assertThat(tracking.entryFxRate).isEqualByComparingTo(BigDecimal("1432.6"))
+        assertThat(tracking.entryPremiumRate).isEqualByComparingTo(BigDecimal("1.04"))
+        assertThat(tracking.entryObservedAt).isEqualTo(observedAt)
+        assertThat(tracking.status).isEqualTo(TrackingStatus.OPEN)
     }
 
     @Test
     fun `진입 프리미엄을 결정론적으로 계산한다 - 양수`() {
-        val position = createPosition(
+        val tracking = createPosition(
             koreaEntryPrice = BigDecimal("110000"),
             foreignEntryPrice = BigDecimal("100"),
             entryFxRate = BigDecimal("1000"),
@@ -44,12 +44,12 @@ class PositionTest {
 
         val expected = PremiumPolicy.calculate(BigDecimal("110000"), BigDecimal("100"), BigDecimal("1000"))
             .entityPremiumRate
-        assertThat(position.entryPremiumRate).isEqualByComparingTo(expected)
+        assertThat(tracking.entryPremiumRate).isEqualByComparingTo(expected)
     }
 
     @Test
     fun `진입 프리미엄을 결정론적으로 계산한다 - 음수`() {
-        val position = createPosition(
+        val tracking = createPosition(
             koreaEntryPrice = BigDecimal("90000"),
             foreignEntryPrice = BigDecimal("100"),
             entryFxRate = BigDecimal("1000"),
@@ -57,7 +57,7 @@ class PositionTest {
 
         val expected = PremiumPolicy.calculate(BigDecimal("90000"), BigDecimal("100"), BigDecimal("1000"))
             .entityPremiumRate
-        assertThat(position.entryPremiumRate).isEqualByComparingTo(expected)
+        assertThat(tracking.entryPremiumRate).isEqualByComparingTo(expected)
     }
 
     @Test
@@ -101,7 +101,7 @@ class PositionTest {
 
         invalidCases.forEach { (fieldName, factory) ->
             assertThatThrownBy { factory() }
-                .isInstanceOf(InvalidPositionException::class.java)
+                .isInstanceOf(InvalidTrackingException::class.java)
                 .hasMessageContaining(fieldName)
         }
     }
@@ -110,12 +110,12 @@ class PositionTest {
     fun `해외 레버리지는 1 이상 125 이하만 허용한다`() {
         assertThatThrownBy {
             createPosition(foreignLeverage = 0)
-        }.isInstanceOf(InvalidPositionException::class.java)
+        }.isInstanceOf(InvalidTrackingException::class.java)
             .hasMessageContaining("leverage")
 
         assertThatThrownBy {
             createPosition(foreignLeverage = 126)
-        }.isInstanceOf(InvalidPositionException::class.java)
+        }.isInstanceOf(InvalidTrackingException::class.java)
             .hasMessageContaining("leverage")
 
         assertThatCode { createPosition(foreignLeverage = 1) }.doesNotThrowAnyException()
@@ -124,27 +124,27 @@ class PositionTest {
 
     @Test
     fun `포지션을 청산한다`() {
-        val position = createPosition()
+        val tracking = createPosition()
 
-        position.close()
+        tracking.close()
 
-        assertThat(position.status).isEqualTo(PositionStatus.CLOSED)
+        assertThat(tracking.status).isEqualTo(TrackingStatus.CLOSED)
     }
 
     @Test
     fun `이미 청산된 포지션은 다시 청산할 수 없다`() {
-        val position = createPosition()
-        position.close()
+        val tracking = createPosition()
+        tracking.close()
 
         assertThatThrownBy {
-            position.close()
-        }.isInstanceOf(InvalidPositionException::class.java)
+            tracking.close()
+        }.isInstanceOf(InvalidTrackingException::class.java)
             .hasMessageContaining("already closed")
     }
 
     @Test
     fun `PnL을 페어 기반 KRW 손익으로 계산한다 - 사용자 예시 회귀`() {
-        val position = createPosition(
+        val tracking = createPosition(
             koreaEntryPrice = BigDecimal("161493792"),
             koreaQuantity = BigDecimal("0.157"),
             foreignEntryPrice = BigDecimal("118100"),
@@ -152,7 +152,7 @@ class PositionTest {
             entryFxRate = BigDecimal("1521.6"),
         )
 
-        val pnl = position.calculatePnl(
+        val pnl = tracking.calculatePnl(
             currentKoreaPrice = BigDecimal("118326000"),
             currentForeignPrice = BigDecimal("79699.1"),
             currentFxRate = BigDecimal("1490.5"),
@@ -170,7 +170,7 @@ class PositionTest {
 
     @Test
     fun `양쪽 손실일 때 totalPnlKrw 음수`() {
-        val position = createPosition(
+        val tracking = createPosition(
             koreaEntryPrice = BigDecimal("100000"),
             koreaQuantity = BigDecimal("1.0"),
             foreignEntryPrice = BigDecimal("100"),
@@ -178,7 +178,7 @@ class PositionTest {
             entryFxRate = BigDecimal("1000"),
         )
 
-        val pnl = position.calculatePnl(
+        val pnl = tracking.calculatePnl(
             currentKoreaPrice = BigDecimal("90000"),
             currentForeignPrice = BigDecimal("110"),
             currentFxRate = BigDecimal("1000"),
@@ -194,7 +194,7 @@ class PositionTest {
 
     @Test
     fun `isProfit은 totalPnlKrw 기준이며 premiumDiff와 부호 불일치 가능`() {
-        val position = createPosition(
+        val tracking = createPosition(
             koreaEntryPrice = BigDecimal("100000"),
             koreaQuantity = BigDecimal("1.0"),
             foreignEntryPrice = BigDecimal("100"),
@@ -202,7 +202,7 @@ class PositionTest {
             entryFxRate = BigDecimal("1000"),
         )
 
-        val pnl = position.calculatePnl(
+        val pnl = tracking.calculatePnl(
             currentKoreaPrice = BigDecimal("120000"),
             currentForeignPrice = BigDecimal("105"),
             currentFxRate = BigDecimal("1000"),
@@ -210,7 +210,7 @@ class PositionTest {
             calculatedAt = Instant.parse("2024-01-01T00:01:00Z"),
         )
 
-        assertThat(position.entryPremiumRate).isEqualByComparingTo(BigDecimal("0.00"))
+        assertThat(tracking.entryPremiumRate).isEqualByComparingTo(BigDecimal("0.00"))
         assertThat(pnl.premiumDiff).isPositive()
         assertThat(pnl.totalPnlKrw).isPositive()
         assertThat(pnl.isProfit()).isEqualTo(pnl.totalPnlKrw > BigDecimal.ZERO)
@@ -218,14 +218,14 @@ class PositionTest {
 
     @Test
     fun `시세가 0 이하면 IllegalArgumentException`() {
-        val position = createPosition()
+        val tracking = createPosition()
         val invalidCases = listOf(
-            { position.calculatePnl(BigDecimal.ZERO, BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { position.calculatePnl(BigDecimal("-1"), BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { position.calculatePnl(BigDecimal("129555000"), BigDecimal.ZERO, BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { position.calculatePnl(BigDecimal("129555000"), BigDecimal("-1"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
-            { position.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal.ZERO, BigDecimal("1.00"), Instant.EPOCH) },
-            { position.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal("-1"), BigDecimal("1.00"), Instant.EPOCH) },
+            { tracking.calculatePnl(BigDecimal.ZERO, BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
+            { tracking.calculatePnl(BigDecimal("-1"), BigDecimal("89500"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
+            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal.ZERO, BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
+            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal("-1"), BigDecimal("1432.6"), BigDecimal("1.00"), Instant.EPOCH) },
+            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal.ZERO, BigDecimal("1.00"), Instant.EPOCH) },
+            { tracking.calculatePnl(BigDecimal("129555000"), BigDecimal("89500"), BigDecimal("-1"), BigDecimal("1.00"), Instant.EPOCH) },
         )
 
         invalidCases.forEach { calculate ->
@@ -246,8 +246,8 @@ class PositionTest {
         foreignLeverage: Int = 1,
         entryFxRate: BigDecimal = BigDecimal("1432.6"),
         entryObservedAt: Instant = Instant.parse("2024-01-01T00:00:00Z"),
-    ): Position = Position.create(
-        PositionOpenSpec(
+    ): Tracking = Tracking.create(
+        TrackingRecordSpec(
             memberId = memberId,
             pair = MarketPair(symbol, koreaExchange, foreignExchange),
             koreaQuantity = koreaQuantity,

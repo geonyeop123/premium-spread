@@ -1,13 +1,13 @@
-package io.premiumspread.interfaces.api.position
+package io.premiumspread.interfaces.api.tracking
 
-import io.premiumspread.application.position.PositionResult
+import io.premiumspread.application.tracking.TrackingResult
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import java.math.BigDecimal
 import java.time.Instant
 
-class PositionRequest private constructor() {
-    data class OpenAuto(
+class TrackingRequest private constructor() {
+    data class RecordFromMarket(
         @field:NotBlank val symbol: String,
         @field:NotBlank val koreaExchange: String,
         @field:Positive val koreaQuantity: BigDecimal,
@@ -16,7 +16,7 @@ class PositionRequest private constructor() {
         @field:Positive val foreignLeverage: Int,
     )
 
-    data class OpenManual(
+    data class Record(
         @field:NotBlank val symbol: String,
         @field:NotBlank val koreaExchange: String,
         @field:Positive val koreaQuantity: BigDecimal,
@@ -30,7 +30,7 @@ class PositionRequest private constructor() {
     )
 }
 
-class PositionResponse private constructor() {
+class TrackingResponse private constructor() {
     data class Detail(
         val id: Long,
         val symbol: String,
@@ -47,7 +47,7 @@ class PositionResponse private constructor() {
         val status: String,
     ) {
         companion object {
-            fun from(result: PositionResult.Detail): Detail = Detail(
+            fun from(result: TrackingResult.Detail): Detail = Detail(
                 id = result.id,
                 symbol = result.symbol,
                 koreaExchange = result.koreaExchange,
@@ -66,7 +66,7 @@ class PositionResponse private constructor() {
     }
 
     data class Pnl(
-        val positionId: Long,
+        val trackingId: Long,
         val premiumDiff: BigDecimal,
         val entryPremiumRate: BigDecimal,
         val currentPremiumRate: BigDecimal,
@@ -79,8 +79,8 @@ class PositionResponse private constructor() {
         val calculatedAt: Instant,
     ) {
         companion object {
-            fun from(result: PositionResult.Pnl): Pnl = Pnl(
-                positionId = result.positionId,
+            fun from(result: TrackingResult.Pnl): Pnl = Pnl(
+                trackingId = result.trackingId,
                 premiumDiff = result.premiumDiff,
                 entryPremiumRate = result.entryPremiumRate,
                 currentPremiumRate = result.currentPremiumRate,
@@ -95,12 +95,12 @@ class PositionResponse private constructor() {
         }
     }
 
-    data class Summary(val totalPositions: Int, val openPositions: Int, val closedPositions: Int) {
+    data class Summary(val totalTrackings: Int, val activeTrackings: Int, val archivedTrackings: Int) {
         companion object {
-            fun from(result: PositionResult.Summary): Summary = Summary(
-                totalPositions = result.totalPositions,
-                openPositions = result.openPositions,
-                closedPositions = result.closedPositions,
+            fun from(result: TrackingResult.Summary): Summary = Summary(
+                totalTrackings = result.totalTrackings,
+                activeTrackings = result.activeTrackings,
+                archivedTrackings = result.archivedTrackings,
             )
         }
     }
