@@ -318,7 +318,8 @@ ALTER TABLE position
     ADD COLUMN closed_at           DATETIME(6)     NULL AFTER status,
     ADD COLUMN close_price_source  VARCHAR(30)     NULL AFTER closed_at,
     ADD COLUMN close_observed_at   DATETIME(6)     NULL AFTER close_price_source,
-    ADD COLUMN close_korea_price   DECIMAL(30, 10) NULL AFTER close_observed_at,
+    ADD COLUMN close_fx_observed_at DATETIME(6)     NULL AFTER close_observed_at,
+    ADD COLUMN close_korea_price   DECIMAL(30, 10) NULL AFTER close_fx_observed_at,
     ADD COLUMN close_foreign_price DECIMAL(30, 10) NULL AFTER close_korea_price,
     ADD COLUMN close_fx_rate       DECIMAL(20, 6)  NULL AFTER close_foreign_price,
     ADD COLUMN close_premium_rate  DECIMAL(10, 2)  NULL AFTER close_fx_rate;
@@ -337,9 +338,9 @@ UPDATE position SET close_price_source = 'LEGACY_UNKNOWN' WHERE status = 'CLOSED
 ```text
 status == ARCHIVED
   AND close_price_source == 'MARKET_SNAPSHOT'
-  AND closed_at, close_observed_at,
+  AND closed_at, close_observed_at, close_fx_observed_at,
       close_korea_price, close_foreign_price, close_fx_rate, close_premium_rate
-      6개가 모두 non-null
+      7개가 모두 non-null
 ```
 
 하나라도 아니면 **확정 손익을 제공하지 않는다**(fail-closed). `close_price_source`가 `NULL`인 경우도 여기
@@ -353,6 +354,7 @@ status == ARCHIVED
 | 확정 응답 필드 | 원천 | 규칙 포함 |
 |---|---|---|
 | `observedAt` | `close_observed_at` | O |
+| `fxObservedAt` | `close_fx_observed_at` | O |
 | `referencePremiumRate`, `premiumRateDelta` | `close_premium_rate` | O |
 | `koreaLegGrossPnlKrw`, `koreaLegNotionalKrw` | `close_korea_price` | O |
 | `foreignLegGrossPnlKrw` | `close_foreign_price`, `close_fx_rate` | O |
@@ -378,8 +380,21 @@ image가 종료시킨 행에는 없다. `NULL`이면 종료 시각을 추정하�
 **신선도 (단일 정의).** snapshot이 신선하다는 것은 **양방향 유계**를 뜻한다.
 
 ```text
-0초 <= (기준 시각 - snapshot.observedAt) <= 60초
+0초 <= (기준 시각 - snapshot.observedAt)   <= 60초        # premium
+0초 <= (기준 시각 - snapshot.fxObservedAt) <= FX 한도      # 환율
 ```
+
+**두 구성요소를 따로 본다.** `PremiumSnapshot.observedAt`은 세 관측 시각의 **max**다
+(`PremiumRealtimeJob`: `maxOf(bithumbTicker.observedAt, binanceTicker.observedAt, fxSnapshot.observedAt)`).
+가장 오래된 것이 아니라 **가장 최신**이므로, 낡은 구성요소를 적극적으로 가린다. FX는
+`batch.scheduling.exchange-rate.fixed-rate`가 `30m`이라 **최대 30분 낡은 값이 정상 운영 상태**인데
+`observedAt`은 방금 갱신된 ticker 시각을 쓴다. 해외 leg 손익은 전부 `close_fx_rate` 환산이므로,
+premium만 검사하면 30분 낡은 환율로 계산된 값이 불변 확정 손익으로 저장된다.
+
+FX 한도는 **수집 주기에서 유도한다.** `batch.scheduling.exchange-rate.fixed-rate`(현재 `30m`)보다 작으면
+정상 운영에서도 모든 archive가 `SNAPSHOT_UNAVAILABLE`이 되어 기능이 죽는다. API 설정
+`tracking.close.fx-max-age`로 두고 기본값 `35m`(수집 주기 + 여유)을 쓰며, 수집 주기를 바꾸면 함께 바꾼다.
+근거 없는 숫자를 고정하지 않는다는 상위 spec §4.5의 요구를 이 유도가 충족한다.
 
 기존 코드(`PositionFacade.openAutoPosition`)는 `age > SNAPSHOT_MAX_AGE`만 검사한다. **미래로 치우친
 `observedAt`은 음수 age를 만들어 신선하다고 통과한다.** 그 값이 archive에 쓰이면 "종료 시각보다 나중에
@@ -388,7 +403,7 @@ image가 종료시킨 행에는 없다. `NULL`이면 종료 시각을 추정하�
 
 이 규칙은 **snapshot을 신선도로 판단하는 모든 경로에 같이 적용한다.** 현재 두 곳이다.
 
-| 경로 | 범위 밖일 때 |
+| 경로 | premium 또는 FX가 범위 밖일 때 |
 |---|---|
 | 기록 생성 (`from-market`) | `STALE_PREMIUM_SNAPSHOT` 거절 |
 | 종료 (`archive`) | 거절하지 않고 `SNAPSHOT_UNAVAILABLE`로 기록 |
@@ -427,7 +442,8 @@ clock skew 허용치를 두지 않는다 — 필요해지면 명시적 결정으
   "grossPnlPercentOfKoreaNotional": 1.00,
   "isGrossProfit": true,
   "calculatedAt": "2026-08-02T05:00:00Z",
-  "observedAt": "2026-08-02T04:59:58Z"
+  "observedAt": "2026-08-02T04:59:58Z",
+  "fxObservedAt": "2026-08-02T04:40:00Z"
 }
 ```
 
@@ -447,10 +463,26 @@ clock skew 허용치를 두지 않는다 — 필요해지면 명시적 결정으
 | — | `priceBasis` | `CURRENT_MARKET` \| `ARCHIVED_SNAPSHOT` |
 | — | `pnlBasis` | 제외 항목을 값 자체가 열거 |
 | — | `observedAt` | 계산에 쓴 시세의 관측 시각 |
+| — | `fxObservedAt` | 계산에 쓴 **환율의** 관측 시각. `observedAt`과 다를 수 있고, 다르다는 사실 자체가 소비자가 알아야 할 정보다 |
 
 `ACTIVE`는 `priceBasis: CURRENT_MARKET`으로 최신 snapshot을 쓰고, `ARCHIVED`는
 `priceBasis: ARCHIVED_SNAPSHOT`으로 저장된 확정값만 쓴다. 계산식 자체는 바뀌지 않는다 — Phase 0은 손익
 **모델**을 바꾸지 않는다.
+
+#### 5.3.3-1 `Detail` 응답의 종료 정보
+
+`gross-pnl`뿐 아니라 **단건·목록의 `Detail` 응답도** 종료 정보를 노출한다. 그러지 않으면 `archive`가 `200`을
+반환해도 클라이언트가 확정 여부를 알 수 없고, 화면이 §5.4.2의 "종료 시각 불명"·"확정하지 못함"을 표시할
+근거를 갖지 못한다.
+
+| 필드 | 값 |
+|---|---|
+| `status` | `ACTIVE` \| `ARCHIVED` |
+| `closedAt` | nullable. `ARCHIVED`여도 이전 image가 종료시킨 행은 `null`이다 |
+| `closePriceSource` | nullable. `MARKET_SNAPSHOT` \| `SNAPSHOT_UNAVAILABLE` \| `LEGACY_UNKNOWN` \| `null` |
+| `hasConfirmedClose` | §5.3.2 확정 판정 규칙의 결과. 클라이언트가 규칙을 재구현하지 않게 한다 |
+
+`ACTIVE`인 추적은 뒤 세 필드가 각각 `null`·`null`·`false`다.
 
 #### 5.3.4 도메인 계약
 

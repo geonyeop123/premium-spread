@@ -171,7 +171,8 @@ ALTER TABLE position
     ADD COLUMN closed_at           DATETIME(6)     NULL AFTER status,
     ADD COLUMN close_price_source  VARCHAR(30)     NULL AFTER closed_at,
     ADD COLUMN close_observed_at   DATETIME(6)     NULL AFTER close_price_source,
-    ADD COLUMN close_korea_price   DECIMAL(30, 10) NULL AFTER close_observed_at,
+    ADD COLUMN close_fx_observed_at DATETIME(6)     NULL AFTER close_observed_at,
+    ADD COLUMN close_korea_price   DECIMAL(30, 10) NULL AFTER close_fx_observed_at,
     ADD COLUMN close_foreign_price DECIMAL(30, 10) NULL AFTER close_korea_price,
     ADD COLUMN close_fx_rate       DECIMAL(20, 6)  NULL AFTER close_foreign_price,
     ADD COLUMN close_premium_rate  DECIMAL(10, 2)  NULL AFTER close_fx_rate;
@@ -213,6 +214,7 @@ data class TrackingCloseSnapshot(
     val fxRate: BigDecimal,
     val premiumRate: BigDecimal,
     val observedAt: Instant,
+    val fxObservedAt: Instant,
 )
 
 // Tracking
@@ -230,7 +232,7 @@ fun archive(snapshot: TrackingCloseSnapshot?, archivedAt: Instant)
 val hasConfirmedClose: Boolean
     get() = status == TrackingStatus.ARCHIVED &&
         closePriceSource == TrackingClosePriceSource.MARKET_SNAPSHOT &&
-        closedAt != null && closeObservedAt != null &&
+        closedAt != null && closeObservedAt != null && closeFxObservedAt != null &&
         closeKoreaPrice != null && closeForeignPrice != null &&
         closeFxRate != null && closePremiumRate != null
 ```
@@ -244,12 +246,19 @@ val hasConfirmedClose: Boolean
 만족하면 `TrackingCloseSnapshot`, 아니면 `null`을 넘긴다.
 
 ```kotlin
-val age = Duration.between(snapshot.observedAt, clock.instant())
-val fresh = !age.isNegative && age <= SNAPSHOT_MAX_AGE   // 미래 시각도 stale 로 본다
+private fun inBounds(observed: Instant, now: Instant, max: Duration): Boolean {
+    val age = Duration.between(observed, now)
+    return !age.isNegative && age <= max        // 미래 시각도 stale 로 본다
+}
+
+val now = clock.instant()
+val fresh = inBounds(snapshot.observedAt, now, SNAPSHOT_MAX_AGE) &&
+            inBounds(snapshot.fxObservedAt, now, FX_MAX_AGE)     // 환율은 별도 한도
 ```
 
-`recordFromMarket`의 기존 검사도 같은 규칙으로 바꾼다 — 지금은 `age > SNAPSHOT_MAX_AGE`만 보아 미래
-시각이 통과한다. **snapshot 부재·stale을 이유로 archive를 거절하지 않는다.** `409`는 archive가 아니라
+`FX_MAX_AGE`는 `tracking.close.fx-max-age` 설정으로 두고 기본값 `35m`을 쓴다 (`design.md` §5.3.2 — FX
+수집 주기 `30m`에서 유도). `recordFromMarket`의 기존 검사도 같은 `inBounds`로 바꾼다. 지금은
+`age > SNAPSHOT_MAX_AGE`만 보아 **미래 시각과 오래된 FX가 둘 다 통과**한다. **snapshot 부재·stale을 이유로 archive를 거절하지 않는다.** `409`는 archive가 아니라
 그 추적의 `gross-pnl` 조회에서만 나온다 — 요청·응답 계약의 단일 출처는 `design.md` §5.3.2 표다.
 
 **검증**
@@ -277,6 +286,11 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC11 AC23 AC24
 
 `TrackingResponse.GrossPnl` 필드는 `design.md` §5.3.3 표를 그대로 따른다. `TrackingResult.GrossPnl`과
 `TrackingGrossPnl`도 같은 이름 체계를 쓴다.
+
+**`Detail` 응답에 종료 정보 추가** (`design.md` §5.3.3-1). T1의 rename은 필드를 건드리지 않으므로 여기서
+`TrackingResult.Detail`과 `TrackingResponse.Detail`에 `closedAt`(nullable), `closePriceSource`(nullable),
+`hasConfirmedClose`(Boolean)를 추가하고 매핑한다. 단건·`archived` 목록·`archive` 응답이 같은 DTO를 쓴다.
+이게 없으면 `archive`가 `200`을 반환해도 클라이언트가 확정 여부를 알 수 없다.
 
 **계산 분기** — `design.md` §5.3.2의 확정 판정 규칙 하나만 본다. 조건을 여기서 다시 풀어 쓰지 않는다.
 초안은 `ARCHIVED` + `MARKET_SNAPSHOT`이면 확정으로 취급해, 6개 필드 중 하나가 `NULL`인 부분 행에 대해
