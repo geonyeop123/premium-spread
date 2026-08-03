@@ -39,6 +39,15 @@
 - dead 또는 미연결된 기존 계약의 유지·수정·제거를 근거와 함께 결정한다 (`P0-O4`)
 - As-Is 아키텍처 문서와 Planned capability 문서를 상호 참조로 구분한다 (`P0-O5`, `ARCH-7`)
 
+위 outcome을 **검증 가능하게** 만들기 위해 아래 두 가지가 함께 들어온다. 상위 spec이 지시한 항목은 아니므로
+⑦ 승인에서 명시적으로 확인받는다.
+
+- `apps/web` 테스트 인프라 도입 (vitest + Testing Library). 현재 `apps/web`에는 테스트가 없어
+  "사용자가 고지를 본다"는 주장을 문자열 검색으로밖에 확인할 수 없고, 그 검사는 주석·미사용 컴포넌트·도달
+  불가 분기로도 통과한다. `SEM-1`·`SEM-4`가 사용자가 **보는 것**에 관한 계약이므로 렌더 검증이 필요하다
+- `.github/workflows/quality-gate.yml`의 web job에 `npm run test` 추가와 `ci/quality-gate-contract-test.sh`
+  기대값 동시 갱신
+
 ### 1.3 제외 *(scope creep 차단선)*
 
 - 새 시장 observation type, archive provider, 전략 엔진, LIVE 계약 — 상위 spec이 Phase 1~3에 배정
@@ -200,6 +209,18 @@ migration이고, `verifyMigrations`의 destructive gate(`TRUNCATE`·`DROP`만 �
 
 이 결정은 D1의 "DB 테이블명은 유지"와 같은 규칙의 적용이다. **DB는 legacy 표현을 유지하고 domain과 API가
 정렬된 표현을 쓴다.** 매핑은 converter 한 곳에 모이고 §5.8이 그 경계를 기록한다.
+
+**converter가 안전한지 실측했다.** 상태를 쓰는 기존 쿼리는 전부 JPQL 또는 derived query다.
+
+| 위치 | 형태 |
+|---|---|
+| `SpringDataPositionRepository.findAllByStatus` | `@Query("SELECT p FROM Position p WHERE p.status = :status")` — JPQL |
+| `SpringDataPositionRepository.findAllByMemberIdAndStatus` | 〃 |
+| `SpringDataPositionRepository.countByMemberIdAndStatusAndDeletedAtIsNull` | derived query |
+
+JPQL과 derived query의 파라미터 바인딩은 `AttributeConverter`를 거치므로 `TrackingStatus.ACTIVE`가 `'OPEN'`으로
+바인딩된다. **`position.status`를 비교하는 native query는 없다.** native query가 추가되면 converter를
+우회하므로, 그때는 저장값 리터럴을 직접 써야 하고 `AC24`의 `leaked` 검사가 그 사실을 드러낸다.
 
 버린 대안: **`V15`가 값을 `UPDATE`** — 초안이 택했던 방식이며 위 이유로 폐기했다. **expand/contract 2단계
 배포** — 새 코드가 구·신 값을 모두 읽고 한 배포 뒤 수축한다. 정석이지만 개인 단일 계정 제품에서 "다음
@@ -589,7 +610,7 @@ Phase 0이 발견했으나 이 Phase가 결정하지 않는 항목이다. 상위
 | 계약 | 근거 절 | 검증 |
 |---|---|---|
 | `P0-O1` 비주문 추적 record임이 API·Web·문서에서 일치 | §5.1, §5.2, §5.4.1, §5.4.3 | `AC1`, `AC2`, `AC9` |
-| `P0-O2` premium 방향과 PnL 보장 범위가 모순 없이 설명 | §5.3, §5.4.2 | `AC3`, `AC4`, `AC5` |
+| `P0-O2` premium 방향과 PnL 보장 범위가 모순 없이 설명 | §5.3, §5.4.2 | `AC3`, `AC4`, `AC5`, `AC25` |
 | `P0-O3` `ARCH-9` identity 차이 판정 | §5.5 | `AC6` |
 | `P0-O4` dead·미연결 계약의 유지·수정·제거 결정 | §5.6 | `AC7` |
 | `P0-O5` As-Is와 Planned 구분 | §5.7 | `AC8` |
