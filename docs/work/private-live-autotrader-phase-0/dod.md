@@ -113,6 +113,10 @@ D1이 제거하는 옛 경로는 **8개**다. 그중 일부만 검사하면 남�
 | `POST /api/v1/positions/{id}/close` | `POST /api/v1/trackings/{id}/archive` |
 
 ```bash
+# set -e 가 없으면 아래 gradle 실패가 무시된다 — 블록의 종료 코드는 마지막 명령의 것이기 때문이다.
+# 실제로 초안은 테스트가 없어 BUILD FAILED 인데도 GREEN 을 반환했다 (구현 중 실측, CR-3).
+set -e
+
 ./gradlew :apps:api:integrationTest --tests '*TrackingRouteContract*' --offline --no-daemon
 
 # 보조: 소스·샘플의 잔재 탐지 (인용 부호에 의존하지 않는다)
@@ -154,6 +158,7 @@ echo "leftover=[$hits hits]"
 grep은 주석·미사용 컴포넌트·도달 불가 분기로도 통과하므로 렌더 결과를 검증한다.
 
 ```bash
+set -e
 cd apps/web && npm ci && npm run test
 ```
 
@@ -694,6 +699,17 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 **성격**: 기준을 약화하지 않는다. 수용기준 문장("제거 판정 항목이 실행 소스에서 사라졌다")은 그대로이고,
 그 문장을 실제로 검사하지 못하던 패턴을 고쳤다. 동결 후 변경이므로 여기에 기록한다.
+
+### CR-3. AC1 블록의 gradle 실패 무시 정정 (2026-08-03, 구현 중)
+
+**문제**: AC1 블록이 `./gradlew ... integrationTest` 뒤에 정적 검사를 이어 붙였는데, bash 블록의 종료
+코드는 **마지막 명령의 것**이다. 그래서 통합 테스트가 `BUILD FAILED` 여도 정적 검사만 통과하면 GREEN 이
+나왔다. 실제로 `TrackingRouteContractTest` 가 없는 상태에서 GREEN 을 반환하는 것을 확인했다.
+
+**정정**: 블록 선두에 `set -e` 를 넣어 첫 실패에서 멈추게 했다. 같은 부류로 `gradlew`·`npm` 이 다른 명령과
+섞인 블록을 훑어 동일하게 보강했다.
+
+**성격**: 기준을 약화하지 않는다. 검사가 주장하던 것을 실제로 검사하게 만든 정정이다.
 
 ## 최종 판정
 

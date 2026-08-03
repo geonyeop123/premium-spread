@@ -17,13 +17,13 @@ interface PremiumData {
   observedAt: string;
 }
 
-interface OpenPositionFormProps {
+interface RecordTrackingFormProps {
   onSuccess: () => void;
 }
 
 type Mode = 'AUTO' | 'MANUAL';
 
-export function OpenPositionForm({ onSuccess }: OpenPositionFormProps) {
+export function RecordTrackingForm({ onSuccess }: RecordTrackingFormProps) {
   const [mode, setMode] = useState<Mode>('AUTO');
   const [symbol, setSymbol] = useState('BTC');
   const [koreaExchange, setKoreaExchange] = useState('UPBIT');
@@ -74,7 +74,7 @@ export function OpenPositionForm({ onSuccess }: OpenPositionFormProps) {
     setSubmitting(true);
     try {
       if (mode === 'AUTO') {
-        await apiClient('/positions/auto', {
+        await apiClient('/trackings/from-market', {
           method: 'POST',
           body: JSON.stringify({
             symbol,
@@ -86,7 +86,7 @@ export function OpenPositionForm({ onSuccess }: OpenPositionFormProps) {
           }),
         });
       } else {
-        await apiClient('/positions/manual', {
+        await apiClient('/trackings', {
           method: 'POST',
           body: JSON.stringify({
             symbol,
@@ -113,10 +113,10 @@ export function OpenPositionForm({ onSuccess }: OpenPositionFormProps) {
             '현재 가격/환율 정보가 없거나 오래되었습니다. 잠시 후 다시 시도하세요.',
           );
         } else {
-          setError(err.message || '포지션 생성에 실패했습니다.');
+          setError(err.message || '기록 생성에 실패했습니다.');
         }
       } else {
-        setError('포지션 생성에 실패했습니다.');
+        setError('기록 생성에 실패했습니다.');
       }
     } finally {
       setSubmitting(false);
@@ -136,7 +136,7 @@ export function OpenPositionForm({ onSuccess }: OpenPositionFormProps) {
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center justify-between gap-2">
-          <span>포지션 열기</span>
+          <span>포지션 기록 추가</span>
           <div className="flex items-center gap-2">
             <div className="inline-flex overflow-hidden rounded-md border">
               <Button
@@ -166,7 +166,7 @@ export function OpenPositionForm({ onSuccess }: OpenPositionFormProps) {
                 onClick={fillCurrentData}
                 disabled={filling}
               >
-                {filling ? '불러오는 중...' : '현재 데이터 채우기'}
+                {filling ? '불러오는 중...' : '현재 시세 불러오기'}
               </Button>
             )}
           </div>
@@ -317,8 +317,8 @@ export function OpenPositionForm({ onSuccess }: OpenPositionFormProps) {
             {submitting
               ? '생성 중...'
               : mode === 'AUTO'
-                ? '포지션 열기 (AUTO)'
-                : '포지션 열기 (MANUAL)'}
+                ? '현재 시세로 기록'
+                : '입력값으로 기록'}
           </Button>
         </form>
       </CardContent>

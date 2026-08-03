@@ -95,7 +95,7 @@ class TrackingControllerE2ETest @Autowired constructor(
             jsonPath("$.foreignExchange") { value("BINANCE") }
             jsonPath("$.foreignEntryPrice") { value(89500) }
             jsonPath("$.entryFxRate") { value(1432.6) }
-            jsonPath("$.status") { value("OPEN") }
+            jsonPath("$.status") { value("ACTIVE") }
         }
     }
 
@@ -160,7 +160,7 @@ class TrackingControllerE2ETest @Autowired constructor(
             jsonPath("$.foreignExchange") { value("BINANCE") }
             jsonPath("$.foreignEntryPrice") { value(118100) }
             jsonPath("$.entryFxRate") { value(1521.6) }
-            jsonPath("$.status") { value("OPEN") }
+            jsonPath("$.status") { value("ACTIVE") }
         }
     }
 
@@ -202,7 +202,7 @@ class TrackingControllerE2ETest @Autowired constructor(
             status { isOk() }
             jsonPath("$.id") { value(saved.id) }
             jsonPath("$.symbol") { value("BTC") }
-            jsonPath("$.status") { value("OPEN") }
+            jsonPath("$.status") { value("ACTIVE") }
         }
     }
 
@@ -346,7 +346,7 @@ class TrackingControllerE2ETest @Autowired constructor(
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(tracking.id) }
-            jsonPath("$.status") { value("CLOSED") }
+            jsonPath("$.status") { value("ARCHIVED") }
         }
 
         val updated = trackingRepository.findById(tracking.id)

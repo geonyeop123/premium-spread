@@ -45,7 +45,7 @@ class TrackingFacadeTest {
 
         assertThat(result.koreaExchange).isEqualTo("UPBIT")
         assertThat(result.foreignExchange).isEqualTo("BINANCE")
-        assertThat(result.status).isEqualTo("OPEN")
+        assertThat(result.status).isEqualTo("ACTIVE")
     }
 
     @Test

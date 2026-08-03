@@ -7,31 +7,31 @@ import { useAuth } from '@/lib/auth';
 import { apiClient, ApiError } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { Position, PnlData } from '@/components/PositionList';
+import type { Tracking, GrossPnlData } from '@/components/TrackingList';
 
 const formatKrw = (n: number) =>
   n.toLocaleString('ko-KR', { maximumFractionDigits: 0 });
 const formatSigned = (n: number) =>
   `${n > 0 ? '+' : ''}${n.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}`;
 
-export default function PositionDetailPage() {
+export default function TrackingDetailPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
 
-  const [position, setPosition] = useState<Position | null>(null);
-  const [pnl, setPnl] = useState<PnlData | null>(null);
+  const [tracking, setTracking] = useState<Tracking | null>(null);
+  const [pnl, setPnl] = useState<GrossPnlData | null>(null);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchPosition = useCallback(async () => {
+  const fetchTracking = useCallback(async () => {
     try {
-      const data = await apiClient<Position>(`/positions/${id}`);
-      setPosition(data);
+      const data = await apiClient<Tracking>(`/trackings/${id}`);
+      setTracking(data);
     } catch {
-      setError('포지션을 불러올 수 없습니다.');
+      setError('기록을 불러올 수 없습니다.');
     } finally {
       setLoading(false);
     }
@@ -39,7 +39,7 @@ export default function PositionDetailPage() {
 
   const fetchPnl = useCallback(async () => {
     try {
-      const data = await apiClient<PnlData>(`/positions/${id}/pnl`);
+      const data = await apiClient<GrossPnlData>(`/trackings/${id}/gross-pnl`);
       setPnl(data);
     } catch {
       // PnL 조회 실패는 조용히 처리
@@ -48,27 +48,27 @@ export default function PositionDetailPage() {
 
   useEffect(() => {
     if (!user) return;
-    fetchPosition();
-  }, [user, fetchPosition]);
+    fetchTracking();
+  }, [user, fetchTracking]);
 
   useEffect(() => {
-    if (!user || !position || position.status !== 'OPEN') return;
+    if (!user || !tracking || tracking.status !== 'ACTIVE') return;
     fetchPnl();
     const interval = setInterval(fetchPnl, 5000);
     return () => clearInterval(interval);
-  }, [user, position, fetchPnl]);
+  }, [user, tracking, fetchPnl]);
 
   const handleClose = async () => {
-    if (!confirm('포지션을 종료하시겠습니까?')) return;
+    if (!confirm('이 기록을 종료하시겠습니까? 종료 시점 시세가 확정 저장되며 실제 주문은 발생하지 않습니다.')) return;
     setClosing(true);
     try {
-      await apiClient(`/positions/${id}/close`, { method: 'POST' });
-      router.push('/positions');
+      await apiClient(`/trackings/${id}/archive`, { method: 'POST' });
+      router.push('/trackings');
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message || '포지션 종료에 실패했습니다.');
+        setError(err.message || '기록 종료에 실패했습니다.');
       } else {
-        setError('포지션 종료에 실패했습니다.');
+        setError('기록 종료에 실패했습니다.');
       }
       setClosing(false);
     }
@@ -88,7 +88,7 @@ export default function PositionDetailPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="mb-4 text-muted-foreground">
-              포지션 상세를 보려면 로그인이 필요합니다.
+              포지션 기록 상세를 보려면 로그인이 필요합니다.
             </p>
             <Link href="/login">
               <Button>로그인</Button>
@@ -107,13 +107,13 @@ export default function PositionDetailPage() {
     );
   }
 
-  if (error && !position) {
+  if (error && !tracking) {
     return (
       <div className="container mx-auto px-4 py-6">
         <Card>
           <CardContent className="py-12 text-center">
             <p className="mb-4 text-red-500">{error}</p>
-            <Link href="/positions">
+            <Link href="/trackings">
               <Button variant="outline">목록으로 돌아가기</Button>
             </Link>
           </CardContent>
@@ -122,15 +122,15 @@ export default function PositionDetailPage() {
     );
   }
 
-  if (!position) return null;
+  if (!tracking) return null;
 
-  const profitable = pnl ? pnl.totalPnlKrw >= 0 : false;
+  const profitable = pnl ? pnl.totalGrossPnlKrw >= 0 : false;
 
   return (
     <div className="container mx-auto space-y-6 px-4 py-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">포지션 상세</h1>
-        <Link href="/positions">
+        <h1 className="text-xl font-bold">포지션 기록 상세</h1>
+        <Link href="/trackings">
           <Button variant="outline" size="sm">
             목록으로
           </Button>
@@ -140,15 +140,15 @@ export default function PositionDetailPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>{position.symbol}</span>
+            <span>{tracking.symbol}</span>
             <span
               className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
-                position.status === 'OPEN'
+                tracking.status === 'ACTIVE'
                   ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                   : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
               }`}
             >
-              {position.status === 'OPEN' ? '열림' : '종료'}
+              {tracking.status === 'ACTIVE' ? '추적 중' : '종료됨'}
             </span>
           </CardTitle>
         </CardHeader>
@@ -161,16 +161,16 @@ export default function PositionDetailPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">거래소</span>
-                  <span className="font-medium">{position.koreaExchange}</span>
+                  <span className="font-medium">{tracking.koreaExchange}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">수량</span>
-                  <span className="font-medium">{position.koreaQuantity}</span>
+                  <span className="font-medium">{tracking.koreaQuantity}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">진입가</span>
                   <span className="font-medium">
-                    {formatKrw(position.koreaEntryPrice)} KRW
+                    {formatKrw(tracking.koreaEntryPrice)} KRW
                   </span>
                 </div>
               </div>
@@ -183,19 +183,19 @@ export default function PositionDetailPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">거래소</span>
                   <span className="font-medium">
-                    {position.foreignExchange}
+                    {tracking.foreignExchange}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">수량</span>
                   <span className="font-medium">
-                    {position.foreignQuantity}
+                    {tracking.foreignQuantity}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">진입가</span>
                   <span className="font-medium">
-                    {position.foreignEntryPrice.toLocaleString('en-US', {
+                    {tracking.foreignEntryPrice.toLocaleString('en-US', {
                       maximumFractionDigits: 2,
                     })}{' '}
                     USD
@@ -204,7 +204,7 @@ export default function PositionDetailPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">레버리지</span>
                   <span className="font-medium">
-                    {position.foreignLeverage}x
+                    {tracking.foreignLeverage}x
                   </span>
                 </div>
               </div>
@@ -215,7 +215,7 @@ export default function PositionDetailPage() {
             <div>
               <p className="text-muted-foreground">진입 환율</p>
               <p className="text-lg font-semibold">
-                {position.entryFxRate.toLocaleString('ko-KR', {
+                {tracking.entryFxRate.toLocaleString('ko-KR', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}{' '}
@@ -227,29 +227,29 @@ export default function PositionDetailPage() {
               <p className="text-lg font-semibold">
                 <span
                   className={
-                    position.entryPremiumRate > 0
+                    tracking.entryPremiumRate > 0
                       ? 'text-red-500'
-                      : position.entryPremiumRate < 0
+                      : tracking.entryPremiumRate < 0
                         ? 'text-blue-500'
                         : ''
                   }
                 >
-                  {position.entryPremiumRate > 0 ? '+' : ''}
-                  {position.entryPremiumRate.toFixed(2)}%
+                  {tracking.entryPremiumRate > 0 ? '+' : ''}
+                  {tracking.entryPremiumRate.toFixed(2)}%
                 </span>
               </p>
             </div>
             <div>
               <p className="text-muted-foreground">관측 시각</p>
               <p className="text-lg font-semibold">
-                {new Date(position.entryObservedAt).toLocaleString('ko-KR')}
+                {new Date(tracking.entryObservedAt).toLocaleString('ko-KR')}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {position.status === 'OPEN' && (
+      {tracking.status === 'ACTIVE' && (
         <Card>
           <CardHeader>
             <CardTitle>손익 현황 (PnL)</CardTitle>
@@ -270,15 +270,15 @@ export default function PositionDetailPage() {
                       profitable ? 'text-green-600' : 'text-red-600'
                     }`}
                   >
-                    {formatSigned(pnl.totalPnlKrw)}원
+                    {formatSigned(pnl.totalGrossPnlKrw)}원
                   </p>
                   <p
                     className={`text-lg font-semibold ${
                       profitable ? 'text-green-600' : 'text-red-600'
                     }`}
                   >
-                    {pnl.totalPnlPercent > 0 ? '+' : ''}
-                    {pnl.totalPnlPercent.toFixed(2)}%
+                    {pnl.grossPnlPercentOfKoreaNotional > 0 ? '+' : ''}
+                    {pnl.grossPnlPercentOfKoreaNotional.toFixed(2)}%
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     프리미엄 차이{' '}
@@ -287,8 +287,8 @@ export default function PositionDetailPage() {
                         profitable ? 'text-green-600' : 'text-red-600'
                       }
                     >
-                      {pnl.premiumDiff > 0 ? '+' : ''}
-                      {pnl.premiumDiff.toFixed(2)}%p
+                      {pnl.premiumRateDelta > 0 ? '+' : ''}
+                      {pnl.premiumRateDelta.toFixed(2)}%p
                     </span>
                   </p>
                 </div>
@@ -297,22 +297,22 @@ export default function PositionDetailPage() {
                     <p className="text-muted-foreground">한국 PnL</p>
                     <p
                       className={`text-lg font-semibold ${
-                        pnl.koreaPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                        pnl.koreaLegGrossPnlKrw >= 0 ? 'text-green-600' : 'text-red-600'
                       }`}
                     >
-                      {formatSigned(pnl.koreaPnl)}원
+                      {formatSigned(pnl.koreaLegGrossPnlKrw)}원
                     </p>
                   </div>
                   <div className="rounded-lg border p-3">
                     <p className="text-muted-foreground">해외 PnL (KRW 환산)</p>
                     <p
                       className={`text-lg font-semibold ${
-                        pnl.foreignPnlKrw >= 0
+                        pnl.foreignLegGrossPnlKrw >= 0
                           ? 'text-green-600'
                           : 'text-red-600'
                       }`}
                     >
-                      {formatSigned(pnl.foreignPnlKrw)}원
+                      {formatSigned(pnl.foreignLegGrossPnlKrw)}원
                     </p>
                   </div>
                 </div>
@@ -331,8 +331,8 @@ export default function PositionDetailPage() {
                         profitable ? 'text-green-600' : 'text-red-600'
                       }`}
                     >
-                      {pnl.currentPremiumRate > 0 ? '+' : ''}
-                      {pnl.currentPremiumRate.toFixed(2)}%
+                      {pnl.referencePremiumRate > 0 ? '+' : ''}
+                      {pnl.referencePremiumRate.toFixed(2)}%
                     </p>
                   </div>
                 </div>
@@ -352,14 +352,14 @@ export default function PositionDetailPage() {
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      {position.status === 'OPEN' && (
+      {tracking.status === 'ACTIVE' && (
         <Button
           variant="destructive"
           className="w-full"
           onClick={handleClose}
           disabled={closing}
         >
-          {closing ? '종료 중...' : '포지션 종료'}
+          {closing ? '종료 중...' : '기록 종료'}
         </Button>
       )}
     </div>

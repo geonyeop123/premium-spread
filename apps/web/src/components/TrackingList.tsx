@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api';
 
-export interface Position {
+export interface Tracking {
   id: number;
   symbol: string;
   koreaExchange: string;
@@ -18,25 +18,25 @@ export interface Position {
   entryFxRate: number;
   entryPremiumRate: number;
   entryObservedAt: string;
-  status: 'OPEN' | 'CLOSED';
+  status: 'ACTIVE' | 'ARCHIVED';
 }
 
-export interface PnlData {
-  positionId: number;
-  premiumDiff: number;
+export interface GrossPnlData {
+  trackingId: number;
+  premiumRateDelta: number;
   entryPremiumRate: number;
-  currentPremiumRate: number;
-  koreaPnl: number;
-  foreignPnlKrw: number;
-  totalPnlKrw: number;
-  koreaCurrentValue: number;
-  totalPnlPercent: number;
-  isProfit: boolean;
+  referencePremiumRate: number;
+  koreaLegGrossPnlKrw: number;
+  foreignLegGrossPnlKrw: number;
+  totalGrossPnlKrw: number;
+  koreaLegNotionalKrw: number;
+  grossPnlPercentOfKoreaNotional: number;
+  isGrossProfit: boolean;
   calculatedAt: string;
 }
 
-interface PositionListProps {
-  positions: Position[];
+interface TrackingListProps {
+  trackings: Tracking[];
 }
 
 const formatKrw = (n: number) =>
@@ -51,27 +51,27 @@ const formatDate = (iso: string) =>
     minute: '2-digit',
   });
 
-export function PositionList({ positions }: PositionListProps) {
-  const [pnlMap, setPnlMap] = useState<Record<number, PnlData>>({});
+export function TrackingList({ trackings }: TrackingListProps) {
+  const [grossPnlMap, setPnlMap] = useState<Record<number, GrossPnlData>>({});
 
   useEffect(() => {
     let active = true;
-    const openPositions = positions.filter((p) => p.status === 'OPEN');
+    const activeTrackings = trackings.filter((p) => p.status === 'ACTIVE');
 
     const fetchPnls = async () => {
-      if (openPositions.length === 0) return;
+      if (activeTrackings.length === 0) return;
 
       const results = await Promise.allSettled(
-        openPositions.map((p) =>
-          apiClient<PnlData>(`/positions/${p.id}/pnl`)
+        activeTrackings.map((p) =>
+          apiClient<GrossPnlData>(`/trackings/${p.id}/gross-pnl`)
         ),
       );
       if (!active) return;
 
-      const newMap: Record<number, PnlData> = {};
+      const newMap: Record<number, GrossPnlData> = {};
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
-          newMap[openPositions[index].id] = result.value;
+          newMap[activeTrackings[index].id] = result.value;
         }
       });
       setPnlMap((previous) => ({ ...previous, ...newMap }));
@@ -84,12 +84,12 @@ export function PositionList({ positions }: PositionListProps) {
       window.clearTimeout(initialTimer);
       window.clearInterval(pollingTimer);
     };
-  }, [positions]);
+  }, [trackings]);
 
-  if (positions.length === 0) {
+  if (trackings.length === 0) {
     return (
       <p className="py-8 text-center text-muted-foreground">
-        포지션이 없습니다.
+        기록이 없습니다.
       </p>
     );
   }
@@ -103,16 +103,16 @@ export function PositionList({ positions }: PositionListProps) {
             <th className="pb-2 pr-4 font-medium text-right">한국 수량</th>
             <th className="pb-2 pr-4 font-medium text-right">한국 진입가</th>
             <th className="pb-2 pr-4 font-medium text-right">진입 프리미엄</th>
-            <th className="pb-2 pr-4 font-medium text-right">현재 PnL</th>
+            <th className="pb-2 pr-4 font-medium text-right">gross 손익</th>
             <th className="pb-2 pr-4 font-medium">진입 시각</th>
             <th className="pb-2 pr-4 font-medium">상태</th>
             <th className="pb-2 font-medium"></th>
           </tr>
         </thead>
         <tbody>
-          {positions.map((p) => {
-            const pnl = pnlMap[p.id];
-            const profitable = pnl ? pnl.totalPnlKrw >= 0 : false;
+          {trackings.map((p) => {
+            const pnl = grossPnlMap[p.id];
+            const profitable = pnl ? pnl.totalGrossPnlKrw >= 0 : false;
             return (
               <tr key={p.id} className="border-b last:border-0">
                 <td className="py-3 pr-4 font-medium">{p.symbol}</td>
@@ -135,23 +135,23 @@ export function PositionList({ positions }: PositionListProps) {
                   </span>
                 </td>
                 <td className="py-3 pr-4 text-right">
-                  {p.status === 'OPEN' && pnl ? (
+                  {p.status === 'ACTIVE' && pnl ? (
                     <div
                       className={`font-semibold ${
                         profitable ? 'text-green-600' : 'text-red-600'
                       }`}
                     >
                       <div>
-                        {pnl.premiumDiff > 0 ? '+' : ''}
-                        {pnl.premiumDiff.toFixed(2)}%p
+                        {pnl.premiumRateDelta > 0 ? '+' : ''}
+                        {pnl.premiumRateDelta.toFixed(2)}%p
                       </div>
                       <div className="text-xs font-normal">
-                        {formatSigned(pnl.totalPnlKrw)}원 (
-                        {pnl.totalPnlPercent > 0 ? '+' : ''}
-                        {pnl.totalPnlPercent.toFixed(2)}%)
+                        {formatSigned(pnl.totalGrossPnlKrw)}원 (
+                        {pnl.grossPnlPercentOfKoreaNotional > 0 ? '+' : ''}
+                        {pnl.grossPnlPercentOfKoreaNotional.toFixed(2)}%)
                       </div>
                     </div>
-                  ) : p.status === 'OPEN' ? (
+                  ) : p.status === 'ACTIVE' ? (
                     <span className="text-muted-foreground">-</span>
                   ) : (
                     <span className="text-muted-foreground">종료</span>
@@ -163,16 +163,16 @@ export function PositionList({ positions }: PositionListProps) {
                 <td className="py-3 pr-4">
                   <span
                     className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                      p.status === 'OPEN'
+                      p.status === 'ACTIVE'
                         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                         : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
                     }`}
                   >
-                    {p.status === 'OPEN' ? '열림' : '종료'}
+                    {p.status === 'ACTIVE' ? '추적 중' : '종료됨'}
                   </span>
                 </td>
                 <td className="py-3">
-                  <Link href={`/positions/${p.id}`}>
+                  <Link href={`/trackings/${p.id}`}>
                     <Button variant="outline" size="xs">
                       상세
                     </Button>
