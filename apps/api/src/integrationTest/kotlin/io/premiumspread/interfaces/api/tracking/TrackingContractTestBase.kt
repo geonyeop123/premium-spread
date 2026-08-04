@@ -42,15 +42,32 @@ import java.time.Instant
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, TestConfig::class)
 abstract class TrackingContractTestBase {
 
-    @Autowired protected lateinit var mockMvc: MockMvc
-    @Autowired protected lateinit var objectMapper: ObjectMapper
-    @Autowired protected lateinit var databaseCleanUp: DatabaseCleanUp
-    @Autowired protected lateinit var redisTemplate: StringRedisTemplate
-    @Autowired protected lateinit var trackingRepository: TrackingRepository
-    @Autowired protected lateinit var memberRepository: MemberRepository
-    @Autowired protected lateinit var passwordEncoder: PasswordEncoder
-    @Autowired protected lateinit var tickerRepository: TickerRepository
-    @Autowired protected lateinit var premiumRepository: PremiumRepository
+    @Autowired
+    protected lateinit var mockMvc: MockMvc
+
+    @Autowired
+    protected lateinit var objectMapper: ObjectMapper
+
+    @Autowired
+    protected lateinit var databaseCleanUp: DatabaseCleanUp
+
+    @Autowired
+    protected lateinit var redisTemplate: StringRedisTemplate
+
+    @Autowired
+    protected lateinit var trackingRepository: TrackingRepository
+
+    @Autowired
+    protected lateinit var memberRepository: MemberRepository
+
+    @Autowired
+    protected lateinit var passwordEncoder: PasswordEncoder
+
+    @Autowired
+    protected lateinit var tickerRepository: TickerRepository
+
+    @Autowired
+    protected lateinit var premiumRepository: PremiumRepository
 
     protected var memberId: Long = 0L
     protected lateinit var token: String

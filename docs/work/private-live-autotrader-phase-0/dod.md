@@ -711,6 +711,23 @@ worktree, 구현 전) → `GREEN=4 RED=8`.
 
 **성격**: 기준을 약화하지 않는다. 검사가 주장하던 것을 실제로 검사하게 만든 정정이다.
 
+### CR-4. DoD 가 CI job 5(ktlint·detekt)를 다루지 않았다 (2026-08-04, PR 후)
+
+**문제**: 수용기준이 `test`·`architectureTest`·`verifyMigrations`·통합 test·web lint/build/test·문서 계약을
+덮었으나 **CI job 5 의 ktlint·detekt 가 빠져 있었다.** 그래서 PR #67 의 CI 에서 ktlint 15건이 처음 드러났다
+(`no-consecutive-blank-lines` 2, `spacing-between-declarations-with-annotations` 8,
+`argument-list-wrapping` 5).
+
+**왜 로컬에서 못 잡았나**: 이 저장소에는 ktlint gradle task 나 plugin 이 없다. CI 가 `.ci-tools/ktlint.jar`
+를 부트스트랩해 실행하는데, `ci/bootstrap-quality-tools.sh` 는 네트워크 다운로드를 CI 전용으로 막는다
+(`QUALITY_TOOLS_ALLOW_NETWORK`). 가드를 우회하지 않고 위반을 직접 고쳤다.
+
+**보완**: `plan.md` T8 에 ktlint·detekt 를 명시하고, jar 없이 쓸 수 있는 `.editorconfig` 기준 자체 점검
+항목(130자·`*Test.kt` 예외·파일 끝 개행·연속 빈 줄·애너테이션 선언 간격·인자 줄바꿈)을 적었다.
+자체 점검으로 잔여 위반이 없음을 확인했다.
+
+**성격**: 기준을 약화하지 않는다. 애초에 덮었어야 할 gate 가 빠져 있었다는 사실을 남긴다.
+
 ## 최종 판정
 
 ⑩ 최종 확인 시점의 판정이다.

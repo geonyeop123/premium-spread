@@ -17,8 +17,13 @@ class TrackingLegacyRowIntegrationTest : TrackingContractTestBase() {
     @Autowired private lateinit var jdbc: JdbcTemplate
 
     private val snapshotColumns = listOf(
-        "closed_at", "close_observed_at", "close_fx_observed_at",
-        "close_korea_price", "close_foreign_price", "close_fx_rate", "close_premium_rate",
+        "closed_at",
+        "close_observed_at",
+        "close_fx_observed_at",
+        "close_korea_price",
+        "close_foreign_price",
+        "close_fx_rate",
+        "close_premium_rate",
     )
 
     /** 종료 상태로 만들되 지정한 컬럼만 NULL 로 비운다. */

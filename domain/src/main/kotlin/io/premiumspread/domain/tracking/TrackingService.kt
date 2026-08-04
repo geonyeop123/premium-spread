@@ -36,7 +36,6 @@ class TrackingService(private val trackingRepository: TrackingRepository) {
     fun findOwnedByIdForUpdate(id: Long, memberId: Long): Tracking? =
         trackingRepository.findOwnedByIdForUpdate(id, memberId)
 
-
     @Transactional(readOnly = true)
     fun findAllActiveByMemberId(memberId: Long): List<Tracking> = trackingRepository.findAllActiveByMemberId(memberId)
 

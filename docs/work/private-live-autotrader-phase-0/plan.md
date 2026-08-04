@@ -422,6 +422,12 @@ bash docs/work/private-live-autotrader-phase-0/verify.sh AC8 AC15 AC16 AC17
 cd apps/web && npm ci && npm run lint && npm run test && npm run build && cd ../..
 bash ci/quality-gate-contract-test.sh
 bash docs/check-documentation.sh && git diff --check origin/dev...HEAD
+
+# ktlint·detekt (CI job 5). 로컬에는 gradle task 가 없고 jar 부트스트랩이 CI 전용이라
+# 이 브랜치는 CI 에서 처음 확인했다. 자체 점검은 .editorconfig 기준으로 한다:
+#   max_line_length=130 (*Test.kt 는 off), insert_final_newline, 연속 빈 줄 금지,
+#   @annotation 선언 사이 빈 줄, 인자 목록 줄바꿈
+java -jar .ci-tools/ktlint.jar '**/src/**/*.kt' '!**/build/**'   # jar 가 있을 때만
 bash docs/work/private-live-autotrader-phase-0/verify.sh
 ```
 
