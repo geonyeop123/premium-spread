@@ -10,6 +10,7 @@ PRIVATE LIVE 자동매매 프로그램의 Phase 0 실행 단위다. 주문을 �
 - [완료 기준 계약서](dod.md) — 수용기준 27개 (`status: FROZEN`)
 - [개발자 이해문서](understanding.md) — 배경·결정·함정
 - [검증 러너](verify.sh) — `bash docs/work/private-live-autotrader-phase-0/verify.sh --static`
+- [계획 검토 결과](review-findings.md) — 지적 27건 판정과 반복 지적의 인과 분류 (Phase 1 진입 판단 입력)
 
 ## 상위 문서
 
