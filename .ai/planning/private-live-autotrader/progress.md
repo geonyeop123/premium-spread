@@ -12,25 +12,37 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
 | 상태축 | 현재값 |
 |---|---|
 | specification | `MASTER_SPEC_APPROVED` |
-| software | `SOFTWARE_BASELINE` (아래 각주) |
+| software | **`FOUNDATION_ALIGNED`** (아래 각주) |
 | evidence collection | `COLLECTION_NOT_READY` |
 | candidate/evidence | `CANDIDATE_NOT_SELECTED` |
 | activation | `ACTIVATION_NOT_STARTED` |
 | execution latch | `LATCH_CLEAR` |
 | program | `PROGRAM_IN_PROGRESS` |
 
-- 현재 Phase: `Phase 0 구현 완료 · 병합 대기` (Phase 1 미진입)
-- feature branch: `refactor/private-live-autotrader-phase-0`
-- PR: `#67 OPEN` (base `dev`) · 검토 결과 `#68` · `ECO-5` 산출 `#69` 가 그 위에 스택
-- base `origin/dev`: `5319a2d`
+- 현재 Phase: `Phase 0 완료` · Phase 1 미진입 (진입 전 처리 대상 3건은 `#68` §1)
+- feature branch: 없음 (Phase 0 병합 후 삭제)
+- PR: `#67` merged (`67bc948`) · `#68` `#69` merged · `#71` merged (게이트 복구)
+- `origin/dev`: `2bcfb9f`
 - original master plan commit: `b6e16edb3632978728f62918bddb25f791501467`
 
-**software 축 각주 (2026-08-26).** Phase 0 브랜치의 커밋 `963a5f9` 가 `FOUNDATION_ALIGNED` 를
-append 하고 DoD 를 `VERIFIED` 로 판정했으나, `design.md` §4.2 는 software 축 전이를 해당 Phase DoD의
-**merged 검증 결과**로 선언하라고 규정하고 §7.1 은 T2 를 "PR 및 merged `dev` Quality Gate" 로 정의한다.
-PR #67 이 미병합이므로 그 요건이 충족되지 않았다. 따라서 이 표는 전이를 **인정하지 않고**
-`SOFTWARE_BASELINE` 을 유지한다. PR #67 병합 후 merged `dev` 에서 gate 를 통과시켜 재선언하거나,
-재계획으로 Phase 0 을 재배치할 경우 그 append 를 회수한다. 근거는 `#68` 의 검토 결과 문서다.
+**software 축 각주 (2026-08-27).** `MASTER_SPEC_APPROVED` → `FOUNDATION_ALIGNED` 전이를 선언한다.
+`design.md` §4.2 는 software 축 전이를 해당 Phase DoD 의 **merged 검증 결과**로 선언하라고 규정하고
+§7.1 은 T2 를 "PR 및 merged `dev` Quality Gate" 로 정의한다. 그 요건이 아래 순서로 충족됐다.
+
+1. PR `#67` 이 `67bc948` 로 `dev` 에 병합됐다
+2. 그 시점의 merged `dev` Quality Gate (run 32980963923) 가 **job 6 Dependency + security scan 에서 실패**했다.
+   원인은 Phase 0 결함이 아니라 advisory 피드 변동이다 — Phase 0 `AC14` 는 당시 GREEN 이었고
+   `294a2d2` 에서 high 2건을 해소했으나 그 뒤 `js-yaml`·`nanoid` advisory 가 새로 공개됐다.
+   이 시점까지 전이를 **인정하지 않고** `SOFTWARE_BASELINE` 을 유지했다
+3. PR `#71` 이 override 2건으로 그 실패를 해소했다
+4. `2bcfb9f` 의 merged `dev` Quality Gate 가 **7개 job 전부 success** 로 통과했다
+
+따라서 §4.2 요건이 충족되어 전이를 선언한다. 근거 run 은 32983078442 다.
+
+**남는 구조적 지적.** §4.2 가 상태 전이 근거로 삼는 merged 게이트에 **외부 advisory 피드에 의존하는
+job** 이 들어 있다. 즉 "게이트 통과" 가 시간 의존 술어이며 같은 코드가 어제 GREEN 이고 오늘 RED 가 된다.
+Phase 0 `AC14` 의 GREEN 기록이 `67bc948` 시점에 재현되지 않은 것이 그 증거다. `#68` 의 검토에 없던
+항목이며, 상태 전이 조건과 재현 불가능한 게이트의 관계는 별도 검토 대상이다.
 
 **이 표의 갱신 의무.** 아래 두 시점에 이 절을 갱신한다. 갱신하지 않은 상태 전이는 선언되지 않은 것으로 본다.
 
@@ -830,8 +842,9 @@ Phase 0 결과를 놓고 프로그램을 계속할지 재계획할지 판단하�
 실어댑터를 Phase 3 에 남긴다.
 
 **2026-08-03 항목의 대체.** 그 절의 "Phase 1 진입 조건 충족: `FOUNDATION_ALIGNED`" 는 위 software 축
-각주로 대체된다. append-only 계약상 그 기록은 당시 판정으로 보존하되, 진입 조건 충족 여부의 현재값은
-이 문서 상단 상태 표가 소유한다.
+각주로 대체된다. append-only 계약상 그 기록은 당시 판정으로 보존한다. **전이 자체는 2026-08-27 에
+`2bcfb9f` 의 merged 게이트로 성립했으며**, 2026-08-03 시점에는 §4.2 요건이 충족되지 않았다.
+Phase 1 진입에는 전이 외에 `#68` §1 의 세 항목이 남아 있고 그 현재값은 상단 상태 표가 소유한다.
 
 **상태축 변화 없음.** 이 실행 단위는 문서만 산출했다.
 
