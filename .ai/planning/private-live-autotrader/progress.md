@@ -760,3 +760,17 @@ Quality Gate job 결과로 판정한다.
 - 7. Docker image build: SUCCESS
 - 결과: `7/7 SUCCESS`, Phase -1 DoD `VERIFIED`
 - 실제 host/activation: NOT_RUN
+
+## Phase 0 Foundation Alignment 완료 (2026-08-03)
+
+- software 축: `MASTER_SPEC_APPROVED` → **`FOUNDATION_ALIGNED`**
+- 산출물: `docs/work/private-live-autotrader-phase-0/` (design·plan·dod·understanding·verify.sh)
+- DoD 판정: `VERIFIED` — T1/T2 자동 22/22, T4 사람 확인 4/4
+- 브랜치: `refactor/private-live-autotrader-phase-0`
+
+달성한 계약: `P0-O1`~`P0-O5`, `SEM-1`~`SEM-4`, `ARCH-7`, `ARCH-9`(Phase 0 몫인 identity 판정)
+
+Phase 1 로 이월한 미해결 결정: `OPEN-1`(MarketPair 확장) `OPEN-2`(leg 가격 의미) `OPEN-3`(순손익 모델)
+`OPEN-4`(UPBIT 연결) `OPEN-5`(확정 불가 backfill) `OPEN-6`(leg 별 관측 시각) `OPEN-7`(USDT→USD 정규화)
+
+Phase 1 진입 조건 충족: `FOUNDATION_ALIGNED` 이며 위 미해결 사항이 Phase 1 설계를 차단하지 않는다.

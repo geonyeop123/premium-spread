@@ -79,7 +79,7 @@ premium = ((koreaPrice - foreignPrice × fxRate) / (foreignPrice × fxRate)) × 
 | 프리미엄 | 1초 | 계산 → Redis |
 | 프리미엄/티커 집계 | 1분/1시간/1일 | Redis ZSet 집계 → DB |
 
-### 3. 포지션 관리
+### 3. 포지션 기록 (수동 추적)
 
 - **진입 (Open)**: 프리미엄 매수 상태 기록
 - **청산 (Close)**: 손익 확정
@@ -89,7 +89,8 @@ premium = ((koreaPrice - foreignPrice × fxRate) / (foreignPrice × fxRate)) × 
 
 - 실시간 프리미엄 현황
 - 프리미엄 차트 (1분/1시간/1일 인터벌)
-- 포지션 관리 (진입/청산/이력)
+- 포지션 기록 (기록/종료/이력) — **실제 주문을 생성하지 않는다.** 다른 곳에서 체결한 포지션을
+  손으로 적어 두고 gross 손익을 보는 추적 record 다
 - 회원 인증 (세션 기반)
 
 ## 시작하기
@@ -147,17 +148,21 @@ docker compose -f docker/web-compose.yml up -d --build
 | GET | `/api/v1/premiums/history/{symbol}` | 기간별 프리미엄 조회 |
 | GET | `/api/v1/premiums/aggregation/{symbol}` | 프리미엄 집계 조회 (1m/1h/1d) |
 
-### 포지션
+### 포지션 기록 (추적)
+
+실제 주문을 내지 않는다. 손익은 수수료·펀딩비·슬리피지·환전 스프레드가 빠진 gross 다.
+
 
 | Method | Path | 설명 |
 |--------|------|------|
-| POST | `/api/v1/positions` | 포지션 진입 |
-| GET | `/api/v1/positions` | 열린 포지션 목록 |
-| GET | `/api/v1/positions/summary` | 포지션 요약 |
-| GET | `/api/v1/positions/history` | 청산 이력 |
-| GET | `/api/v1/positions/{id}` | 포지션 상세 |
-| GET | `/api/v1/positions/{id}/pnl` | PnL 조회 |
-| POST | `/api/v1/positions/{id}/close` | 포지션 청산 |
+| POST | `/api/v1/trackings` | 입력값으로 기록 |
+| POST | `/api/v1/trackings/from-market` | 현재 시세로 기록 |
+| GET | `/api/v1/trackings` | 추적 중 목록 |
+| GET | `/api/v1/trackings/summary` | 개수 요약 |
+| GET | `/api/v1/trackings/archived` | 종료된 기록 |
+| GET | `/api/v1/trackings/{id}` | 단건 조회 |
+| GET | `/api/v1/trackings/{id}/gross-pnl` | gross 손익 |
+| POST | `/api/v1/trackings/{id}/archive` | 추적 종료 + 청산 스냅샷 확정 |
 
 ### 회원 / 인증
 

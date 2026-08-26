@@ -38,18 +38,18 @@ class GlobalExceptionHandlerTest {
 
     @Test
     fun `도메인 유효성 Application 오류는 422를 반환한다`() {
-        val response = handler.handleApplicationException(ApplicationException(ApplicationError.INVALID_POSITION))
+        val response = handler.handleApplicationException(ApplicationException(ApplicationError.INVALID_TRACKING))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY)
-        assertThat(response.body!!.code).isEqualTo("INVALID_POSITION")
+        assertThat(response.body!!.code).isEqualTo("INVALID_TRACKING")
     }
 
     @Test
     fun `미발견 Application 오류는 404를 반환한다`() {
-        val response = handler.handleApplicationException(ApplicationException(ApplicationError.POSITION_NOT_FOUND))
+        val response = handler.handleApplicationException(ApplicationException(ApplicationError.TRACKING_NOT_FOUND))
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
-        assertThat(response.body!!.message).isEqualTo("포지션을 찾을 수 없습니다.")
+        assertThat(response.body!!.message).isEqualTo("추적 기록을 찾을 수 없습니다.")
     }
 
     @Test

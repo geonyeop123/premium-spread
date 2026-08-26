@@ -73,7 +73,7 @@ class PremiumCacheReader(private val redisTemplate: StringRedisTemplate, private
 
     fun getBtc(): CachedPremium? = get("btc")
 
-    fun getHistory(pair: MarketPair, limit: Long = 100): List<PremiumHistoryEntry> {
+    fun findAllArchived(pair: MarketPair, limit: Long = 100): List<PremiumHistoryEntry> {
         val selected = selectHistory(pair, limit) ?: return emptyList()
         val parsed = selected.value.map { entry ->
             parseHistoryEntry(entry) ?: return corruptHistory(selected.key)
@@ -82,10 +82,10 @@ class PremiumCacheReader(private val redisTemplate: StringRedisTemplate, private
         return parsed
     }
 
-    fun getHistory(symbol: String, limit: Long = 100): List<PremiumHistoryEntry> =
-        getHistory(MarketPair.default(Symbol(symbol)), limit)
+    fun findAllArchived(symbol: String, limit: Long = 100): List<PremiumHistoryEntry> =
+        findAllArchived(MarketPair.default(Symbol(symbol)), limit)
 
-    fun getBtcHistory(limit: Long = 100): List<PremiumHistoryEntry> = getHistory("btc", limit)
+    fun getBtcHistory(limit: Long = 100): List<PremiumHistoryEntry> = findAllArchived("btc", limit)
 
     fun exists(pair: MarketPair): Boolean = try {
         redisTemplate.hasKey(pair.v2Key()) ||

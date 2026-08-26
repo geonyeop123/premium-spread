@@ -91,7 +91,7 @@ class PremiumCacheCutoverTest {
         every { zSetOps.reverseRangeWithScores("premium:bithumb:binance:btc:history", 0, 99) } returns emptySet()
         every { zSetOps.reverseRangeWithScores("premium:btc:history", 0, 99) } returns setOf(tuple)
 
-        assertThat(reader.getHistory(defaultPair)).hasSize(1)
+        assertThat(reader.findAllArchived(defaultPair)).hasSize(1)
         verify { redisTemplate.expire("premium:btc:history", RedisTtl.PREMIUM_LEGACY_READ_WINDOW) }
     }
 
@@ -124,7 +124,7 @@ class PremiumCacheCutoverTest {
             },
         )
 
-        assertThat(reader.getHistory(defaultPair)).isEmpty()
+        assertThat(reader.findAllArchived(defaultPair)).isEmpty()
         verify { metrics.record("premium_history", CacheReadOutcome.CORRUPT) }
     }
 

@@ -5,7 +5,7 @@ import io.premiumspread.application.job.premium.PremiumRealtimeJob
 import io.premiumspread.domain.exchangerate.ExchangeRateService
 import io.premiumspread.domain.member.MemberService
 import io.premiumspread.domain.notification.NotificationSubscriptionService
-import io.premiumspread.domain.position.PositionService
+import io.premiumspread.domain.tracking.TrackingService
 import io.premiumspread.domain.premium.PremiumService
 import io.premiumspread.domain.ticker.TickerService
 import io.premiumspread.support.BatchIntegrationTestBase
@@ -25,7 +25,7 @@ class BatchComponentScanBoundaryTest : BatchIntegrationTestBase() {
             ExchangeRateService::class.java,
             MemberService::class.java,
             NotificationSubscriptionService::class.java,
-            PositionService::class.java,
+            TrackingService::class.java,
             PremiumService::class.java,
             TickerService::class.java,
         )

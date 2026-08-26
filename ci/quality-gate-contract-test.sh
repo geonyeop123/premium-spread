@@ -249,6 +249,8 @@ grep -q -- '--baseline config/detekt/baseline.xml' "${quality_workflow}" || fail
 grep -q 'ktlint.jar' "${quality_workflow}" || fail "standalone ktlint is required"
 grep -q 'run-npm-audit.sh' "${quality_workflow}" || fail "web audit gate is required"
 grep -q 'npm --prefix apps/web run lint' "${quality_workflow}" || fail "locked web lint gate is required"
+# 사용자가 보는 고지(SEM-1·SEM-4)는 문자열 검색이 아니라 렌더 테스트로만 증명된다.
+grep -q 'npm --prefix apps/web run test' "${quality_workflow}" || fail "web render test gate is required"
 grep -q 'npm --prefix apps/web ci --include=optional' "${quality_workflow}" || fail "web install must include locked native optional dependencies"
 grep -q 'npm ci --include=optional' "${root_dir}/apps/web/Dockerfile" || fail "web image must include locked native optional dependencies"
 

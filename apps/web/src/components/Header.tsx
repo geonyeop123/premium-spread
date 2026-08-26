@@ -18,7 +18,7 @@ export function Header() {
               대시보드
             </Link>
             {user && (
-              <Link href="/positions" className="text-muted-foreground hover:text-foreground">
+              <Link href="/trackings" className="text-muted-foreground hover:text-foreground">
                 포지션
               </Link>
             )}

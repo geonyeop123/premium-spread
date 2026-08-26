@@ -1,6 +1,6 @@
 # Premium Spread 시스템 아키텍처
 
-> 구현 기준(As-Is), 2026-07-15. 과거 이슈 계획은 역사 기록이며 이 문서와 실제 코드가 현재 구조의 SSOT다.
+> 구현 기준(As-Is), 2026-08-03. 과거 이슈 계획은 역사 기록이며 이 문서와 실제 코드가 현재 구조의 SSOT다.
 
 ## 시스템 경계
 
@@ -164,3 +164,22 @@ V14는 구독 pair/revision과 durable delivery queue를 추가한다. V12 check
 운영 절차는 [`docs/runbooks/observability-readiness.md`](../../docs/runbooks/observability-readiness.md),
 [`docs/runbooks/metrics-alerting.md`](../../docs/runbooks/metrics-alerting.md),
 [`docs/runbooks/deployment.md`](../../docs/runbooks/deployment.md)를 따른다.
+
+## Planned capability
+
+이 문서는 **As-Is 만** 기술한다. 개인용 PRIVATE LIVE 자동매매 계획은 별도 문서가 소유한다.
+
+| 대상 | 문서 |
+|---|---|
+| 프로그램 목표·보장·안전 불변식·Phase | [`docs/work/private-live-autotrader/design.md`](../../docs/work/private-live-autotrader/design.md) |
+| Phase 0 Foundation Alignment | [`docs/work/private-live-autotrader-phase-0/design.md`](../../docs/work/private-live-autotrader-phase-0/design.md) |
+
+이 문서가 **다루지 않는 것**: 전략 실행 엔진, 거래소 private adapter, 주문·체결·reconcile,
+LIVE 활성화 계약. 전부 Planned 이며 위 문서가 Phase 별 진입·종료 조건을 소유한다.
+
+`ARCH-7` 경계에 따라 API/Web 은 owner 에게 관찰·제어 surface 를 제공하되 전략 실행과 private adapter 를
+직접 구현하지 않는다. **Phase 0 시점의 API/Web 은 관찰 surface 만 갖는다** — `/api/v1/trackings` 는 다른
+곳에서 체결한 포지션을 손으로 기록하는 추적 record 이며 주문을 내지 않는다.
+
+정본 identity(`ARCH-9`) 와 현재 `MarketPair` 의 차이는
+[Phase 0 §5.5 identity 판정](../../docs/work/private-live-autotrader-phase-0/design.md)이 기록한다.

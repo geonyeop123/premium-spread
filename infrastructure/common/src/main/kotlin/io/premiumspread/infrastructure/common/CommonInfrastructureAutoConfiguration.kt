@@ -25,7 +25,7 @@ import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggr
 import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationRepository
 import io.premiumspread.infrastructure.common.persistence.jpa.member.JpaMemberRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jpa.notification.JpaNotificationSubscriptionRepositoryAdapter
-import io.premiumspread.infrastructure.common.persistence.jpa.position.JpaPositionRepositoryAdapter
+import io.premiumspread.infrastructure.common.persistence.jpa.tracking.JpaTrackingRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jpa.premium.JpaPremiumRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jpa.ticker.JpaTickerRepositoryAdapter
 import io.premiumspread.redis.RedisFoundationAutoConfiguration
@@ -85,7 +85,7 @@ class CommonJdbcConfiguration
 @Import(
     JpaMemberRepositoryAdapter::class,
     JpaNotificationSubscriptionRepositoryAdapter::class,
-    JpaPositionRepositoryAdapter::class,
+    JpaTrackingRepositoryAdapter::class,
     JpaPremiumRepositoryAdapter::class,
     JpaTickerRepositoryAdapter::class,
 )
