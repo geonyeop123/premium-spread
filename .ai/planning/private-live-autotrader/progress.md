@@ -12,19 +12,30 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
 | 상태축 | 현재값 |
 |---|---|
 | specification | `MASTER_SPEC_APPROVED` |
-| software | `SOFTWARE_BASELINE` |
+| software | `SOFTWARE_BASELINE` (아래 각주) |
 | evidence collection | `COLLECTION_NOT_READY` |
 | candidate/evidence | `CANDIDATE_NOT_SELECTED` |
 | activation | `ACTIVATION_NOT_STARTED` |
 | execution latch | `LATCH_CLEAR` |
 | program | `PROGRAM_IN_PROGRESS` |
 
-- 현재 Phase: `Phase 0 진입 가능 (master specification 승인 완료)`
-- feature branch: `docs/private-live-autotrader-master-spec`
-- worktree: `/mnt/c/users/yeop/ideaprojects/premium-spread/.worktrees/docs-private-live-autotrader-master-spec`
-- Draft PR: `NOT_CREATED`
-- base `origin/dev`: `15cc02f820ed688dae5ef7b38ce50245f2cb1566`
+- 현재 Phase: `Phase 0 구현 완료 · 병합 대기` (Phase 1 미진입)
+- feature branch: `refactor/private-live-autotrader-phase-0`
+- PR: `#67 OPEN` (base `dev`) · 검토 결과 `#68` · `ECO-5` 산출 `#69` 가 그 위에 스택
+- base `origin/dev`: `5319a2d`
 - original master plan commit: `b6e16edb3632978728f62918bddb25f791501467`
+
+**software 축 각주 (2026-08-26).** Phase 0 브랜치의 커밋 `963a5f9` 가 `FOUNDATION_ALIGNED` 를
+append 하고 DoD 를 `VERIFIED` 로 판정했으나, `design.md` §4.2 는 software 축 전이를 해당 Phase DoD의
+**merged 검증 결과**로 선언하라고 규정하고 §7.1 은 T2 를 "PR 및 merged `dev` Quality Gate" 로 정의한다.
+PR #67 이 미병합이므로 그 요건이 충족되지 않았다. 따라서 이 표는 전이를 **인정하지 않고**
+`SOFTWARE_BASELINE` 을 유지한다. PR #67 병합 후 merged `dev` 에서 gate 를 통과시켜 재선언하거나,
+재계획으로 Phase 0 을 재배치할 경우 그 append 를 회수한다. 근거는 `#68` 의 검토 결과 문서다.
+
+**이 표의 갱신 의무.** 아래 두 시점에 이 절을 갱신한다. 갱신하지 않은 상태 전이는 선언되지 않은 것으로 본다.
+
+1. Phase·gate 실행 단위의 종료 판정이 나올 때 — 상태축 현재값과 근거 PR 번호
+2. 실행 순서가 `design.md` §5 roadmap 과 달라질 때 — 그 재순서화의 이유와 범위
 
 ## Master specification 재작성 — 2026-07-21
 
@@ -774,3 +785,53 @@ Phase 1 로 이월한 미해결 결정: `OPEN-1`(MarketPair 확장) `OPEN-2`(leg
 `OPEN-4`(UPBIT 연결) `OPEN-5`(확정 불가 backfill) `OPEN-6`(leg 별 관측 시각) `OPEN-7`(USDT→USD 정규화)
 
 Phase 1 진입 조건 충족: `FOUNDATION_ALIGNED` 이며 위 미해결 사항이 Phase 1 설계를 차단하지 않는다.
+
+## 계획 검토와 `ECO-5` 산출 — 2026-08-26
+
+Phase 0 결과를 놓고 프로그램을 계속할지 재계획할지 판단하기 위해 수행했다. 코드 변경은 없다.
+
+**산출물**
+
+| 항목 | 위치 |
+|---|---|
+| Phase 0·프로그램 계획 검토 — 지적 27건 판정 | PR `#68` · `docs/work/private-live-autotrader-phase-0/review-findings.md` |
+| `ECO-5` 자본 소진·연속 cycle 수 산출 (항목 1·2) | PR `#69` · `docs/work/private-live-autotrader/eco-5-capital-cycle.md` |
+| `definition-of-done` 스킬 검사기 구조 수정 | 외부 저장소 `ai-skills` PR `#5` |
+
+**확정된 사실**
+
+- 수집된 시장 데이터가 **0** 이다. 로컬 named volume 부재, 운영·스테이징 환경 없음, OCI 인스턴스 미생성.
+  `design.md` §4.4 가 "가장 긴 lead time 항목" 이라고 규정한 장기 evidence clock 이 아직 시작되지 않았다
+- `ECO-5` 항목 1: 재배치 없이 중앙 7~9 사이클 (레버 캡 7배, 보유 3일, 실측 166일 창 491런)
+- `ECO-5` 항목 2: 자본이 0 이 되는 경로가 아니라 두 계정 잔고 비율이 코리도(빗썸 비중 60%~87.7%)를
+  이탈해 거래가 멈춘다. 마름의 원인은 프리미엄 수익이 아니라 보유 구간의 BTC 가격 방향이다
+- 레버 캡을 6배에서 **7배**로 상향 (owner 경험). 코리도 상단이 85.9% → 87.7%
+- 초기 배분 권고 빗썸 79~81%. 현행 83% 에서 $400~800 을 바이낸스로 이전
+
+**Phase 1 진입 전 처리 대상** (`#68` §1)
+
+1. `NOGO-0` 비용·기간 상한 승인과 소유 실행 단위 배정 — §9.4 가 "결과를 보기 전에 승인" 을 요구하므로
+   진행할수록 지킬 수 없게 된다
+2. `ACT-1` 시점 확정 — §4.5("credential 전에 평가")와 §5 흐름도(Phase 3 뒤)가 충돌한다
+3. PR `#67` 병합과 `FOUNDATION_ALIGNED` 재선언, 또는 재계획 시 append 회수
+
+**재순서화 (`design.md` §5 roadmap 대비)**
+
+계속/재계획 판단에 필요해 아래 두 항목을 roadmap 순서보다 앞당겼다. 두 건 모두 코드 산출물이 없고
+상태축을 전이시키지 않는다.
+
+| 당긴 항목 | 원래 배정 | 당긴 이유 |
+|---|---|---|
+| `ECO-5` 항목 1·2 산출 | Phase 1 · Phase 2 · Candidate Gate | §1.2 가 "실행 가능성의 전제" 로 선언한 값이 미산출이라, 계속·재계획 선택의 근거가 없었다 |
+| 전략 엔진 "거래 준비" 계약 설계 | Phase 3 (`P3-O2`·`P3-O4`) | `#68` 이 지적한 Phase 3 집중(outcome 45%가 마지막 단계)의 완화. 목표 능력의 얇은 수직 경로를 앞으로 당겨 중간 성취를 만든다 |
+
+두 번째 항목은 설계만 수행하며 credential 을 요구하지 않는다. `P3-O3` 이 규정한
+"code-ready 판정은 fake·recorded account 로 검증" 경로를 따르고, 잔고 조회는 Domain port 로 분리해
+실어댑터를 Phase 3 에 남긴다.
+
+**2026-08-03 항목의 대체.** 그 절의 "Phase 1 진입 조건 충족: `FOUNDATION_ALIGNED`" 는 위 software 축
+각주로 대체된다. append-only 계약상 그 기록은 당시 판정으로 보존하되, 진입 조건 충족 여부의 현재값은
+이 문서 상단 상태 표가 소유한다.
+
+**상태축 변화 없음.** 이 실행 단위는 문서만 산출했다.
+
