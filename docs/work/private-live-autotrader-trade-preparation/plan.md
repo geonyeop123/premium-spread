@@ -39,26 +39,38 @@
 |---|---|
 | `TradePrepPorts.kt` | `BalanceReadPort` — 표시용·판정용 두 계약 (D2). 관례상 묶음 파일 |
 | `BalanceSnapshot.kt` | 잔고 스냅샷 read model. `balanceBasis`·`observedAt`·스냅샷 id 보존 |
-| `BalanceBasis.kt` | `FRESH` / `STALE` / `UNAVAILABLE` |
-| `TradePrepSizing.kt` | `R` → `L` → `Q` 순수 함수 (`ECO-5` §2) |
+| `BalanceBasis.kt` | `FRESH` / `STALE` / `UNAVAILABLE` / **`UNVERIFIED`** (D9) |
+| `VerifiedBalance.kt` | 판정용 타입. **생성자를 Domain 내부에 감추고 `UNVERIFIED` 입력으로는 만들지 않는다** (D9) |
+| `TradePrepSizing.kt` | `R` → `L` → `Q` 순수 함수 (`ECO-5` §2) + **lot/step 반올림과 반올림 후 재판정** (D12) |
 | `CapVerdict.kt` | 레버 캡·효율 캡·청산 거리 판정 결과 |
-| `TradePrepPolicy.kt` | 캡 값을 설정으로 받아 판정. 값을 하드코딩하지 않는다 |
+| `TradePrepPolicy.kt` | 캡 값과 거래소 lot/step 값을 설정으로 받아 판정. 값을 하드코딩하지 않는다 |
 
 **판정용 계약을 타입으로 분리한다.** 표시용이 `BalanceSnapshot`을 반환하고, 판정용은
 별도 타입(`VerifiedBalance`)을 반환해 캐시 경로에서 만들 수 없게 한다 — `dod.md` AC5.
 
+**신뢰 경계를 타입으로 강제한다** (D9, `dod.md` AC13). `DeclaredBalanceAdapter`는
+`UNVERIFIED` 스냅샷만 만들고 그것으로는 `VerifiedBalance`가 나오지 않는다. 즉 declared 입력만으로는
+`ARMED`에 도달할 수 없다.
+
+**반올림은 사이징의 일부다** (D12, `dod.md` AC2). 거래소 lot/step size를 보수적 방향으로 적용하고
+**반올림 뒤 `Q`·`L`·캡을 다시 판정한다.** 반올림이 캡을 넘기면 계획을 만들지 않는다.
+양 leg 수량이 반올림 후에도 같은지 확인하고 다르면 작은 쪽에 맞춘다.
+
 **검증**
 
 ```bash
-./gradlew test --tests '*TradePreparationSizing*' --tests '*TradePreparationCap*' --offline --no-daemon
+./gradlew test --tests '*TradePreparationSizing*' --tests '*TradePreparationCap*' --tests '*TradePreparationBalanceTrust*' --offline --no-daemon
 ./gradlew architectureTest --offline --no-daemon
 ```
 
-예상: `AC2`·`AC3`·`AC8` GREEN. 나머지는 아직 RED다.
+예상: `AC2`·`AC3`·`AC8`·`AC13` GREEN. 나머지는 아직 RED다.
 
 ### T2. Domain — 계획 엔티티와 상태 기계
 
 **신설** `TradePreparation` (JPA Entity, `data class` 아님), `TradePreparationStatus`
+
+**보존 필드** (D12, `dod.md` AC14) — `MarketPair`, 해외가·FX·프리미엄의 snapshot id·관측 시각·출처,
+결속 잔고 스냅샷 id, 산출 `Q`·`L`, 희망 프리미엄, `version`, 상태, 무효화 사유.
 
 ```
 DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)──> ARMED
@@ -76,15 +88,21 @@ DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)�
 | owner refresh | 명시 요청 |
 | reconcile 불일치 | 판정용 잔고가 결속 스냅샷과 다름 |
 
+**전이를 `version`으로 선형화한다** (D11, `dod.md` AC11). 모든 전이는
+`WHERE id = ? AND version = ? AND status = ?` 조건부 update이고 영향 행 0이면 재시도하거나 포기한다.
+**`INVALIDATED`는 종점이며 어떤 경로로도 `ARMED`로 돌아가지 않는다.**
+owner당 `WATCHING`은 최대 하나이고 새 계획이 `WATCHING`이 되면 이전 것을 무효화한다.
+
 `ARMED`에서 owner 확인이 없을 때의 거동은 `design.md` `TP-OPEN-3`이며 **이 태스크에서 결정한다.**
 
 **검증**
 
 ```bash
 ./gradlew test --tests '*TradePreparationInvalidation*' --tests '*TradePreparationSnapshotBinding*' --offline --no-daemon
+./gradlew :apps:api:integrationTest --tests '*TradePreparationConcurrency*' --offline --no-daemon
 ```
 
-예상: `AC5`·`AC6` GREEN.
+예상: `AC5`·`AC6`·`AC11` GREEN.
 
 ### T3. Migration `V16`
 
@@ -92,7 +110,8 @@ DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)�
 
 `ALTER` 없이 `CREATE TABLE` 하나다. 기존 테이블을 건드리지 않으므로 append-only 계약과 무충돌이다.
 컬럼은 계획 식별자, owner, 결속 스냅샷 id, 잔고 두 값, 산출 물량·레버, 희망 프리미엄, 상태,
-무효화 사유, `BaseEntity` 공통 컬럼.
+무효화 사유, **`version`**(D11), **`MarketPair`와 가격·FX·프리미엄 provenance**(D12),
+`BaseEntity` 공통 컬럼.
 
 **검증**
 
@@ -117,8 +136,12 @@ DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)�
 
 ```bash
 ./gradlew :infrastructure:common:integrationTest --tests '*TradePreparation*' --offline --no-daemon
+./gradlew :apps:api:integrationTest --tests '*TradePreparationProvenance*' --offline --no-daemon
 ./gradlew architectureTest --offline --no-daemon
 ```
+
+**`RecordedBalanceAdapter`도 만든다** (D9). `ARMED` 경로의 code-ready 판정에 필요하다 —
+`P3-O3`이 "code-ready 판정은 fake·recorded account로 검증" 이라고 규정한다.
 
 ### T5. Application — Facade
 
@@ -132,10 +155,15 @@ DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)�
 
 유스케이스 넷이다.
 
-1. `prepare` — 잔고 조회 → 사이징 → 캡 판정 → 계획 생성. 직전 종료 포지션 참조값 포함 (D8)
-2. `registerTarget` — 희망 프리미엄 등록 → `WATCHING`
+1. `prepare` — 잔고 조회 → 사이징 → 반올림·재판정 → 캡 판정 → 계획 생성. 직전 종료 포지션 참조값 포함 (D8)
+2. `registerTarget` — 희망 프리미엄 등록 → `WATCHING`. **판정용 잔고 필요**
 3. `invalidate` — 사건 기반 무효화
-4. `findById` — 계획 조회
+4. `refresh` — owner 명시 refresh (D11)
+5. `findById` — 계획 조회
+
+**owner는 인증 principal에서 도출한다** (D10, `dod.md` AC12). 요청에서 owner를 받지 않고,
+모든 조회·변경은 owner-scoped repository query로 한다. Phase 0의 `findOwnedByIdForUpdate(id, memberId)`
+패턴을 따르며 남의 계획은 **존재를 노출하지 않는 404**다.
 
 `prepare`는 **표시용** 잔고를, `registerTarget`은 **판정용** 잔고를 쓴다 (D2). exposure를 늘리는
 쪽이 후자다. `STALE`이면 전자는 라벨과 함께 반환하고 후자는 거절한다 (D3).
@@ -155,6 +183,8 @@ DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)�
 |---|---|
 | `prepare` | `POST /api/v1/trade-preparations` |
 | `registerTarget` | `POST /api/v1/trade-preparations/{id}/target` |
+| `refresh` | `POST /api/v1/trade-preparations/{id}/refresh` |
+| `invalidate` | `POST /api/v1/trade-preparations/{id}/invalidate` |
 | `getById` | `GET /api/v1/trade-preparations/{id}` |
 
 `ApplicationError` 신설: `TRADE_PREPARATION_NOT_FOUND`(404), `STALE_BALANCE_FOR_EXPOSURE`(409),
@@ -167,10 +197,10 @@ DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)�
 **검증**
 
 ```bash
-./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*' --tests '*TradePreparationAuth*' --offline --no-daemon
+./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*' --tests '*TradePreparationAuth*' --tests '*TradePreparationOwnerScope*' --offline --no-daemon
 ```
 
-예상: `AC1`·`AC9` GREEN.
+예상: `AC1`·`AC9`·`AC12` GREEN.
 
 ### T7. 조건 평가
 
@@ -209,10 +239,10 @@ bash docs/check-documentation.sh
 
 - [ ] T1. Domain — 잔고 port와 사이징
 - [ ] T2. Domain — 계획 엔티티와 상태 기계 (`TP-OPEN-3` 결정)
-- [ ] T3. Migration `V16`
-- [ ] T4. Infrastructure — declared 어댑터와 저장소
+- [ ] T3. Migration `V16` (`version`·provenance 포함)
+- [ ] T4. Infrastructure — declared·recorded 어댑터와 저장소
 - [ ] T5. Application — Facade
-- [ ] T6. Interfaces — REST
+- [ ] T6. Interfaces — REST (owner-scoped 인가 포함)
 - [ ] T7. 조건 평가 (`TP-OPEN-4` 결정)
 - [ ] T8. 전체 gate와 DoD 증거
 
@@ -220,6 +250,7 @@ bash docs/check-documentation.sh
 
 - **`TP-OPEN-1`** 빗썸 private API 한도·잔고 엔드포인트 — ⑥ 스펙 리뷰 이전 확인. declared 어댑터만
   만드는 이번 범위에서는 차단하지 않는다
+- **`TP-OPEN-7`** 거래소 lot size·step size·최소 주문 수량 실제 값 — 설정으로 받으며 이 plan이 정하지 않는다
 - **`TP-OPEN-5`** `leverageBracket` 확인 — 실계정 조회 필요. 명목 구간별 최대 레버리지가 캡보다
   낮을 수 있으나 declared 단계에서는 검증 불가
 - **`TP-OPEN-6`** 보유 중 포지션이 있을 때 거래 준비 요청의 거동 — T5 `prepare` 설계 중 결정

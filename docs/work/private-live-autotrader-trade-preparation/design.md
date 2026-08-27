@@ -191,6 +191,82 @@ D4 가 "flat 상태에서 잔고는 사건으로만 변한다" 를 무효화 근
 "목표 진입 프리미엄(거의 대부분 직전 진입 프리미엄)" 을 정하는 근거다.
 보유 중인 포지션이 있으면 거래 준비 자체가 성립하지 않으며, 그 경우의 거동은 `TP-OPEN-6` 이다.
 
+### D9. 신고 잔고는 `VerifiedBalance`를 만들 수 없다
+
+**1R ISSUE-1 반영.** D1·D2 초안은 `DeclaredBalanceAdapter`가 판정용 잔고까지 공급할 수 있게 두어,
+owner가 임의·낡은 숫자를 넣어도 `ARMED`에 도달하는 경로를 남겼다. 실제 자본이 없는 계획이 durable하게
+남고 이후 실행 단계가 그것을 재사용한다.
+
+어댑터별로 만들 수 있는 타입을 고정한다.
+
+| 어댑터 | `BalanceSnapshot` (표시용) | `VerifiedBalance` (판정용) | 언제 |
+|---|---|---|---|
+| `DeclaredBalanceAdapter` | `UNVERIFIED` | **만들 수 없다** | 지금 |
+| `RecordedBalanceAdapter` | `FRESH`/`STALE` | 가능 | 지금 — 테스트 fixture |
+| `ExchangeBalanceAdapter` | `FRESH`/`STALE` | 가능 | `ACT-2` 이후 |
+
+`BalanceBasis`에 `UNVERIFIED`를 추가한다. `VerifiedBalance` 생성자는 Domain 내부에 감추고
+`UNVERIFIED` 스냅샷을 입력으로 받으면 만들지 않는다. 이 경계를 자동 테스트로 고정한다.
+
+**결과.** declared 입력만으로는 `WATCHING`까지만 갈 수 있고 `ARMED`는 불가능하다.
+`P3-O3`이 "code-ready 판정은 **fake·recorded account로 검증**"이라고 규정하므로, `ARMED` 경로의
+code-ready 판정은 `RecordedBalanceAdapter`로 수행한다. 실계정 `ARMED`는 `ACT-3`에서다.
+
+**버린 대안: 이 단위의 목표를 신고값 기반 계산으로 축소한다.** §1.1의 "실계정 잔고로" 라는 목표를
+포기하게 되고, 얇은 수직 경로가 만들려던 중간 성취가 사라진다.
+
+### D10. owner는 인증 principal에서 도출하고 모든 조회를 owner-scoped로 한다
+
+**1R ISSUE-2 반영.** 초안은 인증만 요구하고 **객체 단위 인가**를 정의하지 않았다. durable 레코드에
+owner가 있고 ID로 조회하는데, 일반 로그인 회원이 남의 계획을 조회·무장시킬 경로가 열려 있었다.
+상위 `P3-O12`(다른 회원이나 account가 자동매매 권한을 얻지 않는다)를 충족하지 못한다.
+
+- owner는 **요청 값이 아니라 인증 principal**에서 도출한다. 요청 body의 owner 필드는 받지 않는다
+- 모든 ID 조회·변경은 owner-scoped repository query로 한다. Phase 0의
+  `findOwnedByIdForUpdate(id, memberId)` 패턴을 그대로 쓴다
+- 남의 계획에 대한 조회·변경은 **존재를 노출하지 않는 404**다. 403은 존재를 알려준다
+- V1은 단일 owner이므로(§1.2) 허가된 owner가 아닌 회원의 생성 요청도 거절한다
+
+**버린 대안: 403 반환.** 계획 ID의 존재 여부를 노출한다. Phase 0이 `TRACKING_NOT_FOUND`로
+소유·존재·삭제를 구분하지 않기로 한 것과 같은 판단이다.
+
+### D11. 상태 전이를 version으로 선형화하고 `INVALIDATED`를 종점으로 둔다
+
+**1R ISSUE-3 반영.** 초안은 무효화 endpoint가 REST 표에 없었고, evaluator·refresh·reconcile 3자가
+같은 계획을 동시에 갱신할 때의 규칙이 없었다. evaluator가 `WATCHING`을 읽은 뒤 refresh가 무효화해도
+evaluator가 뒤늦게 `ARMED`를 쓰는 lost-update 경로가 가능했다.
+
+- 계획에 `version`을 두고 모든 상태 전이를 **조건부 update**로 한다.
+  `WHERE id = ? AND version = ? AND status = ?` 형태이며 영향 행 0이면 재시도하거나 포기한다
+- **`INVALIDATED`는 종점이다.** 어떤 경로로도 `ARMED`로 되돌아가지 않는다
+- 무효화 endpoint를 신설한다 — owner refresh와 명시 무효화
+- 기존 `WATCHING` 계획의 식별 규칙을 정한다. owner당 `WATCHING`은 최대 하나이며 새 계획이
+  `WATCHING`이 되면 이전 것은 무효화된다
+
+**버린 대안: 비관적 행 잠금.** evaluator가 주기적으로 도는 경로라 잠금 보유 구간이 길어진다.
+Phase 0이 archive에서 비관적 잠금을 쓴 것은 단발 요청이라 다르다.
+
+### D12. durable 계획은 재현에 필요한 provenance와 반올림 후 재판정을 보존한다
+
+**1R ISSUE-4 반영.** `ECO-5` 식은 `F`·`X`·`P`·`K`를 전제하는데 초안의 계획 레코드는 두 잔고와
+산출값만 담아 나중에 재현할 수 없었다. 거래소 lot/step-size 반올림도 없어 반올림 후 양 leg 수량이
+달라지면 헤지가 깨진다.
+
+계획이 보존하는 것.
+
+- `MarketPair` (`.ai/rules/architecture.md` identity 보존)
+- 해외가·FX·프리미엄의 snapshot id·관측 시각·출처
+- Decimal scale — 공통 경제 엔진의 단위·스케일 규칙을 따른다 (`ECO-3`)
+
+반올림 규칙.
+
+- 각 거래소의 lot size·step size·최소 주문 수량을 적용한다
+- **보수적 방향으로 반올림한다** — 물량을 늘리지 않는다
+- **반올림 뒤 `Q`·`L`·캡을 다시 판정한다.** 반올림이 캡을 넘기면 계획을 만들지 않는다
+- 양 leg 수량이 반올림 후에도 같은지 확인한다. 다르면 작은 쪽에 맞춘다
+
+거래소별 lot/tick 값은 설정으로 받으며 이 문서가 숫자를 정하지 않는다.
+
 ## 3. 사이징 관계식
 
 `ECO-5` 산출 문서 §2가 정본이며 여기서 재진술하지 않는다. 요지만 옮긴다.
@@ -219,6 +295,7 @@ Q = B_k / K                  양쪽 100% 투입 시 물량
 | `TP-OPEN-1` | 빗썸 private API 한도와 잔고 엔드포인트 형태 | ⑥ 스펙 리뷰 이전 확인 |
 | ~~`TP-OPEN-2`~~ | **해소 (2026-08-26)** — 최근 종료된 포지션이다. §2 D8 참조 | 결정됨 |
 | `TP-OPEN-3` | 무장 상태에서 owner 확인이 없을 때의 거동 | 이 단위 설계 중 결정 |
+| `TP-OPEN-7` | 거래소 lot size·step size·최소 주문 수량의 실제 값 | 실계정/공개 `exchangeInfo` 조회 |
 | `TP-OPEN-4` | 프리미엄 조건 평가 주기와 조건 충족 판정의 신선도 계약 | 이 단위 설계 중 결정 |
 | `TP-OPEN-5` | `leverageBracket` 확인 — 명목 구간별 최대 레버리지 제약 | 실계정 조회 필요 |
 | `TP-OPEN-6` | 보유 중인 포지션이 있을 때 거래 준비 요청의 거동 (거절인가, 정보만 반환인가) | 이 단위 설계 중 결정 |
