@@ -412,6 +412,54 @@ production에서 `ARMED` 도달 경로가 없다는 지적은 맞다 — 그리�
 형태든 결국 신고값이다. codex도 같은 경고를 했다 ("declared data를 받으면 D9가 닫은 결함이
 다시 열린다").
 
+### D20. `registerTarget`은 판정용 호출이 아니다 — 검증 수준은 원천이 정한다
+
+**4R ISSUE-1 반영.** D19를 design에만 넣고 plan T5의 "판정용 잔고 필요" 문장을 남겨 두 문서가
+모순했다. 계약을 한쪽으로 고정한다.
+
+`registerTarget`은 exposure를 만들지 않으므로 판정용(exposure-increasing) 호출이 아니다.
+결속되는 잔고의 검증 수준은 **가용한 원천이 정한다.**
+
+| 원천 | 동작 |
+|---|---|
+| verified 가능 (recorded·exchange) | 판정용 fresh 읽기. `STALE`이면 거절 (D3) |
+| declared뿐 | `UNVERIFIED` 결속으로 등록 — 표시·관측 계약 |
+
+이 단위 안에서 판정용 계약(`VerifiedBalance`)의 소비자는 **`ARMED` 전이 하나**다 (D19).
+타입 경계는 그대로다 — declared에서 `VerifiedBalance`가 생기는 경로는 없다 (D9).
+
+### D21. 조건 평가는 Domain capability + batch Application Job으로 나눈다
+
+**4R ISSUE-2 반영.** T5는 상태 전이 유스케이스를 `apps:api` Facade에 두고 T7은 평가를
+`apps:batch` Job으로 요구했는데, **앱 모듈은 서로 참조할 수 없다.** 평가 Job이 쓸 경로가 없었다.
+
+`.ai/rules/architecture.md`의 Batch 계약(Scheduler → Application Job → Domain Port)대로 나눈다.
+
+- **Domain** — `WATCHING` 계획 조회와 조건부 전이(arm / 관측 기록)를 Domain port·서비스로 소유한다.
+  신선도 판정(D14)과 verified 결속 요구(D19)는 이 Domain 로직 안에 있다
+- **`apps:batch`** — `TradePreparationEvaluationJob`이 최신 premium 읽기 port와 위 Domain
+  capability만 주입받아 조합한다. `JobExecutor`·typed `JobConfig` 계약을 따른다
+- **`apps:api`** — Facade는 owner 요청 유스케이스(prepare·registerTarget·refresh·invalidate·조회)만
+  소유한다. 전이 로직을 중복 구현하지 않는다 — 둘 다 같은 Domain 서비스를 쓴다
+
+AC17의 검증을 domain unit에서 **batch 통합(scheduler → Job → 전이)**으로 올린다. domain unit은
+보조로 남는다.
+
+### D22. Recorded fixture는 production 배선에서 구조적으로 배제된다
+
+**4R ISSUE-3 반영.** D19의 안전성은 "production에는 declared만 존재"에 의존하는데,
+`RecordedBalanceAdapter`가 main 영역에 있으면 그 전제가 배선 실수 하나로 무너진다.
+
+- `RecordedBalanceAdapter`는 **test source set(testFixtures/integrationTest)에만 둔다.**
+  main classpath에 존재하지 않으므로 production bean이 될 수 없다
+- production 배선에서 `BalanceReadPort` 구현이 `DeclaredBalanceAdapter`뿐임을 context test로
+  검증한다 (AC20)
+- 선례: batch rules의 "`test` profile은 실제 stream bean 대신 port fallback을 사용한다" — 같은
+  패턴의 역방향이다
+
+**버린 대안: non-production profile 격리.** profile 설정 실수로 켜질 수 있다. source set 배제는
+classpath 수준이라 설정으로 우회되지 않는다.
+
 ## 3. 사이징 관계식
 
 `ECO-5` 산출 문서 §2가 정본이며 여기서 재진술하지 않는다. 요지만 옮긴다.

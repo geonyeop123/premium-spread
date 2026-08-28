@@ -145,8 +145,10 @@ phantom 경합의 진 쪽은 constraint violation을 받아 "이미 감시 중" 
 ./gradlew architectureTest --offline --no-daemon
 ```
 
-**`RecordedBalanceAdapter`도 만든다** (D9). `ARMED` 경로의 code-ready 판정에 필요하다 —
-`P3-O3`이 "code-ready 판정은 fake·recorded account로 검증" 이라고 규정한다.
+**`RecordedBalanceAdapter`도 만든다** (D9) — 단 **test source set에만** (D22, `dod.md` AC20).
+main classpath에 존재하지 않아 production bean이 될 수 없다. `ARMED` 경로의 code-ready 판정에
+쓴다 (`P3-O3`). production 배선에서 `BalanceReadPort` 구현이 `DeclaredBalanceAdapter`뿐임을
+context test로 검증한다.
 
 ### T5. Application — Facade
 
@@ -161,7 +163,7 @@ phantom 경합의 진 쪽은 constraint violation을 받아 "이미 감시 중" 
 유스케이스 넷이다.
 
 1. `prepare` — 잔고 조회 → 사이징 → 반올림·재판정 → 캡 판정 → 계획 생성. 직전 종료 포지션 참조값 포함 (D8)
-2. `registerTarget` — 희망 프리미엄 등록 → `WATCHING`. **판정용 잔고 필요**
+2. `registerTarget` — 희망 프리미엄 등록 → `WATCHING`. 검증 수준은 원천이 정한다 (D20)
 3. `invalidate` — 사건 기반 무효화
 4. `refresh` — owner 명시 refresh (D11)
 5. `findById` — 계획 조회
@@ -170,8 +172,10 @@ phantom 경합의 진 쪽은 constraint violation을 받아 "이미 감시 중" 
 모든 조회·변경은 owner-scoped repository query로 한다. Phase 0의 `findOwnedByIdForUpdate(id, memberId)`
 패턴을 따르며 남의 계획은 **존재를 노출하지 않는 404**다.
 
-`prepare`는 **표시용** 잔고를, `registerTarget`은 **판정용** 잔고를 쓴다 (D2). exposure를 늘리는
-쪽이 후자다. `STALE`이면 전자는 라벨과 함께 반환하고 후자는 거절한다 (D3).
+`prepare`는 **표시용** 잔고를 쓴다 (D2). `registerTarget`은 판정용 호출이 아니며(D20) —
+verified 원천이 있으면 판정용 fresh 읽기(`STALE` 거절, D3), declared뿐이면 `UNVERIFIED` 결속이다.
+이 단위에서 판정용 계약의 소비자는 `ARMED` 전이 하나다 (D19). 상태 전이 로직은 Facade에
+중복 구현하지 않고 Domain 서비스를 쓴다 (D21).
 
 **보유 `ACTIVE` tracking 검사** (D13, `dod.md` AC16). `prepare`와 `registerTarget` 둘 다 owner의
 `ACTIVE` tracking이 존재하면 거절한다. 경합 대비로 `registerTarget`에서 다시 검사한다.
@@ -183,8 +187,7 @@ phantom 경합의 진 쪽은 constraint violation을 받아 "이미 감시 중" 
 시작점에서 owner의 member 행을 `SELECT … FOR UPDATE`로 잠근다. 잠금 순서는 항상
 member → tracking/plan 이다 — archive의 기존 tracking 행 잠금보다 member가 먼저다.
 
-**registerTarget 잔고 규칙** (D19). verified 원천이 있으면 판정용 fresh 읽기이고 `STALE`은 거절(D3).
-원천이 declared뿐이면 `UNVERIFIED` 결속을 허용한다 — watching은 exposure를 만들지 않는다.
+
 
 **검증**
 
@@ -226,7 +229,11 @@ member → tracking/plan 이다 — archive의 기존 tracking 행 잠금보다 
 프리미엄 스트림을 소비해 `WATCHING` 계획의 조건을 평가하고 `ARMED`로 전이한다.
 
 **배치가 이미 프리미엄을 계산한다.** 새 수집을 만들지 않고 기존 계산 결과를 읽는다.
-평가 Job은 `apps:batch`에 둔다 — Scheduler → Application Job → Domain port 계약을 따른다.
+
+**모듈 분해는 D21이 정한다.** `WATCHING` 조회·조건부 전이(arm/관측 기록)·신선도 판정은 Domain
+port·서비스가 소유하고, `apps:batch`의 `TradePreparationEvaluationJob`이 그것과 premium 읽기
+port만 주입받아 조합한다 (`JobExecutor`·typed `JobConfig` 계약). `apps:api` Facade는 이 로직을
+중복 구현하지 않는다 — 앱 모듈은 서로 참조할 수 없다.
 
 **신선도는 D14가 정한다** (`dod.md` AC17). `inBounds` 양방향 유계 + `MarketPair` 일치 +
 stream unavailable 시 `ARMED` 불가(`WATCHING` 유지). `MAX_AGE`는 수집 계약(10초 중단 규칙)에서
@@ -244,9 +251,10 @@ code-ready 검증한다.
 ```bash
 ./gradlew :apps:api:integrationTest --tests '*TradePreparationArming*' --offline --no-daemon
 ./gradlew :apps:api:integrationTest --tests '*TradePreparationStaleBalance*' --offline --no-daemon
+./gradlew :apps:batch:integrationTest --tests '*TradePreparationEvaluationJob*' --offline --no-daemon
 ```
 
-예상: `AC4`·`AC7` GREEN.
+예상: `AC4`·`AC7`·`AC17` GREEN.
 
 ### T8. Batch — reconcile producer
 

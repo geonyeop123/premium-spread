@@ -67,6 +67,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | 1R | 4건 | high 3 · medium 1 | 전부 ACCEPT (REBUT 0) | 3 |
 | 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
 | 3R | 2건 | high 2 | 전부 ACCEPT (REBUT 0). write-skew → D18 owner 잠금, production ARMED 불가 → D19 도달 상태 명시 | 2 |
+| 4R | 3건 | high 2 · medium 1 | 전부 ACCEPT (REBUT 0). 계약 정렬 → D20, 평가 모듈 분해 → D21, fixture 배선 배제 → D22 | 2 |
 
 ## 검사 산출물` 절은 비어 있다.
 
@@ -77,7 +78,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | AC1 | 거래 준비 요청이 잔고·물량·레버리지·캡 판정과 `balanceBasis`·`observedAt`을 담은 응답을 반환한다. 응답 키 집합을 대조한다 | design.md §1.1, D2 | `상위` `P3-O2` | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*' --offline --no-daemon` | exit 0 |
 | AC2 | `R`·`L`·`Q` 산출이 `ECO-5` §2 관계식과 일치하고, lot/step-size 반올림 뒤 `Q`·`L`·캡을 **다시 판정**하며 양 leg 수량이 같다. 경계값(캡 직전·직후, 잔고 0, 반올림이 캡을 넘기는 경우)을 포함한다 | ECO-5 §2, design.md §3·D12 | `상위` `ECO-5` | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationSizingTest` | `./gradlew test --tests '*TradePreparationSizing*' --offline --no-daemon` | exit 0 |
 | AC3 | 레버 캡·효율 캡·청산 거리 중 하나라도 위반하면 계획을 만들지 않고 위반한 캡을 응답에 명시한다 | design.md §3, ECO-5 §7 | `요구` "특정 캡에 도달하면 자동 매매를 중지한다" | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationCapTest` | `./gradlew test --tests '*TradePreparationCap*' --offline --no-daemon` | exit 0 |
-| AC4 | `balanceBasis`가 `STALE`일 때 조회는 라벨과 함께 계획을 반환하고, exposure를 늘리는 요청은 거절한다 | design.md D3 | `리뷰` Phase 0 `STALE_MARKET` 원칙 · `SAFE-9` | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationStaleBalanceTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationStaleBalance*' --offline --no-daemon` | exit 0 |
+| AC4 | `balanceBasis`가 `STALE`일 때 조회는 라벨과 함께 계획을 반환하고, verified 원천이 있는 `registerTarget`은 거절한다 | design.md D3·D20 | `리뷰` Phase 0 `STALE_MARKET` 원칙 · `SAFE-9` | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationStaleBalanceTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationStaleBalance*' --offline --no-daemon` | exit 0 |
 | AC5 | 판정용 잔고를 캐시에서 읽을 수 없다. 계획은 잔고 스냅샷 id에 결속되고, 그 id가 바뀌면 무효다 | design.md D2, D5 | `상위` `P3-O17` | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationSnapshotBindingTest` | `./gradlew test --tests '*TradePreparationSnapshotBinding*' --offline --no-daemon` | exit 0 |
 | AC6 | 우리 체결·owner refresh·reconcile 불일치 각각이 계획을 무효화한다. 시간 경과만으로는 무효화하지 않는다 | design.md D4 | `요구` 사건 기반 무효화 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationInvalidationTest` | `./gradlew test --tests '*TradePreparationInvalidation*' --offline --no-daemon` | exit 0 |
 | AC11 | 무효화와 조건 충족 평가가 **동시에** 일어나도 `INVALIDATED`가 `ARMED`로 되돌아가지 않는다. 서로 다른 두 계획의 동시 `registerTarget`은 **정확히 하나만** `WATCHING`이 된다 (DB 유일성). evaluator·refresh·reconcile 교차와 동시 등록을 실제 DB 트랜잭션으로 검증한다 | design.md D11·D16 | `리뷰` codex 1R ISSUE-3 · 2R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationConcurrencyIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationConcurrency*' --offline --no-daemon` | exit 0 |
@@ -89,20 +90,22 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | AC14 | 계획 레코드가 `MarketPair`와 해외가·FX·프리미엄의 snapshot id·관측 시각·출처를 보존해, 같은 계획을 나중에 같은 입력으로 재현할 수 있다 | design.md D12 | `리뷰` codex 1R ISSUE-4 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationProvenanceIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationProvenance*' --offline --no-daemon` | exit 0 |
 | AC15 | ⑥ 스펙 리뷰를 아래 `## 스펙 리뷰 정지 규칙`까지 수행하고 라운드별 지적 수·심각도를 기록한다 | `feature-workflow` ⑥, `#68` `f-stop-rule-unbounded` | `리뷰` Phase 0 `AC20` 실패 교훈 | T4 | 사람 확인 | 아래 `## 스펙 리뷰 라운드 기록` | 정지 조건 충족 + 라운드 이력 기록됨 |
 | AC16 | owner의 `ACTIVE` tracking이 존재하면 `prepare`와 `registerTarget`이 거절되고 DB가 변하지 않는다. tracking 생성과 `registerTarget`이 **서로의 미커밋 상태를 못 보는 교차 순서를 강제**해도 owner member 행 잠금이 직렬화해 `ACTIVE` tracking과 `WATCHING`·`ARMED` 계획이 공존 커밋되지 않는다 | design.md D13·D17·D18 | `리뷰` codex 2R ISSUE-2 · 3R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationActiveTrackingContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationActiveTracking*' --offline --no-daemon` | exit 0 |
-| AC17 | 관측 시각이 `MAX_AGE` 밖(과거·미래)이거나 `MarketPair`가 다르거나 stream 최신값이 없으면, 조건값이 충족돼도 `ARMED`로 전이하지 않고 `WATCHING`을 유지한다 | design.md D14 | `리뷰` codex 2R ISSUE-4 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationFreshnessTest` | `./gradlew test --tests '*TradePreparationFreshness*' --offline --no-daemon` | exit 0 |
+| AC17 | **scheduler → Job → 전이 경로**에서, 관측 시각이 `MAX_AGE` 밖(과거·미래)이거나 `MarketPair`가 다르거나 stream 최신값이 없으면 조건값이 충족돼도 `ARMED`로 전이하지 않고 `WATCHING`을 유지한다. fresh + 충족 + verified 결속이면 `ARMED`, `UNVERIFIED` 결속이면 관측만 기록한다 | design.md D14·D19·D21 | `리뷰` codex 2R ISSUE-4 · 4R ISSUE-2 | T1 | `신규테스트` `io.premiumspread.application.job.TradePreparationEvaluationJobIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests '*TradePreparationEvaluationJob*' --offline --no-daemon` | exit 0 |
 | AC18 | reconcile Job이 결속 스냅샷과 현재 판정용 잔고의 불일치를 발견하면 `WATCHING`·`ARMED` 계획을 `INVALIDATED`로 전이시키고, 일치하면 상태를 바꾸지 않는다. **Job 실행 경로**(scheduler → `JobExecutor` → 무효화)로 검증한다 — 무효화 메서드 직접 호출은 이 기준을 충족하지 않는다 | design.md D17 | `리뷰` codex 2R ISSUE-3 | T1 | `신규테스트` `io.premiumspread.application.job.TradePreparationReconcileJobIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests '*TradePreparationReconcile*' --offline --no-daemon` | exit 0 |
+| AC19 | declared 원천만 있을 때 `registerTarget`이 `UNVERIFIED` 결속으로 `WATCHING`을 만들고 `VerifiedBalance`는 생성되지 않는다. verified 원천이 있고 `STALE`이면 거절된다 — 두 경로를 실제 API 응답으로 검증한다 | design.md D20 | `리뷰` codex 4R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationRegisterTargetContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationRegisterTarget*' --offline --no-daemon` | exit 0 |
+| AC20 | production 배선을 로드하면 `BalanceReadPort` 구현이 `DeclaredBalanceAdapter`뿐이다. `RecordedBalanceAdapter`는 main classpath에 존재하지 않는다 | design.md D22 | `리뷰` codex 4R ISSUE-3 | T1 | `신규테스트` `io.premiumspread.config.TradePreparationWiringContractTest` | `./gradlew test --tests '*TradePreparationWiring*' --offline --no-daemon` | exit 0 |
 | AC10 | owner가 응답을 보고 물량·레버리지·캡 판정이 자기 잔고와 맞는지 확인한다 | design.md §0 "중간 성취" | `추론` | T4 | 사람 확인 | 아래 `## 사람 확인` 표 | 앵커 기록됨 |
 
-**기준 개수**: 18개
+**기준 개수**: 20개
 
 **분할하지 않는 이유**: 18개가 D1~D17 결정 열일곱을 덮는다. AC1~AC7·AC11~AC14·AC16~AC18이 각각
 다른 결정을 검증하고 서로 다른 검증 수단을 갖는다. 분할하면 durable 계획(D5)과 그 무효화(D4·D11·D17)·
 무장 전이(D7·D14)·신뢰 경계(D9·D13)가 다른 단위로 갈라져 **상태 기계와 신뢰 경계가 두 계약서에
 걸친다** — 그게 더 나쁘다. AC8은 기존 gate 재사용, AC10·AC15는 사람 확인이다.
 
-1R에서 5개(AC11~AC15), 2R에서 3개(AC16~AC18)가 늘었다. 늘어난 것이 전부 **신뢰 경계·인가·동시성·
-무효화 producer 검증**이며 기능 추가가 아니다. 5라운드 상한 도달 시 범위 축소의 후퇴선은 D17의
-대안 B(`ARMED` 도달 불가로 축소)다.
+1R에서 5개(AC11~AC15), 2R에서 3개(AC16~AC18), 4R에서 2개(AC19~AC20)가 늘었다. 늘어난 것이 전부
+**신뢰 경계·인가·동시성·producer·배선 검증**이며 기능 추가가 아니다. 5라운드 상한 도달 시 범위
+축소의 후퇴선은 D17의 대안 B(`ARMED` 도달 불가로 축소)다.
 
 **티어 강등 사유** *(T1이 아닌 항목만)*
 
@@ -135,6 +138,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | 1R | 4건 | high 3 · medium 1 | 전부 ACCEPT (REBUT 0) | 3 |
 | 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
 | 3R | 2건 | high 2 | 전부 ACCEPT (REBUT 0). write-skew → D18 owner 잠금, production ARMED 불가 → D19 도달 상태 명시 | 2 |
+| 4R | 3건 | high 2 · medium 1 | 전부 ACCEPT (REBUT 0). 계약 정렬 → D20, 평가 모듈 분해 → D21, fixture 배선 배제 → D22 | 2 |
 
 ## 검사 산출물
 
@@ -184,8 +188,8 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 
 ```
 DoD VERDICT: private-live-autotrader-trade-preparation @ <commit SHA>
-  수용기준 표:     18개  (T1 16 · T2 0 · T3 0 · T4 2)
-  T1/T2 자동:      16개 중 <p>개 PASS
+  수용기준 표:     20개  (T1 18 · T2 0 · T3 0 · T4 2)
+  T1/T2 자동:      18개 중 <p>개 PASS
   T3 기록 제출:    0개
   T4 사람 확인:    2개 중 <r>건 완료, <2-r>건 대기
   변경 요청:       <k>건
