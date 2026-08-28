@@ -91,9 +91,13 @@ DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)�
 **전이를 `version`으로 선형화한다** (D11, `dod.md` AC11). 모든 전이는
 `WHERE id = ? AND version = ? AND status = ?` 조건부 update이고 영향 행 0이면 재시도하거나 포기한다.
 **`INVALIDATED`는 종점이며 어떤 경로로도 `ARMED`로 돌아가지 않는다.**
-owner당 `WATCHING`은 최대 하나이고 새 계획이 `WATCHING`이 되면 이전 것을 무효화한다.
 
-`ARMED`에서 owner 확인이 없을 때의 거동은 `design.md` `TP-OPEN-3`이며 **이 태스크에서 결정한다.**
+**owner당 `WATCHING` 유일성은 DB가 강제한다** (D16, `dod.md` AC11). `watching_key` generated
+column의 unique index. 정상 경로는 한 트랜잭션에서 기존 `WATCHING` 무효화 후 새 계획 승격이고,
+phantom 경합의 진 쪽은 constraint violation을 받아 "이미 감시 중" 오류로 변환된다.
+
+**`ARMED`는 무기한이며 시계가 없다** (D15). owner 확인이 올 때까지 유지되고 무효화 사건에만
+종속된다. `ARMED`는 실행 권한이 아니고 권위는 제출 직전 검사에 있다.
 
 **검증**
 
@@ -111,7 +115,7 @@ owner당 `WATCHING`은 최대 하나이고 새 계획이 `WATCHING`이 되면 �
 `ALTER` 없이 `CREATE TABLE` 하나다. 기존 테이블을 건드리지 않으므로 append-only 계약과 무충돌이다.
 컬럼은 계획 식별자, owner, 결속 스냅샷 id, 잔고 두 값, 산출 물량·레버, 희망 프리미엄, 상태,
 무효화 사유, **`version`**(D11), **`MarketPair`와 가격·FX·프리미엄 provenance**(D12),
-`BaseEntity` 공통 컬럼.
+**`watching_key` generated column과 unique index**(D16), `BaseEntity` 공통 컬럼.
 
 **검증**
 
@@ -168,6 +172,12 @@ owner당 `WATCHING`은 최대 하나이고 새 계획이 `WATCHING`이 되면 �
 `prepare`는 **표시용** 잔고를, `registerTarget`은 **판정용** 잔고를 쓴다 (D2). exposure를 늘리는
 쪽이 후자다. `STALE`이면 전자는 라벨과 함께 반환하고 후자는 거절한다 (D3).
 
+**보유 `ACTIVE` tracking 검사** (D13, `dod.md` AC16). `prepare`와 `registerTarget` 둘 다 owner의
+`ACTIVE` tracking이 존재하면 거절한다. 경합 대비로 `registerTarget`에서 다시 검사한다.
+
+**체결 무효화 producer** (D17). `TrackingFacade`의 생성·archive 경로가 **같은 DB 트랜잭션**에서
+이 owner의 활성 계획(`WATCHING`·`ARMED`)을 무효화한다.
+
 **검증**
 
 ```bash
@@ -188,7 +198,8 @@ owner당 `WATCHING`은 최대 하나이고 새 계획이 `WATCHING`이 되면 �
 | `getById` | `GET /api/v1/trade-preparations/{id}` |
 
 `ApplicationError` 신설: `TRADE_PREPARATION_NOT_FOUND`(404), `STALE_BALANCE_FOR_EXPOSURE`(409),
-`CAP_VIOLATED`(422). `GlobalExceptionHandler` 매핑 추가.
+`CAP_VIOLATED`(422), `ACTIVE_TRACKING_EXISTS`(409, D13), `WATCHING_ALREADY_EXISTS`(409, D16).
+`GlobalExceptionHandler` 매핑 추가.
 
 `PublicEndpointPolicy`에 **추가하지 않는다** — `dod.md` AC9.
 
@@ -207,7 +218,11 @@ owner당 `WATCHING`은 최대 하나이고 새 계획이 `WATCHING`이 되면 �
 프리미엄 스트림을 소비해 `WATCHING` 계획의 조건을 평가하고 `ARMED`로 전이한다.
 
 **배치가 이미 프리미엄을 계산한다.** 새 수집을 만들지 않고 기존 계산 결과를 읽는다.
-평가 주기와 조건 충족 판정의 신선도 계약은 `design.md` `TP-OPEN-4`이며 **이 태스크에서 결정한다.**
+평가 Job은 `apps:batch`에 둔다 — Scheduler → Application Job → Domain port 계약을 따른다.
+
+**신선도는 D14가 정한다** (`dod.md` AC17). `inBounds` 양방향 유계 + `MarketPair` 일치 +
+stream unavailable 시 `ARMED` 불가(`WATCHING` 유지). `MAX_AGE`는 수집 계약(10초 중단 규칙)에서
+유도한 값을 설정으로 받는다.
 
 전이 시 **주문을 제출하지 않는다.** `ARMED`가 종점이다.
 
@@ -220,7 +235,26 @@ owner당 `WATCHING`은 최대 하나이고 새 계획이 `WATCHING`이 되면 �
 
 예상: `AC4`·`AC7` GREEN.
 
-### T8. 전체 gate와 DoD 증거
+### T8. Batch — reconcile producer
+
+**신설** `apps/batch` reconcile Job (D17, `dod.md` AC18)
+
+- Scheduler thin trigger → Application Job → Domain port. 기존 `JobExecutor`·typed `JobConfig`·
+  Redis lock·`JobResult` 계약을 그대로 따른다 (`.ai/rules/batch.md`)
+- `WATCHING`·`ARMED` 계획의 결속 잔고 스냅샷 vs 현재 판정용 잔고를 대조하고, 불일치면
+  D11 조건부 update로 무효화한다. 일치하면 상태를 바꾸지 않는다
+- declared 단계의 한계: 대조 데이터가 recorded/declared 수준이다. 기제는 이 단위가 완성하고
+  실데이터는 `ExchangeBalanceAdapter`(`ACT-2` 이후)가 끼워질 때 같은 기제로 성립한다
+
+**검증**
+
+```bash
+./gradlew :apps:batch:integrationTest --tests '*TradePreparationReconcile*' --offline --no-daemon
+```
+
+예상: `AC18` GREEN.
+
+### T9. 전체 gate와 DoD 증거
 
 ```bash
 ./gradlew test architectureTest --offline --no-daemon
@@ -238,13 +272,14 @@ bash docs/check-documentation.sh
 ## 2. 태스크 체크리스트
 
 - [ ] T1. Domain — 잔고 port와 사이징
-- [ ] T2. Domain — 계획 엔티티와 상태 기계 (`TP-OPEN-3` 결정)
+- [ ] T2. Domain — 계획 엔티티와 상태 기계 (`watching_key` 유일성 포함)
 - [ ] T3. Migration `V16` (`version`·provenance 포함)
 - [ ] T4. Infrastructure — declared·recorded 어댑터와 저장소
 - [ ] T5. Application — Facade
 - [ ] T6. Interfaces — REST (owner-scoped 인가 포함)
-- [ ] T7. 조건 평가 (`TP-OPEN-4` 결정)
-- [ ] T8. 전체 gate와 DoD 증거
+- [ ] T7. 조건 평가 (신선도 fail-closed 포함)
+- [ ] T8. Batch — reconcile producer
+- [ ] T9. 전체 gate와 DoD 증거
 
 ## 3. 이 plan이 결정하지 않는 것
 
@@ -253,6 +288,5 @@ bash docs/check-documentation.sh
 - **`TP-OPEN-7`** 거래소 lot size·step size·최소 주문 수량 실제 값 — 설정으로 받으며 이 plan이 정하지 않는다
 - **`TP-OPEN-5`** `leverageBracket` 확인 — 실계정 조회 필요. 명목 구간별 최대 레버리지가 캡보다
   낮을 수 있으나 declared 단계에서는 검증 불가
-- **`TP-OPEN-6`** 보유 중 포지션이 있을 때 거래 준비 요청의 거동 — T5 `prepare` 설계 중 결정
 - 실거래소 어댑터의 형태와 credential 경계 — `design.md` §1.3이 제외
 - 프론트엔드 화면 — 이번 범위는 API까지다

@@ -4,7 +4,7 @@ slug: private-live-autotrader-trade-preparation
 status: DRAFT
 frozen_at:
 verdict_commit:
-source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D8)
+source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 ---
 
 ## 범위
@@ -17,7 +17,10 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D8)
 - 사건 기반 계획 무효화 (D4)
 - 잔고 스냅샷에 결속된 durable 계획 (D5)
 - owner 희망 프리미엄 입력과 직전 종료 포지션 참조값 (D6, D8)
-- 프리미엄 조건 평가와 무장 상태 전이 (D7)
+- 프리미엄 조건 평가와 무장 상태 전이 (D7) — 신선도 fail-closed (D14)
+- 보유 `ACTIVE` tracking 존재 시 거절 (D13)
+- 무효화 producer — 체결(동일 트랜잭션)·주기 reconcile Job (D17)
+- owner당 `WATCHING` 유일성의 DB 강제 (D16)
 
 **제외** *(scope creep 차단선)*
 
@@ -62,6 +65,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D8)
 | 라운드 | 지적 | 심각도 | 처리 | 신규 high |
 |---|---|---|---|---|
 | 1R | 4건 | high 3 · medium 1 | 전부 ACCEPT (REBUT 0) | 3 |
+| 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
 
 ## 검사 산출물` 절은 비어 있다.
 
@@ -75,7 +79,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D8)
 | AC4 | `balanceBasis`가 `STALE`일 때 조회는 라벨과 함께 계획을 반환하고, exposure를 늘리는 요청은 거절한다 | design.md D3 | `리뷰` Phase 0 `STALE_MARKET` 원칙 · `SAFE-9` | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationStaleBalanceTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationStaleBalance*' --offline --no-daemon` | exit 0 |
 | AC5 | 판정용 잔고를 캐시에서 읽을 수 없다. 계획은 잔고 스냅샷 id에 결속되고, 그 id가 바뀌면 무효다 | design.md D2, D5 | `상위` `P3-O17` | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationSnapshotBindingTest` | `./gradlew test --tests '*TradePreparationSnapshotBinding*' --offline --no-daemon` | exit 0 |
 | AC6 | 우리 체결·owner refresh·reconcile 불일치 각각이 계획을 무효화한다. 시간 경과만으로는 무효화하지 않는다 | design.md D4 | `요구` 사건 기반 무효화 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationInvalidationTest` | `./gradlew test --tests '*TradePreparationInvalidation*' --offline --no-daemon` | exit 0 |
-| AC11 | 무효화와 조건 충족 평가가 **동시에** 일어나도 `INVALIDATED`가 `ARMED`로 되돌아가지 않는다. evaluator·refresh·reconcile 교차 시나리오를 실제 DB 트랜잭션으로 검증한다 | design.md D11 | `리뷰` codex 1R ISSUE-3 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationConcurrencyIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationConcurrency*' --offline --no-daemon` | exit 0 |
+| AC11 | 무효화와 조건 충족 평가가 **동시에** 일어나도 `INVALIDATED`가 `ARMED`로 되돌아가지 않는다. 서로 다른 두 계획의 동시 `registerTarget`은 **정확히 하나만** `WATCHING`이 된다 (DB 유일성). evaluator·refresh·reconcile 교차와 동시 등록을 실제 DB 트랜잭션으로 검증한다 | design.md D11·D16 | `리뷰` codex 1R ISSUE-3 · 2R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationConcurrencyIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationConcurrency*' --offline --no-daemon` | exit 0 |
 | AC7 | owner 희망 프리미엄에 도달하면 계획이 무장 상태로 전이하고 **주문을 제출하지 않는다.** 직전 종료 포지션의 진입 프리미엄과 현재 gap이 응답에 있다 | design.md D6, D7, D8 | `요구` "희망 premium rate와 함께 계약을 수행하면 사건 기반 판정으로 체결" | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationArmingContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationArming*' --offline --no-daemon` | exit 0 |
 | AC8 | Domain이 거래소·HTTP·캐시 구현에 의존하지 않는다. 잔고 조회는 Domain port로만 표현된다 | `.ai/rules/architecture.md` Domain 허용 경계, design.md D1 | `상위` `P3-O1` | T1 | `기존` `./gradlew architectureTest` | `./gradlew architectureTest --offline --no-daemon` | exit 0 |
 | AC9 | 거래 준비 endpoint 전부가 인증을 요구한다. `PublicEndpointPolicy`에 추가되지 않았다 | `.ai/rules/http.md` 인증 경계 | `리뷰` Phase 0 `AC9` 동형 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationAuthContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationAuth*' --offline --no-daemon` | exit 0 |
@@ -83,16 +87,21 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D8)
 | AC13 | `DeclaredBalanceAdapter`가 만든 `UNVERIFIED` 스냅샷으로는 `VerifiedBalance`를 만들 수 없고 계획이 `ARMED`에 도달하지 못한다. `RecordedBalanceAdapter`로는 도달한다 | design.md D9 | `리뷰` codex 1R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationBalanceTrustTest` | `./gradlew test --tests '*TradePreparationBalanceTrust*' --offline --no-daemon` | exit 0 |
 | AC14 | 계획 레코드가 `MarketPair`와 해외가·FX·프리미엄의 snapshot id·관측 시각·출처를 보존해, 같은 계획을 나중에 같은 입력으로 재현할 수 있다 | design.md D12 | `리뷰` codex 1R ISSUE-4 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationProvenanceIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationProvenance*' --offline --no-daemon` | exit 0 |
 | AC15 | ⑥ 스펙 리뷰를 아래 `## 스펙 리뷰 정지 규칙`까지 수행하고 라운드별 지적 수·심각도를 기록한다 | `feature-workflow` ⑥, `#68` `f-stop-rule-unbounded` | `리뷰` Phase 0 `AC20` 실패 교훈 | T4 | 사람 확인 | 아래 `## 스펙 리뷰 라운드 기록` | 정지 조건 충족 + 라운드 이력 기록됨 |
+| AC16 | owner의 `ACTIVE` tracking이 존재하면 `prepare`와 `registerTarget`이 거절되고 DB가 변하지 않는다. tracking 생성과 `registerTarget`의 동시 경합에서도 **최종 상태에서** `ACTIVE` tracking과 `WATCHING`·`ARMED` 계획이 공존하지 않는다 — 체결 무효화 producer가 정리한다 | design.md D13·D17 | `리뷰` codex 2R ISSUE-2 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationActiveTrackingContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationActiveTracking*' --offline --no-daemon` | exit 0 |
+| AC17 | 관측 시각이 `MAX_AGE` 밖(과거·미래)이거나 `MarketPair`가 다르거나 stream 최신값이 없으면, 조건값이 충족돼도 `ARMED`로 전이하지 않고 `WATCHING`을 유지한다 | design.md D14 | `리뷰` codex 2R ISSUE-4 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationFreshnessTest` | `./gradlew test --tests '*TradePreparationFreshness*' --offline --no-daemon` | exit 0 |
+| AC18 | reconcile Job이 결속 스냅샷과 현재 판정용 잔고의 불일치를 발견하면 `WATCHING`·`ARMED` 계획을 `INVALIDATED`로 전이시키고, 일치하면 상태를 바꾸지 않는다. **Job 실행 경로**(scheduler → `JobExecutor` → 무효화)로 검증한다 — 무효화 메서드 직접 호출은 이 기준을 충족하지 않는다 | design.md D17 | `리뷰` codex 2R ISSUE-3 | T1 | `신규테스트` `io.premiumspread.application.job.TradePreparationReconcileJobIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests '*TradePreparationReconcile*' --offline --no-daemon` | exit 0 |
 | AC10 | owner가 응답을 보고 물량·레버리지·캡 판정이 자기 잔고와 맞는지 확인한다 | design.md §0 "중간 성취" | `추론` | T4 | 사람 확인 | 아래 `## 사람 확인` 표 | 앵커 기록됨 |
 
-**기준 개수**: 15개
+**기준 개수**: 18개
 
-**분할하지 않는 이유**: 15개가 D1~D12 결정 열둘을 덮는다. AC1~AC7·AC11~AC14가 각각 다른 결정을
-검증하고 서로 다른 검증 수단을 갖는다. 분할하면 durable 계획(D5)과 그 무효화(D4·D11)·무장 전이(D7)·
-신뢰 경계(D9)가 다른 단위로 갈라져 **상태 기계와 신뢰 경계가 두 계약서에 걸친다** — 그게 더 나쁘다.
-AC8은 기존 gate 재사용, AC10·AC15는 사람 확인이다.
+**분할하지 않는 이유**: 18개가 D1~D17 결정 열일곱을 덮는다. AC1~AC7·AC11~AC14·AC16~AC18이 각각
+다른 결정을 검증하고 서로 다른 검증 수단을 갖는다. 분할하면 durable 계획(D5)과 그 무효화(D4·D11·D17)·
+무장 전이(D7·D14)·신뢰 경계(D9·D13)가 다른 단위로 갈라져 **상태 기계와 신뢰 경계가 두 계약서에
+걸친다** — 그게 더 나쁘다. AC8은 기존 gate 재사용, AC10·AC15는 사람 확인이다.
 
-1R에서 5개가 늘었다(AC11~AC15). 늘어난 것이 전부 **신뢰 경계·인가·동시성**이며 기능 추가가 아니다.
+1R에서 5개(AC11~AC15), 2R에서 3개(AC16~AC18)가 늘었다. 늘어난 것이 전부 **신뢰 경계·인가·동시성·
+무효화 producer 검증**이며 기능 추가가 아니다. 5라운드 상한 도달 시 범위 축소의 후퇴선은 D17의
+대안 B(`ARMED` 도달 불가로 축소)다.
 
 **티어 강등 사유** *(T1이 아닌 항목만)*
 
@@ -123,6 +132,7 @@ AC8은 기존 gate 재사용, AC10·AC15는 사람 확인이다.
 | 라운드 | 지적 | 심각도 | 처리 | 신규 high |
 |---|---|---|---|---|
 | 1R | 4건 | high 3 · medium 1 | 전부 ACCEPT (REBUT 0) | 3 |
+| 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
 
 ## 검사 산출물
 
@@ -172,8 +182,8 @@ AC8은 기존 gate 재사용, AC10·AC15는 사람 확인이다.
 
 ```
 DoD VERDICT: private-live-autotrader-trade-preparation @ <commit SHA>
-  수용기준 표:     15개  (T1 13 · T2 0 · T3 0 · T4 2)
-  T1/T2 자동:      13개 중 <p>개 PASS
+  수용기준 표:     18개  (T1 16 · T2 0 · T3 0 · T4 2)
+  T1/T2 자동:      16개 중 <p>개 PASS
   T3 기록 제출:    0개
   T4 사람 확인:    2개 중 <r>건 완료, <2-r>건 대기
   변경 요청:       <k>건

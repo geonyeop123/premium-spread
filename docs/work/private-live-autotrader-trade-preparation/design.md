@@ -39,6 +39,8 @@ owner가 자기 실계정 잔고로 **지금 얼마나 잡을 수 있는지**를
 | 직전 포지션의 진입 프리미엄과 현재 gap 표시 | 재진입 참조값 |
 | owner 희망 프리미엄을 받는 조건부 계획 (durable) | `SAFE-11` durable 기록 |
 | 프리미엄 조건 평가와 무장 상태 전이 | `P3-O3` decision·intent 생성 |
+| 보유 `ACTIVE` tracking 존재 시 거절 | D13 · `SAFE-9` |
+| 무효화 producer — 체결(동일 트랜잭션)·주기 reconcile Job | D17 · `P3-O17` |
 
 ### 1.3 제외 *(scope creep 차단선)*
 
@@ -116,7 +118,7 @@ owner가 자기 실계정 잔고로 **지금 얼마나 잡을 수 있는지**를
 - owner의 명시 refresh
 - 주기 reconcile이 불일치를 발견
 
-시계 만료는 위 셋을 모두 놓쳤을 때의 백스톱이다.
+시계 만료는 없다. 초안에 있던 백스톱 문장은 AC6(시간 경과만으로는 무효화하지 않는다)과 모순해 D15에서 삭제했다.
 
 **버린 대안: TTL 만료.** flat 상태에서 잔고를 바꾸는 것은 owner의 수동 이동뿐이고, 그것은
 `ECO-5`가 산출한 재배치 주기(중앙 7~9 사이클)에 한 번 일어난다. 그 사이 시계로 만료시킬 근거가
@@ -267,6 +269,103 @@ Phase 0이 archive에서 비관적 잠금을 쓴 것은 단발 요청이라 다�
 
 거래소별 lot/tick 값은 설정으로 받으며 이 문서가 숫자를 정하지 않는다.
 
+### D13. 보유 `ACTIVE` tracking이 있으면 거래 준비를 거절한다
+
+**2R ISSUE-2 반영 · `TP-OPEN-6` 해소 (owner 승인 2026-08-28).**
+
+owner의 `ACTIVE` tracking이 존재하면 `prepare`와 `registerTarget` 둘 다 명시 오류로 거절한다
+(fail-closed). 검사는 `prepare` 한 번으로 끝나지 않고 **`registerTarget`(무장 경로 진입)에서 다시**
+수행한다 — `prepare` 통과 직후 tracking이 생기는 교차가 가능하기 때문이다.
+
+**버린 대안 ①: 정보만 반환.** "조회는 되는데 저장은 안 되는" 상태 분기가 API에 하나 더 생긴다.
+보유 중 미리보기가 필요해지면 read-only endpoint로 나중에 추가할 수 있다.
+**버린 대안 ②: 허용.** 보유 중 잔고 상당분이 기존 포지션의 증거금인데 신고값 기반이라 전액 가용으로
+계산한다. 그 계획이 `ARMED`까지 가면 이중 포지션 — 자본이 헤지를 지지하지 못하는, `SAFE-9`가
+금지하는 상태다.
+
+**채택 근거.** owner의 운영 모델이 순차 사이클이고(진입 → 수익실현 → 재진입), `ECO-5` 산출도
+owner당 포지션 하나를 전제로 세웠다. D8("준비금이 온전히 가용")과도 일관된다.
+
+### D14. premium 신선도 — 양방향 유계·pair 일치·fail-closed
+
+**2R ISSUE-4 반영 · `TP-OPEN-4` 해소 (owner 승인 2026-08-28).**
+
+`WATCHING` → `ARMED` 전이는 조건값 도달만으로 성립하지 않는다.
+
+```
+armable = inBounds(premium.observedAt, now, MAX_AGE)   // 0 ≤ now − observedAt ≤ MAX_AGE
+        && premium.marketPair == plan.marketPair
+```
+
+- **양방향 유계** — Phase 0의 `inBounds` 패턴 재사용. 과거로 낡은 값뿐 아니라 생산자 clock skew의
+  **미래 시각**도 거른다 (Phase 0 15R에서 미래 시각이 "신선"으로 통과하던 결함의 재발 방지)
+- **`MAX_AGE`는 수집 계약에서 유도** — 배치의 "관측값이 10초보다 오래되면 seconds 기록 중단" 계약에서
+  유도한 값을 설정으로 받는다. 근거 없는 숫자를 이 문서가 정하지 않는다 (§4.5)
+- **stream unavailable이면 평가를 멈춘다.** `ARMED` 불가. 계획은 무효화되지 않고 `WATCHING`으로
+  남았다가 stream 회복 시 재개된다
+- **`MarketPair` 불일치는 miss다.** 다른 pair의 프리미엄으로 보정하지 않는다 (`.ai/rules/architecture.md`)
+
+**버린 대안: 조건값 도달만 검사.** 멈춘 stream의 마지막 값으로 `ARMED`가 된다. owner가 확인을
+누르는 순간이 곧 잘못된 진입이고 `SAFE-3` 위반이다.
+
+### D15. `ARMED`는 무기한이며 시계가 없다
+
+**2R ISSUE-3 일부 반영 · `TP-OPEN-3` 해소 (owner 승인 2026-08-28).**
+
+`ARMED` 계획은 owner 확인이 올 때까지 유지된다. 시계 만료가 없고 무효화 사건(D4)에만 종속된다.
+
+**근거: `ARMED`는 실행 권한이 아니다.** 권위는 항상 제출 직전 검사에 있다 (`P3-O17`). owner가
+확인을 눌러 실제 실행으로 가는 단계(이번 범위 밖)에서 잔고·신선도·캡을 다시 검증하므로, 낡은
+`ARMED`는 그 검사에서 떨어질 뿐 위험을 만들지 않는다.
+
+**버린 대안: N분 만료.** N의 근거가 없고(§4.5), D4의 사건 기반 원칙과 충돌한다. 이 결정으로 D4의
+"시계 백스톱" 문장을 삭제해 AC6과 문서를 한쪽으로 통일했다 — **시계는 어디에도 없다.**
+
+### D16. owner당 `WATCHING` 유일성은 DB unique index가 강제한다
+
+**2R ISSUE-1 반영 (owner 승인 2026-08-28).**
+
+D11의 version 조건부 update는 한 행의 lost update만 막는다. 유일성은 두 행에 걸친 불변식이라,
+서로 다른 `DRAFT` 두 개가 동시에 target 등록하면 둘 다 "기존 `WATCHING` 없음"을 관찰하고 각자
+성공하는 **phantom 경쟁**이 남는다. 애플리케이션 코드로는 직렬화 격리 없이 막을 수 없다.
+
+```sql
+watching_key BIGINT AS (CASE WHEN status = 'WATCHING' THEN owner_id END) STORED,
+UNIQUE KEY uk_trade_preparation_owner_watching (watching_key)
+```
+
+MySQL은 partial index가 없어 generated column을 쓴다. `WATCHING`이 아니면 `NULL`이고 `NULL`은
+unique 검사에서 제외된다.
+
+- 정상 경로: 한 트랜잭션에서 기존 `WATCHING`을 무효화한 뒤 새 계획을 승격한다 (D11)
+- 경합 경로: 진 쪽이 constraint violation을 받고, 애플리케이션이 "이미 감시 중인 계획이 있다"
+  오류로 변환한다. Phase 0의 동시 archive 계약(정확히 1건 성공)과 같은 모양이다
+
+**버린 대안: owner 단위 잠금 프로토콜.** 코드가 틀리면 불변식이 깨진다. 스키마 강제는 코드와
+무관하게 성립하고 검증도 단순하다.
+
+### D17. 무효화 producer를 이번 범위에 넣는다
+
+**2R ISSUE-3 반영 (owner 승인 2026-08-28 — 대안 A 선택).**
+
+D4의 trigger 셋 중 둘은 실행 주체가 없었다. 함수가 존재한다는 것과 불린다는 것은 다른 주장이다.
+producer를 둘 명시한다.
+
+| trigger | producer | 방식 |
+|---|---|---|
+| 체결 | tracking 생성·archive 경로 (`TrackingFacade`) | **같은 DB 트랜잭션**에서 이 owner의 활성 계획을 무효화. 기존 "활성 구독 조회와 enqueue는 같은 transaction" 선례를 따른다 |
+| 주기 reconcile | **T8 배치 Job 신설** | `WATCHING`·`ARMED` 계획의 결속 스냅샷 vs 현재 판정용 잔고를 대조, 불일치면 무효화. 기존 `JobExecutor`·typed `JobConfig`·Redis lock 계약을 따른다 |
+| owner refresh | REST `refresh` endpoint (D11) | 기존 |
+
+**declared 단계의 한계를 명시한다.** 지금 판정용 잔고의 출처가 recorded/declared 수준이므로
+reconcile이 대조하는 데이터도 그 수준이다. **기제는 진짜지만 데이터는 아직 fake다.** 실데이터
+대조는 `ExchangeBalanceAdapter`(`ACT-2` 이후)가 끼워지는 순간 같은 기제로 성립한다.
+
+**버린 대안 B: 범위에서 빼고 `ARMED` 도달을 불가로 명시.** 보장 못 할 것을 약속하지 않는 정직한
+축소지만, D7이 죽고 이 단위의 존재 이유(얇은 수직 경로의 중간 성취)가 반토막 난다. 또한 reconcile
+Job은 Phase 3 `P3-O17`("주기 reconcile과 재시작 시 재평가")이 어차피 요구하므로 지금 만들어도
+버려지지 않는다. 단 5라운드 상한 도달 시의 범위 축소 검토에서 B가 후퇴선이다.
+
 ## 3. 사이징 관계식
 
 `ECO-5` 산출 문서 §2가 정본이며 여기서 재진술하지 않는다. 요지만 옮긴다.
@@ -290,15 +389,15 @@ Q = B_k / K                  양쪽 100% 투입 시 물량
 
 ## 4. 미해결 결정
 
-| # | 항목 | 이월 |
+| # | 항목 | 상태 |
 |---|---|---|
-| `TP-OPEN-1` | 빗썸 private API 한도와 잔고 엔드포인트 형태 | ⑥ 스펙 리뷰 이전 확인 |
-| ~~`TP-OPEN-2`~~ | **해소 (2026-08-26)** — 최근 종료된 포지션이다. §2 D8 참조 | 결정됨 |
-| `TP-OPEN-3` | 무장 상태에서 owner 확인이 없을 때의 거동 | 이 단위 설계 중 결정 |
-| `TP-OPEN-7` | 거래소 lot size·step size·최소 주문 수량의 실제 값 | 실계정/공개 `exchangeInfo` 조회 |
-| `TP-OPEN-4` | 프리미엄 조건 평가 주기와 조건 충족 판정의 신선도 계약 | 이 단위 설계 중 결정 |
-| `TP-OPEN-5` | `leverageBracket` 확인 — 명목 구간별 최대 레버리지 제약 | 실계정 조회 필요 |
-| `TP-OPEN-6` | 보유 중인 포지션이 있을 때 거래 준비 요청의 거동 (거절인가, 정보만 반환인가) | 이 단위 설계 중 결정 |
+| `TP-OPEN-1` | 빗썸 private API 한도와 잔고 엔드포인트 형태 | 미해결 — ⑥ 종료 전 확인 |
+| ~~`TP-OPEN-2`~~ | 직전 포지션 정의 | **해소 (2026-08-26)** — D8. 최근 종료된 것 |
+| ~~`TP-OPEN-3`~~ | `ARMED`에서 owner 확인 없을 때 거동 | **해소 (2026-08-28)** — D15. 무기한 유지, 시계 없음 |
+| ~~`TP-OPEN-4`~~ | 프리미엄 조건 평가 신선도 | **해소 (2026-08-28)** — D14. 양방향 유계·pair 일치·fail-closed |
+| `TP-OPEN-5` | `leverageBracket` — 명목 구간별 최대 레버리지 | 미해결 — 실계정 조회 필요 |
+| ~~`TP-OPEN-6`~~ | 보유 포지션 존재 시 거동 | **해소 (2026-08-28)** — D13. 거절 (fail-closed) |
+| `TP-OPEN-7` | 거래소 lot/step size·최소 주문 수량 실제 값 | 미해결 — 설정으로 받는다. 공개 `exchangeInfo` 조회 |
 
 ## 5. 상위 spec 추적성
 
@@ -308,7 +407,7 @@ Q = B_k / K                  양쪽 100% 투입 시 물량
 |---|---|---|
 | `P3-O2` | read-only 잔고 조회 계약과 port | order·position reconcile, 실어댑터 |
 | `P3-O3` | decision·intent 생성 골격, 제출 비활성 | 전략 판정, 실계정 SHADOW (`ACT-3`) |
-| `P3-O17` | 판정용 스냅샷 결속과 drift 검증 지점 | configuration snapshot, 주기 reconcile |
+| `P3-O17` | 판정용 스냅샷 결속·drift 검증·주기 reconcile Job (D17) | configuration snapshot |
 | `SAFE-3` | 잔고 freshness 라벨과 fail-closed | 지속 감시, `FENCE` 전이 |
 | `SAFE-9` | 자본 부족 시 신규 진입 차단 판정 | `FENCE` 동반 전이 |
 | `ECO-5` | 항목 1·2 산출값의 소비 | 항목 3·4 |
