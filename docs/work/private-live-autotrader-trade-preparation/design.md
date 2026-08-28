@@ -28,6 +28,10 @@ Phase 3 하나뿐이고 전체 outcome의 45%를 차지하며 가장 마지막�
 owner가 자기 실계정 잔고로 **지금 얼마나 잡을 수 있는지**를 알고, **희망 프리미엄을 걸어두면
 그 조건이 충족될 때 실행 가능 상태로 전이**되는 것까지를 제공한다.
 
+단, `ARMED` 전이는 verified 잔고 결속을 요구하므로(D9·D19) verified 원천이 없는 production에서는
+`WATCHING` + 조건 충족 관측까지가 도달 상태다. `ARMED`를 포함한 전 사슬의 code-ready는
+recorded fixture로 검증하며(`P3-O3`), production의 `ARMED`는 `ACT-2` 이후 같은 코드로 열린다.
+
 ### 1.2 포함
 
 | | 근거 |
@@ -365,6 +369,48 @@ reconcile이 대조하는 데이터도 그 수준이다. **기제는 진짜지�
 축소지만, D7이 죽고 이 단위의 존재 이유(얇은 수직 경로의 중간 성취)가 반토막 난다. 또한 reconcile
 Job은 Phase 3 `P3-O17`("주기 reconcile과 재시작 시 재평가")이 어차피 요구하므로 지금 만들어도
 버려지지 않는다. 단 5라운드 상한 도달 시의 범위 축소 검토에서 B가 후퇴선이다.
+
+### D18. owner 단위 직렬화 — 두 경로가 같은 잠금을 잡는다
+
+**3R ISSUE-1 반영.** D13의 `ACTIVE` 재검사와 D17의 체결 무효화는 서로 다른 테이블을 읽고 자기
+테이블만 쓴다. 등록 트랜잭션은 tracking에서 `ACTIVE` 없음을 관찰하고, 동시의 tracking 생성은
+커밋 전의 `WATCHING`을 관찰하지 못한다 — 둘 다 커밋되면 공존한다 (write-skew). version 술어는
+한 행을, unique index는 `WATCHING` 행끼리를 보호할 뿐 **교차 테이블 불변식은 어느 쪽도 못 지킨다.**
+
+`registerTarget`과 tracking 생성·archive(체결 producer 경로)는 **트랜잭션 시작점에서 같은 owner의
+member 행을 `SELECT … FOR UPDATE`로 잠근다.** 두 경로가 직렬화되어 나중 트랜잭션이 앞의 커밋된
+상태를 반드시 본다.
+
+- 잠금 순서는 항상 **member → tracking/plan** 이다. archive가 이미 잡는 tracking 행 잠금
+  (`findOwnedByIdForUpdate`)보다 member를 먼저 잡아 교착을 막는다
+- V1이 단일 owner라 이 잠금의 경합 비용은 무시할 수 있다 (§1.2)
+- AC16 테스트는 유리한 순서가 아니라 **교차 순서를 강제한다** — 두 트랜잭션이 서로의 미커밋
+  상태를 보지 못하는 시점을 고정한 뒤 둘 다 커밋을 시도하게 한다
+
+**버린 대안 ①: SERIALIZABLE 격리.** MySQL gap lock 부작용이 무관한 경로까지 미치고 전역 비용이다.
+**버린 대안 ②: 교차 테이블 제약.** DB 제약으로 표현할 수 없다.
+
+### D19. production 도달 상태는 `WATCHING`까지다 — `ARMED`는 verified 결속을 요구한다
+
+**3R ISSUE-2 반영.** D9의 귀결을 이 단위의 산출물 정의에 명시한다. declared만 존재하는
+production에서 `ARMED` 도달 경로가 없다는 지적은 맞다 — 그리고 **그것이 올바른 상태다.**
+그 경로를 지금 만들 방법은 이름만 바꾼 신고값뿐이고, 그것은 D9가 닫은 구멍을 다시 연다.
+
+- **`ARMED` 전이는 `VerifiedBalance` 결속을 요구한다.** `UNVERIFIED` 결속 계획은 조건이
+  충족돼도 상태가 바뀌지 않는다. 대신 관측 필드 `conditionFirstMetAt`(최초 충족 시각)와
+  당시 프리미엄이 기록되어 owner가 조회할 수 있다 — **권한 없는 관측**이다
+- **`registerTarget`의 잔고 규칙을 명확화한다.** verified 원천이 있으면 판정용 fresh 읽기이며
+  `STALE`은 거절한다 (D3). 원천이 declared뿐이면 `UNVERIFIED` 결속을 허용한다 — watching은
+  exposure를 만들지 않기 때문이다. **fail-closed 경계는 `ARMED`에 있다**
+- 따라서 이 단위가 production에 제공하는 것은 *준비 계산 → `WATCHING` → 조건 충족 관측*까지이고,
+  `ARMED`는 verified 원천(`ExchangeBalanceAdapter`)이 생기는 `ACT-2` 이후 같은 코드로 열린다
+- **code-ready는 전 사슬(→`ARMED`)을 `RecordedBalanceAdapter`로 검증한다.** `P3-O3`이 규정한
+  "code-ready 판정은 fake·recorded account로 검증" 그대로다. fixture가 계약을 증명하고
+  production 원천은 gate가 연다
+
+**버린 대안: production용 recorded balance 입력 경로 신설.** 인증된 owner가 값을 넣는 어떤
+형태든 결국 신고값이다. codex도 같은 경고를 했다 ("declared data를 받으면 D9가 닫은 결함이
+다시 열린다").
 
 ## 3. 사이징 관계식
 

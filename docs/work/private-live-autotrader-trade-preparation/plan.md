@@ -70,7 +70,8 @@
 **신설** `TradePreparation` (JPA Entity, `data class` 아님), `TradePreparationStatus`
 
 **보존 필드** (D12, `dod.md` AC14) — `MarketPair`, 해외가·FX·프리미엄의 snapshot id·관측 시각·출처,
-결속 잔고 스냅샷 id, 산출 `Q`·`L`, 희망 프리미엄, `version`, 상태, 무효화 사유.
+결속 잔고 스냅샷 id와 `balanceBasis`, 산출 `Q`·`L`, 희망 프리미엄, `version`, 상태, 무효화 사유,
+**조건 관측 필드 `conditionFirstMetAt`·당시 프리미엄**(D19 — 권한 없는 관측).
 
 ```
 DRAFT ──(희망 프리미엄 등록)──> WATCHING ──(조건 충족)──> ARMED
@@ -178,6 +179,13 @@ phantom 경합의 진 쪽은 constraint violation을 받아 "이미 감시 중" 
 **체결 무효화 producer** (D17). `TrackingFacade`의 생성·archive 경로가 **같은 DB 트랜잭션**에서
 이 owner의 활성 계획(`WATCHING`·`ARMED`)을 무효화한다.
 
+**owner 단위 직렬화** (D18, `dod.md` AC16). `registerTarget`과 tracking 생성·archive는 트랜잭션
+시작점에서 owner의 member 행을 `SELECT … FOR UPDATE`로 잠근다. 잠금 순서는 항상
+member → tracking/plan 이다 — archive의 기존 tracking 행 잠금보다 member가 먼저다.
+
+**registerTarget 잔고 규칙** (D19). verified 원천이 있으면 판정용 fresh 읽기이고 `STALE`은 거절(D3).
+원천이 declared뿐이면 `UNVERIFIED` 결속을 허용한다 — watching은 exposure를 만들지 않는다.
+
 **검증**
 
 ```bash
@@ -223,6 +231,11 @@ phantom 경합의 진 쪽은 constraint violation을 받아 "이미 감시 중" 
 **신선도는 D14가 정한다** (`dod.md` AC17). `inBounds` 양방향 유계 + `MarketPair` 일치 +
 stream unavailable 시 `ARMED` 불가(`WATCHING` 유지). `MAX_AGE`는 수집 계약(10초 중단 규칙)에서
 유도한 값을 설정으로 받는다.
+
+**`ARMED` 전이는 verified 결속을 요구한다** (D19, `dod.md` AC13). `UNVERIFIED` 결속 계획은
+조건이 충족돼도 `WATCHING`을 유지하고 `conditionFirstMetAt`·당시 프리미엄만 기록한다.
+production(declared만 존재)의 도달 상태는 여기까지이며, 전 사슬은 `RecordedBalanceAdapter`로
+code-ready 검증한다.
 
 전이 시 **주문을 제출하지 않는다.** `ARMED`가 종점이다.
 

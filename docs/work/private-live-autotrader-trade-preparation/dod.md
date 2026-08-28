@@ -66,6 +66,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 |---|---|---|---|---|
 | 1R | 4건 | high 3 · medium 1 | 전부 ACCEPT (REBUT 0) | 3 |
 | 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
+| 3R | 2건 | high 2 | 전부 ACCEPT (REBUT 0). write-skew → D18 owner 잠금, production ARMED 불가 → D19 도달 상태 명시 | 2 |
 
 ## 검사 산출물` 절은 비어 있다.
 
@@ -84,10 +85,10 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | AC8 | Domain이 거래소·HTTP·캐시 구현에 의존하지 않는다. 잔고 조회는 Domain port로만 표현된다 | `.ai/rules/architecture.md` Domain 허용 경계, design.md D1 | `상위` `P3-O1` | T1 | `기존` `./gradlew architectureTest` | `./gradlew architectureTest --offline --no-daemon` | exit 0 |
 | AC9 | 거래 준비 endpoint 전부가 인증을 요구한다. `PublicEndpointPolicy`에 추가되지 않았다 | `.ai/rules/http.md` 인증 경계 | `리뷰` Phase 0 `AC9` 동형 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationAuthContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationAuth*' --offline --no-daemon` | exit 0 |
 | AC12 | owner는 인증 principal에서 도출되며 요청 body의 owner 필드를 받지 않는다. 타 회원이 남의 계획을 조회·목표등록·무효화하면 **존재를 노출하지 않는 404**를 받고 DB가 변하지 않는다. 허가된 owner가 아닌 회원의 생성 요청은 거절된다 | design.md D10 | `상위` `P3-O12` | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationOwnerScopeContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationOwnerScope*' --offline --no-daemon` | exit 0 |
-| AC13 | `DeclaredBalanceAdapter`가 만든 `UNVERIFIED` 스냅샷으로는 `VerifiedBalance`를 만들 수 없고 계획이 `ARMED`에 도달하지 못한다. `RecordedBalanceAdapter`로는 도달한다 | design.md D9 | `리뷰` codex 1R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationBalanceTrustTest` | `./gradlew test --tests '*TradePreparationBalanceTrust*' --offline --no-daemon` | exit 0 |
+| AC13 | `DeclaredBalanceAdapter`의 `UNVERIFIED` 스냅샷으로는 `VerifiedBalance`를 만들 수 없고, `UNVERIFIED` 결속 계획은 조건이 충족돼도 `WATCHING`을 유지하며 `conditionFirstMetAt`·당시 프리미엄이 기록된다. `RecordedBalanceAdapter` 결속으로는 같은 조건에서 `ARMED`에 도달한다 | design.md D9·D19 | `리뷰` codex 1R ISSUE-1 · 3R ISSUE-2 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationBalanceTrustTest` | `./gradlew test --tests '*TradePreparationBalanceTrust*' --offline --no-daemon` | exit 0 |
 | AC14 | 계획 레코드가 `MarketPair`와 해외가·FX·프리미엄의 snapshot id·관측 시각·출처를 보존해, 같은 계획을 나중에 같은 입력으로 재현할 수 있다 | design.md D12 | `리뷰` codex 1R ISSUE-4 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationProvenanceIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationProvenance*' --offline --no-daemon` | exit 0 |
 | AC15 | ⑥ 스펙 리뷰를 아래 `## 스펙 리뷰 정지 규칙`까지 수행하고 라운드별 지적 수·심각도를 기록한다 | `feature-workflow` ⑥, `#68` `f-stop-rule-unbounded` | `리뷰` Phase 0 `AC20` 실패 교훈 | T4 | 사람 확인 | 아래 `## 스펙 리뷰 라운드 기록` | 정지 조건 충족 + 라운드 이력 기록됨 |
-| AC16 | owner의 `ACTIVE` tracking이 존재하면 `prepare`와 `registerTarget`이 거절되고 DB가 변하지 않는다. tracking 생성과 `registerTarget`의 동시 경합에서도 **최종 상태에서** `ACTIVE` tracking과 `WATCHING`·`ARMED` 계획이 공존하지 않는다 — 체결 무효화 producer가 정리한다 | design.md D13·D17 | `리뷰` codex 2R ISSUE-2 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationActiveTrackingContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationActiveTracking*' --offline --no-daemon` | exit 0 |
+| AC16 | owner의 `ACTIVE` tracking이 존재하면 `prepare`와 `registerTarget`이 거절되고 DB가 변하지 않는다. tracking 생성과 `registerTarget`이 **서로의 미커밋 상태를 못 보는 교차 순서를 강제**해도 owner member 행 잠금이 직렬화해 `ACTIVE` tracking과 `WATCHING`·`ARMED` 계획이 공존 커밋되지 않는다 | design.md D13·D17·D18 | `리뷰` codex 2R ISSUE-2 · 3R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationActiveTrackingContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationActiveTracking*' --offline --no-daemon` | exit 0 |
 | AC17 | 관측 시각이 `MAX_AGE` 밖(과거·미래)이거나 `MarketPair`가 다르거나 stream 최신값이 없으면, 조건값이 충족돼도 `ARMED`로 전이하지 않고 `WATCHING`을 유지한다 | design.md D14 | `리뷰` codex 2R ISSUE-4 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationFreshnessTest` | `./gradlew test --tests '*TradePreparationFreshness*' --offline --no-daemon` | exit 0 |
 | AC18 | reconcile Job이 결속 스냅샷과 현재 판정용 잔고의 불일치를 발견하면 `WATCHING`·`ARMED` 계획을 `INVALIDATED`로 전이시키고, 일치하면 상태를 바꾸지 않는다. **Job 실행 경로**(scheduler → `JobExecutor` → 무효화)로 검증한다 — 무효화 메서드 직접 호출은 이 기준을 충족하지 않는다 | design.md D17 | `리뷰` codex 2R ISSUE-3 | T1 | `신규테스트` `io.premiumspread.application.job.TradePreparationReconcileJobIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests '*TradePreparationReconcile*' --offline --no-daemon` | exit 0 |
 | AC10 | owner가 응답을 보고 물량·레버리지·캡 판정이 자기 잔고와 맞는지 확인한다 | design.md §0 "중간 성취" | `추론` | T4 | 사람 확인 | 아래 `## 사람 확인` 표 | 앵커 기록됨 |
@@ -133,6 +134,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 |---|---|---|---|---|
 | 1R | 4건 | high 3 · medium 1 | 전부 ACCEPT (REBUT 0) | 3 |
 | 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
+| 3R | 2건 | high 2 | 전부 ACCEPT (REBUT 0). write-skew → D18 owner 잠금, production ARMED 불가 → D19 도달 상태 명시 | 2 |
 
 ## 검사 산출물
 
