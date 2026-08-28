@@ -334,9 +334,11 @@ D11의 version 조건부 update는 한 행의 lost update만 막는다. 유일�
 성공하는 **phantom 경쟁**이 남는다. 애플리케이션 코드로는 직렬화 격리 없이 막을 수 없다.
 
 ```sql
-watching_key BIGINT AS (CASE WHEN status = 'WATCHING' THEN owner_id END) STORED,
-UNIQUE KEY uk_trade_preparation_owner_watching (watching_key)
+active_key BIGINT AS (CASE WHEN status IN ('WATCHING','ARMED') THEN owner_id END) STORED,
+UNIQUE KEY uk_trade_preparation_owner_active (active_key)
 ```
+
+*(초안은 `WATCHING`만 묶었으나 D23이 활성 범위로 확장했다.)*
 
 MySQL은 partial index가 없어 generated column을 쓴다. `WATCHING`이 아니면 `NULL`이고 `NULL`은
 unique 검사에서 제외된다.
@@ -459,6 +461,24 @@ AC17의 검증을 domain unit에서 **batch 통합(scheduler → Job → 전이)
 
 **버린 대안: non-production profile 격리.** profile 설정 실수로 켜질 수 있다. source set 배제는
 classpath 수준이라 설정으로 우회되지 않는다.
+
+### D23. 유일성의 범위는 활성 계획(`WATCHING`·`ARMED`) 전체다
+
+**5R ISSUE-1 반영.** D16은 `WATCHING`만 유일하게 묶었다. 그런데 D15에 따라 `ARMED`는 무기한
+남으므로, `ACTIVE` tracking이 없는 동안 새 `DRAFT`를 등록·평가해 **같은 owner에 `ARMED`가 여러 개**
+생길 수 있었다. 이후 확인·실행 단계가 어느 것이든 소비할 수 있어 같은 자본에 복수의 durable
+실행 후보가 남는다.
+
+- unique index의 범위를 활성 상태 전체로 넓힌다 — `active_key = owner_id WHEN status IN
+  ('WATCHING','ARMED')`
+- **기존이 `WATCHING`이면** 새 등록이 한 트랜잭션에서 그것을 무효화하고 승격한다 (D11 그대로)
+- **기존이 `ARMED`면 새 등록을 거절한다** (`ARMED_PLAN_EXISTS`). `ARMED`는 owner가 확인을 앞둔
+  의도적 산출물이라 새 등록이 조용히 대체하면 안 된다. owner가 명시적으로 refresh·invalidate한
+  뒤에만 새 후보를 만들 수 있다
+- 애플리케이션 규칙이 틀려도 index가 두 번째 활성 계획의 커밋을 막는다 — D16과 같은 심층 방어
+
+**버린 대안: `ARMED`도 last-wins로 자동 무효화.** 규칙은 단순해지지만, 확인 직전의 계획이 새 등록
+하나로 소리 없이 사라진다. fail-closed 원칙과 `ARMED`의 의도성에 어긋난다.
 
 ## 3. 사이징 관계식
 

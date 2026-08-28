@@ -68,6 +68,12 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
 | 3R | 2건 | high 2 | 전부 ACCEPT (REBUT 0). write-skew → D18 owner 잠금, production ARMED 불가 → D19 도달 상태 명시 | 2 |
 | 4R | 3건 | high 2 · medium 1 | 전부 ACCEPT (REBUT 0). 계약 정렬 → D20, 평가 모듈 분해 → D21, fixture 배선 배제 → D22 | 2 |
+| 5R | 1건 | high 1 | ACCEPT (REBUT 0). 활성 계획 단일성 → D23 (유일성 범위를 `WATCHING`·`ARMED` 전체로) | 1 |
+
+**상한 도달 (5R).** 정지 규칙에 따라 라운드를 더 돌지 않고 범위 판단을 owner에게 올린다.
+추이는 3 → 2 → 2 → 2 → 1로 수렴 중이며, 5R 반영(D23)은 유일성 범위 확장 한 건이다.
+이 반영 자체는 아직 외부 리뷰를 받지 않았다 — 그 잔여 위험은 ⑦ 사용자 리뷰와 구현 단계
+코드 리뷰(⑨)가 본다.
 
 ## 검사 산출물` 절은 비어 있다.
 
@@ -81,7 +87,7 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | AC4 | `balanceBasis`가 `STALE`일 때 조회는 라벨과 함께 계획을 반환하고, verified 원천이 있는 `registerTarget`은 거절한다 | design.md D3·D20 | `리뷰` Phase 0 `STALE_MARKET` 원칙 · `SAFE-9` | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationStaleBalanceTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationStaleBalance*' --offline --no-daemon` | exit 0 |
 | AC5 | 판정용 잔고를 캐시에서 읽을 수 없다. 계획은 잔고 스냅샷 id에 결속되고, 그 id가 바뀌면 무효다 | design.md D2, D5 | `상위` `P3-O17` | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationSnapshotBindingTest` | `./gradlew test --tests '*TradePreparationSnapshotBinding*' --offline --no-daemon` | exit 0 |
 | AC6 | 우리 체결·owner refresh·reconcile 불일치 각각이 계획을 무효화한다. 시간 경과만으로는 무효화하지 않는다 | design.md D4 | `요구` 사건 기반 무효화 | T1 | `신규테스트` `io.premiumspread.domain.tradeprep.TradePreparationInvalidationTest` | `./gradlew test --tests '*TradePreparationInvalidation*' --offline --no-daemon` | exit 0 |
-| AC11 | 무효화와 조건 충족 평가가 **동시에** 일어나도 `INVALIDATED`가 `ARMED`로 되돌아가지 않는다. 서로 다른 두 계획의 동시 `registerTarget`은 **정확히 하나만** `WATCHING`이 된다 (DB 유일성). evaluator·refresh·reconcile 교차와 동시 등록을 실제 DB 트랜잭션으로 검증한다 | design.md D11·D16 | `리뷰` codex 1R ISSUE-3 · 2R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationConcurrencyIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationConcurrency*' --offline --no-daemon` | exit 0 |
+| AC11 | 무효화와 조건 충족 평가가 **동시에** 일어나도 `INVALIDATED`가 `ARMED`로 되돌아가지 않는다. **owner당 활성 계획(`WATCHING`·`ARMED`)은 어떤 교차에서도 최대 하나다** — 동시 `registerTarget`은 정확히 하나만 성공하고, `ARMED`가 존재하면 새 등록이 거절되며, 두 계획을 `ARMED`로 만드는 시도는 DB 유일성이 막는다. 실제 DB 트랜잭션으로 검증한다 | design.md D11·D16·D23 | `리뷰` codex 1R ISSUE-3 · 2R ISSUE-1 · 5R ISSUE-1 | T1 | `신규테스트` `io.premiumspread.infrastructure.tradeprep.TradePreparationConcurrencyIntegrationTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationConcurrency*' --offline --no-daemon` | exit 0 |
 | AC7 | owner 희망 프리미엄에 도달하면 계획이 무장 상태로 전이하고 **주문을 제출하지 않는다.** 직전 종료 포지션의 진입 프리미엄과 현재 gap이 응답에 있다 | design.md D6, D7, D8 | `요구` "희망 premium rate와 함께 계약을 수행하면 사건 기반 판정으로 체결" | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationArmingContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationArming*' --offline --no-daemon` | exit 0 |
 | AC8 | Domain이 거래소·HTTP·캐시 구현에 의존하지 않는다. 잔고 조회는 Domain port로만 표현된다 | `.ai/rules/architecture.md` Domain 허용 경계, design.md D1 | `상위` `P3-O1` | T1 | `기존` `./gradlew architectureTest` | `./gradlew architectureTest --offline --no-daemon` | exit 0 |
 | AC9 | 거래 준비 endpoint 전부가 인증을 요구한다. `PublicEndpointPolicy`에 추가되지 않았다 | `.ai/rules/http.md` 인증 경계 | `리뷰` Phase 0 `AC9` 동형 | T1 | `신규테스트` `io.premiumspread.interfaces.api.tradeprep.TradePreparationAuthContractTest` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationAuth*' --offline --no-daemon` | exit 0 |
@@ -139,6 +145,12 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 | 2R | 4건 | high 2 · medium 2 | 전부 ACCEPT (REBUT 0). 미해결 3건(`TP-OPEN-3`·`4`·`6`)을 owner 승인으로 해소 (D13~D17) | 2 |
 | 3R | 2건 | high 2 | 전부 ACCEPT (REBUT 0). write-skew → D18 owner 잠금, production ARMED 불가 → D19 도달 상태 명시 | 2 |
 | 4R | 3건 | high 2 · medium 1 | 전부 ACCEPT (REBUT 0). 계약 정렬 → D20, 평가 모듈 분해 → D21, fixture 배선 배제 → D22 | 2 |
+| 5R | 1건 | high 1 | ACCEPT (REBUT 0). 활성 계획 단일성 → D23 (유일성 범위를 `WATCHING`·`ARMED` 전체로) | 1 |
+
+**상한 도달 (5R).** 정지 규칙에 따라 라운드를 더 돌지 않고 범위 판단을 owner에게 올린다.
+추이는 3 → 2 → 2 → 2 → 1로 수렴 중이며, 5R 반영(D23)은 유일성 범위 확장 한 건이다.
+이 반영 자체는 아직 외부 리뷰를 받지 않았다 — 그 잔여 위험은 ⑦ 사용자 리뷰와 구현 단계
+코드 리뷰(⑨)가 본다.
 
 ## 검사 산출물
 
