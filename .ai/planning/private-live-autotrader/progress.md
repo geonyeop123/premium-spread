@@ -20,8 +20,8 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
 | program | `PROGRAM_IN_PROGRESS` |
 
 - 현재 Phase: `Phase 0 완료` · Phase 1 미진입 (진입 전 처리 대상 3건은 `#68` §1)
-- feature branch: 없음 (Phase 0 병합 후 삭제)
-- PR: `#67` merged (`67bc948`) · `#68` `#69` merged · `#71` merged (게이트 복구)
+- feature branch: `feat/trade-preparation` (거래 준비 단위, PR `#72` open)
+- PR: `#67` merged (`67bc948`) · `#68` `#69` `#70` merged · `#71` merged (게이트 복구) · **`#72` open (거래 준비)**
 - `origin/dev`: `2bcfb9f`
 - original master plan commit: `b6e16edb3632978728f62918bddb25f791501467`
 
@@ -848,3 +848,35 @@ Phase 1 진입에는 전이 외에 `#68` §1 의 세 항목이 남아 있고 그
 
 **상태축 변화 없음.** 이 실행 단위는 문서만 산출했다.
 
+
+
+## 거래 준비 단위 (2026-08-31, PR `#72` open)
+
+**상태축은 전이시키지 않는다.** `design.md` §4.2 는 software 축 전이를 해당 DoD 의 **merged**
+검증 결과로 선언하라고 규정하고, `#72` 는 아직 열려 있다. 아래는 증거 기록이다.
+
+- 산출물: `docs/work/private-live-autotrader-trade-preparation/` (`design.md` D1~D23 ·
+  `plan.md` T1~T9 · `dod.md` 수용기준 20건 FROZEN)
+- 브랜치 `feat/trade-preparation` 44 커밋 / 94 파일. 마이그레이션 `V16`(계획 테이블) ·
+  `V17`(평가 질의 인덱스) 신설, 기존 `V*.sql` 무변경
+- DoD 판정 `@ 44c4b17`: 기계 검증 **18/18 PASS**(전부 `--rerun` 강제 실행), 실행 실패·미실행 0건.
+  전 스위트 `failures 0 · errors 0 · skipped 0`
+- **`AWAITING_HUMAN`** — `AC10`(응답 수치를 owner 실제 잔고와 대조) · `AC15`(스펙 리뷰 서명)는
+  판정 주체가 사람이라 비워 뒀다. 앵커는 `#72` 코멘트에 기록한다
+- 변경 요청 `CR-2`·`CR-3`·`CR-4` 승인 대기 (`dod.md` 변경 요청 표). 이번 판정을 뒤집지 않는다
+
+**이 단위가 production 에 제공하는 도달 상태는 `WATCHING` 까지다** (`design.md` D19).
+`ARMED` 는 `VerifiedBalance` 결속을 요구하는데 신고 잔고로는 만들 수 없고 production 에
+판정용 port 구현이 0개다. 실원천(`ExchangeBalanceAdapter`)은 `ACT-2` 이후 같은 코드로 열린다.
+**주문 제출 경로는 이 단위에 없다.**
+
+### 리뷰에서 드러난 것 중 프로그램 수준 항목
+
+- **`architectureTest` 게이트가 검사 대상 변경에 재실행되지 않았다.** ArchUnit 이 읽는 jar 중
+  `infrastructure` 3개가 task 의 선언된 input 이 아니었다(실측 확인). 이 단위에서 고쳤으나,
+  **그 이전에 `architectureTest` 로 기록된 GREEN 은 `infrastructure:*` 변경을 검사하지 않았을 수
+  있다** — Phase 0 증거 재해석이 필요한지 owner 판단이 필요하다
+- **통합 테스트가 Flyway 스키마 위에서 돌지 않는다.** `test` 프로파일이 `ddl-auto: create-drop`
+  이라(`modules/jpa/src/main/resources/jpa.yml:57`) JPA 애너테이션으로 표현할 수 없는 DB 전용
+  제약은 테스트 시점에 존재하지 않는다. 이 단위는 해당 테스트에 전용 컨테이너 + `validate` 로
+  우회했으나 **저장소 기본값은 그대로다**
