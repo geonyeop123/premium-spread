@@ -472,6 +472,9 @@ class TradePreparationActiveTrackingContractTest {
             // V16 의 generated column·unique index 를 보존하려면 Flyway 스키마를 Hibernate 가
             // 지우면 안 된다 (TradePreparationConcurrencyIntegrationTest 와 같은 이유).
             registry.add("spring.jpa.hibernate.ddl-auto") { "validate" }
+            // 기본 허가 목록은 비어 있다 (D10 · AC12). 이 계약의 회원이 계획을 만들어야 교차를
+            // 재현할 수 있으므로 그 회원만 owner 로 넣는다.
+            registry.add("trade-preparation.owner.allowed-emails") { EMAIL }
         }
     }
 }

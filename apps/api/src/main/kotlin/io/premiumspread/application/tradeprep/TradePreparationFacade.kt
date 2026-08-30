@@ -3,6 +3,7 @@ package io.premiumspread.application.tradeprep
 import io.premiumspread.application.common.ApplicationError
 import io.premiumspread.application.common.ApplicationException
 import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.member.Member
 import io.premiumspread.domain.member.MemberService
 import io.premiumspread.domain.premium.PremiumPolicy
 import io.premiumspread.domain.premium.PremiumSnapshot
@@ -19,6 +20,7 @@ import io.premiumspread.domain.tradeprep.TradePrepPolicy
 import io.premiumspread.domain.tradeprep.TradePrepSizing
 import io.premiumspread.domain.tradeprep.TradePrepSizingCalculation
 import io.premiumspread.domain.tradeprep.TradePreparation
+import io.premiumspread.domain.tradeprep.TradePreparationOwnerPolicy
 import io.premiumspread.domain.tradeprep.TradePreparationService
 import io.premiumspread.domain.tradeprep.TradePreparationSpec
 import io.premiumspread.domain.tradeprep.TradePreparationStatus
@@ -40,6 +42,17 @@ import java.time.Clock
  * [TradePreparationService] 가 소유하고, 조건 평가(`WATCHING` → `ARMED`)는 `apps:batch` 의
  * 평가 Job 이 같은 Domain 경로로 수행한다 — 앱 모듈끼리는 서로를 참조할 수 없으므로 전이가 여기
  * 있으면 batch 가 쓸 길이 없다.
+ *
+ * ## 허가된 owner 만 계획을 만들고 활성화한다 (D10)
+ *
+ * 인증은 게이트가 아니다 — 회원 가입이 공개 endpoint 라 인증만 요구하면 아무나 가입해 계획을
+ * 만들 수 있다. [prepare] 와 [registerTarget] 은 인증 principal 의 회원이 허가된 owner 인지
+ * 먼저 확인하고, 아니면 `TRADE_PREPARATION_NOT_FOUND` 로 거절한다
+ * ([rejectWhenNotAuthorizedOwner]).
+ *
+ * [invalidate]·[refresh]·[findById] 에는 이 검사를 걸지 않는다. 셋 다 owner-scoped 조회를 거치므로
+ * 허가되지 않은 회원에게는 애초에 보이는 계획이 없고, exposure 를 늘리지도 않는다. 오히려
+ * 허가 목록에서 빠진 회원이 **자기 계획을 정리할 수단**을 잃는 쪽이 해롭다.
  *
  * ## production 이 도달하는 상태는 `WATCHING` 까지다 (D19·D20)
  *
@@ -68,6 +81,7 @@ class TradePreparationFacade(
     private val premiumService: PremiumService,
     private val memberService: MemberService,
     private val policy: TradePrepPolicy,
+    private val ownerPolicy: TradePreparationOwnerPolicy,
     private val balanceSnapshotReadPort: ObjectProvider<BalanceSnapshotReadPort>,
     private val verifiedBalanceReadPort: ObjectProvider<VerifiedBalanceReadPort>,
     private val clock: Clock,
@@ -84,6 +98,10 @@ class TradePreparationFacade(
      */
     @Transactional
     fun prepare(criteria: TradePreparationCriteria.Prepare): TradePreparationResult.Preparation = translateDomain {
+        // D10. 어떤 payload 검증보다 앞이다 — 허가되지 않은 회원에게는 요청 내용과 무관하게 같은
+        // 404 만 보여야 이 endpoint 의 존재 자체가 드러나지 않는다.
+        rejectWhenNotAuthorizedOwner(memberService.findById(criteria.memberId))
+
         val pair = parsePair(criteria.symbol, criteria.koreaExchange, criteria.foreignExchange)
 
         // D13 1차 검사. 보유 중이면 준비금이 온전히 가용하지 않으므로 계산 자체가 성립하지 않는다.
@@ -141,7 +159,9 @@ class TradePreparationFacade(
     fun registerTarget(criteria: TradePreparationCriteria.RegisterTarget): TradePreparationResult.Detail =
         translateDomain {
             // ① member. 이보다 앞에 tracking·plan 조회를 두지 않는다 (D18 잠금 순서).
-            lockOwner(criteria.memberId)
+            //    D10 허가 검사는 잠근 그 행으로 한다 — 조회를 앞에 하나 더 두면 D18 이 정한 첫
+            //    문장이 바뀌고, 얻는 것도 없다.
+            rejectWhenNotAuthorizedOwner(lockOwner(criteria.memberId))
 
             // ② D13 재검사. prepare 통과 직후 tracking 이 생기는 교차를 여기서 잡는다. ①이 없으면
             //    이 검사와 동시의 tracking 생성이 서로를 못 보고 둘 다 커밋된다(write-skew).
@@ -328,9 +348,29 @@ class TradePreparationFacade(
      * 들고 있으면 매칭 행이 없다. 결과를 버리면 그 요청만 잠금 없이 통과해 D18 이 아무 신호 없이
      * write-skew 로 퇴화한다 — 잠금이 걸리지 않았다는 사실 자체가 거절 사유다.
      */
-    private fun lockOwner(memberId: Long) {
+    private fun lockOwner(memberId: Long): Member =
         memberService.findByIdForUpdate(memberId)
             ?: throw ApplicationException(ApplicationError.MEMBER_NOT_FOUND)
+
+    /**
+     * 허가된 owner 만 계획을 만들거나 활성화할 수 있다 (D10, `dod.md` AC12).
+     *
+     * V1 은 단일 owner 인데(§1.2) 회원 가입은 공개 endpoint 다. 인증만 게이트로 삼으면 아무나
+     * 가입해 자동매매 준비 계획을 만들 수 있고, 상위 `P3-O12` 가 그것을 금지한다. 허가 목록은
+     * [TradePreparationOwnerPolicy] 가 소유하며 비어 있으면 아무도 허가되지 않는다.
+     *
+     * **거절은 `TRADE_PREPARATION_NOT_FOUND`(404) 다.** 403 을 쓰면 "허가된 owner 가 따로 있는
+     * 자동매매 기능이 여기 있다"를 알려준다 — 남의 계획 조회를 404 로 답하기로 한 D10 의
+     * "존재를 노출하지 않는" 판단과 같은 이유이고, 그 덕에 허가되지 않은 회원에게는 거래 준비
+     * endpoint 전체가 한결같이 404 다.
+     *
+     * [owner] 가 `null` 인 경우(soft-delete 된 회원이 아직 유효한 access token 을 들고 있는 경우)도
+     * 허가되지 않는다 — [lockOwner] 의 fail-closed 판단과 같다.
+     */
+    private fun rejectWhenNotAuthorizedOwner(owner: Member?) {
+        if (!ownerPolicy.isAuthorized(owner?.email)) {
+            throw ApplicationException(ApplicationError.TRADE_PREPARATION_NOT_FOUND)
+        }
     }
 
     private fun findOwnedPlan(planId: Long, memberId: Long): TradePreparation =

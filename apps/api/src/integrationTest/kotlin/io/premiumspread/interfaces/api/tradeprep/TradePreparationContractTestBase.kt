@@ -27,10 +27,18 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
 import java.time.Instant
+
+/**
+ * 허가된 owner 의 이메일이다 (design.md D10 · AC12). `@TestPropertySource` 의 인자는 컴파일 상수여야
+ * 하므로 companion 이 아니라 최상위 `const` 로 두고 [TradePreparationContractTestBase.OWNER_EMAIL] 이
+ * 그것을 그대로 쓴다 — 설정과 fixture 회원이 한 글자에서 갈라지지 않게 한다.
+ */
+private const val ALLOWED_OWNER_EMAIL = "trade-prep-owner@example.com"
 
 /**
  * 거래 준비 계약 테스트의 공통 설치. 각 계약(AC1·AC9·AC12·AC19)은 하위 클래스가 소유한다.
@@ -38,11 +46,17 @@ import java.time.Instant
  * AC16(`TradePreparationActiveTrackingContractTest`)은 이 base 를 쓰지 않는다 — V16 의
  * `active_key` 와 unique index 를 보존하려면 `ddl-auto: validate` 인 전용 container 가 필요해
  * context 설정 자체가 다르다.
+ *
+ * [OWNER_EMAIL] 만 허가 목록에 넣는다 (D10 · AC12). 기본 설정의 허가 목록은 비어 있어 아무도
+ * 계획을 만들 수 없으므로, 계획을 만드는 계약은 owner 를 명시해야 성립한다. [OTHER_EMAIL] 을
+ * 넣지 않는 것이 AC12 의 "허가된 owner 가 아닌 회원의 생성 요청은 거절된다"를 검증 가능하게
+ * 만드는 조건이다.
  */
 @Tag("integration")
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestPropertySource(properties = ["trade-preparation.owner.allowed-emails=$ALLOWED_OWNER_EMAIL"])
 @Import(MySqlTestContainersConfig::class, RedisTestContainersConfig::class, TestConfig::class)
 abstract class TradePreparationContractTestBase {
 
@@ -159,7 +173,7 @@ abstract class TradePreparationContractTestBase {
     }
 
     companion object {
-        const val OWNER_EMAIL = "trade-prep-owner@example.com"
+        const val OWNER_EMAIL = ALLOWED_OWNER_EMAIL
         const val OTHER_EMAIL = "trade-prep-other@example.com"
         const val PASSWORD = "password123"
         const val SYMBOL = "BTC"

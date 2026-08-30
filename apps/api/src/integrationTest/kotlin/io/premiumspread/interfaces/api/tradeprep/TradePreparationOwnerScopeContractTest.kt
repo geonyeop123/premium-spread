@@ -17,6 +17,11 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
  * 403 을 쓰지 않는 이유는 403 이 "그 id 의 계획이 존재한다"를 알려주기 때문이다. 그래서 남의
  * 계획과 아예 없는 id 의 응답이 **구별되지 않아야** 한다 — status 만이 아니라 error code 까지
  * 같은지 대조한다.
+ *
+ * AC12 의 세 번째 문장인 **"허가된 owner 가 아닌 회원의 생성 요청은 거절된다"** 도 여기 있다.
+ * base 가 [OWNER_EMAIL] 하나만 허가 목록에 넣으므로 [OTHER_EMAIL] 회원은 인증을 통과한 비허가
+ * 회원이다 — `POST /api/v1/trade-preparations` 가 그에게 열려 있으면 "가입 → 로그인 → 생성"으로
+ * 누구나 자동매매 준비 계획을 만들 수 있고, 상위 `P3-O12` 가 그것을 금지한다.
  */
 class TradePreparationOwnerScopeContractTest : TradePreparationContractTestBase() {
 
@@ -91,6 +96,66 @@ class TradePreparationOwnerScopeContractTest : TradePreparationContractTestBase(
         // 그러므로 body 가 지목한 회원은 그 계획을 볼 수 없다.
         assertThat(call(HttpMethod.GET, "/api/v1/trade-preparations/$planId", otherToken).status).isEqualTo(404)
         assertThat(call(HttpMethod.GET, "/api/v1/trade-preparations/$planId", token).status).isEqualTo(200)
+    }
+
+    @Test
+    fun `허가된 owner 가 아닌 회원의 생성 요청은 거절되고 계획 행이 생기지 않는다`() {
+        // V1 은 단일 owner 다 (design.md D10 · §1.2). 회원 가입이 공개 endpoint 이므로 인증만
+        // 게이트로 삼으면 "가입 → 로그인 → 생성" 세 걸음으로 자동매매 준비 계획이 만들어진다.
+        val response = mockMvc.perform(
+            MockMvcRequestBuilders.post("/api/v1/trade-preparations")
+                .header("Authorization", "Bearer $otherToken")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(prepareBody()),
+        ).andReturn().response
+
+        assertThat(response.status).isEqualTo(404)
+        // 남의 계획 조회와 같은 응답이다 — 403 은 "허가된 owner 가 따로 있는 기능이 여기 있다"를
+        // 알려준다 (D10 의 존재를 노출하지 않는다).
+        assertThat(errorCode(response)).isEqualTo("TRADE_PREPARATION_NOT_FOUND")
+
+        // 상태만 보면 계획이 만들어진 채 응답만 404 인 구현도 통과한다. 행 수를 센다.
+        assertThat(countPlans(otherMemberId)).isZero()
+        assertThat(countPlans()).isZero()
+    }
+
+    @Test
+    fun `허가되지 않은 회원에게는 요청 payload 가 무엇이든 같은 404 다`() {
+        // 거절 사유가 payload 에 따라 갈리면 그 차이가 곧 정보다 — 캡 위반(422)·잘못된 거래소
+        // (422)·계산 불가(422) 어느 것도 owner 가 아닌 회원에게는 보이지 않아야 한다.
+        val bodies = listOf(
+            prepareBody(),
+            prepareBody(koreaBalance = CAP_VIOLATING_KOREA_BALANCE),
+            prepareBody(extra = mapOf("koreaExchange" to "UNKNOWN")),
+        )
+
+        bodies.forEach { body ->
+            val response = mockMvc.perform(
+                MockMvcRequestBuilders.post("/api/v1/trade-preparations")
+                    .header("Authorization", "Bearer $otherToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            ).andReturn().response
+
+            assertThat(response.status).describedAs(body).isEqualTo(404)
+            assertThat(errorCode(response)).describedAs(body).isEqualTo("TRADE_PREPARATION_NOT_FOUND")
+        }
+
+        assertThat(countPlans(otherMemberId)).isZero()
+    }
+
+    @Test
+    fun `허가된 owner 는 같은 요청으로 계획을 만든다`() {
+        // 위 두 계약이 "생성 자체가 막혔다"로 공허하게 통과하지 않는다는 대조군이다.
+        val response = mockMvc.perform(
+            MockMvcRequestBuilders.post("/api/v1/trade-preparations")
+                .header("Authorization", "Bearer $token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(prepareBody()),
+        ).andReturn().response
+
+        assertThat(response.status).isEqualTo(201)
+        assertThat(countPlans()).isEqualTo(1)
     }
 
     private fun ownerScopedEndpoints(planId: Long): List<Pair<HttpMethod, String>> = listOf(

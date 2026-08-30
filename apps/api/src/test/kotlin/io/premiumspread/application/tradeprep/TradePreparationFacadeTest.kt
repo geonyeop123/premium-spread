@@ -21,6 +21,7 @@ import io.premiumspread.domain.tradeprep.BalanceSnapshot
 import io.premiumspread.domain.tradeprep.BalanceSnapshotReadPort
 import io.premiumspread.domain.tradeprep.TradePrepPolicy
 import io.premiumspread.domain.tradeprep.TradePreparation
+import io.premiumspread.domain.tradeprep.TradePreparationOwnerPolicy
 import io.premiumspread.domain.tradeprep.TradePreparationService
 import io.premiumspread.domain.tradeprep.TradePreparationSpec
 import io.premiumspread.domain.tradeprep.TradePreparationStatus
@@ -50,6 +51,7 @@ class TradePreparationFacadeTest {
     private val now: Instant = Instant.parse("2026-08-30T03:00:00Z")
     private val pair = MarketPair(Symbol("BTC"), Exchange.BITHUMB, Exchange.BINANCE)
     private val memberId = 1L
+    private val ownerEmail = "trade-prep-owner@example.com"
 
     /** ECO-5 §7 owner 결정값과 같은 형태. 값 자체는 설정이 소유한다 (design.md §3). */
     private val policy = TradePrepPolicy(
@@ -58,6 +60,9 @@ class TradePreparationFacadeTest {
         koreaLotSize = BigDecimal("0.0001"),
         foreignLotSize = BigDecimal("0.001"),
     )
+
+    /** D10 허가 목록. [memberId] 의 회원 fixture 이메일 하나만 owner 다. */
+    private val ownerPolicy = TradePreparationOwnerPolicy(setOf(ownerEmail))
 
     @BeforeEach
     fun setUp() {
@@ -71,7 +76,10 @@ class TradePreparationFacadeTest {
         // production 배선에는 두 port 구현이 모두 없다 (D22, AC20). 그 상태를 기본값으로 둔다.
         every { balanceSnapshotProvider.getIfAvailable() } returns null
         every { verifiedBalanceProvider.getIfAvailable() } returns null
-        every { memberService.findByIdForUpdate(any()) } returns MemberFixtures.activeMember(id = memberId)
+        every { memberService.findByIdForUpdate(any()) } returns
+            MemberFixtures.activeMember(email = ownerEmail, id = memberId)
+        every { memberService.findById(any()) } returns
+            MemberFixtures.activeMember(email = ownerEmail, id = memberId)
         every { trackingService.countActiveByMemberId(any()) } returns 0L
         every { trackingService.findAllArchivedByMemberId(any()) } returns emptyList()
 
@@ -81,6 +89,7 @@ class TradePreparationFacadeTest {
             premiumService,
             memberService,
             policy,
+            ownerPolicy,
             balanceSnapshotProvider,
             verifiedBalanceProvider,
             Clock.fixed(now, ZoneOffset.UTC),
@@ -178,6 +187,73 @@ class TradePreparationFacadeTest {
         )
 
         assertThat(facade.prepare(prepare()).previousTracking!!.trackingId).isEqualTo(12L)
+    }
+
+    @Test
+    fun `허가된 owner 가 아니면 prepare 를 거절하고 아무 것도 읽지 않는다`() {
+        // 가입만 한 다른 회원이다 — 인증은 통과했지만 D10 의 허가 목록에 없다.
+        every { memberService.findById(memberId) } returns
+            MemberFixtures.activeMember(email = "intruder@example.com", id = memberId)
+
+        // 남의 계획 조회와 같은 오류다 (D10) — 403 은 이 기능의 존재를 알려준다.
+        assertApplicationError(ApplicationError.TRADE_PREPARATION_NOT_FOUND) { facade.prepare(prepare()) }
+
+        verify(exactly = 0) { tradePreparationService.create(any()) }
+        // payload 검증·tracking·프리미엄 조회보다 앞에서 끊긴다 — 거절 사유가 요청 내용에 따라
+        // 달라지면 그 차이 자체가 정보다.
+        verify(exactly = 0) { trackingService.countActiveByMemberId(any()) }
+        verify(exactly = 0) { premiumService.findLatestSnapshot(any()) }
+    }
+
+    @Test
+    fun `허가 목록이 비면 아무도 prepare 할 수 없다`() {
+        // 설정을 빠뜨린 배포가 "가입한 누구나 생성 가능"으로 열리지 않는다는 계약이다.
+        val closed = TradePreparationFacade(
+            tradePreparationService,
+            trackingService,
+            premiumService,
+            memberService,
+            policy,
+            TradePreparationOwnerPolicy(emptySet()),
+            balanceSnapshotProvider,
+            verifiedBalanceProvider,
+            Clock.fixed(now, ZoneOffset.UTC),
+        )
+
+        assertApplicationError(ApplicationError.TRADE_PREPARATION_NOT_FOUND) { closed.prepare(prepare()) }
+
+        verify(exactly = 0) { tradePreparationService.create(any()) }
+    }
+
+    @Test
+    fun `탈퇴한 회원은 access token 이 남아 있어도 허가되지 않는다`() {
+        // findById 는 deleted_at IS NULL 로 거른다 — 행이 없다는 것 자체가 거절 사유다.
+        every { memberService.findById(memberId) } returns null
+
+        assertApplicationError(ApplicationError.TRADE_PREPARATION_NOT_FOUND) { facade.prepare(prepare()) }
+
+        verify(exactly = 0) { tradePreparationService.create(any()) }
+    }
+
+    @Test
+    fun `허가된 owner 가 아니면 registerTarget 도 거절하고 계획을 건드리지 않는다`() {
+        // owner 였던 회원이 허가 목록에서 빠지면 이미 만들어 둔 DRAFT 가 남는다. 그 계획을
+        // WATCHING 으로 올리는 것은 exposure 를 늘리는 요청이므로 여기서도 막는다.
+        every { memberService.findByIdForUpdate(memberId) } returns
+            MemberFixtures.activeMember(email = "revoked@example.com", id = memberId)
+
+        assertApplicationError(ApplicationError.TRADE_PREPARATION_NOT_FOUND) {
+            facade.registerTarget(
+                TradePreparationCriteria.RegisterTarget(
+                    planId = 10L,
+                    memberId = memberId,
+                    desiredEntryPremiumRate = BigDecimal("1.50"),
+                ),
+            )
+        }
+
+        verify(exactly = 0) { tradePreparationService.findByIdAndOwnerId(any(), any()) }
+        verify(exactly = 0) { tradePreparationService.save(any()) }
     }
 
     @Test
