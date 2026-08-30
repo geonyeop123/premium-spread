@@ -43,16 +43,26 @@ class TradePreparationReconcileJobTest {
         job = TradePreparationReconcileJob(balanceSource, reconcileService, executor, clock)
     }
 
+    /**
+     * 잔고를 **읽지 않고** port 를 그대로 넘긴다. 여기서 `findForDecision()` 을 부르면 Domain
+     * 서비스의 `@Transactional` 프록시 밖에서 읽게 되고, 그 뒤 커밋된 계획이 옛 잔고와 대조돼
+     * 무효화된다 — Job 이 읽지 않았음을 단언해 그 경로를 막는다.
+     */
     @Test
-    fun `판정용 원천이 배선돼 있으면 그 잔고와 주입한 clock 으로 Domain 대조를 호출한다`() {
-        val balance = verifiedBalance()
-        every { balanceSource.getIfAvailable() } returns VerifiedBalanceReadPort { balance }
-        every { reconcileService.reconcile(balance, now) } returns
+    fun `판정용 원천을 읽지 않고 주입한 clock 과 함께 Domain 대조에 넘긴다`() {
+        var reads = 0
+        val source = VerifiedBalanceReadPort {
+            reads++
+            verifiedBalance()
+        }
+        every { balanceSource.getIfAvailable() } returns source
+        every { reconcileService.reconcile(source, now) } returns
             TradePreparationReconcileSummary.reconciled(examined = 2, invalidated = 1)
 
         assertThat(job.run()).isEqualTo(JobResult.Success)
 
-        verify(exactly = 1) { reconcileService.reconcile(balance, now) }
+        verify(exactly = 1) { reconcileService.reconcile(source, now) }
+        assertThat(reads).describedAs("Job 은 잔고를 직접 읽지 않는다").isZero()
     }
 
     /**
@@ -71,14 +81,15 @@ class TradePreparationReconcileJobTest {
 
     @Test
     fun `원천이 판정용 잔고를 주지 못하면 Domain 이 판정하도록 그대로 넘긴다`() {
-        every { balanceSource.getIfAvailable() } returns VerifiedBalanceReadPort { null }
-        every { reconcileService.reconcile(null, now) } returns
+        val empty = VerifiedBalanceReadPort { null }
+        every { balanceSource.getIfAvailable() } returns empty
+        every { reconcileService.reconcile(empty, now) } returns
             TradePreparationReconcileSummary.notReconciled(TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE)
 
         val result = job.run()
 
         assertThat((result as JobResult.Skipped).reason).isEqualTo("balance_unavailable")
-        verify(exactly = 1) { reconcileService.reconcile(null, now) }
+        verify(exactly = 1) { reconcileService.reconcile(empty, now) }
     }
 
     @Test

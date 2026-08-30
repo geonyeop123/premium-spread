@@ -32,18 +32,26 @@ import java.time.Instant
 class TradePreparationReconcileService(private val repository: TradePreparationRepository) {
 
     /**
-     * [balance] 와 결속 스냅샷 id 가 다른 활성 계획을 `INVALIDATED` 로 전이시킨다.
+     * [source] 의 현재 판정용 잔고와 결속 스냅샷 id 가 다른 활성 계획을 `INVALIDATED` 로
+     * 전이시킨다.
      *
-     * [balance] 가 `null` 이면 "현재 판정용 잔고 없음"이다 — 계획을 **무효화하지 않고** 그대로
-     * 남긴다. 원천이 회복되면 다음 실행이 그대로 재개한다 (D14 의 stream 부재 처리와 같은 형태).
+     * 잔고 **값이 아니라 port 를 받는다.** 이 메서드가 트랜잭션 경계이므로, 값을 받으면 호출자가
+     * 프록시 밖에서 읽게 되고 읽기와 조회 사이에 커밋된 계획이 옛 잔고와 대조된다 —
+     * `registerTarget` 이 스냅샷 `S2` 로 막 등록한 계획을, 그보다 앞서 읽은 `S1` 과 대조해
+     * 무효화하는 순서가 실제로 가능하다. 같은 트랜잭션 안에서 읽으면 잔고와 계획 목록이 같은
+     * 시점을 본다.
+     *
+     * 잔고가 `null` 이면 "현재 판정용 잔고 없음"이다 — 계획을 **무효화하지 않고** 그대로 남긴다.
+     * 원천이 회복되면 다음 실행이 그대로 재개한다 (D14 의 stream 부재 처리와 같은 형태).
      *
      * 조회를 잔고 판정 **뒤에** 두는 것은 의도적이다. 대조할 상대가 없으면 어떤 계획도 읽지
      * 않는다는 사실이 코드 순서로 드러난다.
      */
-    fun reconcile(balance: VerifiedBalance?, now: Instant): TradePreparationReconcileSummary {
-        if (balance == null) {
-            return TradePreparationReconcileSummary.notReconciled(TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE)
-        }
+    fun reconcile(source: VerifiedBalanceReadPort, now: Instant): TradePreparationReconcileSummary {
+        val balance = source.findForDecision()
+            ?: return TradePreparationReconcileSummary.notReconciled(
+                TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE,
+            )
 
         var invalidated = 0
         val plans = repository.findAllActive()

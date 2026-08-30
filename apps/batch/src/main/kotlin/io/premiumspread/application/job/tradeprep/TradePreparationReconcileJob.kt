@@ -54,7 +54,9 @@ class TradePreparationReconcileJob(
             log.debug("Skipped trade preparation reconcile: no verified balance source is wired")
             JobResult.Skipped(TradePreparationReconcileOutcome.BALANCE_SOURCE_UNAVAILABLE.skipReason())
         } else {
-            report(reconcileService.reconcile(source.findForDecision(), clock.instant()))
+            // port 를 그대로 넘긴다. 여기서 findForDecision() 을 부르면 @Transactional 프록시
+            // **밖에서** 잔고를 읽게 되고, 그 뒤 커밋된 계획이 옛 잔고와 대조돼 무효화된다.
+            report(reconcileService.reconcile(source, clock.instant()))
         }
     } catch (e: Exception) {
         log.error("Failed to reconcile trade preparation balance bindings", e)

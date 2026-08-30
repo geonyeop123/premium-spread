@@ -20,7 +20,7 @@ class TradePreparationReconcileServiceTest {
         val plan = activePlan(boundSnapshotId = "snap-1")
         val repository = FakeActivePlanRepository(plan)
 
-        val summary = TradePreparationReconcileService(repository).reconcile(balance("snap-2"), NOW)
+        val summary = TradePreparationReconcileService(repository).reconcile(source(balance("snap-2")), NOW)
 
         assertThat(summary.outcome).isEqualTo(TradePreparationReconcileOutcome.RECONCILED)
         assertThat(summary.examined).isEqualTo(1)
@@ -36,7 +36,7 @@ class TradePreparationReconcileServiceTest {
         val plan = activePlan(boundSnapshotId = "snap-1")
         val repository = FakeActivePlanRepository(plan)
 
-        val summary = TradePreparationReconcileService(repository).reconcile(balance("snap-1"), NOW)
+        val summary = TradePreparationReconcileService(repository).reconcile(source(balance("snap-1")), NOW)
 
         assertThat(summary.outcome).isEqualTo(TradePreparationReconcileOutcome.RECONCILED)
         assertThat(summary.examined).isEqualTo(1)
@@ -55,7 +55,7 @@ class TradePreparationReconcileServiceTest {
         val plan = activePlan(boundSnapshotId = "snap-1")
         val repository = FakeActivePlanRepository(plan)
 
-        val summary = TradePreparationReconcileService(repository).reconcile(null, NOW)
+        val summary = TradePreparationReconcileService(repository).reconcile(source(null), NOW)
 
         assertThat(summary.outcome).isEqualTo(TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE)
         assertThat(summary.examined).isZero()
@@ -72,7 +72,7 @@ class TradePreparationReconcileServiceTest {
         val mismatchedArmed = activePlan(boundSnapshotId = "snap-older", arm = true)
         val repository = FakeActivePlanRepository(matched, mismatchedWatching, mismatchedArmed)
 
-        val summary = TradePreparationReconcileService(repository).reconcile(balance("snap-1"), NOW)
+        val summary = TradePreparationReconcileService(repository).reconcile(source(balance("snap-1")), NOW)
 
         assertThat(summary.examined).isEqualTo(3)
         assertThat(summary.invalidated).isEqualTo(2)
@@ -80,6 +80,30 @@ class TradePreparationReconcileServiceTest {
         assertThat(mismatchedWatching.status).isEqualTo(TradePreparationStatus.INVALIDATED)
         assertThat(mismatchedArmed.status).isEqualTo(TradePreparationStatus.INVALIDATED)
         assertThat(repository.saved).containsExactly(mismatchedWatching, mismatchedArmed)
+    }
+
+    /**
+     * 판정용 잔고를 이 메서드 **안에서**, 계획을 읽기 전에 읽는다.
+     *
+     * 잔고를 값으로 받으면 호출자(`TradePreparationReconcileJob`)가 `@Transactional` 프록시 밖에서
+     * 읽게 된다. 그러면 `잔고 S1 읽기 → registerTarget 이 S2 결속 계획을 커밋 → 이 트랜잭션이
+     * 그 계획을 보고 S1 과 달라 무효화` 순서가 성립해, 방금 등록한 멀쩡한 계획이 죽는다.
+     * 시그니처가 port 인 것이 그 순서를 구조적으로 막고, 이 테스트가 읽기 순서를 고정한다.
+     */
+    @Test
+    fun `판정용 잔고를 계획보다 먼저 이 호출 안에서 읽는다`() {
+        val repository = FakeActivePlanRepository(activePlan(boundSnapshotId = "snap-1"))
+        var activeQueriesWhenBalanceRead = -1
+        val source = VerifiedBalanceReadPort {
+            activeQueriesWhenBalanceRead = repository.activeQueries
+            balance("snap-1")
+        }
+
+        val summary = TradePreparationReconcileService(repository).reconcile(source, NOW)
+
+        assertThat(activeQueriesWhenBalanceRead).isZero()
+        assertThat(repository.activeQueries).isEqualTo(1)
+        assertThat(summary.outcome).isEqualTo(TradePreparationReconcileOutcome.RECONCILED)
     }
 
     /** 무효화 건수가 대조 건수를 넘는 조합은 만들어질 수 없다 — factory 가 유일한 생성 경로다. */
@@ -107,6 +131,12 @@ class TradePreparationReconcileServiceTest {
             TradePreparationReconcileSummary.notReconciled(TradePreparationReconcileOutcome.BALANCE_SOURCE_UNAVAILABLE)
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
+
+    /**
+     * 판정용 잔고를 한 번 돌려주는 port 다. 서비스가 값이 아니라 port 를 받는 이유는 잔고 읽기가
+     * 트랜잭션 **안에서** 일어나야 하기 때문이고, 그 순서는 위 순서 계약 테스트가 고정한다.
+     */
+    private fun source(balance: VerifiedBalance?): VerifiedBalanceReadPort = VerifiedBalanceReadPort { balance }
 
     private fun balance(snapshotId: String): VerifiedBalance = VerifiedBalance.from(
         BalanceSnapshot(
