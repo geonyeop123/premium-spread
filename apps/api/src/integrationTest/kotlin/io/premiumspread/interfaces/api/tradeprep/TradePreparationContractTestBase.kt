@@ -23,6 +23,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.context.ActiveProfiles
@@ -72,6 +73,9 @@ abstract class TradePreparationContractTestBase {
     @Autowired
     protected lateinit var tradePreparationRepository: TradePreparationRepository
 
+    @Autowired
+    protected lateinit var jdbcTemplate: JdbcTemplate
+
     protected var memberId: Long = 0L
     protected lateinit var token: String
 
@@ -102,7 +106,7 @@ abstract class TradePreparationContractTestBase {
      * 짝지으면 캡 안쪽, [CAP_VIOLATING_KOREA_BALANCE] 와 짝지으면 `EFFICIENCY_CAP` 하나만
      * 위반한다 — 두 경로를 값 하나로 갈라 다른 변수를 고정한다.
      */
-    protected fun savePremium(observedAt: Instant = Instant.now()): Premium {
+    protected fun savePremium(observedAt: Instant = FIXTURE_OBSERVED_AT): Premium {
         val korea = tickerRepository.save(
             Ticker.create(Exchange.BITHUMB, Quote.coin(Symbol(SYMBOL), Currency.KRW), KOREA_PRICE, observedAt),
         )
@@ -128,6 +132,21 @@ abstract class TradePreparationContractTestBase {
             "foreignBalance" to foreignBalance,
         ) + extra,
     )
+
+    /**
+     * owner 의 계획 **행 수**다.
+     *
+     * id 를 훑어 "없음"을 단언하지 않는다 — 그건 `DatabaseCleanUp` 이 `TRUNCATE` 라
+     * AUTO_INCREMENT 가 리셋되기 때문에만 옳고, 정리가 `DELETE` 로 바뀌면 공허하게 통과한다.
+     * `DRAFT` 는 `active_key` 가 `NULL` 이라 `findActiveByOwnerId` 로도 잡히지 않으므로 테이블을
+     * 직접 센다.
+     */
+    protected fun countPlans(ownerId: Long = memberId): Long =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM trade_preparation WHERE owner_id = ?",
+            Long::class.java,
+            ownerId,
+        )!!
 
     /** `DRAFT` 계획을 실제 API 로 만들고 id 를 돌려준다. */
     protected fun createDraftPlan(accessToken: String = token): Long {
@@ -156,5 +175,19 @@ abstract class TradePreparationContractTestBase {
         val CAP_VIOLATING_KOREA_BALANCE: BigDecimal = BigDecimal("1000000")
 
         val FOREIGN_BALANCE: BigDecimal = BigDecimal("1000")
+
+        /**
+         * 캡은 안쪽인데 `rawQuantity ≈ 0.00077` 이라 바이낸스 lot(0.001) 내림에서 물량이 0 이
+         * 된다. `koreaShare ≈ 0.636 >= 0.60`, `leverage = 0 < 7` 이라 위반한 캡은 없다 —
+         * `CAP_VIOLATED` 가 아닌 `NOT_PLANNABLE` 경로다.
+         */
+        val NOT_PLANNABLE_KOREA_BALANCE: BigDecimal = BigDecimal("100000")
+        val NOT_PLANNABLE_FOREIGN_BALANCE: BigDecimal = BigDecimal("40")
+
+        /**
+         * fixture 시각을 고정한다 (`.ai/rules/testing.md`). 이 base 를 쓰는 계약은 시각을 단언하지
+         * 않고 신선도 경계도 건드리지 않으므로 벽시계를 읽을 이유가 없다.
+         */
+        val FIXTURE_OBSERVED_AT: Instant = Instant.parse("2026-08-30T00:00:00Z")
     }
 }

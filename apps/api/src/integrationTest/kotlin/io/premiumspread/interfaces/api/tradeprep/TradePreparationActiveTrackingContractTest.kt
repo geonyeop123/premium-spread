@@ -37,6 +37,8 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -109,6 +111,8 @@ class TradePreparationActiveTrackingContractTest {
     @Autowired private lateinit var trackingRepository: TrackingRepository
     @Autowired private lateinit var tradePreparationRepository: TradePreparationRepository
     @Autowired private lateinit var transactionManager: PlatformTransactionManager
+    @Autowired private lateinit var jdbcTemplate: JdbcTemplate
+    @Autowired private lateinit var redisTemplate: StringRedisTemplate
     @Autowired private lateinit var gate: GatedVerifiedBalanceReadPort
 
     private var memberId: Long = 0L
@@ -118,6 +122,10 @@ class TradePreparationActiveTrackingContractTest {
     @BeforeEach
     fun setUp() {
         databaseCleanUp.truncateAllTables()
+        // premium snapshot 조회는 Redis 캐시를 먼저 본다(JpaPremiumRepositoryAdapter). Redis
+        // container 는 모듈 전체가 공유하므로, 비우지 않으면 다른 클래스가 남긴 낡은 observedAt
+        // 이 recordFromMarket 의 신선도 판정을 흔든다.
+        redisTemplate.execute { it.serverCommands().flushAll() }
         gate.disarm()
         pool = Executors.newFixedThreadPool(2)
         memberId = memberRepository.save(
@@ -144,7 +152,7 @@ class TradePreparationActiveTrackingContractTest {
 
         assertThat(response.status).isEqualTo(409)
         assertThat(errorCode(response)).isEqualTo("ACTIVE_TRACKING_EXISTS")
-        assertThat((1L..20L).mapNotNull { tradePreparationRepository.findById(it) }).isEmpty()
+        assertThat(countPlans()).isZero()
     }
 
     @Test
@@ -240,6 +248,42 @@ class TradePreparationActiveTrackingContractTest {
         assertNoCoexistence(planId, expectedPlanStatus = TradePreparationStatus.INVALIDATED)
     }
 
+    /**
+     * 교차 ③: 교차 ②와 같은 순서이되 tracking 을 **production 경로**인 `recordFromMarket` 으로
+     * 만든다 (`POST /api/v1/trackings/from-market`).
+     *
+     * **교차 ②로는 이 경로를 덮지 못한다.** `record` 는 `INSERT` 가 트랜잭션의 첫 DB 문장이라,
+     * 애플리케이션 잠금이 없어도 `fk_position_member` 의 FK 검사가 부모 `member` 행에 공유
+     * 잠금을 요청하며 대기하고, read view 도 그 뒤에 열려 커밋된 `WATCHING` 을 본다 — 즉 잠금을
+     * 지워도 결과가 옳다. `recordFromMarket` 은 다르다: `premiumService.findLatestSnapshot` 이
+     * `INSERT` 보다 앞서 consistent read 를 일으켜 **read view 가 먼저 열린다.** 그러면 FK 가
+     * write 를 직렬화해도 `invalidateActiveOnTrackingEvent` 의 조회는 `registerTarget` 커밋 이전
+     * 스냅샷을 읽어 빈손이 되고, `ACTIVE` tracking 과 `WATCHING` 계획이 공존 커밋된다.
+     * 이 경로에서는 tracking 측 member 잠금(D18)이 유일한 방어다.
+     */
+    @Test
+    fun `recordFromMarket 교차에서도 tracking 생성이 직렬화돼 활성 계획을 무효화한다`() {
+        val planId = createDraftPlan()
+        gate.arm()
+
+        val registerFuture = pool.submit(Callable { registerTarget(planId) })
+        check(gate.awaitEntered(AWAIT_SECONDS)) { "registerTarget did not reach the gate" }
+
+        val trackingFuture = pool.submit(Callable { recordTrackingFromMarket() })
+
+        assertThatThrownBy { trackingFuture.get(BLOCKED_PROBE_SECONDS, TimeUnit.SECONDS) }
+            .isInstanceOf(TimeoutException::class.java)
+
+        gate.release()
+
+        val registerResponse = registerFuture.get(AWAIT_SECONDS, TimeUnit.SECONDS)
+        val trackingResponse = trackingFuture.get(AWAIT_SECONDS, TimeUnit.SECONDS)
+
+        assertThat(registerResponse.status).isEqualTo(200)
+        assertThat(trackingResponse.status).isEqualTo(201)
+        assertNoCoexistence(planId, expectedPlanStatus = TradePreparationStatus.INVALIDATED)
+    }
+
     /** `ACTIVE` tracking 과 활성(`WATCHING`·`ARMED`) 계획은 어떤 교차에서도 공존하지 않는다. */
     private fun assertNoCoexistence(planId: Long, expectedPlanStatus: TradePreparationStatus) {
         assertThat(trackingRepository.countActiveByMemberId(memberId)).isEqualTo(1L)
@@ -289,6 +333,29 @@ class TradePreparationActiveTrackingContractTest {
         )
     }.andReturn().response
 
+    /** production 경로. 진입가·환율을 요청이 아니라 현재 premium snapshot 에서 읽는다. */
+    private fun recordTrackingFromMarket(): MockHttpServletResponse =
+        mockMvc.post("/api/v1/trackings/from-market") {
+            header("Authorization", "Bearer $token")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                mapOf(
+                    "symbol" to SYMBOL,
+                    "koreaExchange" to Exchange.BITHUMB.name,
+                    "koreaQuantity" to BigDecimal("0.038"),
+                    "foreignExchange" to Exchange.BINANCE.name,
+                    "foreignQuantity" to BigDecimal("0.038"),
+                    "foreignLeverage" to 3,
+                ),
+            )
+        }.andReturn().response
+
+    private fun countPlans(): Long = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM trade_preparation WHERE owner_id = ?",
+        Long::class.java,
+        memberId,
+    )!!
+
     private fun createDraftPlan(): Long {
         val response = prepare()
         check(response.status == 201) { "prepare failed: ${response.status} ${response.contentAsString}" }
@@ -324,6 +391,11 @@ class TradePreparationActiveTrackingContractTest {
         ),
     )
 
+    /**
+     * 여기서만 벽시계를 읽는다. `recordFromMarket` 이 snapshot `observedAt` 을 애플리케이션의 실제
+     * clock 과 60초 창으로 비교하므로(`TrackingFacade.isFresh`), 고정 시각을 쓰면 신선도에서
+     * 거절되어 교차 ③이 성립하지 않는다. 이 값은 어떤 단언의 대상도 아니다.
+     */
     private fun savePremium(): Premium {
         val observedAt = Instant.now()
         val korea = tickerRepository.save(

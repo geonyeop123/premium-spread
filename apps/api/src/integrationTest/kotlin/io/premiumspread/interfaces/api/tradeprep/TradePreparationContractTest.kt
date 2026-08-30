@@ -92,9 +92,31 @@ class TradePreparationContractTest : TradePreparationContractTestBase() {
     fun `캡을 위반하면 계획 행 자체가 생기지 않는다`() {
         prepare(prepareBody(koreaBalance = CAP_VIOLATING_KOREA_BALANCE), expectedStatus = 422)
 
-        // DRAFT 는 active_key 가 NULL 이라 findActiveByOwnerId 로 잡히지 않는다. id 를 훑어
-        // "행이 하나도 없음"을 직접 확인한다.
-        assertThat((1L..20L).mapNotNull { tradePreparationRepository.findById(it) }).isEmpty()
+        assertThat(countPlans()).isZero()
+    }
+
+    /**
+     * 캡은 안쪽인데 lot/step 내림이 물량을 0 으로 만든 경우다 (D12). 계획이 없으므로 201 이
+     * 아니고, 위반한 캡이 없으므로 `CAP_VIOLATED` 도 아니다 — 그렇다고 `code` 를 비우면
+     * 클라이언트가 이 422 를 파싱 실패와 구별하지 못한다.
+     */
+    @Test
+    fun `반올림으로 물량이 0 이 되면 422 NOT_PLANNABLE 이고 계획 행이 생기지 않는다`() {
+        val json = prepare(
+            prepareBody(
+                koreaBalance = NOT_PLANNABLE_KOREA_BALANCE,
+                foreignBalance = NOT_PLANNABLE_FOREIGN_BALANCE,
+            ),
+            expectedStatus = 422,
+        )
+
+        assertThat(json.get("code").asText()).isEqualTo("NOT_PLANNABLE")
+        assertThat(json.get("plannable").asBoolean()).isFalse()
+        assertThat(json.get("capViolations")).isEmpty()
+        assertThat(json.decimal("quantity")).isZero()
+        assertThat(json.decimal("rawQuantity")).isPositive()
+        assertThat(json.fieldNames().asSequence().toSet()).isEqualTo(PREPARATION_KEYS)
+        assertThat(countPlans()).isZero()
     }
 
     @Test

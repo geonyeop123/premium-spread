@@ -533,6 +533,94 @@ FK 잠금이 없다. 다만 이 테스트가 그 잠금을 재지는 못한다�
 베끼는 대신 실행 중인 filter chain 에 직접 물어 판정한다 — 인증 없는 5종 401 과, 같은 method+path
 인증 시 401·404·405 가 아님을 **짝으로** 확인한다(음성 판정만 두면 controller 를 지워도 통과한다).
 
+### T6 수정 라운드 1 — 리뷰 반영 (2026-08-30)
+
+**대상 AC**: AC16(교차 경로 확대) · AC1·AC3(422 error code 완결)
+
+**[정정] `TrackingFacade.lockOwner` 에 대한 T6 최초 기록.** 위 T6 절이 그 잠금을 "아무 테스트도
+지키지 않는다"로 읽히게 썼는데 틀렸다. 지우면 `TrackingFacadeTest` 2건(`:79`, `:212` 의
+`verifyOrder`)이 실패한다 — 구조적 회귀는 `:apps:api:test` 가 잡는다. 없던 것은 실제 DB 로
+write-skew 를 증명하는 **행위** 수준 테스트이며, 아래 교차 ③이 그것을 채운다.
+
+**[Important 1] `recordFromMarket` 교차를 덮었다.** 리뷰어 실측대로 두 tracking 경로의 성질이
+다르다.
+
+| tracking 경로 | 무효화 SELECT 가 커밋된 계획을 보는가 |
+|---|---|
+| `record()` — `INSERT` 가 트랜잭션의 첫 DB 문장 | **본다.** FK(`fk_position_member`)가 write 를 직렬화하고 read view 도 그 뒤에 열린다 |
+| `recordFromMarket()` — `INSERT` 앞에 consistent read | **못 본다.** `premiumService.findLatestSnapshot`(`TrackingFacade.kt:88`)이 read view 를 먼저 연다 |
+
+`recordFromMarket` 이 production endpoint 다. 그 경로에서는 FK 가 write 를 직렬화해도 트랜잭션이
+`registerTarget` 커밋 **이전** 스냅샷을 읽고 있어 `invalidateActiveOnTrackingEvent` 가 빈손이 되고,
+`ACTIVE` tracking 과 `WATCHING` 계획이 공존 커밋된다. 여기서는 tracking 측 member 잠금(D18)이
+유일한 방어다. AC16 동결 문안이 "tracking 생성과 `registerTarget`"이라 경로를 한정하지 않으므로
+production 경로를 비워 두면 기준을 실질적으로 충족하지 못한다.
+
+**교차 ③** 을 추가했다 — 교차 ②와 같은 순서(`registerTarget` 이 member 를 잠근 채 gate 에서 멈춤)
+이되 tracking 을 `POST /api/v1/trackings/from-market` 으로 만든다.
+
+> **경로 정정**: 리뷰 지시의 `POST /api/v1/trackings/auto` 는 존재하지 않는다. `recordFromMarket`
+> 의 경로는 `TrackingController.kt:20` 의 `/from-market` 이고, `/auto` 는 Phase 0 에서 제거된 옛
+> `positions/auto` 다(`TrackingRouteContractTest` 가 404 를 단언한다). 실제 경로로 작성했다.
+
+**교차 ③의 판별력을 변이로 확인했다.** `TrackingFacade.recordFromMarket` 의 `lockOwner` 만 제거:
+
+```
+5 tests completed, 1 failed
+TradePreparationActiveTrackingContractTest > recordFromMarket 교차에서도 tracking 생성이 직렬화돼 활성 계획을 무효화한다() FAILED
+  org.opentest4j.AssertionFailedError: expected: null but was: io.premiumspread.domain.tradeprep.TradePreparation@...
+  at ...assertNoCoexistence(TradePreparationActiveTrackingContractTest.kt:290)
+```
+
+timeout probe 가 아니라 `assertNoCoexistence` 에서 실패한다 — FK 가 write 는 여전히 직렬화하므로
+"막힘"은 관측되지만, 계획이 `WATCHING` 으로 남아 `ACTIVE` tracking 과 **공존 커밋된다.** 교차 ②는
+이 변이에서 통과한다(`BUILD SUCCESSFUL`). 즉 교차 ③이 교차 ②가 못 하던 판별을 한다. 원복 확인함.
+
+**[부수] 공유 Redis 캐시로 인한 잠복 flake 를 함께 막았다.** `findLatestSnapshotByPair` 는 Redis
+캐시를 먼저 읽는다(`JpaPremiumRepositoryAdapter:37`). Redis container 는 모듈 전체가 공유하므로
+다른 클래스가 남긴 낡은 `observedAt` 이 `recordFromMarket` 의 60초 신선도 판정을 흔들 수 있다.
+AC16 setUp 에 `flushAll` 을 추가했다.
+
+**[Important 2] 422 는 전부 안정된 code 를 갖는다.** `isPlannable = finalQuantity > 0 &&
+!capVerdict.isViolated` 라, 반올림으로 물량이 0 이 되고 캡은 위반하지 않은 경우 `code` 가 비어
+있었다. 클라이언트가 `code` 로 분기하면 그 응답을 파싱 실패와 구별하지 못한다.
+`ApplicationError.NOT_PLANNABLE` 을 **세 곳 짝으로** 추가하고(enum · `statusOf` → 422 ·
+`ERROR_MESSAGES`), `code` 를 `capViolations` 있으면 `CAP_VIOLATED`, `!plannable` 이면
+`NOT_PLANNABLE`, 아니면 `null` 로 준다. 응답 키 집합은 그대로라 AC1 단언에 영향이 없다.
+
+실제 경로를 계약 테스트로 덮었다 — `koreaBalance=100000`·`foreignBalance=40` 이면
+`koreaShare ≈ 0.636 >= 0.60`, `leverage = 0 < 7` 로 위반한 캡이 없는데 `rawQuantity ≈ 0.00077` 이
+바이낸스 lot(0.001) 내림에서 0 이 된다.
+
+**[Minor 3] id 스캔 단언을 행 수 단언으로 바꿨다.** `(1L..20L).mapNotNull { findById(it) }` 는
+`DatabaseCleanUp` 이 `TRUNCATE` 라 AUTO_INCREMENT 가 리셋되기 때문에만 옳고, 정리가 `DELETE` 로
+바뀌면 공허하게 통과한다. `SELECT COUNT(*) FROM trade_preparation WHERE owner_id = ?` 로 바꿨다
+(`DRAFT` 는 `active_key` 가 `NULL` 이라 `findActiveByOwnerId` 로 잡히지 않아 테이블을 직접 센다).
+
+**[Minor 4] 계약 base 의 fixture 시각을 고정했다.** `TradePreparationContractTestBase.savePremium`
+의 `Instant.now()` → `FIXTURE_OBSERVED_AT = 2026-08-30T00:00:00Z`. 이 base 를 쓰는 계약은 시각을
+단언하지 않고 신선도 경계도 건드리지 않는다.
+
+AC16 클래스의 `savePremium` 은 `Instant.now()` 를 유지한다 — `recordFromMarket` 이 snapshot
+`observedAt` 을 애플리케이션의 실제 clock 과 60초 창으로 비교하므로(`TrackingFacade.isFresh`)
+고정 시각을 쓰면 신선도에서 거절돼 교차 ③이 성립하지 않는다. 이 값은 어떤 단언의 대상도 아니며
+그 이유를 코드에 주석으로 남겼다.
+
+**archive 경로는 손대지 않았다.** archive 가 성립하려면 커밋된 `ACTIVE` tracking 이 있어야 하고
+그것이 곧 `registerTarget` 을 409 로 만들어 write-skew 교차 자체가 구성되지 않는다. archive 의
+`lockOwner` 가 지키는 것은 교착 회피이고 `TrackingFacadeTest.kt:100` 이 이미 덮는다.
+
+**검증** — 동결 명령 5개와 상위 gate 를 순차 실행했다.
+
+```
+./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*' --offline --no-daemon      # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationAuth*' --offline --no-daemon          # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationOwnerScope*' --offline --no-daemon    # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationRegisterTarget*' --offline --no-daemon # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationActiveTracking*' --offline --no-daemon # exit 0
+./gradlew :apps:api:test architectureTest --offline --no-daemon                                     # exit 0
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
