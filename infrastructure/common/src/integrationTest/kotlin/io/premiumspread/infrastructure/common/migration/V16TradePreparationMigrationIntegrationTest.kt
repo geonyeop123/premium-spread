@@ -61,6 +61,15 @@ class V16TradePreparationMigrationIntegrationTest {
             // UPDATE 시 재계산을 한 번에 증명한다.
             updateStatus(connection, planB, "WATCHING")
 
+            // D23이 D16에 더한 것: 유일성 범위가 WATCHING뿐 아니라 ARMED까지 걸친다. B가 ARMED로
+            // 전이해도(활성 행은 여전히 정확히 하나) 새 WATCHING(C)은 그 ARMED와 충돌해야 한다 —
+            // WATCHING↔WATCHING만 검증하면 D23이 막으려는 WATCHING↔ARMED 공존 회귀를 놓친다.
+            updateStatus(connection, planB, "ARMED")
+            val planC = insertTradePreparation(connection, ownerId = 1, status = "DRAFT")
+            assertThatThrownBy { updateStatus(connection, planC, "WATCHING") }
+                .isInstanceOf(SQLIntegrityConstraintViolationException::class.java)
+                .hasMessageContaining("uk_trade_preparation_owner_active")
+
             // 다른 owner는 독립적으로 활성 계획을 가질 수 있다.
             insertTradePreparation(connection, ownerId = 2, status = "ARMED")
         }
