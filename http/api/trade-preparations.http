@@ -1,0 +1,143 @@
+### 이 API는 주문을 제출하지 않는다. 진입 전 물량·레버리지를 계산하고 목표 프리미엄을 걸어 두는 거래 준비다.
+### 도달 가능한 종착 상태는 WATCHING이다 — 판정용 잔고 원천이 배선되기 전까지 ARMED로 가지 않는다.
+
+### 로그인 (JWT 토큰 획득)
+POST {{premium-api}}/api/v1/members/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+> {%
+    client.global.set("accessToken", response.body.accessToken);
+%}
+
+### 거래 준비 계산 + DRAFT 계획 생성 (인증 필요)
+### 잔고는 owner 신고값이며 UNVERIFIED 스냅샷이 된다. 캡을 위반하면 201이 아니라 422이고,
+### 본문의 capViolations가 어느 캡이 걸렸는지 말한다.
+POST {{premium-api}}/api/v1/trade-preparations
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "symbol": "BTC",
+  "koreaExchange": "BITHUMB",
+  "foreignExchange": "BINANCE",
+  "koreaBalance": 5000000,
+  "foreignBalance": 1000
+}
+
+> {%
+    client.global.set("planId", response.body.planId);
+%}
+
+# 201 응답 예시:
+# {
+#   "planId": 1,
+#   "status": "DRAFT",
+#   "code": null,
+#   "symbol": "BTC",
+#   "koreaExchange": "BITHUMB",
+#   "foreignExchange": "BINANCE",
+#   "balanceSnapshotId": "declared-9f1c...",
+#   "koreaBalance": 5000000,
+#   "foreignBalance": 1000,
+#   "balanceBasis": "UNVERIFIED",
+#   "balanceObservedAt": "2026-08-30T10:30:00Z",
+#   "balanceRatio": 3.4901577000,
+#   "rawLeverage": 3.4541941000,
+#   "rawQuantity": 0.0385947000,
+#   "koreaRoundedQuantity": 0.0385,
+#   "foreignRoundedQuantity": 0.038,
+#   "quantity": 0.038,
+#   "leverage": 3.4010000000,
+#   "koreaShare": 0.7772841000,
+#   "liquidationDistance": 0.2940311000,
+#   "capViolations": [],
+#   "plannable": true,
+#   "referenceForeignPrice": 89500,
+#   "referenceFxRate": 1432.6,
+#   "referencePremiumRate": 1.04,
+#   "referenceObservedAt": "2026-08-30T10:29:58Z",
+#   "referenceFxSource": "FX_PROVIDER",
+#   "referenceFxObservedAt": "2026-08-30T10:00:00Z",
+#   "previousTracking": null
+# }
+
+### 거래 준비 계산 - 캡 위반 (인증 필요)
+### 빗썸 비중이 효율 캡(60%) 미만이라 계획을 만들지 않는다. 422 + capViolations.
+POST {{premium-api}}/api/v1/trade-preparations
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "symbol": "BTC",
+  "koreaExchange": "BITHUMB",
+  "foreignExchange": "BINANCE",
+  "koreaBalance": 1000000,
+  "foreignBalance": 1000
+}
+
+# 422 응답 예시 (키 집합은 201과 같다):
+# {
+#   "planId": null,
+#   "status": null,
+#   "code": "CAP_VIOLATED",
+#   "plannable": false,
+#   "capViolations": ["EFFICIENCY_CAP"],
+#   "koreaShare": 0.4110819000,
+#   "liquidationDistance": 1.4476885000,
+#   ...
+# }
+
+### 진입 목표 프리미엄 등록 → WATCHING (인증 필요)
+### 역프리미엄 진입이 정상 시나리오이므로 음수도 받는다.
+POST {{premium-api}}/api/v1/trade-preparations/{{planId}}/target
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "desiredEntryPremiumRate": 0.50
+}
+
+### 거래 준비 계획 단건 조회 (인증 필요)
+### 남의 계획은 403이 아니라 404다 — 403은 그 id의 계획이 존재한다는 사실을 노출한다.
+GET {{premium-api}}/api/v1/trade-preparations/{{planId}}
+Authorization: Bearer {{accessToken}}
+
+### 거래 준비 계획 refresh (인증 필요)
+### 결속 잔고를 더 이상 신뢰하지 않겠다는 owner의 선언이다. 계획은 INVALIDATED가 되고
+### 새 계획은 POST /api/v1/trade-preparations로 다시 만든다.
+POST {{premium-api}}/api/v1/trade-preparations/{{planId}}/refresh
+Authorization: Bearer {{accessToken}}
+
+### 거래 준비 계획 무효화 (인증 필요)
+POST {{premium-api}}/api/v1/trade-preparations/{{planId}}/invalidate
+Authorization: Bearer {{accessToken}}
+
+# 응답 예시:
+# {
+#   "id": 1,
+#   "symbol": "BTC",
+#   "koreaExchange": "BITHUMB",
+#   "foreignExchange": "BINANCE",
+#   "status": "INVALIDATED",
+#   "boundBalanceSnapshotId": "declared-9f1c...",
+#   "boundBalanceBasis": "UNVERIFIED",
+#   "quantity": 0.038,
+#   "leverage": 3.4010000000,
+#   "referenceForeignPrice": 89500,
+#   "referenceFxRate": 1432.6,
+#   "referencePremiumRate": 1.04,
+#   "referenceObservedAt": "2026-08-30T10:29:58Z",
+#   "referenceFxSource": "FX_PROVIDER",
+#   "referenceFxObservedAt": "2026-08-30T10:00:00Z",
+#   "desiredEntryPremiumRate": 0.50,
+#   "conditionFirstMetAt": null,
+#   "conditionFirstMetPremiumRate": null,
+#   "invalidationReason": "OWNER_REFRESH",
+#   "invalidatedAt": "2026-08-30T10:35:00Z",
+#   "version": 2
+# }
