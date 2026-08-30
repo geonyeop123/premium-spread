@@ -19,6 +19,16 @@ fun interface BalanceSnapshotReadPort {
 /**
  * 판정용(exposure-increasing). 캐시 불가 — 매 호출이 실제 조회다 (D2). 반환된 스냅샷 id에
  * 계획을 결속한다 (D5).
+ *
+ * **구현 계약: 잔고가 그대로인 동안에는 안정된 스냅샷 id를 내야 한다.** 관측 시각이나 호출
+ * 횟수가 아니라 잔고 자체가 바뀔 때만 id가 바뀌어야 한다.
+ *
+ * 이것이 계약인 이유는 reconcile Job(T8)이 결속된 id와 현재 id의 **부등치**만으로 무효화를
+ * 판정하기 때문이다 (D5·D17, AC5). 매 관측마다 새 id를 만드는 구현을 끼우면 모든 owner의 모든
+ * 활성 계획이 매 사이클 무효화된다 — 잔고는 그대로인데 계획만 사라진다. 지금 트리의 id 생성
+ * 관례 둘([BalanceSnapshot.declared]의 `declared-{UUID}`, test fixture `RecordedBalanceAdapter`의
+ * `recorded-{observedAt}`)은 **판정용 원천이 아니라서** 그렇게 해도 무해하지만, 실원천
+ * (`ExchangeBalanceAdapter`, `ACT-2` 이후)이 그 형태를 따라가면 안 된다.
  */
 fun interface VerifiedBalanceReadPort {
     fun findForDecision(): VerifiedBalance?

@@ -37,9 +37,19 @@ data class TradePreparationReconcileSummary(
     val invalidated: Int = 0,
 ) {
     companion object {
+        /**
+         * Domain 이 만들 수 있는 not-reconciled 결과는 [TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE]
+         * 하나뿐이라 그 값만 받는다.
+         *
+         * 배제 목록이 아니라 **허용 값 하나**로 적은 이유: [TradePreparationReconcileOutcome.RECONCILED]
+         * 는 카운트를 잃어서 안 되고, [TradePreparationReconcileOutcome.BALANCE_SOURCE_UNAVAILABLE]
+         * 은 "빈이 배선되지 않았다"라 Domain 이 관측할 수 없는 사실이다(batch Job 만 안다). 둘은
+         * 막는 이유가 다르지만 결론은 같고, 허용 값으로 적으면 outcome 이 늘어날 때 이 판정이
+         * 자동으로 보수적인 쪽에 남는다.
+         */
         fun notReconciled(outcome: TradePreparationReconcileOutcome): TradePreparationReconcileSummary {
-            require(outcome != TradePreparationReconcileOutcome.RECONCILED) {
-                "RECONCILED summary must carry reconcile counts."
+            require(outcome == TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE) {
+                "Domain reconcile can only report BALANCE_UNAVAILABLE without counts, was $outcome."
             }
             return TradePreparationReconcileSummary(outcome)
         }
