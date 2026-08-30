@@ -1,8 +1,8 @@
 ---
 feature: 거래 준비 (Trade Preparation)
 slug: private-live-autotrader-trade-preparation
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-08-30T13:26:51+09:00
 verdict_commit:
 source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 ---
@@ -74,6 +74,10 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 추이는 3 → 2 → 2 → 2 → 1로 수렴 중이며, 5R 반영(D23)은 유일성 범위 확장 한 건이다.
 이 반영 자체는 아직 외부 리뷰를 받지 않았다 — 그 잔여 위험은 ⑦ 사용자 리뷰와 구현 단계
 코드 리뷰(⑨)가 본다.
+
+**owner 선택 (2026-08-30).** 상한 도달 처리 **A — 승인으로 진행**. D19(production 도달 상태는
+`WATCHING` + 조건 관측까지, `ARMED`는 `ACT-2` 이후)를 함께 수용했다. 이 승인이 ⑦이며 이 계약서를
+`FROZEN`으로 전이한다. 5R 반영(D23)의 미리뷰 잔여 위험은 ⑨ 코드 리뷰와 AC11이 담당한다.
 
 ## 검사 산출물` 절은 비어 있다.
 
@@ -151,6 +155,10 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 추이는 3 → 2 → 2 → 2 → 1로 수렴 중이며, 5R 반영(D23)은 유일성 범위 확장 한 건이다.
 이 반영 자체는 아직 외부 리뷰를 받지 않았다 — 그 잔여 위험은 ⑦ 사용자 리뷰와 구현 단계
 코드 리뷰(⑨)가 본다.
+
+**owner 선택 (2026-08-30).** 상한 도달 처리 **A — 승인으로 진행**. D19(production 도달 상태는
+`WATCHING` + 조건 관측까지, `ARMED`는 `ACT-2` 이후)를 함께 수용했다. 이 승인이 ⑦이며 이 계약서를
+`FROZEN`으로 전이한다. 5R 반영(D23)의 미리뷰 잔여 위험은 ⑨ 코드 리뷰와 AC11이 담당한다.
 
 ## 검사 산출물
 
