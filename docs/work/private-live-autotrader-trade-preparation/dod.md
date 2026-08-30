@@ -621,6 +621,105 @@ AC16 클래스의 `savePremium` 은 `Instant.now()` 를 유지한다 — `record
 ./gradlew :apps:api:test architectureTest --offline --no-daemon                                     # exit 0
 ```
 
+### T9 — 전체 gate 와 DoD 증거 (2026-08-31)
+
+**대상 AC**: 수용기준 20건 전부. 기계 검증 18건 + 사람 확인 2건.
+**게이트 실행 SHA**: `e567b57` (`e567b570a394434facc5200b81de15afc16715bf`) — working tree clean.
+
+**명령을 손으로 옮기지 않았다.** `.superpowers/sdd/plan/gate.sh` 가 위 동결된 수용기준 표에서
+`./gradlew` 로 시작하는 검증 명령을 직접 추출해 순차 실행한다. 추출 결과가 18건이고 표의 T1
+기준 수 18과 일치한다 — 옮겨 적다 빠뜨린 기준이 GREEN 으로 기록되는 경로를 없앤다.
+
+**cache 가 아니라 실제 실행을 관측했다.** 처음 돌린 `./gradlew test architectureTest` 는 모든
+test task 가 `UP-TO-DATE` 로 끝났고, 그 시점 `:apps:batch:integrationTest` 의 XML 에는 클래스
+3개·13건만 있었다 — 직전 필터 실행(`--tests '*TradePreparationReconcile*'` 등)이 남긴 부분
+결과다. 그 수치를 그대로 적으면 전체 스위트를 관측했다고 잘못 기록하게 된다. 그래서 unit·
+architecture 는 `--rerun` 으로 강제 재실행하고, 통합은 필터 없는 전체 스위트로 다시 돌렸다.
+아래 수치는 전부 그 실행의 산출이며, 재실행 로그에서 12개 test task 가 `UP-TO-DATE` 없이
+실행된 것을 확인했다.
+
+#### 기계 검증 18건 (`gate-results.txt` 그대로)
+
+| # | 검증 명령 | 결과 |
+|---|---|---|
+| `AC1` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*' --offline --no-daemon` | exit 0 |
+| `AC2` | `./gradlew :domain:test --tests '*TradePreparationSizing*' --offline --no-daemon` | exit 0 |
+| `AC3` | `./gradlew :domain:test --tests '*TradePreparationCap*' --offline --no-daemon` | exit 0 |
+| `AC4` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationStaleBalance*' --offline --no-daemon` | exit 0 |
+| `AC5` | `./gradlew :domain:test --tests '*TradePreparationSnapshotBinding*' --offline --no-daemon` | exit 0 |
+| `AC6` | `./gradlew :domain:test --tests '*TradePreparationInvalidation*' --offline --no-daemon` | exit 0 |
+| `AC11` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationConcurrency*' --offline --no-daemon` | exit 0 |
+| `AC7` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationArming*' --offline --no-daemon` | exit 0 |
+| `AC8` | `./gradlew architectureTest --offline --no-daemon` | exit 0 |
+| `AC9` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationAuth*' --offline --no-daemon` | exit 0 |
+| `AC12` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationOwnerScope*' --offline --no-daemon` | exit 0 |
+| `AC13` | `./gradlew :domain:test --tests '*TradePreparationBalanceTrust*' --offline --no-daemon` | exit 0 |
+| `AC14` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationProvenance*' --offline --no-daemon` | exit 0 |
+| `AC16` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationActiveTracking*' --offline --no-daemon` | exit 0 |
+| `AC17` | `./gradlew :apps:batch:integrationTest --tests '*TradePreparationEvaluationJob*' --offline --no-daemon` | exit 0 |
+| `AC18` | `./gradlew :apps:batch:integrationTest --tests '*TradePreparationReconcile*' --offline --no-daemon` | exit 0 |
+| `AC19` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationRegisterTarget*' --offline --no-daemon` | exit 0 |
+| `AC20` | `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` | exit 0 |
+
+**18건 중 18건 exit 0. 실패 0건. 실행하지 못한 항목 0건.**
+
+#### 전체 스위트 수치 (필터 없는 실행)
+
+| 스위트 | tests | failures | errors | skipped |
+|---|---|---|---|---|
+| `:domain:test` | 185 | 0 | 0 | 0 |
+| `:apps:api:test` | 138 | 0 | 0 | 0 |
+| `:apps:batch:test` | 70 | 0 | 0 | 0 |
+| `:apps:api:integrationTest` | 171 | 0 | 0 | 0 |
+| `:apps:batch:integrationTest` | 93 | 0 | 0 | 0 |
+| `:infrastructure:common:integrationTest` | 18 | 0 | 0 | 0 |
+| `:architectureTest` | 25 | 0 | 0 | 0 |
+| `:infrastructure:common:test` | 43 | 0 | 0 | 0 |
+| `:infrastructure:api:test` | 31 | 0 | 0 | 0 |
+| `:infrastructure:batch:test` | 71 | 0 | 0 | 0 |
+
+migration 통합 test 는 `V16TradePreparationMigrationIntegrationTest` 2건,
+`V17TradePreparationIndexMigrationIntegrationTest` 2건이다.
+
+**skipped 가 전 스위트 0 이다.** `@Disabled` 로 미룬 계약이 없다는 뜻이다. 저장소 전체에서
+`@Disabled` 문자열이 나오는 곳은 그것을 금지하는 `TestIsolationArchitectureTest` 한 곳뿐이다.
+
+#### 회귀 방어선 R1~R6
+
+| # | 검증 명령 | 결과 |
+|---|---|---|
+| R1 | `./gradlew test architectureTest --offline --no-daemon` | exit 0 (`BUILD SUCCESSFUL in 5m 3s`) |
+| R2 | `./gradlew :apps:api:integrationTest --offline --no-daemon` | exit 0 — 171건 전부 통과 |
+| R3 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 (`BUILD SUCCESSFUL in 7s`) |
+| R4 | `npm --prefix apps/web run lint` | exit 0 — eslint 무출력 |
+| R5 | `npm --prefix apps/web run test` | exit 0 — Test Files 1 passed, Tests 10 passed |
+| R6 | `npm --prefix apps/web run build` | exit 0 — 6개 route 빌드 |
+
+`bash docs/check-documentation.sh` → exit 0 (`documentation check passed (20 files, 15 required paths)`).
+
+이 단위는 `apps/web` 을 한 줄도 바꾸지 않았다 (`git diff --name-only 920e027..HEAD -- apps/web`
+= 0건). 그래도 R4~R6 은 게이트 항목이므로 실제로 돌리고 결과를 적었다.
+
+#### 사람 확인 2건은 채우지 않았다
+
+`AC10`·`AC15` 는 T4 이며 판정 주체가 사람이다. 아래 `## 사람 확인 (T4)` 표는 비워 둔다 —
+앵커를 AI 가 지어내면 그것이 곧 기록 위조다. 두 건 모두 `AWAITING_HUMAN` 이다.
+
+- `AC10` — owner 가 응답의 물량·레버리지·캡 판정을 자기 실제 잔고와 대조해야 한다. 잔고를
+  아는 사람만 판정할 수 있다. 덧붙여 D19 에 따라 production 배선의 도달 상태는 `WATCHING`
+  까지이고 실계정 대조는 `ACT-2` 이후에만 가능하다
+- `AC15` — 근거는 위 `## 스펙 리뷰 라운드 기록` 표(1R~5R, 지적 14건 전부 ACCEPT, 5R 에서
+  high 1건으로 수렴, 상한 도달 처리 A 를 owner 가 승인)가 이미 갖고 있다. 그래도 "충분히
+  돌았는가" 의 판정 주체는 사람이므로 서명 칸을 비워 둔다
+
+#### 계획 대비 차이
+
+계획 시점의 범위 실측은 28커밋 / 82파일 / +8306 -31 이었다. T9 실행 시점은 **33커밋 / 94파일 /
++9788 -31** 이다 — 계획서 작성 이후 T8 마무리 커밋 5건이 더 쌓인 결과이며 범위 변경이 아니다.
+같은 이유로 `:apps:api:test` 는 127 → 138, `:apps:batch:test` 는 65 → 70 으로 늘었다.
+`:apps:api:integrationTest` 171 · `:apps:batch:integrationTest` 93 · V16 2 · V17 2 는
+리뷰어 실측치와 정확히 일치한다.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -672,14 +771,20 @@ AC16 클래스의 `savePremium` 은 `Instant.now()` 를 유지한다 — `record
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: private-live-autotrader-trade-preparation @ <commit SHA>
+DoD VERDICT: private-live-autotrader-trade-preparation @ e567b57
   수용기준 표:     20개  (T1 18 · T2 0 · T3 0 · T4 2)
-  T1/T2 자동:      18개 중 <p>개 PASS
+  T1/T2 자동:      18개 중 18개 PASS
   T3 기록 제출:    0개
-  T4 사람 확인:    2개 중 <r>건 완료, <2-r>건 대기
-  변경 요청:       <k>건
-  =>
+  T4 사람 확인:    2개 중 0건 완료, 2건 대기
+  변경 요청:       1건 (CR-1, 2026-08-30 owner 승인)
+  => AWAITING_HUMAN — 기계 검증 18/18 PASS, 실행 실패·미실행 0건.
+     AC10·AC15 에 사람 서명이 기록되면 DONE.
 ```
+
+**SHA 유효성.** 게이트는 `e567b57` 에서 clean working tree 로 실행했다. 이 판정을 기록하는
+커밋이 브랜치 tip 을 한 칸 옮기지만 그 커밋의 변경은 이 파일과 T9 보고서뿐이며 production·
+test 코드는 한 줄도 바뀌지 않는다 — `git diff --stat e567b57..HEAD` 로 확인할 수 있다.
+코드가 바뀌는 커밋이 그 뒤에 붙으면 이 판정은 만료이고 게이트를 다시 돌려야 한다.
 
 **사람 확인이 필요한 항목**
 
