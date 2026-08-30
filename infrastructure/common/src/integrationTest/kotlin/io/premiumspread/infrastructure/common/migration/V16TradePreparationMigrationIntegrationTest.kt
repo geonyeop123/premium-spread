@@ -12,6 +12,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLIntegrityConstraintViolationException
+import java.sql.Statement
 
 @Tag("integration")
 @Testcontainers
@@ -44,14 +45,21 @@ class V16TradePreparationMigrationIntegrationTest {
             insertMember(connection, id = 2)
 
             // DRAFT는 active_key가 NULL이라 같은 owner라도 여러 개 허용된다.
-            insertTradePreparation(connection, ownerId = 1, status = "DRAFT")
-            insertTradePreparation(connection, ownerId = 1, status = "DRAFT")
+            val planA = insertTradePreparation(connection, ownerId = 1, status = "DRAFT")
+            val planB = insertTradePreparation(connection, ownerId = 1, status = "DRAFT")
 
-            // WATCHING·ARMED는 active_key가 owner_id로 채워져 owner당 하나만 허용된다 (D16·D23).
-            insertTradePreparation(connection, ownerId = 1, status = "WATCHING")
-            assertThatThrownBy { insertTradePreparation(connection, ownerId = 1, status = "ARMED") }
+            // 프로덕션은 INSERT로 목표 상태를 만들지 않는다 — registerTarget·evaluateCondition·
+            // invalidate 전부 UPDATE 전이다. STORED generated column이 UPDATE 시점에도 재계산되고
+            // (D16·D23), INVALIDATED가 슬롯을 실제로 해제하는지를 전이 경로로 증명한다.
+            updateStatus(connection, planA, "WATCHING")
+            assertThatThrownBy { updateStatus(connection, planB, "WATCHING") }
                 .isInstanceOf(SQLIntegrityConstraintViolationException::class.java)
                 .hasMessageContaining("uk_trade_preparation_owner_active")
+
+            updateStatus(connection, planA, "INVALIDATED")
+            // A가 무효화돼 슬롯이 풀렸으므로 B는 이번엔 WATCHING으로 전이할 수 있다 — 슬롯 해제와
+            // UPDATE 시 재계산을 한 번에 증명한다.
+            updateStatus(connection, planB, "WATCHING")
 
             // 다른 owner는 독립적으로 활성 계획을 가질 수 있다.
             insertTradePreparation(connection, ownerId = 2, status = "ARMED")
@@ -155,7 +163,7 @@ class V16TradePreparationMigrationIntegrationTest {
         }
     }
 
-    private fun insertTradePreparation(connection: Connection, ownerId: Long, status: String) {
+    private fun insertTradePreparation(connection: Connection, ownerId: Long, status: String): Long {
         connection.prepareStatement(
             """
             INSERT INTO trade_preparation (
@@ -172,9 +180,27 @@ class V16TradePreparationMigrationIntegrationTest {
                 ?, 0, 0, NOW(6), NOW(6)
             )
             """.trimIndent(),
+            Statement.RETURN_GENERATED_KEYS,
         ).use { statement ->
             statement.setLong(1, ownerId)
             statement.setString(2, status)
+            statement.executeUpdate()
+            statement.generatedKeys.use { keys ->
+                check(keys.next()) { "trade_preparation insert did not return a generated id" }
+                return keys.getLong(1)
+            }
+        }
+    }
+
+    /**
+     * 실제 상태 전이 경로(UPDATE)로 `active_key`가 재계산되는지 검증하기 위한 helper다.
+     * `TradePreparation.registerTarget`·`evaluateCondition`·`invalidate*`는 모두 이 경로로 status를
+     * 바꾸며, INSERT로 목표 상태를 직접 만들지 않는다.
+     */
+    private fun updateStatus(connection: Connection, id: Long, status: String) {
+        connection.prepareStatement("UPDATE trade_preparation SET status = ? WHERE id = ?").use { statement ->
+            statement.setString(1, status)
+            statement.setLong(2, id)
             statement.executeUpdate()
         }
     }
