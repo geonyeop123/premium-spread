@@ -114,8 +114,8 @@ class TradePreparation private constructor(
     var status: TradePreparationStatus = status
         protected set
 
-    @Column(name = "desired_premium_rate", precision = 10, scale = 2)
-    var desiredPremiumRate: BigDecimal? = null
+    @Column(name = "desired_entry_premium_rate", precision = 10, scale = 2)
+    var desiredEntryPremiumRate: BigDecimal? = null
         protected set
 
     @Column(name = "version", nullable = false)
@@ -151,11 +151,13 @@ class TradePreparation private constructor(
         get() = status == TradePreparationStatus.WATCHING || status == TradePreparationStatus.ARMED
 
     /**
-     * owner 희망 프리미엄을 받아 `WATCHING`으로 전이한다 (D6·D7). 결속 잔고는 이 시점에
+     * owner의 **진입** 목표 프리미엄(`desiredEntryPremiumRate`)을 받아 `WATCHING`으로 전이한다
+     * (D6·D7). 종료 목표 프리미엄(진입가 대비 상대 gap)은 이 단위의 범위 밖이다 — 실제 진입 후
+     * 열리는 `Tracking`이 그 값을 소유한다(design.md §1.3, D6 owner 확인). 결속 잔고는 이 시점에
      * (재)기록한다 — 검증 수준은 호출자가 가용한 원천에 따라 결정한다(D20).
      */
     fun registerTarget(
-        desiredPremiumRate: BigDecimal,
+        desiredEntryPremiumRate: BigDecimal,
         boundBalanceSnapshotId: String,
         boundBalanceBasis: BalanceBasis,
         at: Instant,
@@ -166,7 +168,7 @@ class TradePreparation private constructor(
         if (boundBalanceSnapshotId.isBlank()) {
             throw InvalidTradePreparationException("boundBalanceSnapshotId must not be blank.")
         }
-        this.desiredPremiumRate = desiredPremiumRate
+        this.desiredEntryPremiumRate = desiredEntryPremiumRate
         this.boundBalanceSnapshotId = boundBalanceSnapshotId
         this.boundBalanceBasis = boundBalanceBasis
         this.status = TradePreparationStatus.WATCHING
@@ -181,8 +183,8 @@ class TradePreparation private constructor(
         if (status != TradePreparationStatus.WATCHING) {
             throw InvalidTradePreparationException("evaluateCondition requires WATCHING status, was $status")
         }
-        val desired = desiredPremiumRate
-            ?: throw InvalidTradePreparationException("desiredPremiumRate must be set before evaluateCondition")
+        val desired = desiredEntryPremiumRate
+            ?: throw InvalidTradePreparationException("desiredEntryPremiumRate must be set before evaluateCondition")
 
         // 이 단위는 진입 준비다 — 낮은 프리미엄에서 진입하고 높은 프리미엄에서 종료한다
         // (master spec §1.2, ECO-5 §1 "재진입 | 프리미엄이 직전 진입 수준으로 복귀 시"). 종료

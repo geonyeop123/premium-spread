@@ -130,7 +130,7 @@ class TradePreparationInvalidationTest {
     }
 
     @Test
-    fun `프리미엄이 희망값과 정확히 같으면 조건 충족으로 판정해 ARMED로 전이한다 — 경계값은 포함된다`() {
+    fun `프리미엄이 진입 목표와 정확히 같으면 조건 충족으로 판정해 ARMED로 전이한다 — 경계값은 포함된다`() {
         val plan = watchingPlan()
 
         val outcome = plan.evaluateCondition(currentPremiumRate = BigDecimal("3.00"), observedAt = observedAt)
@@ -143,7 +143,7 @@ class TradePreparationInvalidationTest {
     }
 
     @Test
-    fun `프리미엄이 희망값보다 높으면 조건 미충족이다 — 진입은 목표 이하에서만 충족된다`() {
+    fun `프리미엄이 진입 목표보다 높으면 조건 미충족이다 — 진입은 목표 이하에서만 충족된다`() {
         val plan = watchingPlan()
 
         val outcome = plan.evaluateCondition(currentPremiumRate = BigDecimal("3.01"), observedAt = observedAt)
@@ -189,7 +189,7 @@ class TradePreparationInvalidationTest {
     private fun watchingPlan(boundBalanceBasis: BalanceBasis = BalanceBasis.FRESH): TradePreparation {
         val plan = TradePreparation.create(spec())
         plan.registerTarget(
-            desiredPremiumRate = BigDecimal("3.00"),
+            desiredEntryPremiumRate = BigDecimal("3.00"),
             boundBalanceSnapshotId = "snap-1",
             boundBalanceBasis = boundBalanceBasis,
             at = observedAt,

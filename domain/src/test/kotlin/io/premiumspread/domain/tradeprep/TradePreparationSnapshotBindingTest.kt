@@ -81,7 +81,7 @@ class TradePreparationSnapshotBindingTest {
     private fun watchingPlan(boundSnapshotId: String): TradePreparation {
         val plan = TradePreparation.create(spec(boundSnapshotId))
         plan.registerTarget(
-            desiredPremiumRate = BigDecimal("3.00"),
+            desiredEntryPremiumRate = BigDecimal("3.00"),
             boundBalanceSnapshotId = boundSnapshotId,
             boundBalanceBasis = BalanceBasis.FRESH,
             at = observedAt,

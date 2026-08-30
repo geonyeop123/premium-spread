@@ -397,6 +397,27 @@ T4가 구현을 결정한다.
 "청산" 용례(`TradePrepPolicy.kt`·`CapVerdict.kt`·`TradePreparationCapTest.kt`, 전부 T1 소유)는
 `liquidationDistance`(강제청산 거리) 개념이라 용어 분리 대상이 아니다. 수정 없음.
 
+### T2 수정 라운드 1 보강 [F0-e] — `desiredPremiumRate` → `desiredEntryPremiumRate` (2026-08-30)
+
+**문제.** owner 확인으로 목표 프리미엄이 **둘**임이 확정됐다 — 진입 목표(예: 1.5%, 이 값 이하로
+내려오면 무장)와 종료 목표(진입가 대비 +1.0%p 상대값, 열린 포지션에 붙는 값). 기존 필드명
+`desiredPremiumRate`는 둘 중 무엇인지 말하지 않았다.
+
+**수정.** `TradePreparation`의 필드·파라미터·컬럼을 전부 `desiredEntryPremiumRate`/
+`desired_entry_premium_rate`로 개명했다(`registerTarget` 파라미터, `evaluateCondition`의 내부
+참조·예외 메시지 포함). `conditionFirstMetPremiumRate`는 관측값이라 개명하지 않았다. KDoc과
+테스트 이름의 "희망 프리미엄"/"희망값"도 "진입 목표 프리미엄"/"진입 목표"로 바꿔 종료 목표와
+구분되게 했다. `registerTarget`의 KDoc에 "종료 목표는 이 단위 범위 밖이며 실제 진입 후 여는
+`Tracking`이 소유한다"를 명시했다 — **종료 목표 필드는 추가하지 않았다**(YAGNI, 팀장 지시).
+migration(V16, T3)이 아직 없어 컬럼명 변경에 따른 마이그레이션 영향은 없다.
+
+```
+./gradlew :domain:test --tests '*TradePreparation*' --offline --no-daemon
+./gradlew architectureTest --offline --no-daemon
+```
+
+결과: 둘 다 `BUILD SUCCESSFUL`. `tradeprep` 패키지 47건 전부 통과(개명 후 재실행, 실패 0건).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
