@@ -737,6 +737,9 @@ migration 통합 test 는 `V16TradePreparationMigrationIntegrationTest` 2건,
 | 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
 |---|---|---|---|---|
 | AC2·AC3·AC5·AC6·AC13·AC20 검증 명령 | `./gradlew test --tests '…'` | `./gradlew :domain:test --tests '…'` (AC20은 `:apps:api:test`) | **동결된 명령이 GREEN 구현에서도 exit 0을 낼 수 없다.** 루트 `test`는 전 모듈에 필터를 전파하고, 매칭 테스트가 없는 모듈에서 gradle이 `No tests found`로 실패시킨다. T1 실측: 루트 형태 `BUILD FAILED`(`:apps:api:test`), 모듈 지정 형태 `BUILD SUCCESSFUL`. 기준 문장은 그대로이고 그 문장을 실제로 검사하지 못하던 명령을 고친다 (Phase 0 `CR-3`와 동형) | **승인 (2026-08-30, owner)** |
+| `AC3` 검증 명령 (**CR-2**) | `./gradlew :domain:test --tests '*TradePreparationCap*'` | `./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*'` (AC1 과 동일) | **동결 명령이 동결 문장을 검사하지 못한다.** AC3 문장은 "…위반한 캡을 **응답에** 명시한다"로 끝나는데 지정 명령은 `TradePrepPolicy.judge` 순수 단위 테스트라 응답이 범위 밖이다. 응답 동작은 이미 `TradePreparationContractTest` 가 덮으므로 검증 공백은 아니다 — 명령이 자기 문장을 가리키지 못할 뿐이다. `CR-1` 과 동형 | 대기 |
+| `AC3` 기준 문장 (**CR-3**) | "레버 캡·효율 캡·**청산 거리** 중 하나라도 위반하면" | "레버 캡·효율 캡 중 하나라도 위반하면" | 코드는 청산 거리를 독립 위반 대상으로 모델링하지 않는다. `CapVerdict` KDoc 이 청산 거리 `= 1/L` 이라 `LEVERAGE_CAP` 에 포섭된다고 논증하고 그 논증은 타당하다. 다만 동결 문장과 코드가 다르므로 문장을 코드에 맞추거나 별도 위반 값을 추가해야 한다 | 대기 |
+| `AC5` 검증 수단 (**CR-4**) | `TradePreparationSnapshotBindingTest` | 위 + no-cache 계약을 검사하는 신규 테스트 | AC5 첫 문장 "판정용 잔고를 **캐시에서 읽을 수 없다**"를 **어느 테스트도 재지 않는다.** 규칙이 `VerifiedBalanceReadPort` KDoc 에만 있어 `ACT-2` 에서 캐시하는 `ExchangeBalanceAdapter` 가 들어와도 잡을 장치가 없다 — 이 기준이 막으려는 바로 그 시점에 작동하지 않는다. 현재는 판정용 구현이 0개라 무해하다 | 대기 |
 
 ### CR-1. T1 검증 명령의 구조적 실패 (2026-08-30, 구현 중 발견)
 
@@ -771,15 +774,82 @@ migration 통합 test 는 `V16TradePreparationMigrationIntegrationTest` 2건,
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: private-live-autotrader-trade-preparation @ e567b57
+DoD VERDICT: private-live-autotrader-trade-preparation @ 44c4b17
   수용기준 표:     20개  (T1 18 · T2 0 · T3 0 · T4 2)
-  T1/T2 자동:      18개 중 18개 PASS
+  T1/T2 자동:      18개 중 18개 PASS   (전부 --rerun 강제 실행)
   T3 기록 제출:    0개
   T4 사람 확인:    2개 중 0건 완료, 2건 대기
-  변경 요청:       1건 (CR-1, 2026-08-30 owner 승인)
+  변경 요청:       1건 승인 (CR-1) · 3건 대기 (CR-2·CR-3·CR-4)
   => AWAITING_HUMAN — 기계 검증 18/18 PASS, 실행 실패·미실행 0건.
      AC10·AC15 에 사람 서명이 기록되면 DONE.
 ```
+
+**이 판정은 `e567b57` 기준 이전 판정을 대체한다.** 아래 정정을 함께 읽어야 한다.
+
+### 정정 1 — `AC12` 를 PASS 로 기록한 것이 사실이 아니었다
+
+`e567b57` 게이트는 `AC12` 의 동결 명령이 exit 0 임을 관측하고 18/18 PASS 로 기록했다. 명령은
+실제로 통과했다. 그러나 **기준의 셋째 문장이 구현되지 않은 상태였다** —
+
+> 허가된 owner 가 아닌 회원의 생성 요청은 거절된다
+
+당시 `prepare` 에는 owner 검사가 없었고, `POST /api/v1/members/register` 가 공개 endpoint 이므로
+**아무나 가입 → 로그인 → `POST /api/v1/trade-preparations` → 201 + 계획 행**이 성립했다.
+명시된 테스트(`TradePreparationOwnerScopeContractTest`)는 principal 도출과 타 회원 404 만 덮었고
+비허가 회원의 **생성 거절**은 어느 테스트에도 없었다. **명령은 통과했으나 그 명령이 기준의
+셋째 문장을 검사하지 않았다.**
+
+발견 경로: 태스크별 리뷰 9회는 각자 범위 안에서 clean 이었다. 이 결함은 **전체 브랜치 최종
+리뷰**가 동결 문장과 구현을 대조해 드러냈다.
+
+**조치 — 기준을 고치지 않고 구현을 채웠다.**
+- `TradePreparationOwnerPolicy`(Domain) + `trade-preparation.owner.allowed-emails` 도입.
+  `prepare` 와 `registerTarget` 에 허가 검사. **빈 목록은 전원 거부(fail-closed)**
+- `invalidate`·`refresh`·`findById` 는 제외 — owner-scoped 라 비허가 회원에게는 보이는 계획이
+  0건이고, 막으면 허가가 회수된 owner 가 잔여 계획을 정리할 수 없다
+- 동결 명령이 덮는 케이스 4 → 7. 거절 시 **계획 행 미생성**까지 단언한다
+- 검증: 검사를 제거하면 새 케이스 2건이 `expected: 404 but was: 201` 로 실패함을 확인 후 원복
+
+### 정정 2 — `AC8` 의 동결 명령이 검사 대상 변경에 재실행되지 않았다
+
+`architectureTest` 가 ArchUnit 으로 읽는 jar 여섯 개 중 `infrastructure:common`·`api`·`batch`
+셋이 **task 의 선언된 input 이 아니었다.** `dependsOn` 은 task 의존성이지 file input 이 아니고,
+경로는 `doFirst` 안에서 주입돼 up-to-date 검사 이후였다.
+
+실측: `infrastructure/common/src/main` 에 클래스를 추가하니 그 jar 은 재생성됐는데
+`architectureTest` 는 `UP-TO-DATE`, 테스트 0건, exit 0 이었다. **그리고 이 단위가
+`infrastructure/common` 과 `infrastructure/batch` main 을 고쳤다** — 이번 게이트가 봐야 할 변경을
+보지 못한 것이다. 누락된 input 을 선언해 고쳤고, 같은 조작에 이제 task 가 실행된다.
+
+**함의:** 이 수정 이전에 `architectureTest` 로 기록된 GREEN 은 `infrastructure:*` 변경을 검사하지
+않았을 수 있다.
+
+### 정정 3 — 이번 게이트는 전부 `--rerun` 강제 실행이다
+
+`e567b57` 게이트에서 첫 `./gradlew test architectureTest` 가 **전 태스크 UP-TO-DATE 로 exit 0** 을
+냈다. 그 시점 배치 통합 XML 에는 이전 필터 실행(`--tests '*TradePreparationReconcile*'`)의 잔여
+13건이 남아 있었다 — 그대로 기록했으면 필터된 캐시를 전체 스위트 관측으로 적었을 것이다.
+
+동결 명령 자체에는 캐시 방지 장치가 없다. 이번 판정은 18건 전부에 `--rerun` 을 붙여 실행했고,
+아래 전체 스위트 수치도 강제 재실행 결과다.
+
+### 이번 게이트의 전체 스위트 (`44c4b17`, 전부 `--rerun`)
+
+| 스위트 | tests | failures | errors | skipped |
+|---|---|---|---|---|
+| `:domain:test` | 187 | 0 | 0 | 0 |
+| `:apps:api:test` | 143 | 0 | 0 | 0 |
+| `:apps:api:integrationTest` | 174 | 0 | 0 | 0 |
+| `:apps:batch:test` | 70 | 0 | 0 | 0 |
+| `:apps:batch:integrationTest` | 93 | 0 | 0 | 0 |
+| `:infrastructure:common:test` | 43 | 0 | 0 | 0 |
+| `:infrastructure:common:integrationTest` | 18 | 0 | 0 | 0 |
+| `:infrastructure:api:test` | 31 | 0 | 0 | 0 |
+| `:infrastructure:batch:test` | 71 | 0 | 0 | 0 |
+| `architectureTest` | 25 | 0 | 0 | 0 |
+
+`verifyMigrations` exit 0. **`skipped 0` 은 그 자체로 증거다** — 저장소에서 `@Disabled` 문자열이
+나오는 곳은 그것을 금지하는 `TestIsolationArchitectureTest` 하나뿐이다.
 
 **SHA 유효성.** 게이트는 `e567b57` 에서 clean working tree 로 실행했다. 이 판정을 기록하는
 커밋이 브랜치 tip 을 한 칸 옮기지만 그 커밋의 변경은 이 파일과 T9 보고서뿐이며 production·
