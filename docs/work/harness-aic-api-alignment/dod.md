@@ -43,12 +43,20 @@ source: 2026-08-30 대화 — "aic-server(=aic-api)와 동일하게 하네스 �
 |---|---|---|---|---|---|---|---|
 | AC1 | `.claude/agents/` 에 정확히 6개 파일(architect·implementer·spec-reviewer·code-reviewer·qa-agent·tech-docs)이 있고, 각 frontmatter가 `name`·`description`·`tools`·`model` 4키를 가지며 `name`이 파일명과 일치한다 | design §4 | `요구` | T3 | `관찰` frontmatter 덤프 기록 | — | 6/6 일치, 누락 0 |
 | AC2 | `.claude/skills/` 에 11개 스킬 디렉터리가 있고 각 `SKILL.md` frontmatter `name`이 디렉터리명과 일치한다 | design §4 | `요구` | T3 | `관찰` frontmatter 덤프 기록 | — | 11/11 일치 |
-| AC3 | 새 하네스 문서 본문이 언급하는 저장소 경로가 전부 실재한다 (`_workspace/` 처럼 부재가 문서에 명시된 경로 제외) | design §1 #1·#2 재발 방지 | `리뷰` | T3 | `관찰` 경로 토큰 추출 후 `test -e` 결과 기록 | — | 죽은 참조 0건 |
+| AC3 | **새로 쓴 하네스 문서 전체**(`.claude/agents/*.md` 6개 + 자체 작성 스킬 9종 `SKILL.md` + `CLAUDE.md`) 본문이 언급하는 저장소 경로가 전부 실재한다. 벤더링 사본 2종과 `_workspace/`처럼 부재가 문서에 명시된 경로는 제외 | design §1 #1·#2 재발 방지 | `리뷰` | T3 | `관찰` 대상 파일 전체에서 경로 토큰 추출 후 `test -e` 결과 기록 (plan Task 8 Step 2의 루프) | — | 죽은 참조 0건 |
 | AC4 | 벤더링한 `definition-of-done` 이 원본과 byte-identical | design §3 | `요구` | T1 | `기존` `diff -r` | `diff -r /home/yeop/.claude/skills/definition-of-done .claude/skills/definition-of-done` | exit 0 |
 | AC5 | 벤더링한 `explain-pr` 이 원본과 byte-identical | design §3 | `요구` | T1 | `기존` `diff -r` | `diff -r /home/yeop/.claude/skills/explain-pr .claude/skills/explain-pr` | exit 0 |
-| AC6 | `CLAUDE.md` 에 `## 하네스` 섹션이 있고 변경 이력 표가 포함된다 | design §4 | `요구` | T1 | `기존` `grep` | `grep -q '^## 하네스' CLAUDE.md` | exit 0 |
+| AC6 | `CLAUDE.md` 에 `## 하네스` 섹션이 있고 **그 뒤에** `### 변경 이력` 표가 온다 | design §4 | `요구` | T1 | `기존` `grep -P` | `grep -Pzoq '## 하네스[\s\S]*?### 변경 이력' CLAUDE.md` | exit 0 |
 | AC7 | 정본 문서 무결성 검사가 통과한다 (깨진 링크·placeholder·낡은 아키텍처 서술 0건) | 기존 CI gate | `요구` | T1 | `기존` `docs/check-documentation.sh` | `bash docs/check-documentation.sh` | exit 0 |
-| AC8 | 구 하네스 자산(에이전트 8·스킬 9)이 제거됐고, 변경 범위가 `.claude/` · `CLAUDE.md` · `docs/work/` 밖으로 나가지 않는다 | design §2 비목표·§6 | `요구` | T3 | `관찰` `git diff --stat dev...HEAD` 기록 | — | 구 자산 0개 잔존, 범위 밖 파일 0개 |
+| AC8 | 구 하네스 자산(에이전트 8·스킬 9)이 제거됐고, 변경 범위가 `.claude/` · `CLAUDE.md` · `docs/work/` 밖으로 나가지 않는다 | design §2 비목표·§6 | `요구` | T3 | `관찰` `git diff --stat origin/dev...HEAD` 기록 | — | 구 자산 0개 잔존, 범위 밖 파일 0개 |
+
+> **AC4·AC5의 한계 (⑥ 리뷰 반영).** 이 두 명령은 개인 홈(`/home/yeop/.claude/skills/`)을 기준으로 비교하므로
+> CI나 다른 작업자 머신에서는 재현되지 않는다. 이번 MR에서는 복사 충실도 증거로 충분하다고 보되, 나중에
+> 감사할 수 있도록 사본 파일의 `sha256sum`을 증거 로그에 함께 남긴다. 저장소 내부 manifest 도입은
+> 게이트 생략 결정과 묶어 후속으로 넘긴다.
+>
+> **AC8의 baseline은 `origin/dev`다 (⑥ 리뷰 반영).** 이 worktree는 `origin/dev@4560124`에서 분기했고 로컬
+> `dev`는 `b877d42`로 100 커밋 stale이다. `dev...HEAD`로 재면 남의 작업 120개 파일이 포함돼 판정이 항상 실패한다.
 
 **`출처`** — `요구`(사용자 요구 원문) / `상위`(상위 동결 문서의 ID) /
 `리뷰`(리뷰에서 파생) / `추론`(근거 없음).

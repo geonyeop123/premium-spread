@@ -14,7 +14,7 @@ Flyway 소유권 이동, MarketPair 재구조화(V12~V14), durable notification 
 | # | 불일치 | 실제 |
 |---|--------|------|
 | 1 | `db-migration` 스킬이 마이그레이션 경로를 `apps/api/src/main/resources/db/migration/`로 안내 | `infrastructure/common/src/main/resources/db/migration/` |
-| 2 | 같은 스킬이 "V1~V9 기준"이라 서술하고 없어진 `origin/feature/premium` 브랜치를 조회 | 최신 마이그레이션은 `V14__create_durable_notification_delivery.sql` |
+| 2 | 같은 스킬이 "V1~V9 기준"이라 서술하고 없어진 `origin/feature/premium` 브랜치를 조회 | `origin/dev` 기준 최신 마이그레이션은 `V15__add_tracking_close_snapshot.sql` |
 | 3 | `api-feature` 스킬이 `domain/`·`infrastructure/`·`application/`을 apps/api **내부 패키지**로 안내하고 `{Name}RepositoryImpl`·`Jpa{Name}Repository` 네이밍을 지시 | `.ai/rules/architecture.md`는 앱 내부 infrastructure/repository 패키지를 금지하고 `*Adapter`·`SpringData*Repository`를 요구 |
 | 4 | `batch-job` 스킬이 apps/batch 안에 `client/`·`cache/`·`repository/`를 만들라고 안내 | `.ai/rules/batch.md`가 명시적으로 금지 |
 | 5 | `qa-validator` 스킬의 검증 명령이 `./gradlew test` / `:apps:api:integrationTest`뿐 | `.ai/rules/testing.md`는 `architectureTest`, `--offline --no-daemon`, `:infrastructure:common:integrationTest`, `verifyMigrations`를 요구 |
@@ -139,9 +139,12 @@ CLAUDE.md                            # `## 하네스` 섹션 신설 (포인터 +
 | 티어 | 대상 | 명령/방법 |
 |------|------|----------|
 | 구조 | 에이전트·스킬 frontmatter | 각 파일 앞 `---` 블록에 `name`이 디렉터리/파일명과 일치하는지 확인 |
-| 참조 | 하네스 문서 본문이 언급하는 저장소 경로 | 본문에서 경로 토큰을 뽑아 `test -e`로 존재 확인 (1회성 셸 루프) |
+| 참조 | **새로 쓴 하네스 문서 전체**(`.claude/agents/*.md` 6개 + 자체 작성 스킬 9종의 `SKILL.md` + `CLAUDE.md`) 본문이 언급하는 저장소 경로 | 본문에서 경로 토큰을 뽑아 `test -e`로 존재 확인 (1회성 셸 루프). 벤더링 사본 2종은 upstream 서술이라 이 축에서 제외한다 |
 | 문서 | `CLAUDE.md`·`AGENTS.md` 등 정본 문서 | `bash docs/check-documentation.sh` |
-| 회귀 | 앱 코드 무변경 | `git diff --stat dev...HEAD`가 `.claude/`·`CLAUDE.md`·`docs/` 밖 파일을 포함하지 않을 것 |
+| 회귀 | 앱 코드 무변경 | `git diff --stat origin/dev...HEAD`가 `.claude/`·`CLAUDE.md`·`docs/work/` 밖 파일을 포함하지 않을 것 |
+
+**baseline은 `origin/dev`다.** 이 worktree는 `origin/dev@4560124`에서 분기했고 로컬 `dev`는 `b877d42`로
+100 커밋 뒤져 있다. `dev...HEAD`로 범위를 재면 남의 작업 120개 파일이 딸려 들어와 판정이 무의미해진다.
 
 ## 9. 리스크와 후속 항목
 
@@ -151,3 +154,15 @@ CLAUDE.md                            # `## 하네스` 섹션 신설 (포인터 +
 | 트리거 충돌 | 유저 레벨 스킬(`feature-workflow`, `codex-*`, `analysis-report` 등)과 프로젝트 `orchestrator`가 겹칠 수 있다 | `orchestrator` description에 "코드 변경을 만드는 작업"으로 경계를 좁히고, 단순 질문·단일 파일 수정은 제외한다고 명시 |
 | 벤더링 동기화 | 원본(`~/.claude/skills/`) 갱신 시 사본이 낡는다 | 두 SKILL.md에 "원본 갱신 시 통째로 재복사, 저장소 안에서 개별 수정 금지"를 명시 |
 | 고아 스킬 | `.ai/skills/tdd-workflow/SKILL.MD` | 이번 스코프 밖. 후속 정리 대상으로만 기록 |
+| 벤더링 검증의 환경 의존 | AC4·AC5는 `/home/yeop/.claude/skills/`를 기준으로 비교하므로 CI나 다른 작업자 머신에서는 재현되지 않는다 | 이번 MR에서는 복사 충실도 증거로 충분하다고 보고, 재현 가능성을 위해 사본 파일의 `sha256sum`을 dod 증거 로그에 함께 남긴다. 저장소 내부 manifest 도입은 게이트 생략 결정과 함께 후속으로 넘긴다 |
+
+## 10. 스펙 리뷰(⑥) 반영
+
+codex adversarial-review 1라운드에서 4건을 받아 **전부 ACCEPT**했다. 반박한 항목은 없다.
+
+| 이슈 | 지적 | 반영 |
+|------|------|------|
+| high | 최신 Flyway 버전을 V14로 서술 — 실제로는 `V15__add_tracking_close_snapshot.sql`이 존재. 하네스가 다음 번호를 V15로 지시하면 충돌 | §1 표 정정. plan은 정적 번호 대신 "구현 시점에 디렉터리 최신 버전을 확인하고 +1"로 지시 |
+| high | AC8의 baseline `dev`가 로컬에서 stale해 판정이 항상 실패 | 전 문서의 범위 기준을 `origin/dev...HEAD`로 교체(§8) |
+| medium | AC3(경로 실재)를 orchestrator 한 파일에만 적용 | 검사 대상을 새로 쓴 하네스 문서 전체로 확대(§8), 벤더링 사본 제외 근거 명시 |
+| medium | AC4·AC5가 개인 홈 의존 · AC6이 변경 이력 표를 검증하지 않음 | §9에 환경 의존 한계와 sha256 증거를 기록. AC6 검증 명령을 `## 하네스` 섹션 **안에** 변경 이력 표가 있는지까지 보도록 강화 |

@@ -16,7 +16,8 @@
 - 에이전트 frontmatter는 `name` · `description` · `tools` · `model` 4키를 모두 갖는다. `name`은 파일명(확장자 제외)과 같다.
 - 스킬 frontmatter는 `name` · `description` 2키를 갖는다. `name`은 디렉터리명과 같다.
 - 검증 명령은 이 저장소에 실재하는 것만 쓴다: `./gradlew test architectureTest --offline --no-daemon`, `./gradlew :{module}:integrationTest --offline --no-daemon`, `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon`, `bash docs/check-documentation.sh`. **`./gradlew lint`은 이 저장소에 없다 — 쓰지 않는다.**
-- Flyway 마이그레이션 경로는 `infrastructure/common/src/main/resources/db/migration/`이다. 최신 버전은 `V14`다.
+- Flyway 마이그레이션 경로는 `infrastructure/common/src/main/resources/db/migration/`이다. **다음 버전 번호를 문서에 상수로 박지 않는다** — 하네스 문서는 "구현 시점에 `ls infrastructure/common/src/main/resources/db/migration/ | sort -V | tail -1`로 최신을 확인하고 +1"이라고 지시한다. (2026-08-30 `origin/dev` 기준 최신은 `V15__add_tracking_close_snapshot.sql`)
+- 범위·회귀 판정의 baseline은 **`origin/dev`** 다. 로컬 `dev`는 `b877d42`로 100 커밋 stale이므로 `dev...HEAD`를 쓰면 남의 작업 120개 파일이 딸려 들어온다.
 - 명명은 `.ai/rules/architecture.md`를 따른다: 포트는 `{Domain}Repository`/`*Port`, 기술 구현은 `*Adapter`, Spring Data 인터페이스는 `SpringData*Repository`. `{Name}RepositoryImpl` 고정 금지.
 - DTO 6단은 `Request → Criteria → Command → Snapshot → Result → Response`다 (`.ai/rules/naming.md`).
 - 벤더링 사본 2종은 원본과 byte-identical해야 한다. 저장소 안에서 개별 수정하지 않는다.
@@ -242,7 +243,7 @@ model: <opus|sonnet>
 
 - 역할: 요구사항 → `docs/work/{slug}/design.md` + `dod.md` 작성, 모듈 배치·포트 정의·마이그레이션 필요 여부 판단. **코드 미수정.**
 - 참조 스킬: `module-layout`, `dto-pattern`, `jpa-entity-pattern`, `swagger-interface-pattern`, `definition-of-done`
-- 설계 필수 항목 체크리스트: MarketPair identity, `[from,to)` 범위, DB-first/after-commit 순서, Flyway 필요 여부(`infrastructure/common/.../db/migration/`, 다음 버전 V15), 배치면 `JobExecutor` lock key·lease·timeout, 알림이면 claim/fencing
+- 설계 필수 항목 체크리스트: MarketPair identity, `[from,to)` 범위, DB-first/after-commit 순서, Flyway 필요 여부(`infrastructure/common/src/main/resources/db/migration/`, **다음 번호는 `sort -V | tail -1` 결과 +1 — 문서에 상수로 적지 않는다**), 배치면 `JobExecutor` lock key·lease·timeout, 알림이면 claim/fencing
 - 재호출 시: 기존 `docs/work/{slug}/`가 있으면 새로 쓰지 않고 지적된 부분만 보완
 
 - [ ] **Step 3: `implementer` (tools: Read, Write, Edit, Grep, Glob, Bash / model: sonnet)**
@@ -407,11 +408,13 @@ git commit -m "chore: 구 하네스 에이전트 8종·스킬 9종 제거"
 - [ ] **Step 2: 검증 (AC6·AC7)**
 
 ```bash
-grep -q '^## 하네스' CLAUDE.md
+grep -Pzoq '## 하네스[\s\S]*?### 변경 이력' CLAUDE.md
 bash docs/check-documentation.sh
 ```
 
-Expected: 첫 명령 exit 0, 두 번째 `documentation check passed ...` 출력 + exit 0
+Expected: 첫 명령 exit 0 (= `## 하네스` 섹션이 있고 그 **뒤에** `### 변경 이력`이 온다), 두 번째 `documentation check passed ...` 출력 + exit 0
+
+GNU grep의 `-P`가 없는 환경이면 대체 명령을 쓴다: `awk '/^## 하네스/{a=1} a&&/^### 변경 이력/{found=1} END{exit !found}' CLAUDE.md`
 
 - [ ] **Step 3: 커밋**
 
@@ -436,7 +439,7 @@ git commit -m "docs: CLAUDE.md에 하네스 포인터와 변경 이력 등록"
 ```bash
 diff -r /home/yeop/.claude/skills/definition-of-done .claude/skills/definition-of-done
 diff -r /home/yeop/.claude/skills/explain-pr .claude/skills/explain-pr
-grep -q '^## 하네스' CLAUDE.md
+grep -Pzoq '## 하네스[\s\S]*?### 변경 이력' CLAUDE.md
 bash docs/check-documentation.sh
 ```
 
@@ -444,10 +447,21 @@ Expected: 네 명령 모두 exit 0
 
 - [ ] **Step 2: T3 4건 관찰 기록**
 
-- AC1: `head -6 .claude/agents/*.md` 출력에서 frontmatter 4키 확인
+- AC1: `head -6 .claude/agents/*.md` 출력에서 frontmatter 4키(`name`·`description`·`tools`·`model`) 확인
 - AC2: `head -3 .claude/skills/*/SKILL.md` 출력에서 `name` ↔ 디렉터리명 일치 확인
-- AC3: 하네스 문서에서 경로 토큰을 추출해 `test -e`로 존재 확인, 죽은 참조 0건
-- AC8: `git diff --stat dev...HEAD`가 `.claude/`·`CLAUDE.md`·`docs/work/` 밖 파일을 포함하지 않음
+- AC3: **새로 쓴 하네스 문서 전체**를 대상으로 경로 토큰을 추출해 존재를 확인한다. 대상은 `.claude/agents/*.md` 6개 + 자체 작성 스킬 9종의 `SKILL.md` + `CLAUDE.md`이며, 벤더링 사본 2종(`definition-of-done`·`explain-pr`)은 upstream 서술이라 제외한다. 아래 루프 결과에서 죽은 참조 0건이어야 한다.
+
+```bash
+for f in .claude/agents/*.md .claude/skills/module-layout/SKILL.md .claude/skills/dto-pattern/SKILL.md .claude/skills/jpa-entity-pattern/SKILL.md .claude/skills/swagger-interface-pattern/SKILL.md .claude/skills/test-strategy/SKILL.md .claude/skills/qa-verification/SKILL.md .claude/skills/tech-docs-sync/SKILL.md .claude/skills/task-packet/SKILL.md .claude/skills/orchestrator/SKILL.md CLAUDE.md; do
+  for p in $(grep -oE '(\.ai|docs|scripts|apps|domain|infrastructure|modules|supports|http|\.claude|\.github)/[A-Za-z0-9_./-]+' "$f" | sort -u); do
+    case "$p" in *"{"*|*"}"*|_workspace/*) continue ;; esac
+    test -e "$p" || echo "DEAD $f -> $p"
+  done
+done
+```
+
+- AC8: `git diff --stat origin/dev...HEAD`가 `.claude/`·`CLAUDE.md`·`docs/work/` 밖 파일을 포함하지 않음. **로컬 `dev`가 아니라 `origin/dev`를 쓴다** (Global Constraints 참조)
+- AC4·AC5 보강: 벤더링 사본의 체크섬을 증거로 남긴다 — `find .claude/skills/definition-of-done .claude/skills/explain-pr -type f -exec sha256sum {} +`
 
 - [ ] **Step 3: 회귀 방어선 R2**
 
