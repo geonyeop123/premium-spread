@@ -254,6 +254,102 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 당초 제기했던 "효율 캡을 투입액 기준으로 재판정해야 한다"는 이견은 §3 원문이 효율 캡을 빗썸
 비중(잔고만의 함수)으로 명시한 것과 배치돼 철회했다. 구현은 변경하지 않는다.
 
+### T2 — Domain 계획 엔티티와 상태 기계 (2026-08-30)
+
+**대상 AC**: AC5·AC6 (설계 근거: D4·D5·D11·D12·D15·D16·D19·D21·D23)
+
+**신설 파일**: `domain/src/main/kotlin/io/premiumspread/domain/tradeprep/`
+`TradePreparation.kt`(+ `TradePreparationSpec`) · `TradePreparationStatus.kt` ·
+`TradePreparationInvalidationReason.kt` · `TradePreparationConditionOutcome.kt` ·
+`InvalidTradePreparationException.kt` · `TradePreparationRepository.kt` ·
+`TradePreparationService.kt` 와
+`domain/src/test/kotlin/io/premiumspread/domain/tradeprep/`
+`TradePreparationSnapshotBindingTest.kt` · `TradePreparationInvalidationTest.kt`
+
+**RED** — 테스트를 먼저 작성하고, 엔티티에 의도적으로 틀린 stub 3곳을 심어 컴파일은 되지만
+기대한 assertion이 기대한 값으로 실패하는 것을 확인했다.
+- `evaluateCondition`의 조건 비교를 `currentPremiumRate <= desired`(방향 반대)로 둠
+- `invalidateOnReconcileMismatch`가 스냅샷 id 일치 여부와 무관하게 항상 무효화하도록 둠
+- `invalidate`가 이미 `INVALIDATED`여도 사유·시각을 덮어쓰도록 가드를 생략함
+
+```
+./gradlew :domain:test --tests '*TradePreparationSnapshotBinding*' --tests '*TradePreparationInvalidation*' \
+  --offline --no-daemon
+```
+
+결과: `14 tests completed, 4 failed`. 실패 목록(전부 `AssertionFailedError`, 컴파일 실패 아님) —
+`TradePreparationInvalidationTest > 프리미엄이 희망값과 정확히 같으면 조건 충족으로 판정해 ARMED로
+전이한다 — 도달이 충족이다() FAILED` (`expected: ARMED but was: NOT_MET`),
+`... INVALIDATED는 종점이다 — 다른 트리거로 재무효화를 시도해도 상태·사유가 바뀌지 않는다() FAILED`
+(`Expecting value to be false but was true`),
+`TradePreparationSnapshotBindingTest > 결속 스냅샷 id와 현재 판정용 잔고 id가 같으면 계획을
+무효화하지 않는다() FAILED` (`Expecting value to be false but was true`),
+`... 한 번 무효화된 계획은 스냅샷 id가 다시 바뀌어도 재무효화되지 않는다 — INVALIDATED는 종점이다()
+FAILED` (`Expecting value to be false but was true`).
+
+**GREEN** — 세 stub을 교정(조건 비교를 `<`로 바꿔 "도달"을 충족에 포함, `invalidateOnReconcileMismatch`에
+스냅샷 id 일치 시 조기 반환 추가, `invalidate`에 `status == INVALIDATED` 종점 가드 추가)한 뒤 재실행.
+
+```
+./gradlew :domain:test --tests '*TradePreparationSnapshotBinding*' --tests '*TradePreparationInvalidation*' \
+  --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL`. `TEST-*.xml` 기준 `TradePreparationInvalidationTest` 9건,
+`TradePreparationSnapshotBindingTest` 5건 — 총 14건 전부 통과, 실패 0건.
+
+**architectureTest**
+
+```
+./gradlew architectureTest --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL`. `io.premiumspread.domain.tradeprep` 패키지(엔티티 포함)가 domain 허용
+경계(jakarta.persistence-api·spring-context·spring-tx·spring-data-commons)만 참조하고 새 위반이 없다.
+
+**회귀(R1)**
+
+```
+./gradlew test architectureTest --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL` (전 모듈 unit test + architectureTest, 기존 tracking/premium/ticker/member/
+notification 계약 회귀 없음).
+
+**설계 결정 — brief가 값을 정하지 않은 항목**
+
+- **"해외가·FX·프리미엄의 snapshot id·관측 시각·출처"(D12)**: `PremiumSnapshot`·`ExchangeRateSnapshot`
+  둘 다 domain에 surrogate id를 노출하지 않는 기존 관례를 따라, 별도 opaque id 컬럼을 신설하지
+  않고 `referenceForeignPrice`·`referenceFxRate`·`referencePremiumRate`·`referenceObservedAt`·
+  `referenceFxSource`·`referenceFxObservedAt` 원시값 자체를 재현에 필요한 provenance로 보존했다
+  (`Tracking`의 `entryFxRate`·`entryPremiumRate`·`entryObservedAt` 패턴과 동형). `(pair, observedAt)`이
+  이 코드베이스에서 이미 premium/fx의 식별자 역할을 한다.
+- **재진입 조건의 비교 방향**: `currentPremiumRate >= desiredPremiumRate`("도달"이 충족)로
+  판정했다 — `TradePrepPolicy.judge`의 레버 캡이 "도달"을 위반에 포함시키는 것과 같은 경계값
+  관례이며, plan.md/eco-5 문서의 "재진입 | 프리미엄이 직전 진입 수준으로 복귀 시" 서술과 일관된다.
+  design.md에 명시적 부등호가 없어 내린 판단이라 T5·T7 리뷰에서 재확인이 필요하다.
+- **`version`은 business 필드(수동 증가), Hibernate `@Version`은 별도 hidden `lockVersion`**:
+  `NotificationSubscription`(`revision` + hidden `lockVersion`)과 동일한 패턴이다. D11의 조건부
+  갱신문(`WHERE id=? AND version=? AND status=?`)은 T3/T4가 실제 SQL(JPQL bulk update 등)로
+  구성한다 — 이 필드는 그 계약이 참조할 값을 노출할 뿐이며, T2는 CAS의 실제 DB 경합(AC11)을
+  검증하지 않는다(과제 경계).
+- **DRAFT도 결속 잔고 스냅샷을 갖는다**: `prepare`가 이미 표시용 `BalanceSnapshot`을 읽으므로
+  `boundBalanceSnapshotId`/`boundBalanceBasis`를 생성 시점부터 non-null로 요구했다.
+  `registerTarget`은 D20에 따라 자체적으로 새로 읽은 값으로 재기록한다(재바인딩).
+- **저장소 파일 분리**: 네이밍 규칙이 "domain port는 묶음 파일(`TradePrepPorts.kt`)"을 언급하지만,
+  `TradePrepPorts.kt`(T1)는 잔고 조회 capability 전용으로 문서화돼 있어, 기존 `TrackingRepository`·
+  `NotificationSubscriptionRepository`·`PremiumRepository` 관례(entity당 별도 repository 파일)를
+  따라 `TradePreparationRepository.kt`를 새 파일로 분리했다.
+- **capVerdict 상세(koreaShare·violations 등) 미저장**: brief가 "산출 Q·L"만 명시해 `quantity`·
+  `leverage`만 보존했다. 캡 판정은 `prepare` 시점에 이미 통과한 계획만 생성되므로 재저장하지 않았다.
+
+**T5·T7이 참고할 시그니처**: `TradePreparation.evaluateCondition(currentPremiumRate, observedAt):
+TradePreparationConditionOutcome`가 D21의 "조회·조건부 전이(arm/관측 기록)"를 한 메서드로 묶는다.
+호출자(T7 Job)는 D14 신선도·pair 일치 판정을 먼저 통과시킨 뒤에만 호출해야 한다 — 이 메서드
+자체는 신선도를 판단하지 않는다. `TradePreparationRepository.findAllWatchingByPair(pair)`가 T7의
+순회 진입점이다. `TradePreparationRepository`는 D11 조건부 갱신의 실제 SQL을 정의하지 않는다 —
+T4가 구현을 결정한다.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
