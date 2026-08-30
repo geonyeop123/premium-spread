@@ -152,12 +152,17 @@ class TradePreparationFacade(
 
             // ④ 거절 사유를 **전부** 파괴적 단계보다 앞에 둔다. 아래 replaceExistingActivePlan 은
             //    기존 `WATCHING` 을 무효화하고 즉시 flush 하므로, 그 뒤에 거절이 나면 멀쩡한 활성
-            //    계획이 지워진 뒤 롤백에만 기대게 된다. DRAFT 검사는 전이의 **사전 조건**만 읽으며
-            //    전이 자체와 그 검증은 여전히 TradePreparation.registerTarget 이 소유한다 (D21).
+            //    계획이 지워진 뒤 롤백에만 기대게 된다. 술어는 Domain 의 isRegisterable 하나이고
+            //    registerTarget 의 검사와 공유한다 — 여기서 따로 적으면 Domain 이 허용 상태를
+            //    넓혔을 때 이 경로만 조용히 막혀 apps:batch 와 갈라진다 (D21).
             //    두 단계를 맞바꿔 registerTarget 을 먼저 부를 수는 없다 — 엔티티를 더럽힌 뒤
-            //    findActiveByOwnerId 가 auto-flush 를 일으켜 승격 UPDATE 가 무효화보다 먼저 나간다.
-            if (plan.status != TradePreparationStatus.DRAFT) {
-                throw ApplicationException(ApplicationError.DOMAIN_ERROR)
+            //    findActiveByOwnerId 가 auto-flush 를 일으키면 기존 `WATCHING` 이 아직 active_key 를
+            //    쥔 채로 승격 UPDATE 가 나가 유일성이 즉시 깨진다.
+            if (!plan.isRegisterable) {
+                throw ApplicationException(
+                    ApplicationError.DOMAIN_ERROR,
+                    InvalidTradePreparationException("registerTarget requires a registerable plan, was ${plan.status}"),
+                )
             }
             val (snapshotId, basis) = resolveBinding(plan)
 

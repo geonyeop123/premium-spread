@@ -112,6 +112,40 @@ class TradePreparationSnapshotBindingTest {
         assertThat(draft.status).isEqualTo(TradePreparationStatus.DRAFT)
     }
 
+    @Test
+    fun `registerTarget은 DRAFT에서만 받아들이며 isRegisterable이 그 술어다`() {
+        // T5 Facade는 기존 WATCHING을 무효화하기 전에 isRegisterable로 사전 조건을 검사한다.
+        // 술어가 여기 하나뿐이므로 이 테스트가 양쪽 경로의 회귀를 함께 막는다 (D21).
+        val draft = TradePreparation.create(spec("snap-1"))
+        assertThat(draft.isRegisterable).isTrue()
+
+        val watching = watchingPlan("snap-1")
+        assertThat(watching.isRegisterable).isFalse()
+        assertThatThrownBy {
+            watching.registerTarget(
+                desiredEntryPremiumRate = BigDecimal("3.00"),
+                boundBalanceSnapshotId = "snap-2",
+                boundBalanceBasis = BalanceBasis.FRESH,
+                at = observedAt,
+            )
+        }.isInstanceOf(InvalidTradePreparationException::class.java)
+        // 거절은 부분 변경을 남기지 않는다 — 결속도 목표도 그대로다.
+        assertThat(watching.boundBalanceSnapshotId).isEqualTo("snap-1")
+        assertThat(watching.status).isEqualTo(TradePreparationStatus.WATCHING)
+
+        val invalidated = watchingPlan("snap-1").apply { invalidateOnOwnerRefresh(observedAt) }
+        assertThat(invalidated.isRegisterable).isFalse()
+        assertThatThrownBy {
+            invalidated.registerTarget(
+                desiredEntryPremiumRate = BigDecimal("3.00"),
+                boundBalanceSnapshotId = "snap-2",
+                boundBalanceBasis = BalanceBasis.FRESH,
+                at = observedAt,
+            )
+        }.isInstanceOf(InvalidTradePreparationException::class.java)
+        assertThat(invalidated.status).isEqualTo(TradePreparationStatus.INVALIDATED)
+    }
+
     private fun watchingPlan(boundSnapshotId: String): TradePreparation {
         val plan = TradePreparation.create(spec(boundSnapshotId))
         plan.registerTarget(

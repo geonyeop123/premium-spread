@@ -151,6 +151,15 @@ class TradePreparation private constructor(
         get() = status == TradePreparationStatus.WATCHING || status == TradePreparationStatus.ARMED
 
     /**
+     * [registerTarget]이 받아들이는 상태다. 호출자가 파괴적 단계보다 앞에서 사전 조건을 확인해야
+     * 할 때(T5 Facade는 기존 `WATCHING`을 무효화하기 전에 검사한다) 이 술어를 공유한다 —
+     * 같은 조건을 호출자가 따로 적으면 여기서 허용 상태를 넓혔을 때 호출자만 조용히 막아
+     * `apps:api`와 `apps:batch` 경로가 갈라진다(D21).
+     */
+    val isRegisterable: Boolean
+        get() = status == TradePreparationStatus.DRAFT
+
+    /**
      * owner의 **진입** 목표 프리미엄(`desiredEntryPremiumRate`)을 받아 `WATCHING`으로 전이한다
      * (D6·D7). 종료 목표 프리미엄(진입가 대비 상대 gap)은 이 단위의 범위 밖이다 — 실제 진입 후
      * 열리는 `Tracking`이 그 값을 소유한다(design.md §1.3, D6 owner 확인). 결속 잔고는 이 시점에
@@ -162,7 +171,7 @@ class TradePreparation private constructor(
         boundBalanceBasis: BalanceBasis,
         at: Instant,
     ) {
-        if (status != TradePreparationStatus.DRAFT) {
+        if (!isRegisterable) {
             throw InvalidTradePreparationException("registerTarget requires DRAFT status, was $status")
         }
         if (boundBalanceSnapshotId.isBlank()) {
