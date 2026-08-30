@@ -41,6 +41,8 @@ batch:
       minute-cron: ${TICKER_MINUTE_CRON:2 * * * * *}
       hour-cron: ${TICKER_HOUR_CRON:7 0 * * * *}
       day-cron: ${TICKER_DAY_CRON:12 0 0 * * *}
+    trade-preparation-evaluation:
+      fixed-rate: ${TRADE_PREPARATION_EVALUATION_FIXED_RATE:1s}
     zone: ${AGGREGATION_ZONE:Asia/Seoul}
   jobs:
     fx-ingestion: { lock-key: "${FX_JOB_LOCK_KEY:lock:fx}", lease: "${FX_JOB_LEASE:35s}", execution-timeout: "${FX_JOB_TIMEOUT:30s}" }
@@ -54,6 +56,12 @@ batch:
     ticker-day: { lock-key: "${TICKER_DAY_LOCK_KEY:lock:ticker:aggregation:day}", lease: "${TICKER_DAY_LEASE:120s}", execution-timeout: "${TICKER_DAY_TIMEOUT:90s}" }
     binance-flush: { lock-key: "${BINANCE_FLUSH_LOCK_KEY:lock:ticker:flush:binance}", lease: "${BINANCE_FLUSH_LEASE:5s}", execution-timeout: "${BINANCE_FLUSH_TIMEOUT:3s}" }
     bithumb-flush: { lock-key: "${BITHUMB_FLUSH_LOCK_KEY:lock:ticker:flush:bithumb}", lease: "${BITHUMB_FLUSH_LEASE:5s}", execution-timeout: "${BITHUMB_FLUSH_TIMEOUT:3s}" }
+    trade-preparation-evaluation: { lock-key: "${TRADE_PREP_EVALUATION_LOCK_KEY:lock:trade-preparation:evaluation}", lease: "${TRADE_PREP_EVALUATION_LEASE:5s}", execution-timeout: "${TRADE_PREP_EVALUATION_TIMEOUT:3s}" }
+
+# 거래 준비 조건 평가 (design.md D14) — 값의 근거는 수집 계약의 10초 중단 규칙이다.
+trade-preparation:
+  evaluation:
+    max-age: ${TRADE_PREPARATION_EVALUATION_MAX_AGE:10s}
 
 # External market stream 및 FX API 설정
 market-streams:

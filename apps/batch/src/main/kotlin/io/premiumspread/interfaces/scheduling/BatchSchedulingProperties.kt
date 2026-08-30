@@ -18,6 +18,7 @@ data class BatchSchedulingProperties(
     @field:Valid val premium: FixedRate = FixedRate(Duration.ofSeconds(1)),
     @field:Valid val premiumAggregation: PremiumAggregation = PremiumAggregation(),
     @field:Valid val tickerAggregation: TickerAggregation = TickerAggregation(),
+    @field:Valid val tradePreparationEvaluation: FixedRate = FixedRate(Duration.ofSeconds(1)),
     @field:NotBlank val zone: String = "Asia/Seoul",
 ) {
     data class FixedRate(val fixedRate: Duration) {

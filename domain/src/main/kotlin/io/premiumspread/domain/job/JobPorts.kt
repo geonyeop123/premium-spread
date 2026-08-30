@@ -28,6 +28,7 @@ enum class JobId(val tag: String) {
     TICKER_AGGREGATION_DAY("ticker_aggregation_day"),
     BINANCE_TICKER_FLUSH("binance_ticker_flush"),
     BITHUMB_TICKER_FLUSH("bithumb_ticker_flush"),
+    TRADE_PREPARATION_EVALUATION("trade_preparation_evaluation"),
 }
 
 enum class JobRunOutcome {

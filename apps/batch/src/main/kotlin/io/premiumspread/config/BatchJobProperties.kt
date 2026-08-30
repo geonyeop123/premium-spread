@@ -28,6 +28,8 @@ data class BatchJobProperties(
     LockSpec("lock:ticker:aggregation:day", Duration.ofSeconds(120), Duration.ofSeconds(90)),
     @field:Valid val binanceFlush: LockSpec = LockSpec("lock:ticker:flush:binance", Duration.ofSeconds(5), Duration.ofSeconds(3)),
     @field:Valid val bithumbFlush: LockSpec = LockSpec("lock:ticker:flush:bithumb", Duration.ofSeconds(5), Duration.ofSeconds(3)),
+    @field:Valid val tradePreparationEvaluation: LockSpec =
+    LockSpec("lock:trade-preparation:evaluation", Duration.ofSeconds(5), Duration.ofSeconds(3)),
 ) : JobConfigProvider {
     override fun get(jobId: JobId): JobConfig = when (jobId) {
         JobId.FX_INGESTION -> fxIngestion
@@ -41,6 +43,7 @@ data class BatchJobProperties(
         JobId.TICKER_AGGREGATION_DAY -> tickerDay
         JobId.BINANCE_TICKER_FLUSH -> binanceFlush
         JobId.BITHUMB_TICKER_FLUSH -> bithumbFlush
+        JobId.TRADE_PREPARATION_EVALUATION -> tradePreparationEvaluation
     }.toJobConfig(jobId)
 
     data class LockSpec(@field:NotBlank val lockKey: String, val lease: Duration, val executionTimeout: Duration) {
