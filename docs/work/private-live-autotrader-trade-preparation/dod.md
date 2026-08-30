@@ -244,6 +244,16 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 결과: `BUILD SUCCESSFUL` (전 모듈 unit test + architectureTest, 기존 tracking/premium/ticker/member
 계약 회귀 없음).
 
+**컨트롤러 Ruling 3 (리뷰 라운드 1, 2026-08-30)**: AC2가 나열한 경계값 중 "반올림이 캡을 넘기는
+경우"는 design.md §3의 채택 공식(빗썸 비중 = `B_k/(B_k+X·B_b)`, 잔고만의 함수) 하에서는 구성
+불가능하다 — 내림 반올림은 물량만 줄이므로 `finalLeverage ≤ rawLeverage`가 항상 성립해 레버 캡을
+반올림이 새로 어길 수 없고, `koreaShare`는 물량과 무관해 효율 캡도 반올림으로 바뀌지 않는다.
+반올림이 만드는 유일한 새 실패 모드는 "물량이 거래소 lot size로 0까지 내려가는 경우"이므로 이
+경계로 대체 검증했다(`TradePreparationSizingTest`의 "반올림이 물량을 0으로 만들면 캡이 안쪽이어도
+계획을 만들지 않는다"). 리뷰어가 독립적으로 이 수식을 검산해 같은 결론에 도달했고, 컨트롤러가
+당초 제기했던 "효율 캡을 투입액 기준으로 재판정해야 한다"는 이견은 §3 원문이 효율 캡을 빗썸
+비중(잔고만의 함수)으로 명시한 것과 배치돼 철회했다. 구현은 변경하지 않는다.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

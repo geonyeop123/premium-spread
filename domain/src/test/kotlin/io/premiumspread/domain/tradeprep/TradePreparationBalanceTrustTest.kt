@@ -53,12 +53,12 @@ class TradePreparationBalanceTrustTest {
     }
 
     @Test
-    fun `RecordedBalanceAdapter 결속(FRESH·STALE)으로는 같은 조건에서 ARMED에 필요한 판정용 잔고에 도달한다`() {
-        val recordedFresh = snapshot(BalanceBasis.FRESH, id = "recorded-1")
-        val recordedStale = snapshot(BalanceBasis.STALE, id = "recorded-2")
+    fun `FRESH·STALE 스냅샷 결속으로는 같은 조건에서 ARMED에 필요한 판정용 잔고에 도달한다`() {
+        val freshBound = snapshot(BalanceBasis.FRESH, id = "verified-1")
+        val staleBound = snapshot(BalanceBasis.STALE, id = "verified-2")
 
-        assertThat(VerifiedBalance.from(recordedFresh)).isNotNull
-        assertThat(VerifiedBalance.from(recordedStale)).isNotNull
+        assertThat(VerifiedBalance.from(freshBound)).isNotNull
+        assertThat(VerifiedBalance.from(staleBound)).isNotNull
     }
 
     private fun snapshot(basis: BalanceBasis, id: String = "snapshot-1"): BalanceSnapshot =

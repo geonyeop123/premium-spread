@@ -72,7 +72,7 @@ object TradePrepSizing {
      * `finalLeverage = finalQuantity · F / B_b`. 물량이 내림으로만 줄어들므로
      * `finalLeverage <= rawLeverage` 가 항상 성립해 레버 캡을 새로 어기지는 않는다. 대신 반올림이
      * 두 leg 의 최소 거래 단위 아래로 물량을 만들면(`finalQuantity <= 0`) 캡 위반과 무관하게
-     * 계획을 만들지 않는다 ([TradePrepSizingResult.isPlannable]).
+     * 계획을 만들지 않는다 ([TradePrepSizingCalculation.isPlannable]).
      */
     fun size(
         koreaBalance: BigDecimal,
@@ -81,7 +81,7 @@ object TradePrepSizing {
         foreignPrice: BigDecimal,
         premiumRatePercent: BigDecimal,
         policy: TradePrepPolicy,
-    ): TradePrepSizingResult {
+    ): TradePrepSizingCalculation {
         val ratio = balanceRatio(koreaBalance, fxRate, foreignBalance)
         val rawLeverage = leverage(ratio, premiumRatePercent)
         val rawQuantity = quantity(koreaBalance, foreignPrice, fxRate, premiumRatePercent)
@@ -100,7 +100,7 @@ object TradePrepSizing {
 
         val capVerdict = policy.judge(finalLeverage, share)
 
-        return TradePrepSizingResult(
+        return TradePrepSizingCalculation(
             balanceRatio = ratio,
             rawLeverage = rawLeverage,
             rawQuantity = rawQuantity,
@@ -127,7 +127,7 @@ object TradePrepSizing {
  * - [finalQuantity] — 두 반올림 물량 중 작은 쪽(D12). 두 leg 가 실제로 체결할 수 있는 공통 수량이다.
  * - [finalLeverage] — [finalQuantity] 기준으로 재계산한 레버리지. [capVerdict]는 이 값을 판정한다.
  */
-data class TradePrepSizingResult(
+data class TradePrepSizingCalculation(
     val balanceRatio: BigDecimal,
     val rawLeverage: BigDecimal,
     val rawQuantity: BigDecimal,

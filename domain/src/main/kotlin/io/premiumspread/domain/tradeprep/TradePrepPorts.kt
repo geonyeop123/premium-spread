@@ -6,8 +6,9 @@ package io.premiumspread.domain.tradeprep
  *
  * 판정용은 같은 port의 다른 메서드가 아니라 반환 타입 자체가 다른 계약이다. VerifiedBalance는
  * UNVERIFIED·UNAVAILABLE 스냅샷에서 만들어지지 않으므로(VerifiedBalance.from), declared 전용
- * 어댑터(DeclaredBalanceAdapter)는 구조적으로 VerifiedBalanceReadPort를 구현할 수 없다 — 구현하면
- * 컴파일은 되지만 반환값이 항상 null이 되어 존재 이유가 없다.
+ * 어댑터(DeclaredBalanceAdapter)가 VerifiedBalanceReadPort를 구현하는 것 자체는 컴파일된다 —
+ * 다만 findForDecision()이 내부적으로 VerifiedBalance.from()을 거치는 한 반환값이 항상 null이
+ * 되어 구현할 이유가 없다.
  */
 
 /** 표시용. 캐시를 허용한다 — `observedAt`·`balanceBasis`로 신선도를 드러낸다 (D3). */

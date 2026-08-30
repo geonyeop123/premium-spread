@@ -151,18 +151,23 @@ class TradePreparationSizingTest {
     // ---- 경계값: 캡 직전·직후 ----
 
     @Test
-    fun `레버리지가 캡 직전이면 계획 가능하다`() {
+    fun `레버리지가 캡 직전이면 반올림 후에도 계획 가능하다`() {
+        // foreignBalance를 foreignPrice와 같은 70000으로 두면 P=0에서 L=Q가 되므로, Q를
+        // foreign lot size(0.001)의 배수로 고정해 반올림 손실 없이 finalLeverage가 rawLeverage와
+        // 정확히 같은 채로 캡 직전(6.999)에 머무는 실질 경계를 검증할 수 있다.
         val result = TradePrepSizing.size(
-            koreaBalance = bd("9799999"),
-            foreignBalance = bd("1000"),
+            koreaBalance = bd("685902000"),
+            foreignBalance = bd("70000"),
             fxRate = bd("1400"),
             foreignPrice = bd("70000"),
             premiumRatePercent = bd("0.00"),
             policy = policy,
         )
 
-        assertThat(result.rawLeverage).isEqualByComparingTo("6.9999992857")
+        assertThat(result.rawLeverage).isEqualByComparingTo("6.9990000000")
+        assertThat(result.finalLeverage).isEqualByComparingTo("6.9990000000")
         assertThat(result.capVerdict.violations).isEmpty()
+        assertThat(result.isPlannable).isTrue
     }
 
     @Test
