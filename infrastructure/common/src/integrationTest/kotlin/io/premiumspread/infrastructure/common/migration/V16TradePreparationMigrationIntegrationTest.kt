@@ -11,7 +11,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.Connection
 import java.sql.DriverManager
-import java.sql.SQLException
+import java.sql.SQLIntegrityConstraintViolationException
 
 @Tag("integration")
 @Testcontainers
@@ -50,7 +50,8 @@ class V16TradePreparationMigrationIntegrationTest {
             // WATCHING·ARMED는 active_key가 owner_id로 채워져 owner당 하나만 허용된다 (D16·D23).
             insertTradePreparation(connection, ownerId = 1, status = "WATCHING")
             assertThatThrownBy { insertTradePreparation(connection, ownerId = 1, status = "ARMED") }
-                .isInstanceOf(SQLException::class.java)
+                .isInstanceOf(SQLIntegrityConstraintViolationException::class.java)
+                .hasMessageContaining("uk_trade_preparation_owner_active")
 
             // 다른 owner는 독립적으로 활성 계획을 가질 수 있다.
             insertTradePreparation(connection, ownerId = 2, status = "ARMED")
