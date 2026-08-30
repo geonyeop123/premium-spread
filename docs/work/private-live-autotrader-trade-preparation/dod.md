@@ -260,6 +260,34 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 
 | 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
 |---|---|---|---|---|
+| AC2·AC3·AC5·AC6·AC13·AC20 검증 명령 | `./gradlew test --tests '…'` | `./gradlew :domain:test --tests '…'` (AC20은 `:apps:api:test`) | **동결된 명령이 GREEN 구현에서도 exit 0을 낼 수 없다.** 루트 `test`는 전 모듈에 필터를 전파하고, 매칭 테스트가 없는 모듈에서 gradle이 `No tests found`로 실패시킨다. T1 실측: 루트 형태 `BUILD FAILED`(`:apps:api:test`), 모듈 지정 형태 `BUILD SUCCESSFUL`. 기준 문장은 그대로이고 그 문장을 실제로 검사하지 못하던 명령을 고친다 (Phase 0 `CR-3`와 동형) | **대기** |
+
+### CR-1. T1 검증 명령의 구조적 실패 (2026-08-30, 구현 중 발견)
+
+**문제.** 위 6개 AC의 검증 명령이 루트 `./gradlew test --tests '…'` 형태다. 루트 `test` task는
+필터를 모든 모듈에 전파하며, 필터에 매칭되는 테스트가 없는 모듈의 `test` task는
+`No tests found for given includes`로 **실패**한다. `TradePreparation*` 테스트는 `:domain`에만
+있으므로 `:apps:api:test`가 실패하고 전체가 `BUILD FAILED`가 된다.
+
+**실측 (T1, commit `e42a14a`)**
+
+```
+./gradlew test --tests '*TradePreparationSizing*' --offline --no-daemon
+  → :apps:api:test FAILED — No tests found for given includes
+  → BUILD FAILED
+
+./gradlew :domain:test --tests '*TradePreparationSizing*' --tests '*TradePreparationCap*' \
+  --tests '*TradePreparationBalanceTrust*' --offline --no-daemon
+  → BUILD SUCCESSFUL
+```
+
+**성격.** 기준을 약화하지 않는다. 수용기준 문장("`R`·`L`·`Q` 산출이 관계식과 일치한다" 등)은
+그대로이고, 그 문장을 검사하지 못하던 명령을 고친다. 구현이 옳아도 통과할 수 없는 명령이므로
+정정하지 않으면 DoD 판정 자체가 불가능하다.
+
+**영향 범위.** AC2·AC3·AC13(T1), AC5·AC6(T2), AC20(T6/T5 배선 — `:apps:api:test`).
+`:apps:api:integrationTest`·`:apps:batch:integrationTest`를 쓰는 AC는 이미 모듈이 지정돼 있어
+영향 없다.
 
 ## 최종 판정
 
