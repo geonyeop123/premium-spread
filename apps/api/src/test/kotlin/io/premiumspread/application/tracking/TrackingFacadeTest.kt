@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import io.premiumspread.MemberFixtures
 import io.premiumspread.TrackingFixtures
 import io.premiumspread.application.common.ApplicationError
 import io.premiumspread.application.common.ApplicationException
@@ -41,7 +42,7 @@ class TrackingFacadeTest {
         tradePreparationService = mockk()
         // D18 잠금과 D17 무효화는 모든 생성·archive 경로에서 불린다. 개별 테스트가 아니라
         // 기본 stub 으로 두어, 아래 테스트들이 검증하려던 원래 계약을 흐리지 않는다.
-        every { memberService.findByIdForUpdate(any()) } returns null
+        every { memberService.findByIdForUpdate(any()) } returns MemberFixtures.activeMember(id = 1L)
         every { tradePreparationService.invalidateActiveOnTrackingEvent(any(), any()) } returns null
         facade = TrackingFacade(
             trackingService,
@@ -66,6 +67,34 @@ class TrackingFacadeTest {
             trackingService.create(any())
             tradePreparationService.invalidateActiveOnTrackingEvent(1L, now)
         }
+    }
+
+    @Test
+    fun `수동 생성도 member 를 먼저 잠그고 같은 트랜잭션에서 활성 계획을 무효화한다`() {
+        // recordFromMarket 만 덮으면 이 경로의 잠금·무효화를 지워도 테스트가 전부 통과한다.
+        every { trackingService.create(any()) } returns TrackingFixtures.openPosition(id = 2L)
+
+        facade.record(openManual())
+
+        verifyOrder {
+            memberService.findByIdForUpdate(1L)
+            trackingService.create(any())
+            tradePreparationService.invalidateActiveOnTrackingEvent(1L, now)
+        }
+    }
+
+    @Test
+    fun `잠글 회원 행이 없으면 생성과 archive 를 거절한다`() {
+        // soft-delete 된 회원이 유효한 토큰을 들고 있으면 잠금 쿼리가 빈 결과다. 잠기지 않은 채
+        // 통과시키면 D18 이 신호 없이 write-skew 로 퇴화한다.
+        every { memberService.findByIdForUpdate(1L) } returns null
+
+        assertApplicationError(ApplicationError.MEMBER_NOT_FOUND) { facade.record(openManual()) }
+        assertApplicationError(ApplicationError.MEMBER_NOT_FOUND) {
+            facade.archive(TrackingCriteria.Archive(1L, 1L))
+        }
+        verify(exactly = 0) { trackingService.create(any()) }
+        verify(exactly = 0) { trackingService.findOwnedByIdForUpdate(any(), any()) }
     }
 
     @Test

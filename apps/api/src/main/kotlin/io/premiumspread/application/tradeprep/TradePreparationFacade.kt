@@ -150,9 +150,20 @@ class TradePreparationFacade(
             // ③ plan. owner-scoped 조회이므로 남의 계획은 존재를 노출하지 않는 404 다 (D10).
             val plan = findOwnedPlan(criteria.planId, criteria.memberId)
 
-            replaceExistingActivePlan(criteria.memberId, plan)
-
+            // ④ 거절 사유를 **전부** 파괴적 단계보다 앞에 둔다. 아래 replaceExistingActivePlan 은
+            //    기존 `WATCHING` 을 무효화하고 즉시 flush 하므로, 그 뒤에 거절이 나면 멀쩡한 활성
+            //    계획이 지워진 뒤 롤백에만 기대게 된다. DRAFT 검사는 전이의 **사전 조건**만 읽으며
+            //    전이 자체와 그 검증은 여전히 TradePreparation.registerTarget 이 소유한다 (D21).
+            //    두 단계를 맞바꿔 registerTarget 을 먼저 부를 수는 없다 — 엔티티를 더럽힌 뒤
+            //    findActiveByOwnerId 가 auto-flush 를 일으켜 승격 UPDATE 가 무효화보다 먼저 나간다.
+            if (plan.status != TradePreparationStatus.DRAFT) {
+                throw ApplicationException(ApplicationError.DOMAIN_ERROR)
+            }
             val (snapshotId, basis) = resolveBinding(plan)
+
+            // ⑤ 여기서부터 파괴적이다.
+            replaceExistingActivePlan(criteria.memberId)
+
             plan.registerTarget(
                 desiredEntryPremiumRate = criteria.desiredEntryPremiumRate,
                 boundBalanceSnapshotId = snapshotId,
@@ -199,12 +210,11 @@ class TradePreparationFacade(
      * - `WATCHING` — 같은 트랜잭션에서 무효화하고 새 계획을 승격한다. `uk_trade_preparation_owner_active`
      *   가 두 활성 행을 동시에 허용하지 않으므로 승격 전에 슬롯을 비워야 한다
      */
-    private fun replaceExistingActivePlan(memberId: Long, promoted: TradePreparation) {
+    private fun replaceExistingActivePlan(memberId: Long) {
         val active = tradePreparationService.findActiveByOwnerId(memberId) ?: return
         if (active.status == TradePreparationStatus.ARMED) {
             throw ApplicationException(ApplicationError.ARMED_PLAN_EXISTS)
         }
-        if (active.id == promoted.id) return
         if (active.invalidateOnOwnerRefresh(clock.instant())) {
             save(active)
         }
@@ -216,14 +226,23 @@ class TradePreparationFacade(
      * | 원천 | 동작 |
      * |---|---|
      * | 판정용 port 가 배선돼 있다 | 매 호출 실제 조회. `STALE` 이거나 확보 실패면 거절 (D3) |
-     * | declared 뿐이다 | `prepare` 가 결속한 `UNVERIFIED` 스냅샷을 유지한다 |
+     * | 판정용 원천이 없다 | 스냅샷 id 는 유지하고 basis 를 `UNVERIFIED` 로 **강등**한다 |
+     *
+     * **강등이 이 단위의 신뢰 경계다.** `ARMED` 게이트는 `TradePreparation.evaluateCondition` 의
+     * `boundBalanceBasis != UNVERIFIED` 이고, `prepare` 가 결속한 basis 는 **표시용** 스냅샷에서
+     * 온다 — D2 가 캐시를 명시적으로 허용하는 계약이다. 그 basis 를 그대로 물려주면 표시용
+     * 어댑터(`ACT-2` 가 추가할 바로 그것)가 `FRESH`/`STALE` 을 돌려주는 순간 캐시에서 읽은 잔고로
+     * `ARMED` 에 도달한다 — AC5 가 금지하는 "캐시에서 읽은 판정용 잔고"다. 판정용 port 를 거치지
+     * 않은 값은 검증 수준이 없으므로 D20 표 그대로 `UNVERIFIED` 로 등록한다.
+     *
+     * 스냅샷 id 는 보존한다 — D5 의 결속과 T8 reconcile 의 대조 대상이 그 id 이기 때문이다.
      *
      * declared 경로에서 새 신고값을 다시 받지 않는 이유: 그것은 "이름만 바꾼 신고값"으로 결속을
      * 갱신하는 경로이고, 검증 수준이 올라가지 않으면서 계획과 계산의 근거가 어긋난다.
      */
     private fun resolveBinding(plan: TradePreparation): Pair<String, BalanceBasis> {
         val port = verifiedBalanceReadPort.getIfAvailable()
-            ?: return plan.boundBalanceSnapshotId to plan.boundBalanceBasis
+            ?: return plan.boundBalanceSnapshotId to BalanceBasis.UNVERIFIED
 
         // 확보 실패(null)도 STALE 과 같은 fail-closed 다 — 판정용으로 쓸 수 없는 값이라는 점이 같다.
         val verified = port.findForDecision()
@@ -256,9 +275,11 @@ class TradePreparationFacade(
         currentPremiumRate: BigDecimal,
     ): TradePreparationResult.PreviousTracking? {
         val archived = trackingService.findAllArchivedByMemberId(memberId).filter { it.pair == pair }
-        // closedAt 은 V15 이전에 종료된 행에서 null 이다. 그 경우 저장소의 최신 생성 순서를 따른다.
+        // closedAt 은 V15 이전에 종료된 행에서 null 이다. 그런 행끼리는 최대 id 를 가장 최근으로 본다 —
+        // 저장소 조회 순서에 기대면 파생 쿼리의 정렬 없는 결과에서 임의 행이 뽑혀 D8("가장 최근에
+        // 종료된")을 어긴다.
         val previous: Tracking? = archived.filter { it.closedAt != null }.maxByOrNull { it.closedAt!! }
-            ?: archived.firstOrNull()
+            ?: archived.maxByOrNull { it.id }
         return previous?.let { toPreviousTracking(it, currentPremiumRate) }
     }
 
@@ -296,11 +317,15 @@ class TradePreparationFacade(
     }
 
     /**
-     * owner 단위 직렬화 잠금 (D18). 행이 없으면 잠글 것도 없다 — owner 는 인증 principal 에서
-     * 오고 `fk_trade_preparation_owner` 가 회원 없는 계획을 막으므로 정상 경로에서는 항상 있다.
+     * owner 단위 직렬화 잠금 (D18). **행이 없으면 fail-closed 다.**
+     *
+     * 잠금 쿼리는 `deleted_at IS NULL` 로 거르므로, soft-delete 된 회원이 아직 유효한 access token 을
+     * 들고 있으면 매칭 행이 없다. 결과를 버리면 그 요청만 잠금 없이 통과해 D18 이 아무 신호 없이
+     * write-skew 로 퇴화한다 — 잠금이 걸리지 않았다는 사실 자체가 거절 사유다.
      */
     private fun lockOwner(memberId: Long) {
         memberService.findByIdForUpdate(memberId)
+            ?: throw ApplicationException(ApplicationError.MEMBER_NOT_FOUND)
     }
 
     private fun findOwnedPlan(planId: Long, memberId: Long): TradePreparation =

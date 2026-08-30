@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import io.premiumspread.MemberFixtures
 import io.premiumspread.TrackingFixtures
 import io.premiumspread.application.common.ApplicationError
 import io.premiumspread.application.common.ApplicationException
@@ -14,6 +15,7 @@ import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
 import io.premiumspread.domain.tracking.TrackingService
+import io.premiumspread.domain.tracking.TrackingStatus
 import io.premiumspread.domain.tradeprep.BalanceBasis
 import io.premiumspread.domain.tradeprep.BalanceSnapshot
 import io.premiumspread.domain.tradeprep.BalanceSnapshotReadPort
@@ -69,7 +71,7 @@ class TradePreparationFacadeTest {
         // production 배선에는 두 port 구현이 모두 없다 (D22, AC20). 그 상태를 기본값으로 둔다.
         every { balanceSnapshotProvider.getIfAvailable() } returns null
         every { verifiedBalanceProvider.getIfAvailable() } returns null
-        every { memberService.findByIdForUpdate(any()) } returns null
+        every { memberService.findByIdForUpdate(any()) } returns MemberFixtures.activeMember(id = memberId)
         every { trackingService.countActiveByMemberId(any()) } returns 0L
         every { trackingService.findAllArchivedByMemberId(any()) } returns emptyList()
 
@@ -160,6 +162,22 @@ class TradePreparationFacadeTest {
         assertThat(previous.entryPremiumRate).isEqualByComparingTo("1.00")
         assertThat(previous.currentPremiumRate).isEqualByComparingTo("3.00")
         assertThat(previous.premiumRateGap).isEqualByComparingTo("2.00")
+    }
+
+    @Test
+    fun `closedAt 이 없는 레거시 종료 행끼리는 id 가 큰 쪽을 직전 추적으로 본다`() {
+        // 파생 쿼리에 ORDER BY 가 없어 저장소 반환 순서에 기댈 수 없다. 순서를 뒤집어 넣어도
+        // 같은 행이 뽑혀야 D8("가장 최근에 종료된")이 성립한다.
+        every { premiumService.findLatestSnapshot(pair) } returns snapshot()
+        val specSlot = mutableListOf<TradePreparationSpec>()
+        every { tradePreparationService.create(capture(specSlot)) } answers { draft(specSlot.last()) }
+        every { trackingService.findAllArchivedByMemberId(memberId) } returns listOf(
+            legacyArchivedTracking(id = 5L),
+            legacyArchivedTracking(id = 12L),
+            legacyArchivedTracking(id = 3L),
+        )
+
+        assertThat(facade.prepare(prepare()).previousTracking!!.trackingId).isEqualTo(12L)
     }
 
     @Test
@@ -298,6 +316,92 @@ class TradePreparationFacadeTest {
             facade.registerTarget(TradePreparationCriteria.RegisterTarget(10L, memberId, BigDecimal("1.50")))
         }
         assertThat(plan.status).isEqualTo(TradePreparationStatus.DRAFT)
+    }
+
+    @Test
+    fun `판정용 원천이 없으면 표시용이 FRESH 를 줘도 UNVERIFIED 로 강등해 결속한다`() {
+        // ARMED 게이트는 boundBalanceBasis != UNVERIFIED 다. prepare 가 결속하는 basis 는 표시용
+        // 스냅샷에서 오고 D2 는 표시용의 캐시를 허용하므로, 그 basis 를 그대로 물려주면 캐시에서
+        // 읽은 잔고로 ARMED 에 도달한다 — AC5 가 금지하는 경로다.
+        val plan = draft(spec().copy(boundBalanceSnapshotId = "cached-1", boundBalanceBasis = BalanceBasis.FRESH))
+        every { tradePreparationService.findByIdAndOwnerId(10L, memberId) } returns plan
+        every { tradePreparationService.findActiveByOwnerId(memberId) } returns null
+        every { tradePreparationService.save(plan) } returns plan
+
+        val result = facade.registerTarget(
+            TradePreparationCriteria.RegisterTarget(10L, memberId, BigDecimal("1.50")),
+        )
+
+        assertThat(result.boundBalanceBasis).isEqualTo("UNVERIFIED")
+        // 스냅샷 id 는 보존한다 — D5 결속과 reconcile 대조 대상이다.
+        assertThat(result.boundBalanceSnapshotId).isEqualTo("cached-1")
+        // 그 결과 조건이 충족돼도 상태가 바뀌지 않는다 (D19).
+        assertThat(plan.evaluateCondition(BigDecimal("1.00"), now).name).isEqualTo("OBSERVED_ONLY")
+        assertThat(plan.status).isEqualTo(TradePreparationStatus.WATCHING)
+    }
+
+    @Test
+    fun `표시용 STALE 로 prepare 한 계획은 등록 뒤에도 ARMED 에 도달하지 못한다`() {
+        // 리뷰 프로브를 그대로 재현한다: 표시용 어댑터(ACT-2가 추가할 바로 그것)가 캐시된 STALE 을
+        // 돌려주는 상황에서 prepare → registerTarget → evaluateCondition 을 끝까지 통과시킨다.
+        every { balanceSnapshotProvider.getIfAvailable() } returns BalanceSnapshotReadPort {
+            BalanceSnapshot(
+                id = "cached-stale-1",
+                koreaBalance = BigDecimal("100000000"),
+                foreignBalance = BigDecimal("20000"),
+                balanceBasis = BalanceBasis.STALE,
+                observedAt = now.minusSeconds(900),
+            )
+        }
+        every { premiumService.findLatestSnapshot(pair) } returns snapshot()
+        val created = mutableListOf<TradePreparation>()
+        every { tradePreparationService.create(any()) } answers {
+            draft(firstArg()).also { created += it }
+        }
+        every { tradePreparationService.findActiveByOwnerId(memberId) } returns null
+        every { tradePreparationService.save(any()) } answers { firstArg() }
+        every { tradePreparationService.findByIdAndOwnerId(10L, memberId) } answers { created.single() }
+
+        val prepared = facade.prepare(prepare())
+        assertThat(prepared.balanceBasis).isEqualTo("STALE")
+
+        val registered = facade.registerTarget(
+            TradePreparationCriteria.RegisterTarget(prepared.planId!!, memberId, BigDecimal("1.50")),
+        )
+        assertThat(registered.boundBalanceBasis).isEqualTo("UNVERIFIED")
+        assertThat(registered.status).isEqualTo("WATCHING")
+
+        val outcome = created.single().evaluateCondition(BigDecimal("1.00"), now)
+        assertThat(outcome.name).isEqualTo("OBSERVED_ONLY")
+        assertThat(created.single().status).isEqualTo(TradePreparationStatus.WATCHING)
+        assertThat(created.single().conditionFirstMetAt).isEqualTo(now)
+    }
+
+    @Test
+    fun `잠글 회원 행이 없으면 registerTarget 을 거절한다`() {
+        every { memberService.findByIdForUpdate(memberId) } returns null
+
+        assertApplicationError(ApplicationError.MEMBER_NOT_FOUND) {
+            facade.registerTarget(TradePreparationCriteria.RegisterTarget(10L, memberId, BigDecimal("1.50")))
+        }
+        verify(exactly = 0) { tradePreparationService.findByIdAndOwnerId(any(), any()) }
+        verify(exactly = 0) { tradePreparationService.save(any()) }
+    }
+
+    @Test
+    fun `DRAFT 가 아닌 계획으로 등록을 시도하면 기존 활성 계획을 건드리기 전에 거절한다`() {
+        val existing = watching(draft(spec(), id = 30L))
+        val alreadyWatching = watching(draft(spec(), id = 10L))
+        every { tradePreparationService.findByIdAndOwnerId(10L, memberId) } returns alreadyWatching
+        every { tradePreparationService.findActiveByOwnerId(memberId) } returns existing
+
+        assertApplicationError(ApplicationError.DOMAIN_ERROR) {
+            facade.registerTarget(TradePreparationCriteria.RegisterTarget(10L, memberId, BigDecimal("1.50")))
+        }
+
+        // 파괴적 단계가 검증보다 앞서 있었다면 existing 이 이미 INVALIDATED 였다.
+        assertThat(existing.status).isEqualTo(TradePreparationStatus.WATCHING)
+        verify(exactly = 0) { tradePreparationService.save(any()) }
     }
 
     @Test
@@ -474,6 +578,17 @@ class TradePreparationFacadeTest {
             observedAt = now.minusSeconds(30),
         ),
     )!!
+
+    /** V15 이전에 종료돼 `closedAt` 이 없는 ARCHIVED 행. `archive` 를 거치지 않고 상태만 바꾼다. */
+    private fun legacyArchivedTracking(id: Long) =
+        TrackingFixtures.openPosition(
+            id = id,
+            memberId = memberId,
+            koreaExchange = Exchange.BITHUMB,
+            koreaEntryPrice = BigDecimal("101"),
+            foreignEntryPrice = BigDecimal("1"),
+            entryFxRate = BigDecimal("100"),
+        ).apply { status = TrackingStatus.ARCHIVED }
 
     /** 진입 프리미엄이 정확히 1.00%가 되도록 가격을 고른다 — (101 - 1×100)/100 × 100 = 1.00. */
     private fun archivedTracking(id: Long, closedAt: Instant) =

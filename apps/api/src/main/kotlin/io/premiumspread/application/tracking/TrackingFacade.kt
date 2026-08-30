@@ -253,11 +253,15 @@ class TrackingFacade(
     }
 
     /**
-     * owner 단위 직렬화 잠금 (D18). 행이 없으면 잠글 것도 없다 — memberId 는 인증 principal 에서
-     * 오므로 정상 경로에서는 항상 존재한다.
+     * owner 단위 직렬화 잠금 (D18). **행이 없으면 fail-closed 다.**
+     *
+     * 잠금 쿼리는 `deleted_at IS NULL` 로 거르므로, soft-delete 된 회원이 아직 유효한 access token 을
+     * 들고 있으면 매칭 행이 없다. 결과를 버리면 그 요청만 잠금 없이 통과해 D18 이 아무 신호 없이
+     * write-skew 로 퇴화한다.
      */
     private fun lockOwner(memberId: Long) {
         memberService.findByIdForUpdate(memberId)
+            ?: throw ApplicationException(ApplicationError.MEMBER_NOT_FOUND)
     }
 
     private fun verifyOwnership(tracking: Tracking, memberId: Long) {
