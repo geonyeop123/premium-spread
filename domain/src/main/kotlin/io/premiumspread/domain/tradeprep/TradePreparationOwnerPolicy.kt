@@ -13,12 +13,17 @@ package io.premiumspread.domain.tradeprep
  * 빠뜨린 배포가 곧바로 D10 이 막으려던 상태가 된다 — `ARMED` 게이트와 같은 fail-closed 기본값이다
  * (D9·D19).
  *
- * ## 대소문자를 접지 않는다
+ * ## 정확 일치로 비교한다 — 저장된 표기를 그대로 넣어야 한다
  *
- * `member.email` 은 unique 이지만 대소문자까지 접어 비교하지는 않으므로 `owner@x`와 `Owner@x`는
- * **서로 다른 회원 행**이 될 수 있다. 비교할 때 대소문자를 접으면 허가하지 않은 그 다른 행까지
- * owner 로 통과한다. 그래서 정확 일치만 허가다 — 설정 오타는 "아무도 허가되지 않음"으로
- * 드러나므로 fail-closed 다.
+ * `member` 테이블은 `utf8mb4_unicode_ci` collation 이라(`V7__create_member_table.sql`)
+ * `uk_member_email` 도 case-insensitive 다. 즉 대소문자만 다른 두 회원 행은 **존재할 수 없고**,
+ * 비교를 접든 안 접든 다른 회원이 통과할 위험은 없다. 정확 일치는 안전을 위해 강제된 것이 아니라
+ * 더 좁은 쪽을 고른 결과다 — 느슨하게 할 이유가 없어서 그대로 둔다.
+ *
+ * 대신 운영에서 이런 일이 생긴다. MySQL 은 입력 표기를 그대로 저장하므로
+ * `Owner@example.com` 으로 가입한 회원은 **로그인은 되고**(조회가 case-insensitive) 허가 목록에
+ * `owner@example.com` 이 있으면 영구히 거절당한다. 그래서 허가 목록에는 **가입 시 저장된 표기
+ * 그대로** 넣어야 한다. 증상과 대조 절차는 `docs/runbooks/deployment.md` 가 소유한다.
  */
 class TradePreparationOwnerPolicy(allowedEmails: Collection<String>) {
 
@@ -26,8 +31,9 @@ class TradePreparationOwnerPolicy(allowedEmails: Collection<String>) {
     val allowedEmails: Set<String> = allowedEmails.map(String::trim).filter(String::isNotEmpty).toSet()
 
     /**
-     * [email] 이 허가된 owner 인지 판정한다. 회원을 찾지 못해 `null` 인 경우(탈퇴 회원이 아직
-     * 유효한 access token 을 들고 있는 경우 등)도 허가되지 않는다.
+     * [email] 이 허가된 owner 인지 판정한다. 저장된 표기와 정확히 일치해야 한다(위 KDoc).
+     * 회원을 찾지 못해 `null` 인 경우(탈퇴 회원이 아직 유효한 access token 을 들고 있는 경우
+     * 등)도 허가되지 않는다.
      */
     fun isAuthorized(email: String?): Boolean = email != null && email in allowedEmails
 }
