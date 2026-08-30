@@ -30,13 +30,32 @@ enum class TradePreparationReconcileOutcome {
  * [TradePreparationReconcileService.reconcile] 의 결과다. 계획 식별자를 담지 않는다 — 호출자
  * (batch Job)는 개별 계획이 아니라 실행 결과만 알면 된다
  * ([TradePreparationEvaluationSummary] 와 같은 형태).
+ *
+ * 생성자는 private 다. outcome 과 카운트의 조합 규칙(어떤 outcome 이 카운트를 갖는가, Domain 이
+ * 어떤 outcome 을 주장할 수 있는가)을 [reconciled]·[notReconciled] 두 factory 가 전부 소유한다 —
+ * 생성자가 열려 있으면 그 판정을 우회한 조합이 그대로 컴파일된다. `@ConsistentCopyVisibility` 는
+ * `copy` 로 나는 같은 우회를 막는다.
  */
-data class TradePreparationReconcileSummary(
+@ConsistentCopyVisibility
+data class TradePreparationReconcileSummary private constructor(
     val outcome: TradePreparationReconcileOutcome,
-    val examined: Int = 0,
-    val invalidated: Int = 0,
+    val examined: Int,
+    val invalidated: Int,
 ) {
     companion object {
+        /** 실제로 대조한 결과다. 무효화 건수는 대조한 건수를 넘을 수 없다. */
+        fun reconciled(examined: Int, invalidated: Int): TradePreparationReconcileSummary {
+            require(examined >= 0) { "examined must not be negative, was $examined." }
+            require(invalidated in 0..examined) {
+                "invalidated must be within 0..$examined, was $invalidated."
+            }
+            return TradePreparationReconcileSummary(
+                TradePreparationReconcileOutcome.RECONCILED,
+                examined,
+                invalidated,
+            )
+        }
+
         /**
          * Domain 이 만들 수 있는 not-reconciled 결과는 [TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE]
          * 하나뿐이라 그 값만 받는다.
@@ -51,7 +70,7 @@ data class TradePreparationReconcileSummary(
             require(outcome == TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE) {
                 "Domain reconcile can only report BALANCE_UNAVAILABLE without counts, was $outcome."
             }
-            return TradePreparationReconcileSummary(outcome)
+            return TradePreparationReconcileSummary(outcome, examined = 0, invalidated = 0)
         }
     }
 }

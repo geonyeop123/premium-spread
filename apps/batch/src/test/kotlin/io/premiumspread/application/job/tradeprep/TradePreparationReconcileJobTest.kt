@@ -48,7 +48,7 @@ class TradePreparationReconcileJobTest {
         val balance = verifiedBalance()
         every { balanceSource.getIfAvailable() } returns VerifiedBalanceReadPort { balance }
         every { reconcileService.reconcile(balance, now) } returns
-            TradePreparationReconcileSummary(TradePreparationReconcileOutcome.RECONCILED, examined = 2, invalidated = 1)
+            TradePreparationReconcileSummary.reconciled(examined = 2, invalidated = 1)
 
         assertThat(job.run()).isEqualTo(JobResult.Success)
 

@@ -25,10 +25,17 @@ fun interface BalanceSnapshotReadPort {
  *
  * 이것이 계약인 이유는 reconcile Job(T8)이 결속된 id와 현재 id의 **부등치**만으로 무효화를
  * 판정하기 때문이다 (D5·D17, AC5). 매 관측마다 새 id를 만드는 구현을 끼우면 모든 owner의 모든
- * 활성 계획이 매 사이클 무효화된다 — 잔고는 그대로인데 계획만 사라진다. 지금 트리의 id 생성
- * 관례 둘([BalanceSnapshot.declared]의 `declared-{UUID}`, test fixture `RecordedBalanceAdapter`의
- * `recorded-{observedAt}`)은 **판정용 원천이 아니라서** 그렇게 해도 무해하지만, 실원천
- * (`ExchangeBalanceAdapter`, `ACT-2` 이후)이 그 형태를 따라가면 안 된다.
+ * 활성 계획이 매 사이클 무효화된다 — 잔고는 그대로인데 계획만 사라진다.
+ *
+ * 지금 트리에는 매 관측마다 새 id를 만드는 코드가 둘 있지만 **서로 다른 이유로** 이 계약에
+ * 걸리지 않는다. 둘 다 실원천(`ExchangeBalanceAdapter`, `ACT-2` 이후)이 따라가도 되는 본보기가
+ * 아니다.
+ *
+ * - [BalanceSnapshot.declared]의 `declared-{UUID}` — 이 port의 구현이 아니다. 신고값은
+ *   `UNVERIFIED`라 [VerifiedBalance.from]이 판정용으로 승격시키지 않는다 (D9).
+ * - test fixture `RecordedBalanceAdapter`의 `recorded-{observedAt}` — 이 port의 **구현이 맞다.**
+ *   무해한 이유는 그것이 `domain`의 test source set에만 있어 production 배선에 닿지 않기
+ *   때문이다 (D22, AC20이 강제).
  */
 fun interface VerifiedBalanceReadPort {
     fun findForDecision(): VerifiedBalance?

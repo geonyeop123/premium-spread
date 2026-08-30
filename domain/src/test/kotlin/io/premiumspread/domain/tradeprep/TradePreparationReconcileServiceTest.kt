@@ -82,6 +82,16 @@ class TradePreparationReconcileServiceTest {
         assertThat(repository.saved).containsExactly(mismatchedWatching, mismatchedArmed)
     }
 
+    /** 무효화 건수가 대조 건수를 넘는 조합은 만들어질 수 없다 — factory 가 유일한 생성 경로다. */
+    @Test
+    fun `reconciled 는 대조 건수를 넘는 무효화 건수를 거절한다`() {
+        assertThatThrownBy { TradePreparationReconcileSummary.reconciled(examined = 1, invalidated = 2) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+
+        assertThatThrownBy { TradePreparationReconcileSummary.reconciled(examined = -1, invalidated = 0) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
     /**
      * `RECONCILED` 는 카운트를 잃어서 안 되고, `BALANCE_SOURCE_UNAVAILABLE` 은 빈 배선 여부라
      * Domain 이 관측할 수 없는 사실이다 — Job 만 그것을 안다. 막는 이유는 다르지만 둘 다

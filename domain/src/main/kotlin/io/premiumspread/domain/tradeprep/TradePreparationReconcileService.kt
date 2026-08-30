@@ -55,10 +55,6 @@ class TradePreparationReconcileService(private val repository: TradePreparationR
             }
         }
 
-        return TradePreparationReconcileSummary(
-            outcome = TradePreparationReconcileOutcome.RECONCILED,
-            examined = plans.size,
-            invalidated = invalidated,
-        )
+        return TradePreparationReconcileSummary.reconciled(examined = plans.size, invalidated = invalidated)
     }
 }
