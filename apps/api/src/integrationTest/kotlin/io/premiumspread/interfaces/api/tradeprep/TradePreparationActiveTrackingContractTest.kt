@@ -260,6 +260,27 @@ class TradePreparationActiveTrackingContractTest {
      * write 를 직렬화해도 `invalidateActiveOnTrackingEvent` 의 조회는 `registerTarget` 커밋 이전
      * 스냅샷을 읽어 빈손이 되고, `ACTIVE` tracking 과 `WATCHING` 계획이 공존 커밋된다.
      * 이 경로에서는 tracking 측 member 잠금(D18)이 유일한 방어다.
+     *
+     * ## 이 테스트가 조용히 무력화되는 조건 — 아래가 바뀌면 이 테스트를 함께 봐라
+     *
+     * 판별력이 **`findLatestSnapshot` 이 반드시 DB 질의를 낸다**는 사실에 의존한다.
+     * `JpaPremiumRepositoryAdapter` 는 `PremiumCacheReader` 만 받고 miss 에 write-back 을 하지
+     * 않으며, `PremiumCacheWriter` 를 쓰는 것은 `infrastructure:batch` 의 `PremiumCacheService`
+     * 뿐이라 `apps:api` 런타임에는 premium 캐시를 채우는 코드가 없다. 그래서 이 조회가 항상
+     * consistent read 를 일으켜 read view 가 `INSERT` 보다 먼저 열린다.
+     *
+     * 둘 중 하나라도 생기면 그 전제가 깨진다 —
+     * ① `JpaPremiumRepositoryAdapter` 가 cache miss 에 write-back 을 하게 되거나,
+     * ② `apps:api` 에 premium 캐시를 쓰는 경로가 생기거나.
+     * 그러면 이 테스트 안의 `createDraftPlan()`(→ `prepare` → `findLatestSnapshot`)이 캐시를
+     * 데우고, 뒤이은 `recordFromMarket` 은 DB 를 치지 않아 `INSERT` 앞에 consistent read 가
+     * 사라진다. **교차 ③이 교차 ②로 퇴화하면서 통과한다 — 통과하지만 아무것도 재지 않는다.**
+     *
+     * setUp 의 `flushAll` 은 이것을 막지 못한다. 그건 테스트 **시작 전**을 비울 뿐이고 캐시를
+     * 데우는 `createDraftPlan()` 은 그 뒤에 실행되기 때문이다.
+     *
+     * 판별력이 살아 있는지 확인하는 방법: `TrackingFacade.recordFromMarket` 의 `lockOwner` 를
+     * 지우면 이 테스트가 timeout probe 가 아니라 [assertNoCoexistence] 에서 실패해야 한다.
      */
     @Test
     fun `recordFromMarket 교차에서도 tracking 생성이 직렬화돼 활성 계획을 무효화한다`() {

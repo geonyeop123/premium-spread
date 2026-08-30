@@ -46,15 +46,15 @@ Authorization: Bearer {{accessToken}}
 #   "foreignBalance": 1000,
 #   "balanceBasis": "UNVERIFIED",
 #   "balanceObservedAt": "2026-08-30T10:30:00Z",
-#   "balanceRatio": 3.4901577000,
-#   "rawLeverage": 3.4541941000,
-#   "rawQuantity": 0.0385947000,
-#   "koreaRoundedQuantity": 0.0385,
-#   "foreignRoundedQuantity": 0.038,
-#   "quantity": 0.038,
+#   "balanceRatio": 3.4901577551,
+#   "rawLeverage": 3.4542337244,
+#   "rawQuantity": 0.0385947902,
+#   "koreaRoundedQuantity": 0.0385000000,
+#   "foreignRoundedQuantity": 0.0380000000,
+#   "quantity": 0.0380000000,
 #   "leverage": 3.4010000000,
-#   "koreaShare": 0.7772841000,
-#   "liquidationDistance": 0.2940311000,
+#   "koreaShare": 0.7772906756,
+#   "liquidationDistance": 0.2940311673,
 #   "capViolations": [],
 #   "plannable": true,
 #   "referenceForeignPrice": 89500,
@@ -87,8 +87,42 @@ Authorization: Bearer {{accessToken}}
 #   "code": "CAP_VIOLATED",
 #   "plannable": false,
 #   "capViolations": ["EFFICIENCY_CAP"],
-#   "koreaShare": 0.4110819000,
-#   "liquidationDistance": 1.4476885000,
+#   "quantity": 0.0070000000,
+#   "leverage": 0.6265000000,
+#   "koreaShare": 0.4110827921,
+#   "liquidationDistance": 1.5961691939,
+#   ...
+# }
+
+### 거래 준비 계산 - 최소 주문 수량 미달 (인증 필요)
+### 캡은 안쪽인데(빗썸 비중 63.6% >= 60%) 물량이 바이낸스 lot(0.001) 내림에서 0이 된다.
+### 위반한 캡이 없으므로 CAP_VIOLATED가 아니라 NOT_PLANNABLE이다 — 422는 전부 code를 갖는다.
+POST {{premium-api}}/api/v1/trade-preparations
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "symbol": "BTC",
+  "koreaExchange": "BITHUMB",
+  "foreignExchange": "BINANCE",
+  "koreaBalance": 100000,
+  "foreignBalance": 40
+}
+
+# 422 응답 예시 (키 집합은 201과 같다):
+# {
+#   "planId": null,
+#   "status": null,
+#   "code": "NOT_PLANNABLE",
+#   "plannable": false,
+#   "capViolations": [],
+#   "rawQuantity": 0.0007718958,
+#   "koreaRoundedQuantity": 0.0007000000,
+#   "foreignRoundedQuantity": 0.0000000000,
+#   "quantity": 0.0000000000,
+#   "leverage": 0,
+#   "koreaShare": 0.6357117429,
+#   "liquidationDistance": 0,
 #   ...
 # }
 
