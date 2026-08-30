@@ -163,6 +163,9 @@ class TradePreparation private constructor(
         if (status != TradePreparationStatus.DRAFT) {
             throw InvalidTradePreparationException("registerTarget requires DRAFT status, was $status")
         }
+        if (boundBalanceSnapshotId.isBlank()) {
+            throw InvalidTradePreparationException("boundBalanceSnapshotId must not be blank.")
+        }
         this.desiredPremiumRate = desiredPremiumRate
         this.boundBalanceSnapshotId = boundBalanceSnapshotId
         this.boundBalanceBasis = boundBalanceBasis
@@ -181,8 +184,11 @@ class TradePreparation private constructor(
         val desired = desiredPremiumRate
             ?: throw InvalidTradePreparationException("desiredPremiumRate must be set before evaluateCondition")
 
-        // 재진입 조건은 "도달"이 충족이다 — 정확히 같아도 충족으로 판정한다.
-        if (currentPremiumRate < desired) {
+        // 이 단위는 진입 준비다 — 낮은 프리미엄에서 진입하고 높은 프리미엄에서 종료한다
+        // (master spec §1.2, ECO-5 §1 "재진입 | 프리미엄이 직전 진입 수준으로 복귀 시"). 종료
+        // 직후 프리미엄은 진입보다 높으므로 재진입은 프리미엄이 목표까지 "내려와야" 충족이다.
+        // 정확히 같아도 충족으로 판정한다(경계 포함).
+        if (currentPremiumRate > desired) {
             return TradePreparationConditionOutcome.NOT_MET
         }
 

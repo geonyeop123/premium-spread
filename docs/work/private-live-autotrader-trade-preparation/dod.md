@@ -350,6 +350,53 @@ TradePreparationConditionOutcome`가 D21의 "조회·조건부 전이(arm/관측
 순회 진입점이다. `TradePreparationRepository`는 D11 조건부 갱신의 실제 SQL을 정의하지 않는다 —
 T4가 구현을 결정한다.
 
+### T2 수정 라운드 1 — 진입 조건 부등호 반전 (2026-08-30, 리뷰 반영)
+
+**문제.** `TradePreparation.evaluateCondition`이 `currentPremiumRate < desired`를 미충족으로 판정해
+"현재 프리미엄이 목표 이상이면 충족"으로 구현돼 있었다. 그러나 이 단위는 **진입** 준비이고
+(master spec §1.2 "낮은 executable premium에서 후보 진입"), ECO-5 §1 "재진입 | 프리미엄이 직전
+진입 수준으로 복귀 시"·owner 원문("종료 이후 다시 목표 진입 프리미엄 도달 시 다시 거래")이 가리키는
+방향은 반대다 — 종료 직후 프리미엄은 진입보다 높고(진입+1.0%p), 재진입은 그 값이 목표까지
+**내려와야** 충족이다. 컨트롤러 Ruling 5로 확인된 load-bearing 결함이었다(T2 자체 보고서
+"우려 1"로 사전 고지, dod.md 최초 버전은 반대 방향으로 구현·문서화됨).
+
+**수정.** `evaluateCondition`의 분기를 `if (currentPremiumRate > desired) return NOT_MET`으로
+뒤집었다(경계값 `==`는 여전히 충족). 즉시 충족(등록 시점에 이미 목표 이하)은 별도 crossing
+요구 없이 자연히 허용된다 — 컨트롤러 Ruling 6.
+
+**추가 검증.** 기존 테스트의 방향 전제 값을 전부 재검토해 뒤집고(`armedPlan()`의 평가값을
+목표보다 낮은 값으로, "시간이 지나도 무효화 안 됨" 테스트의 미충족 값을 목표보다 높은 값으로),
+다음을 신설했다.
+- 목표보다 높으면 미충족(`프리미엄이 희망값보다 높으면 조건 미충족이다`)
+- 정확히 같으면 충족(`...경계값은 포함된다`, 기존 테스트 방향만 교정)
+- 등록 즉시 목표 이하면 즉시 충족(`등록 시점에 이미 목표보다 낮은 프리미엄이면...`)
+- `UNVERIFIED` 결속 계획의 `OBSERVED_ONLY` 분기(`WATCHING` 유지 + `conditionFirstMetAt`/
+  `conditionFirstMetPremiumRate` 기록) — 리뷰 F1
+- `version` 증가(`registerTarget`·`evaluateCondition`의 `ARMED` 전이·`invalidate`)와 no-op에서
+  불변(`invalidateOnReconcileMismatch` id 일치·이미 `INVALIDATED`인 재무효화) — 리뷰 F2
+- `registerTarget`의 blank `boundBalanceSnapshotId` 재바인딩 가드 — 리뷰 F3(엔티티에 검증 추가)
+- `DRAFT`에서 직접 `INVALIDATED`로 가는 경로(`WATCHING`을 거치지 않아도 됨) — 리뷰 F4
+- `OWNER_REFRESH`가 `ARMED` 계획도 무효화하는 경로 — 리뷰 F5
+
+```
+./gradlew :domain:test --tests '*TradePreparation*' --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL`. `TEST-*.xml` 기준 `TradePreparationInvalidationTest` 14건(9→14),
+`TradePreparationSnapshotBindingTest` 5건, `TradePreparationBalanceTrustTest` 5건·
+`TradePreparationCapTest` 11건·`TradePreparationSizingTest` 12건(T1, 무변경) — `tradeprep` 패키지
+전체 47건 전부 통과, 실패 0건.
+
+```
+./gradlew architectureTest --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL`.
+
+**"청산" 용어 점검.** T2가 만든 파일 중 "청산"을 자발적 종료 의미로 쓴 곳은 없다 — 저장소에 남은
+"청산" 용례(`TradePrepPolicy.kt`·`CapVerdict.kt`·`TradePreparationCapTest.kt`, 전부 T1 소유)는
+`liquidationDistance`(강제청산 거리) 개념이라 용어 분리 대상이 아니다. 수정 없음.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

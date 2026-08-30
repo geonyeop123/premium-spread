@@ -22,6 +22,7 @@ class TradePreparationSnapshotBindingTest {
 
         assertThat(plan.boundBalanceSnapshotId).isEqualTo("snap-1")
         assertThat(plan.boundBalanceBasis).isEqualTo(BalanceBasis.FRESH)
+        assertThat(plan.version).isEqualTo(1L)
     }
 
     @Test
@@ -34,6 +35,7 @@ class TradePreparationSnapshotBindingTest {
         assertThat(plan.status).isEqualTo(TradePreparationStatus.INVALIDATED)
         assertThat(plan.invalidationReason).isEqualTo(TradePreparationInvalidationReason.RECONCILE_MISMATCH)
         assertThat(plan.invalidatedAt).isEqualTo(observedAt)
+        assertThat(plan.version).isEqualTo(2L)
     }
 
     @Test
@@ -46,12 +48,13 @@ class TradePreparationSnapshotBindingTest {
         assertThat(plan.status).isEqualTo(TradePreparationStatus.WATCHING)
         assertThat(plan.invalidationReason).isNull()
         assertThat(plan.invalidatedAt).isNull()
+        assertThat(plan.version).isEqualTo(1L)
     }
 
     @Test
     fun `ARMED 계획도 스냅샷 id 불일치로 무효화된다`() {
         val plan = watchingPlan(boundSnapshotId = "snap-1")
-        plan.evaluateCondition(currentPremiumRate = BigDecimal("5.00"), observedAt = observedAt)
+        plan.evaluateCondition(currentPremiumRate = BigDecimal("2.00"), observedAt = observedAt)
         assertThat(plan.status).isEqualTo(TradePreparationStatus.ARMED)
 
         val invalidated = plan.invalidateOnReconcileMismatch("snap-2", observedAt.plusSeconds(1))
@@ -72,6 +75,7 @@ class TradePreparationSnapshotBindingTest {
         assertThat(plan.status).isEqualTo(TradePreparationStatus.INVALIDATED)
         assertThat(plan.invalidationReason).isEqualTo(TradePreparationInvalidationReason.RECONCILE_MISMATCH)
         assertThat(plan.invalidatedAt).isEqualTo(observedAt)
+        assertThat(plan.version).isEqualTo(2L)
     }
 
     private fun watchingPlan(boundSnapshotId: String): TradePreparation {
