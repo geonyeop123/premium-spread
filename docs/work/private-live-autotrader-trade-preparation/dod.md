@@ -184,6 +184,66 @@ source: docs/work/private-live-autotrader-trade-preparation/design.md (D1~D17)
 
 *(구현 전. RED 로그부터 채운다.)*
 
+### T1 — Domain 잔고 port와 사이징 (2026-08-30)
+
+**대상 AC**: AC2·AC3·AC13 (설계 근거: D2·D9·D12, `ECO-5` §2·§3)
+
+**신설 파일**: `domain/src/main/kotlin/io/premiumspread/domain/tradeprep/`
+`BalanceBasis.kt`·`BalanceSnapshot.kt`·`VerifiedBalance.kt`·`TradePrepPorts.kt`·`CapVerdict.kt`·
+`TradePrepPolicy.kt`·`TradePrepSizing.kt` (+ `TradePrepSizingResult`) 와
+`domain/src/test/kotlin/io/premiumspread/domain/tradeprep/`
+`TradePreparationSizingTest.kt`·`TradePreparationCapTest.kt`·`TradePreparationBalanceTrustTest.kt`
+
+**RED** — 테스트를 먼저 작성하고, 아래 3곳을 의도적으로 틀린 stub으로 구현해 컴파일은 되지만
+기대한 assertion이 기대한 값으로 실패하는 것을 확인했다.
+- `VerifiedBalance.from`이 `balanceBasis`를 검사하지 않고 항상 변환 (D9 위반 재현)
+- `TradePrepPolicy.judge`가 레버 캡을 `leverage > leverageCap` (초과만) 로 판정 (`>=` "도달" 누락)
+- `TradePrepSizing.size`가 lot/step 반올림을 적용하지 않고 원시값을 그대로 최종값으로 사용
+
+```
+./gradlew :domain:test --tests '*TradePreparationSizing*' --tests '*TradePreparationCap*' \
+  --tests '*TradePreparationBalanceTrust*' --offline --no-daemon
+```
+
+결과: `28 tests completed, 7 failed`. 실패 목록 —
+`TradePreparationBalanceTrustTest > UNVERIFIED 스냅샷으로는 VerifiedBalance를 만들 수 없다() FAILED`,
+`... UNAVAILABLE 스냅샷으로도 ... FAILED`,
+`TradePreparationCapTest > 레버리지가 캡에 정확히 도달하면 위반이다 — 도달 자체가 정지 조건이다() FAILED`,
+`TradePreparationSizingTest > 레버리지가 캡에 도달하면 계획을 만들지 않고 위반한 캡을 명시한다() FAILED`,
+`... 반올림이 물량을 0으로 만들면 캡이 안쪽이어도 계획을 만들지 않는다() FAILED`,
+`... 양 leg 반올림 물량이 다르면 작은 쪽에 맞춘다() FAILED`,
+`... 캡 안쪽이면 lot size로 내림 반올림하고 작은 쪽 물량을 채택해 leverage를 재계산한다() FAILED`.
+모두 `AssertionFailedError`/`AssertionError` — 컴파일 실패가 아니라 기대값 불일치로 인한 실패다.
+
+**GREEN** — 세 stub을 실제 로직으로 교체(`VerifiedBalance.from`의 basis 분기,
+`judge`의 `>=` 비교, `size`의 내림 반올림 → 작은 쪽 채택 → `finalLeverage` 재계산 → 재판정)한 뒤 재실행.
+
+```
+./gradlew :domain:test --tests '*TradePreparationSizing*' --tests '*TradePreparationCap*' \
+  --tests '*TradePreparationBalanceTrust*' --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL`. `TEST-*.xml` 기준 `TradePreparationSizingTest` 12건,
+`TradePreparationCapTest` 11건, `TradePreparationBalanceTrustTest` 5건 — 총 28건 전부 통과, 실패 0건.
+
+**architectureTest**
+
+```
+./gradlew architectureTest --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL`. `io.premiumspread.domain.tradeprep` 패키지가 domain 허용 경계
+(jakarta.persistence-api·spring-context·spring-tx·spring-data-commons)만 참조하고 새 위반이 없다.
+
+**회귀(R1)**
+
+```
+./gradlew test architectureTest --offline --no-daemon
+```
+
+결과: `BUILD SUCCESSFUL` (전 모듈 unit test + architectureTest, 기존 tracking/premium/ticker/member
+계약 회귀 없음).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
