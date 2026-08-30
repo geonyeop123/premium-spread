@@ -342,15 +342,19 @@ class TradePreparationFacade(
     }
 
     /**
-     * owner 단위 직렬화 잠금 (D18). **행이 없으면 fail-closed 다.**
+     * owner 단위 직렬화 잠금 (D18). **행이 없으면 `null` 이고, 그것이 곧 거절이다.**
      *
      * 잠금 쿼리는 `deleted_at IS NULL` 로 거르므로, soft-delete 된 회원이 아직 유효한 access token 을
      * 들고 있으면 매칭 행이 없다. 결과를 버리면 그 요청만 잠금 없이 통과해 D18 이 아무 신호 없이
      * write-skew 로 퇴화한다 — 잠금이 걸리지 않았다는 사실 자체가 거절 사유다.
+     *
+     * 여기서 던지지 않고 `null` 을 돌려주는 이유: 거절을 [rejectWhenNotAuthorizedOwner] 한 곳으로
+     * 모으기 위해서다. 행이 없는 회원은 "허가된 owner 가 아닌" 회원이기도 하므로 두 사실이 같은
+     * 답을 낸다. 여기서 `MEMBER_NOT_FOUND` 를 던지면 **같은 조건인데 [prepare] 는
+     * `TRADE_PREPARATION_NOT_FOUND`, [registerTarget] 은 `MEMBER_NOT_FOUND`** 가 되어, 둘 다
+     * 404 임에도 code 로 두 endpoint 를 구분할 수 있게 된다.
      */
-    private fun lockOwner(memberId: Long): Member =
-        memberService.findByIdForUpdate(memberId)
-            ?: throw ApplicationException(ApplicationError.MEMBER_NOT_FOUND)
+    private fun lockOwner(memberId: Long): Member? = memberService.findByIdForUpdate(memberId)
 
     /**
      * 허가된 owner 만 계획을 만들거나 활성화할 수 있다 (D10, `dod.md` AC12).
@@ -365,7 +369,9 @@ class TradePreparationFacade(
      * endpoint 전체가 한결같이 404 다.
      *
      * [owner] 가 `null` 인 경우(soft-delete 된 회원이 아직 유효한 access token 을 들고 있는 경우)도
-     * 허가되지 않는다 — [lockOwner] 의 fail-closed 판단과 같다.
+     * 허가되지 않는다. [prepare] 의 `findById` 와 [registerTarget] 의 [lockOwner] 가 **둘 다**
+     * 그 회원을 `null` 로 돌려주므로 두 경로가 같은 code 를 낸다 — code 로 두 endpoint 를 구분할
+     * 수 없다는 것이 이 함수 하나로 거절을 모으는 이유다.
      */
     private fun rejectWhenNotAuthorizedOwner(owner: Member?) {
         if (!ownerPolicy.isAuthorized(owner?.email)) {

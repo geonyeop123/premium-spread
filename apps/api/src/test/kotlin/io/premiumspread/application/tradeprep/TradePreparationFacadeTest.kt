@@ -453,15 +453,36 @@ class TradePreparationFacadeTest {
         assertThat(created.single().conditionFirstMetAt).isEqualTo(now)
     }
 
+    /**
+     * D18 의 fail-closed 는 그대로다 — 잠글 행이 없으면 계획을 읽지도 저장하지도 않는다. 바뀐 것은
+     * code 뿐이고, 그 이유는 아래 [prepare 와 registerTarget 은 같은 조건에 같은 code 를 준다] 다.
+     */
     @Test
     fun `잠글 회원 행이 없으면 registerTarget 을 거절한다`() {
         every { memberService.findByIdForUpdate(memberId) } returns null
 
-        assertApplicationError(ApplicationError.MEMBER_NOT_FOUND) {
+        assertApplicationError(ApplicationError.TRADE_PREPARATION_NOT_FOUND) {
             facade.registerTarget(TradePreparationCriteria.RegisterTarget(10L, memberId, BigDecimal("1.50")))
         }
         verify(exactly = 0) { tradePreparationService.findByIdAndOwnerId(any(), any()) }
         verify(exactly = 0) { tradePreparationService.save(any()) }
+    }
+
+    /**
+     * soft-delete 된 회원이 유효한 access token 을 들고 온 **같은 조건**에서 두 endpoint 가 같은
+     * code 를 내야 한다. 예전에는 `prepare` 가 `TRADE_PREPARATION_NOT_FOUND`,
+     * `registerTarget` 이 `MEMBER_NOT_FOUND` 였다 — 둘 다 404 라 status 는 같지만 code 로 두
+     * endpoint 를 구분할 수 있었고, 그건 KDoc·런북이 주장하는 균일성과 어긋난다.
+     */
+    @Test
+    fun `prepare 와 registerTarget 은 같은 조건에 같은 code 를 준다`() {
+        every { memberService.findById(memberId) } returns null
+        every { memberService.findByIdForUpdate(memberId) } returns null
+
+        assertApplicationError(ApplicationError.TRADE_PREPARATION_NOT_FOUND) { facade.prepare(prepare()) }
+        assertApplicationError(ApplicationError.TRADE_PREPARATION_NOT_FOUND) {
+            facade.registerTarget(TradePreparationCriteria.RegisterTarget(10L, memberId, BigDecimal("1.50")))
+        }
     }
 
     @Test
