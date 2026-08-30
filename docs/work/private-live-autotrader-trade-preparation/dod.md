@@ -444,6 +444,95 @@ migration(V16, T3)이 아직 없어 컬럼명 변경에 따른 마이그레이�
 결과: 둘 다 `BUILD SUCCESSFUL`. `tradeprep` 패키지 49건(`TradePreparationSnapshotBindingTest`
 5→7, `TradePreparationInvalidationTest` 14 유지) 전부 통과, 실패 0건.
 
+### T6 — Interfaces REST (2026-08-30)
+
+**대상 AC**: AC1·AC9·AC12·AC16·AC19 (설계 근거: D2·D3·D6·D10·D13·D17·D18·D20, §1.1·§3)
+
+**신설 파일**: `apps/api/src/main/kotlin/io/premiumspread/interfaces/api/tradeprep/`
+`TradePreparationController.kt`·`TradePreparationRequest.kt`·`TradePreparationResponse.kt`,
+`apps/api/src/test/.../tradeprep/TradePreparationControllerTest.kt`,
+`apps/api/src/integrationTest/.../tradeprep/` `TradePreparationContractTestBase.kt`·
+`TradePreparationContractTest.kt`·`TradePreparationAuthContractTest.kt`·
+`TradePreparationOwnerScopeContractTest.kt`·`TradePreparationRegisterTargetContractTest.kt`·
+`TradePreparationRegisterTargetStaleContractTest.kt`·`TradePreparationActiveTrackingContractTest.kt`,
+`http/api/trade-preparations.http`. `http/README.md` 파일 목록 갱신.
+`ApplicationError`·`GlobalExceptionHandler` 6개 매핑은 T5가 이미 추가해 두어 손대지 않았다.
+
+**RED** — 계약 테스트를 먼저 작성했다. 테스트는 raw JSON + `jsonPath`/`JsonNode` 로만 쓰여
+production DTO 타입을 참조하지 않으므로, controller 가 없는 상태에서도 컴파일된다. 즉 RED 는
+컴파일 실패가 아니라 "경로가 없어 응답이 기대와 다르다"는 실패다.
+
+```
+./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*' --tests '*TradePreparationAuth*' \
+  --tests '*TradePreparationOwnerScope*' --tests '*TradePreparationRegisterTarget*' --offline --no-daemon
+```
+
+결과: `21 tests completed, 20 failed`. 통과한 1건은
+`TradePreparationRegisterTargetContractTest > 판정용 port 빈이 없어 VerifiedBalance 를 만들 경로가 없다()`
+로, 배선 부재를 확인하는 단언이라 controller 유무와 무관하게 옳게 통과한다. 나머지 20건은
+`AssertionFailedError`(응답 status/키 집합 불일치)와 `NullPointerException`(`planId` 가 없는 오류
+본문에서 계획 id 를 읽으려다 실패) 이며 컴파일 오류가 아니다.
+
+**GREEN** — controller·Request/Response DTO 구현 후 동결된 명령을 **각각** 실행했다.
+
+```
+./gradlew :apps:api:integrationTest --tests '*TradePreparationContract*' --offline --no-daemon      # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationAuth*' --offline --no-daemon          # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationOwnerScope*' --offline --no-daemon    # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationRegisterTarget*' --offline --no-daemon # exit 0
+./gradlew :apps:api:integrationTest --tests '*TradePreparationActiveTracking*' --offline --no-daemon # exit 0
+```
+
+상위 gate도 함께 실행했다.
+
+```
+./gradlew test architectureTest --offline --no-daemon        # BUILD SUCCESSFUL
+./gradlew :apps:api:integrationTest --offline --no-daemon    # BUILD SUCCESSFUL, 54 classes / 162 tests / 실패 0
+```
+
+**AC16 — 교차 순서를 실제로 강제했다.** 순차 호출은 이 기준을 충족하지 못하므로
+(나중 트랜잭션이 앞선 트랜잭션의 **커밋된** 상태를 읽어 잠금 없이도 통과한다) 두 방향 모두
+두 트랜잭션이 동시에 열린 채 서로의 미커밋 상태를 보지 못하는 교차를 만들었다.
+
+- 교차 ①: `TransactionTemplate` 로 tracking 생성 트랜잭션을 열어 member 를 `FOR UPDATE` 로 잠그고
+  `ACTIVE` tracking 을 **미커밋**으로 유지한 상태에서 `registerTarget` HTTP 요청을 던진다.
+- 교차 ②: 반대 순서. `registerTarget` 이 member 를 잠근 뒤 `resolveBinding` 단계에서 멈추도록
+  `VerifiedBalanceReadPort` 를 빗장으로 쓰고, 그 사이 `POST /api/v1/trackings` 를 던진다.
+
+각 방향에서 나중에 들어온 쪽이 **막힌다**는 것을 `Future.get(3s)` 의 `TimeoutException` 으로
+확인하고, 빗장을 푼 뒤 최종 상태가 공존하지 않음(`countActiveByMemberId == 1` 이면서
+`findActiveByOwnerId == null`)을 함께 단언한다.
+
+**테스트가 무엇을 재는지 변이로 확인했다** — 통과하는 테스트는 아직 무엇을 측정하는지에 대한
+증거가 아니다. production 호출을 하나씩 지우고 기대한 테스트만 실패하는지 본 뒤 되돌렸다.
+
+| 변이 | 기대 | 실측 |
+|---|---|---|
+| `TradePreparationFacade.registerTarget` 의 `lockOwner` 제거 | 교차 ①·② 실패 | `4 tests completed, 2 failed` — 둘 다 `Expecting code to raise a throwable`(= 막히지 않고 통과) |
+| `TrackingFacade.record` 의 `lockOwner` 제거 | 교차 ② 실패 | **`BUILD SUCCESSFUL`(실패 0)** — 아래 참고 |
+| `TrackingFacade.record` 의 `invalidateActivePlanOnTrackingEvent` 제거 | 교차 ② 실패 | `4 tests completed, 1 failed` (교차 ②) |
+| controller `statusOf` 를 항상 `CREATED` 로 고정 | AC1 캡 3건 실패 | `8 tests completed, 3 failed` |
+| `Preparation.from` 이 `capViolations` 를 버림 | AC1 캡 본문 1건 실패 | `8 tests completed, 1 failed` |
+
+**참고 — `TrackingFacade.lockOwner` 는 이 교차에서 잉여다.** 제거해도 교차 ②가 통과한다. 원인은
+`fk_position_member`(V8, member(id) 참조)다: tracking `INSERT` 의 FK 검사가 부모 member 행에
+공유 잠금을 걸어 `registerTarget` 의 배타 잠금과 충돌하므로, 애플리케이션 잠금이 없어도 같은
+직렬화가 일어난다. 또 이 경로에는 `INSERT` 앞에 consistent read 가 없어 read view 가 늦게 열리고,
+`findActiveByOwnerId` 가 커밋된 `WATCHING` 을 보게 되어 D17 무효화도 그대로 동작한다. **D18 의
+tracking 쪽 잠금이 불필요하다는 뜻은 아니다** — archive 경로와 `INSERT` 앞에 조회가 오는 순서에는
+FK 잠금이 없다. 다만 이 테스트가 그 잠금을 재지는 못한다는 사실을 기록해 둔다.
+
+**AC19 가 두 클래스인 이유.** 동결 FQN 은 `TradePreparationRegisterTargetContractTest` 하나이지만,
+"declared 원천만 있을 때"와 "verified 원천이 있고 `STALE` 일 때"는 `VerifiedBalanceReadPort` 빈이
+있으면서 동시에 없어야 해 한 Spring context 에 담을 수 없다. 동결 FQN 이 declared 경로(production
+배선, D22)를 갖고, `TradePreparationRegisterTargetStaleContractTest` 가 verified 경로를 갖는다.
+동결된 명령 `--tests '*TradePreparationRegisterTarget*'` 가 두 클래스를 함께 잡는다.
+
+**`PublicEndpointPolicy` 는 건드리지 않았다** (AC9). 그 타입은 `infrastructure:api` 에 있고
+`apps:api` 는 `runtimeOnly` 로만 소비해 test compile classpath 에 없으므로, 목록을 문자열로
+베끼는 대신 실행 중인 filter chain 에 직접 물어 판정한다 — 인증 없는 5종 401 과, 같은 method+path
+인증 시 401·404·405 가 아님을 **짝으로** 확인한다(음성 판정만 두면 controller 를 지워도 통과한다).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
