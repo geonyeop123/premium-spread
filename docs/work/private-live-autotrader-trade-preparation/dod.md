@@ -851,10 +851,13 @@ DoD VERDICT: private-live-autotrader-trade-preparation @ 44c4b17
 `verifyMigrations` exit 0. **`skipped 0` 은 그 자체로 증거다** — 저장소에서 `@Disabled` 문자열이
 나오는 곳은 그것을 금지하는 `TestIsolationArchitectureTest` 하나뿐이다.
 
-**SHA 유효성.** 게이트는 `e567b57` 에서 clean working tree 로 실행했다. 이 판정을 기록하는
-커밋이 브랜치 tip 을 한 칸 옮기지만 그 커밋의 변경은 이 파일과 T9 보고서뿐이며 production·
-test 코드는 한 줄도 바뀌지 않는다 — `git diff --stat e567b57..HEAD` 로 확인할 수 있다.
+**SHA 유효성.** 게이트는 `44c4b17` 에서 clean working tree 로 실행했다. 이 판정을 기록하는
+커밋이 브랜치 tip 을 한 칸 옮기지만 그 커밋의 변경은 이 파일뿐이며 production·test 코드는
+한 줄도 바뀌지 않는다 — `git diff --stat 44c4b17..HEAD` 로 확인할 수 있다.
 코드가 바뀌는 커밋이 그 뒤에 붙으면 이 판정은 만료이고 게이트를 다시 돌려야 한다.
+
+이전 판정(`e567b57`)이 바로 그 규칙으로 만료됐다 — 그 뒤에 production 커밋 8개가 붙었고,
+그중 하나가 위 정정 1이 다루는 `AC12` 구현이다.
 
 **사람 확인이 필요한 항목**
 
