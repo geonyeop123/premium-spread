@@ -171,6 +171,50 @@ class TradePreparationEvaluationJobIntegrationTest : BatchIntegrationTestBase() 
         assertThat(plan.conditionFirstMetPremiumRate).isEqualByComparingTo(BigDecimal("1.00"))
     }
 
+    /**
+     * 한 사이클이 그 pair 의 계획을 **전부** 다룬다. 계획을 하나만 심으면 "첫 계획만 처리한다"는
+     * 구현도 통과하므로 owner 둘의 계획을 결속 수준까지 달리해 함께 심는다.
+     */
+    @Test
+    fun `같은 pair 의 계획 2건을 한 사이클에서 각자의 결속으로 처리한다`() {
+        val verifiedPlanId = watchingPlan(basis = BalanceBasis.FRESH)
+        val declaredPlanId = watchingPlan(basis = BalanceBasis.UNVERIFIED, email = "declared-owner@example.com")
+        seedPremium(rate = "1.0000", observedAt = NOW.minusSeconds(1))
+
+        scheduler.evaluate()
+
+        assertThat(reload(verifiedPlanId).status).isEqualTo(TradePreparationStatus.ARMED)
+        val declared = reload(declaredPlanId)
+        assertThat(declared.status).isEqualTo(TradePreparationStatus.WATCHING)
+        assertThat(declared.conditionFirstMetAt).isEqualTo(NOW.minusSeconds(1))
+    }
+
+    /**
+     * **현재 동작을 고정한다** — 한 사이클은 트랜잭션 하나라, 한 계획의 전이가 던지면 같은
+     * 사이클에서 이미 전이한 다른 계획도 함께 롤백된다.
+     *
+     * 여기서는 `desired_entry_premium_rate` 를 비워 그 계획의 `evaluateCondition` 이 던지게 한다.
+     * 운영에서 이 자리에 오는 것은 동시 무효화가 만든 `OptimisticLockException` 이지만, "loop
+     * 중간의 전이가 던진다"는 형태는 같고 이쪽은 결정적이다. 어느 계획이 먼저 조회되든 결과가
+     * 같으므로 조회 순서에 기대지도 않는다.
+     *
+     * 이것을 결함으로 보지 않는 이유: 다음 tick 이 자가 치유한다(계획은 여전히 `WATCHING` 이고
+     * 프리미엄도 `maxAge` 안이다). 영향은 ~1초 지연이지 잘못된 상태가 아니다. 이 테스트는 나중에
+     * 이 동작이 바뀔 때 그것이 의도된 변경인지 사고인지 구분하게 한다.
+     */
+    @Test
+    fun `한 계획의 전이가 실패하면 같은 사이클의 다른 전이도 롤백된다`() {
+        val healthyPlanId = watchingPlan(basis = BalanceBasis.FRESH)
+        val brokenPlanId = watchingPlan(basis = BalanceBasis.FRESH, email = "broken-owner@example.com")
+        jdbcTemplate.update("UPDATE trade_preparation SET desired_entry_premium_rate = NULL WHERE id = ?", brokenPlanId)
+        seedPremium(rate = "1.0000", observedAt = NOW)
+
+        scheduler.evaluate()
+
+        assertStillWatching(healthyPlanId)
+        assertThat(reload(brokenPlanId).status).isEqualTo(TradePreparationStatus.WATCHING)
+    }
+
     @Test
     fun `프리미엄이 목표보다 높으면 관측도 기록하지 않는다`() {
         val planId = watchingPlan(basis = BalanceBasis.FRESH)
