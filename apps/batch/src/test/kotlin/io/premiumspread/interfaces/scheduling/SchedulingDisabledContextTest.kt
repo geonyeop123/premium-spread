@@ -8,6 +8,7 @@ import io.premiumspread.application.job.premium.PremiumRealtimeJob
 import io.premiumspread.application.job.ticker.BinanceTickerFlushJob
 import io.premiumspread.application.job.ticker.BithumbTickerFlushJob
 import io.premiumspread.application.job.tradeprep.TradePreparationEvaluationJob
+import io.premiumspread.application.notification.NotificationDeliveryJob
 import io.premiumspread.application.notification.NotificationPiiRetentionJob
 import io.premiumspread.config.BatchSchedulingConfiguration
 import org.assertj.core.api.Assertions.assertThat
@@ -62,6 +63,15 @@ class SchedulingDisabledContextTest {
      * production 과 같은 방식인 **component scan** 으로 빈을 만든다 — 어느 scheduler 든
      * `@Component` 가 빠지면 여기서 실패한다.
      *
+     * 단언 목록이 [SCHEDULERS] 가 아니라 [SCANNED_SCHEDULERS] 인 이유: 이 package 의 `@Component`
+     * scheduler 는 **9개**이고 그 전부가 등록 대상이다. 위 disabled 테스트 2건은 `@Import` 로
+     * 직접 등록한 7개만 다루므로(그 목록을 넓히면 import 목록도 함께 넓혀야 한다) 목록을 나눈다 —
+     * "빠짐없이 등록되는가"는 scan 을 쓰는 이 테스트만 판정할 수 있다.
+     *
+     * `notification.email.enabled=true` 는 `NotificationDeliveryScheduler` 를 위한 것이다. 그 값이
+     * 없으면 그 scheduler 만 조건에 걸려 빠지고, 목록에서 조용히 빼면 9개 중 8개만 검사하는
+     * 지금의 공백이 그대로 남는다.
+     *
      * `@EnableScheduling` 을 가진 `BatchSchedulingConfiguration` 은 `io.premiumspread.config` 라
      * 이 scan 밖이다. 빈은 만들어지되 timer 는 돌지 않는다.
      */
@@ -69,10 +79,10 @@ class SchedulingDisabledContextTest {
     fun `enabled scheduling registers every scheduler through component scan`() {
         ApplicationContextRunner()
             .withUserConfiguration(SchedulingComponentScanConfiguration::class.java)
-            .withPropertyValues("batch.scheduling.enabled=true")
+            .withPropertyValues("batch.scheduling.enabled=true", "notification.email.enabled=true")
             .run { context ->
                 assertThat(context).hasNotFailed()
-                SCHEDULERS.forEach { scheduler ->
+                SCANNED_SCHEDULERS.forEach { scheduler ->
                     assertThat(context.getBeansOfType(scheduler)).describedAs(scheduler.name).hasSize(1)
                 }
             }
@@ -114,6 +124,9 @@ class SchedulingDisabledContextTest {
 
         @Bean
         fun notificationPiiRetentionJob(): NotificationPiiRetentionJob = mockk()
+
+        @Bean
+        fun notificationDeliveryJob(): NotificationDeliveryJob = mockk()
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -131,6 +144,7 @@ class SchedulingDisabledContextTest {
     class SchedulingBoundaryConfiguration
 
     private companion object {
+        /** disabled 테스트가 `@Import` 로 직접 등록해 비활성화를 확인하는 scheduler 들이다. */
         val SCHEDULERS =
             listOf(
                 BinanceFlushScheduler::class.java,
@@ -140,6 +154,17 @@ class SchedulingDisabledContextTest {
                 PremiumScheduler::class.java,
                 TickerAggregationScheduler::class.java,
                 TradePreparationEvaluationScheduler::class.java,
+            )
+
+        /**
+         * `io.premiumspread.interfaces.scheduling` 의 `@Component` scheduler **전부**다. 하나라도
+         * 빠뜨리면 그 scheduler 의 `@Component` 누락을 아무도 잡지 못한다 — 실제로
+         * `NotificationPiiRetentionScheduler` 가 그 상태였다.
+         */
+        val SCANNED_SCHEDULERS =
+            SCHEDULERS + listOf(
+                NotificationDeliveryScheduler::class.java,
+                NotificationPiiRetentionScheduler::class.java,
             )
     }
 }

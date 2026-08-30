@@ -21,6 +21,12 @@ interface SpringDataTradePreparationRepository : JpaRepository<TradePreparation,
         statuses: List<TradePreparationStatus>,
     ): TradePreparation?
 
+    /**
+     * `ORDER BY t.id ASC` 는 장식이 아니다. 이 질의는 조건 평가 Job 이 초마다 돌리고 그 결과를
+     * **한 트랜잭션 안에서 순서대로** 전이시킨다 — 정렬이 없으면 처리 순서가 명세되지 않은 SQL
+     * 순서(현재는 PK 순의 full scan, 인덱스가 붙으면 그 인덱스 순)에 좌우된다. 인덱스 하나로
+     * 조용히 바뀌는 순서 위에 동작을 얹지 않는다.
+     */
     @Query(
         """
         SELECT t FROM TradePreparation t
@@ -29,6 +35,7 @@ interface SpringDataTradePreparationRepository : JpaRepository<TradePreparation,
           AND t.koreaExchange = :koreaExchange
           AND t.foreignExchange = :foreignExchange
           AND t.deletedAt IS NULL
+        ORDER BY t.id ASC
         """,
     )
     fun findAllByStatusAndPair(

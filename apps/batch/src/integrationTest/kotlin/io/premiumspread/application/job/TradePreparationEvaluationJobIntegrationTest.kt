@@ -193,10 +193,15 @@ class TradePreparationEvaluationJobIntegrationTest : BatchIntegrationTestBase() 
      * **현재 동작을 고정한다** — 한 사이클은 트랜잭션 하나라, 한 계획의 전이가 던지면 같은
      * 사이클에서 이미 전이한 다른 계획도 함께 롤백된다.
      *
-     * 여기서는 `desired_entry_premium_rate` 를 비워 그 계획의 `evaluateCondition` 이 던지게 한다.
-     * 운영에서 이 자리에 오는 것은 동시 무효화가 만든 `OptimisticLockException` 이지만, "loop
-     * 중간의 전이가 던진다"는 형태는 같고 이쪽은 결정적이다. 어느 계획이 먼저 조회되든 결과가
-     * 같으므로 조회 순서에 기대지도 않는다.
+     * `desired_entry_premium_rate` 를 비워 그 계획의 `evaluateCondition` 이 던지게 한다. 운영에서
+     * 이 자리에 오는 것은 동시 무효화가 만든 `OptimisticLockException` 이지만, "loop 중간의 전이가
+     * 던진다"는 형태는 같고 이쪽은 결정적이다.
+     *
+     * **정상 계획이 깨진 계획보다 먼저 평가돼야 이 단언이 의미를 갖는다.** 깨진 것이 먼저
+     * 평가되면 정상 계획은 애초에 손대지지 않아 "롤백됐다"와 "아무 일도 없었다"가 구별되지 않는다.
+     * 그래서 (1) 조회는 `ORDER BY t.id ASC` 로 결정적이고, (2) 깨진 계획 **앞뒤로** 정상 계획을
+     * 하나씩 둔다 — fixture 의 생성 순서를 뒤집어도, 훗날 정렬 방향이 바뀌어도 언제나 정상 계획
+     * 하나가 먼저 평가된다.
      *
      * 이것을 결함으로 보지 않는 이유: 다음 tick 이 자가 치유한다(계획은 여전히 `WATCHING` 이고
      * 프리미엄도 `maxAge` 안이다). 영향은 ~1초 지연이지 잘못된 상태가 아니다. 이 테스트는 나중에
@@ -204,14 +209,16 @@ class TradePreparationEvaluationJobIntegrationTest : BatchIntegrationTestBase() 
      */
     @Test
     fun `한 계획의 전이가 실패하면 같은 사이클의 다른 전이도 롤백된다`() {
-        val healthyPlanId = watchingPlan(basis = BalanceBasis.FRESH)
+        val earlierHealthyPlanId = watchingPlan(basis = BalanceBasis.FRESH, email = "earlier-owner@example.com")
         val brokenPlanId = watchingPlan(basis = BalanceBasis.FRESH, email = "broken-owner@example.com")
+        val laterHealthyPlanId = watchingPlan(basis = BalanceBasis.FRESH, email = "later-owner@example.com")
         jdbcTemplate.update("UPDATE trade_preparation SET desired_entry_premium_rate = NULL WHERE id = ?", brokenPlanId)
         seedPremium(rate = "1.0000", observedAt = NOW)
 
         scheduler.evaluate()
 
-        assertStillWatching(healthyPlanId)
+        assertStillWatching(earlierHealthyPlanId)
+        assertStillWatching(laterHealthyPlanId)
         assertThat(reload(brokenPlanId).status).isEqualTo(TradePreparationStatus.WATCHING)
     }
 
