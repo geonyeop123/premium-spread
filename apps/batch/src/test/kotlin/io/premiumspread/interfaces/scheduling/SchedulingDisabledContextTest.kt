@@ -8,6 +8,7 @@ import io.premiumspread.application.job.premium.PremiumRealtimeJob
 import io.premiumspread.application.job.ticker.BinanceTickerFlushJob
 import io.premiumspread.application.job.ticker.BithumbTickerFlushJob
 import io.premiumspread.application.job.tradeprep.TradePreparationEvaluationJob
+import io.premiumspread.application.job.tradeprep.TradePreparationReconcileJob
 import io.premiumspread.application.notification.NotificationDeliveryJob
 import io.premiumspread.application.notification.NotificationPiiRetentionJob
 import io.premiumspread.config.BatchSchedulingConfiguration
@@ -64,12 +65,12 @@ class SchedulingDisabledContextTest {
      * `@Component` 가 빠지면 여기서 실패한다.
      *
      * 단언 목록이 [SCHEDULERS] 가 아니라 [SCANNED_SCHEDULERS] 인 이유: 이 package 의 `@Component`
-     * scheduler 는 **9개**이고 그 전부가 등록 대상이다. 위 disabled 테스트 2건은 `@Import` 로
-     * 직접 등록한 7개만 다루므로(그 목록을 넓히면 import 목록도 함께 넓혀야 한다) 목록을 나눈다 —
+     * scheduler 는 **10개**이고 그 전부가 등록 대상이다. 위 disabled 테스트 2건은 `@Import` 로
+     * 직접 등록한 8개만 다루므로(그 목록을 넓히면 import 목록도 함께 넓혀야 한다) 목록을 나눈다 —
      * "빠짐없이 등록되는가"는 scan 을 쓰는 이 테스트만 판정할 수 있다.
      *
      * `notification.email.enabled=true` 는 `NotificationDeliveryScheduler` 를 위한 것이다. 그 값이
-     * 없으면 그 scheduler 만 조건에 걸려 빠지고, 목록에서 조용히 빼면 9개 중 8개만 검사하는
+     * 없으면 그 scheduler 만 조건에 걸려 빠지고, 목록에서 조용히 빼면 10개 중 9개만 검사하는
      * 지금의 공백이 그대로 남는다.
      *
      * `@EnableScheduling` 을 가진 `BatchSchedulingConfiguration` 은 `io.premiumspread.config` 라
@@ -123,6 +124,9 @@ class SchedulingDisabledContextTest {
         fun tradePreparationEvaluationJob(): TradePreparationEvaluationJob = mockk()
 
         @Bean
+        fun tradePreparationReconcileJob(): TradePreparationReconcileJob = mockk()
+
+        @Bean
         fun notificationPiiRetentionJob(): NotificationPiiRetentionJob = mockk()
 
         @Bean
@@ -140,6 +144,7 @@ class SchedulingDisabledContextTest {
         PremiumScheduler::class,
         TickerAggregationScheduler::class,
         TradePreparationEvaluationScheduler::class,
+        TradePreparationReconcileScheduler::class,
     )
     class SchedulingBoundaryConfiguration
 
@@ -154,6 +159,7 @@ class SchedulingDisabledContextTest {
                 PremiumScheduler::class.java,
                 TickerAggregationScheduler::class.java,
                 TradePreparationEvaluationScheduler::class.java,
+                TradePreparationReconcileScheduler::class.java,
             )
 
         /**

@@ -270,6 +270,9 @@ private class FakeTradePreparationRepository(
 
     override fun findActiveByOwnerId(ownerId: Long): TradePreparation? = null
 
+    /** 평가 경로는 이 조회를 쓰지 않는다 — 조용히 빈 목록을 주면 오배선이 green 으로 지나간다. */
+    override fun findAllActive(): List<TradePreparation> = error("evaluation must not query active plans")
+
     override fun findAllWatchingByPair(pair: MarketPair): List<TradePreparation> {
         watchingQueries++
         requestedPairs += pair
