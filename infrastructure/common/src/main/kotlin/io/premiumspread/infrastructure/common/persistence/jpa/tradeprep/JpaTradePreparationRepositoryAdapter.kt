@@ -27,10 +27,10 @@ class JpaTradePreparationRepositoryAdapter(
         tradePreparationRepository.findByIdAndDeletedAtIsNull(id)
 
     override fun findActiveByOwnerId(ownerId: Long): TradePreparation? =
-        tradePreparationRepository.findByOwnerIdAndStatusInAndDeletedAtIsNull(
-            ownerId,
-            listOf(TradePreparationStatus.WATCHING, TradePreparationStatus.ARMED),
-        )
+        tradePreparationRepository.findByOwnerIdAndStatusInAndDeletedAtIsNull(ownerId, ACTIVE_STATUSES)
+
+    override fun findAllActive(): List<TradePreparation> =
+        tradePreparationRepository.findAllByStatusInAndDeletedAtIsNullOrderByIdAsc(ACTIVE_STATUSES)
 
     override fun findAllWatchingByPair(pair: MarketPair): List<TradePreparation> =
         tradePreparationRepository.findAllByStatusAndPair(
@@ -39,4 +39,13 @@ class JpaTradePreparationRepositoryAdapter(
             koreaExchange = pair.koreaExchange,
             foreignExchange = pair.foreignExchange,
         )
+
+    private companion object {
+        /**
+         * `TradePreparation.isActive` 와 `uk_trade_preparation_owner_active(active_key)` 가 쓰는
+         * 것과 같은 정의다. 세 정의가 어긋나면 DB 가 막는 것, 도메인이 활성이라 부르는 것,
+         * reconcile 이 대조하는 것이 서로 달라진다.
+         */
+        val ACTIVE_STATUSES = listOf(TradePreparationStatus.WATCHING, TradePreparationStatus.ARMED)
+    }
 }

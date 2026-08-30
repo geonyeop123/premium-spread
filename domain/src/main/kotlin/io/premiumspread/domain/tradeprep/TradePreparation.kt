@@ -51,7 +51,17 @@ data class TradePreparationSpec(
 @Entity
 @Table(
     name = "trade_preparation",
-    indexes = [Index(name = "idx_trade_preparation_owner_id", columnList = "owner_id")],
+    indexes = [
+        Index(name = "idx_trade_preparation_owner_id", columnList = "owner_id"),
+        // V17. status 가 선두인 이유: 평가 조회(status + pair)와 reconcile 조회(status 만)가 모두
+        // 이 인덱스를 쓴다 — reconcile 은 1컬럼 prefix 로 탄다. 선택도 면에서도 status 뿐이다:
+        // DRAFT·INVALIDATED 는 지워지지 않아 무한히 늘고 활성 행은 owner 수로 유계인 반면,
+        // symbol·exchange 는 운용 pair 가 하나인 현재 사실상 상수다.
+        Index(
+            name = "idx_trade_preparation_status_pair",
+            columnList = "status, symbol, korea_exchange, foreign_exchange",
+        ),
+    ],
 )
 @Suppress("LongParameterList")
 class TradePreparation private constructor(

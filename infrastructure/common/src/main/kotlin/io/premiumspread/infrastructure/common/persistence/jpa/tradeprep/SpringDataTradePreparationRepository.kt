@@ -44,4 +44,16 @@ interface SpringDataTradePreparationRepository : JpaRepository<TradePreparation,
         @Param("koreaExchange") koreaExchange: Exchange,
         @Param("foreignExchange") foreignExchange: Exchange,
     ): List<TradePreparation>
+
+    /**
+     * reconcile Job(T8)의 활성 계획 조회다 — pair 로 좁히지 않는다(`TradePreparationRepository`
+     * `findAllActive` 참조).
+     *
+     * `OrderById` 는 [findAllByStatusAndPair] 의 `ORDER BY` 와 같은 이유다. 이 결과도 한
+     * 트랜잭션 안에서 순서대로 전이되므로, 정렬이 없으면 처리 순서가 `V17` 인덱스 도입 같은
+     * 물리 계획 변경으로 조용히 바뀐다.
+     */
+    fun findAllByStatusInAndDeletedAtIsNullOrderByIdAsc(
+        statuses: List<TradePreparationStatus>,
+    ): List<TradePreparation>
 }

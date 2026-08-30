@@ -71,5 +71,12 @@ object DefaultJobConfigProvider : JobConfigProvider {
             Duration.ofSeconds(5),
             Duration.ofSeconds(3),
         )
+
+        JobId.TRADE_PREPARATION_RECONCILE -> JobConfig(
+            jobId,
+            "lock:trade-preparation:reconcile",
+            Duration.ofSeconds(30),
+            Duration.ofSeconds(20),
+        )
     }
 }
