@@ -1,8 +1,8 @@
 ---
 feature: 하네스 aic-api 정합 재구성
 slug: harness-aic-api-alignment
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-08-31
 verdict_commit:
 source: 2026-08-30 대화 — "aic-server(=aic-api)와 동일하게 하네스 구조 맞춰줘 feature-workflow"
 ---
