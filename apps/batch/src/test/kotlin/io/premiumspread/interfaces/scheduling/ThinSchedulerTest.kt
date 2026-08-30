@@ -10,6 +10,7 @@ import io.premiumspread.application.job.fx.FxIngestionJob
 import io.premiumspread.application.job.premium.PremiumRealtimeJob
 import io.premiumspread.application.job.ticker.BinanceTickerFlushJob
 import io.premiumspread.application.job.ticker.BithumbTickerFlushJob
+import io.premiumspread.application.job.tradeprep.TradePreparationEvaluationJob
 import org.junit.jupiter.api.Test
 
 class ThinSchedulerTest {
@@ -55,6 +56,14 @@ class ThinSchedulerTest {
         verify(exactly = 1) { job.aggregateMinute() }
         verify(exactly = 1) { job.aggregateHour() }
         verify(exactly = 1) { job.aggregateDay() }
+    }
+
+    @Test
+    fun `trade preparation evaluation scheduler는 application job만 호출한다`() {
+        val job = mockk<TradePreparationEvaluationJob>()
+        every { job.run() } returns JobResult.Success
+        TradePreparationEvaluationScheduler(job, scheduling).evaluate()
+        verify(exactly = 1) { job.run() }
     }
 
     @Test

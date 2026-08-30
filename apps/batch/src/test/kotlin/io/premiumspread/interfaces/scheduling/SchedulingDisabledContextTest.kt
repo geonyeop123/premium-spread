@@ -51,6 +51,7 @@ class SchedulingDisabledContextTest {
         PremiumAggregationScheduler::class,
         PremiumScheduler::class,
         TickerAggregationScheduler::class,
+        TradePreparationEvaluationScheduler::class,
     )
     class SchedulingBoundaryConfiguration
 
@@ -63,6 +64,7 @@ class SchedulingDisabledContextTest {
                 PremiumAggregationScheduler::class.java,
                 PremiumScheduler::class.java,
                 TickerAggregationScheduler::class.java,
+                TradePreparationEvaluationScheduler::class.java,
             )
     }
 }
