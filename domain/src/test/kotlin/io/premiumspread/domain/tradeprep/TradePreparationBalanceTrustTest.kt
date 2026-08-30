@@ -1,5 +1,8 @@
 package io.premiumspread.domain.tradeprep
 
+import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.ticker.Exchange
+import io.premiumspread.domain.ticker.Symbol
 import java.math.BigDecimal
 import java.time.Instant
 import org.assertj.core.api.Assertions.assertThat
@@ -59,6 +62,51 @@ class TradePreparationBalanceTrustTest {
 
         assertThat(VerifiedBalance.from(freshBound)).isNotNull
         assertThat(VerifiedBalance.from(staleBound)).isNotNull
+    }
+
+    @Test
+    fun `RecordedBalanceAdapter 결속으로는 같은 조건에서 ARMED에 도달한다`() {
+        // declared(UNVERIFIED)는 구조적으로 VerifiedBalance를 만들 수 없다(위 테스트들) — 이 테스트는
+        // 그 반대편, "검증 가능한 원천이면 실제로 ARMED까지 간다"를 RecordedBalanceAdapter(T4,
+        // test source set 전용)로 end-to-end 증명한다.
+        val recorded = RecordedBalanceAdapter(
+            koreaBalance = BigDecimal("24000000"),
+            foreignBalance = BigDecimal("3500"),
+            observedAt = observedAt,
+        )
+        val verified = recorded.findForDecision()
+        assertThat(verified).isNotNull
+
+        val plan = TradePreparation.create(
+            TradePreparationSpec(
+                ownerId = 1L,
+                pair = MarketPair(Symbol("BTC"), Exchange.BITHUMB, Exchange.BINANCE),
+                boundBalanceSnapshotId = verified!!.snapshotId,
+                boundBalanceBasis = verified.balanceBasis,
+                referenceForeignPrice = BigDecimal("70000"),
+                referenceFxRate = BigDecimal("1400"),
+                referencePremiumRate = BigDecimal("3.50"),
+                referenceObservedAt = observedAt,
+                referenceFxSource = Exchange.FX_PROVIDER,
+                referenceFxObservedAt = observedAt,
+                quantity = BigDecimal("0.1"),
+                leverage = BigDecimal("3"),
+            ),
+        )
+        plan.registerTarget(
+            desiredEntryPremiumRate = BigDecimal("3.00"),
+            boundBalanceSnapshotId = verified.snapshotId,
+            boundBalanceBasis = verified.balanceBasis,
+            at = observedAt,
+        )
+
+        val outcome = plan.evaluateCondition(
+            currentPremiumRate = BigDecimal("1.00"),
+            observedAt = observedAt.plusSeconds(1),
+        )
+
+        assertThat(outcome).isEqualTo(TradePreparationConditionOutcome.ARMED)
+        assertThat(plan.status).isEqualTo(TradePreparationStatus.ARMED)
     }
 
     private fun snapshot(basis: BalanceBasis, id: String = "snapshot-1"): BalanceSnapshot =

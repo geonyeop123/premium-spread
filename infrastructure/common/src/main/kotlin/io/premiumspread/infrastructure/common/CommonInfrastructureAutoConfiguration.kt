@@ -28,6 +28,7 @@ import io.premiumspread.infrastructure.common.persistence.jpa.notification.JpaNo
 import io.premiumspread.infrastructure.common.persistence.jpa.tracking.JpaTrackingRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jpa.premium.JpaPremiumRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jpa.ticker.JpaTickerRepositoryAdapter
+import io.premiumspread.infrastructure.common.persistence.jpa.tradeprep.JpaTradePreparationRepositoryAdapter
 import io.premiumspread.redis.RedisFoundationAutoConfiguration
 import io.premiumspread.redis.RedisTimeSeriesAutoConfiguration
 import org.springframework.boot.autoconfigure.AutoConfiguration
@@ -88,6 +89,7 @@ class CommonJdbcConfiguration
     JpaTrackingRepositoryAdapter::class,
     JpaPremiumRepositoryAdapter::class,
     JpaTickerRepositoryAdapter::class,
+    JpaTradePreparationRepositoryAdapter::class,
 )
 class CommonJpaConfiguration
 
