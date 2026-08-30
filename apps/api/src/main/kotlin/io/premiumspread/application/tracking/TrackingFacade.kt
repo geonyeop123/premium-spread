@@ -3,6 +3,8 @@ package io.premiumspread.application.tracking
 import io.premiumspread.application.common.ApplicationError
 import io.premiumspread.application.common.ApplicationException
 import io.premiumspread.domain.market.MarketPair
+import io.premiumspread.domain.member.MemberService
+import io.premiumspread.domain.tradeprep.TradePreparationService
 import io.premiumspread.domain.tracking.InvalidTrackingException
 import io.premiumspread.domain.tracking.Tracking
 import io.premiumspread.domain.premium.PremiumSnapshot
@@ -25,10 +27,31 @@ private const val PRICE_BASIS_CURRENT = "CURRENT_MARKET"
 private const val PRICE_BASIS_STALE = "STALE_MARKET"
 private const val PRICE_BASIS_ARCHIVED = "ARCHIVED_SNAPSHOT"
 
+/**
+ * 추적 유스케이스다.
+ *
+ * ## 체결 무효화 producer (design.md D17)
+ *
+ * 생성·archive 경로가 **같은 DB 트랜잭션**에서 이 owner 의 활성 거래 준비 계획(`WATCHING`·
+ * `ARMED`)을 무효화한다. 이벤트나 `@Async` listener 로 옮기지 않는다 — 프로젝트 규칙이 그것을
+ * 전달 보장으로 쓰는 것을 금지하고(`.ai/rules/batch.md`), 기존 "활성 구독 조회와 enqueue 는 같은
+ * transaction" 선례를 따른다. 전이 자체는 `TradePreparationService` 가 소유한다 (D21).
+ *
+ * ## owner 단위 직렬화 (design.md D18)
+ *
+ * 생성·archive 는 트랜잭션 시작점에서 owner 의 member 행을 `SELECT … FOR UPDATE` 로 잠근다.
+ * **잠금 순서는 항상 member → tracking/plan 이다** — archive 가 이미 잡는 tracking 행 잠금보다
+ * member 를 먼저 잡아 교착을 막는다. 이 잠금이 없으면 `TradePreparationFacade.registerTarget` 의
+ * `ACTIVE` 재검사와 여기의 tracking 생성이 서로의 미커밋 상태를 못 본 채 둘 다 커밋되어
+ * `ACTIVE` tracking 과 활성 계획이 공존한다(write-skew) — version 술어도 unique index 도 교차
+ * 테이블 불변식은 지키지 못한다.
+ */
 @Service
 class TrackingFacade(
     private val trackingService: TrackingService,
     private val premiumService: PremiumService,
+    private val memberService: MemberService,
+    private val tradePreparationService: TradePreparationService,
     private val clock: Clock,
 ) {
 
@@ -58,6 +81,9 @@ class TrackingFacade(
 
     @Transactional
     fun recordFromMarket(criteria: TrackingCriteria.RecordFromMarket): TrackingResult.Detail = translateInvalidTracking {
+        // D18: 트랜잭션 시작점의 member 잠금. 이보다 앞에 tracking·plan 조회를 두지 않는다.
+        lockOwner(criteria.memberId)
+
         val pair = parsePair(criteria.symbol, criteria.koreaExchange, criteria.foreignExchange)
         val snapshot = premiumService.findLatestSnapshot(pair)
             ?: throw ApplicationException(ApplicationError.PREMIUM_SNAPSHOT_NOT_AVAILABLE)
@@ -80,12 +106,16 @@ class TrackingFacade(
             entryObservedAt = snapshot.observedAt,
         )
         val tracking = trackingService.create(command)
+        invalidateActivePlanOnTrackingEvent(criteria.memberId)
 
         toDetail(tracking)
     }
 
     @Transactional
     fun record(criteria: TrackingCriteria.Record): TrackingResult.Detail = translateInvalidTracking {
+        // D18: 트랜잭션 시작점의 member 잠금. 이보다 앞에 tracking·plan 조회를 두지 않는다.
+        lockOwner(criteria.memberId)
+
         val pair = parsePair(criteria.symbol, criteria.koreaExchange, criteria.foreignExchange)
         val command = TrackingCommand.Create(
             memberId = criteria.memberId,
@@ -101,6 +131,7 @@ class TrackingFacade(
             entryObservedAt = criteria.entryObservedAt,
         )
         val tracking = trackingService.create(command)
+        invalidateActivePlanOnTrackingEvent(criteria.memberId)
 
         toDetail(tracking)
     }
@@ -174,6 +205,12 @@ class TrackingFacade(
      */
     @Transactional
     fun archive(criteria: TrackingCriteria.Archive): TrackingResult.Detail = translateInvalidTracking {
+        // D18: member 를 tracking 보다 먼저 잠근다. 아래 주석이 말하는 "첫 조회"는 **Tracking 엔티티
+        // 를 영속성 컨텍스트에 올리는 첫 조회**를 뜻하며, member 행 잠금은 다른 엔티티라 그 조건을
+        // 깨지 않는다. 순서를 뒤집으면(tracking → member) 생성 경로(member → tracking)와 반대라
+        // 교착이 생긴다.
+        lockOwner(criteria.memberId)
+
         // 잠금이 이 트랜잭션의 **첫 조회**여야 한다. 앞에 findById 를 두면 엔티티가 영속성 컨텍스트에
         // 먼저 올라가고, 뒤따르는 FOR UPDATE 쿼리는 DB 잠금은 잡되 **1차 캐시의 낡은 인스턴스**를
         // 돌려준다. 그러면 status 검사가 stale ACTIVE 를 보고 동시 요청이 모두 통과한다.
@@ -202,7 +239,25 @@ class TrackingFacade(
             }
 
         tracking.archive(snapshot, now)
-        toDetail(trackingService.save(tracking))
+        val archived = trackingService.save(tracking)
+        invalidateActivePlanOnTrackingEvent(criteria.memberId)
+        toDetail(archived)
+    }
+
+    /**
+     * 체결 사건으로 이 owner 의 활성 계획을 무효화한다 (D17). 같은 트랜잭션이며 전이는
+     * Domain 서비스가 소유한다 (D21). 활성 계획이 없으면 아무 일도 하지 않는다.
+     */
+    private fun invalidateActivePlanOnTrackingEvent(memberId: Long) {
+        tradePreparationService.invalidateActiveOnTrackingEvent(memberId, clock.instant())
+    }
+
+    /**
+     * owner 단위 직렬화 잠금 (D18). 행이 없으면 잠글 것도 없다 — memberId 는 인증 principal 에서
+     * 오므로 정상 경로에서는 항상 존재한다.
+     */
+    private fun lockOwner(memberId: Long) {
+        memberService.findByIdForUpdate(memberId)
     }
 
     private fun verifyOwnership(tracking: Tracking, memberId: Long) {

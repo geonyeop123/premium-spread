@@ -24,6 +24,8 @@ class JpaMemberRepositoryAdapter(private val memberRepository: SpringDataMemberR
 
     override fun existsByEmail(email: String): Boolean = memberRepository.existsByEmailAndDeletedAtIsNull(email)
 
+    override fun findByIdForUpdate(id: Long): Member? = memberRepository.findByIdForUpdate(id)
+
     private fun Throwable.hasConstraint(constraint: String): Boolean =
         generateSequence(this) { it.cause }
             .mapNotNull(Throwable::message)
