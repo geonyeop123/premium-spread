@@ -109,6 +109,66 @@ class TradePreparationBalanceTrustTest {
         assertThat(plan.status).isEqualTo(TradePreparationStatus.ARMED)
     }
 
+    @Test
+    fun `무장 게이트는 검증 가능한 결속만 통과시킨다 — BalanceBasis 전체를 고정한다`() {
+        // D9·D19 의 fail-closed 경계는 `UNVERIFIED 면 막는다`가 아니라 `FRESH·STALE 만 통과`다.
+        // 상수 하나가 늘 때 게이트가 소리 없이 열리지 않는다는 것이 이 계약이고, 그래서 enum 의
+        // 네 값을 전부 적는다 — 값이 늘면 이 테스트부터 컴파일되지 않는다.
+        val armed = mapOf(
+            BalanceBasis.FRESH to TradePreparationConditionOutcome.ARMED,
+            BalanceBasis.STALE to TradePreparationConditionOutcome.ARMED,
+            BalanceBasis.UNVERIFIED to TradePreparationConditionOutcome.OBSERVED_ONLY,
+            // 원천 조회 실패다. VerifiedBalance 로 변환되지 않는 값이므로(위 테스트) 무장에도
+            // 쓰이지 않는다 — 두 경계가 같은 답을 준다.
+            BalanceBasis.UNAVAILABLE to TradePreparationConditionOutcome.OBSERVED_ONLY,
+        )
+        assertThat(armed.keys).containsExactlyInAnyOrder(*BalanceBasis.entries.toTypedArray())
+
+        armed.forEach { (basis, expected) ->
+            val plan = watchingPlan(basis)
+
+            val outcome = plan.evaluateCondition(BigDecimal("1.00"), observedAt.plusSeconds(1))
+
+            assertThat(outcome).describedAs(basis.name).isEqualTo(expected)
+            // 관측은 어느 쪽이든 남는다 — 갈리는 것은 상태 전이뿐이다 (D19).
+            assertThat(plan.conditionFirstMetAt).describedAs(basis.name).isEqualTo(observedAt.plusSeconds(1))
+            assertThat(plan.status).describedAs(basis.name).isEqualTo(
+                if (expected == TradePreparationConditionOutcome.ARMED) {
+                    TradePreparationStatus.ARMED
+                } else {
+                    TradePreparationStatus.WATCHING
+                },
+            )
+        }
+    }
+
+    /** [basis] 로 결속한 `WATCHING` 계획이다. 목표 프리미엄은 3.00% 로 고정한다. */
+    private fun watchingPlan(basis: BalanceBasis): TradePreparation {
+        val plan = TradePreparation.create(
+            TradePreparationSpec(
+                ownerId = 1L,
+                pair = MarketPair(Symbol("BTC"), Exchange.BITHUMB, Exchange.BINANCE),
+                boundBalanceSnapshotId = "snapshot-1",
+                boundBalanceBasis = basis,
+                referenceForeignPrice = BigDecimal("70000"),
+                referenceFxRate = BigDecimal("1400"),
+                referencePremiumRate = BigDecimal("3.50"),
+                referenceObservedAt = observedAt,
+                referenceFxSource = Exchange.FX_PROVIDER,
+                referenceFxObservedAt = observedAt,
+                quantity = BigDecimal("0.1"),
+                leverage = BigDecimal("3"),
+            ),
+        )
+        plan.registerTarget(
+            desiredEntryPremiumRate = BigDecimal("3.00"),
+            boundBalanceSnapshotId = "snapshot-1",
+            boundBalanceBasis = basis,
+            at = observedAt,
+        )
+        return plan
+    }
+
     private fun snapshot(basis: BalanceBasis, id: String = "snapshot-1"): BalanceSnapshot =
         BalanceSnapshot(
             id = id,

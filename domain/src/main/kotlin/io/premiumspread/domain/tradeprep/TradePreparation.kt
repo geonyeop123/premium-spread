@@ -218,8 +218,14 @@ class TradePreparation private constructor(
             conditionFirstMetPremiumRate = currentPremiumRate
         }
 
-        if (boundBalanceBasis == BalanceBasis.UNVERIFIED) {
-            return TradePreparationConditionOutcome.OBSERVED_ONLY
+        // D9·D19 의 fail-closed 경계다. **허용 목록으로 적는다** — `!= UNVERIFIED` 로 적으면
+        // BalanceBasis 에 상수가 하나 늘어날 때마다 무장 경로가 소리 없이 하나 열린다. 이 형태는
+        // 그때 컴파일 오류가 되므로 새 상수의 무장 여부를 사람이 결정하게 강제한다
+        // (`VerifiedBalance.from` 이 같은 경계를 같은 방식으로 지킨다).
+        when (boundBalanceBasis) {
+            BalanceBasis.FRESH, BalanceBasis.STALE -> Unit
+            BalanceBasis.UNVERIFIED, BalanceBasis.UNAVAILABLE ->
+                return TradePreparationConditionOutcome.OBSERVED_ONLY
         }
 
         status = TradePreparationStatus.ARMED
