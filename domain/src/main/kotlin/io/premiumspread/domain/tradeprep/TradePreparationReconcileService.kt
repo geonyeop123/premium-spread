@@ -35,26 +35,46 @@ class TradePreparationReconcileService(private val repository: TradePreparationR
      * [source] 의 현재 판정용 잔고와 결속 스냅샷 id 가 다른 활성 계획을 `INVALIDATED` 로
      * 전이시킨다.
      *
-     * 잔고 **값이 아니라 port 를 받는다.** 이 메서드가 트랜잭션 경계이므로, 값을 받으면 호출자가
-     * 프록시 밖에서 읽게 되고 읽기와 조회 사이에 커밋된 계획이 옛 잔고와 대조된다 —
-     * `registerTarget` 이 스냅샷 `S2` 로 막 등록한 계획을, 그보다 앞서 읽은 `S1` 과 대조해
-     * 무효화하는 순서가 실제로 가능하다. 같은 트랜잭션 안에서 읽으면 잔고와 계획 목록이 같은
-     * 시점을 본다.
+     * ## 계획을 잔고보다 **먼저** 읽는다 — 이 순서가 정확성의 전부다
+     *
+     * 반대로 하면 갓 등록한 멀쩡한 계획이 죽는다: 잔고 `S1` 을 읽고 → `registerTarget` 이 `S2`
+     * 결속 계획을 커밋하고 → 이 트랜잭션이 그 계획을 보고 `S1 ≠ S2` 라 무효화한다.
+     *
+     * **트랜잭션 안에 넣는 것만으로는 막히지 않는다.** REPEATABLE READ 의 consistent read view 는
+     * `BEGIN` 이 아니라 **첫 consistent read** 에서 열리고, Spring 은
+     * `START TRANSACTION WITH CONSISTENT SNAPSHOT` 을 쓰지 않는다. [source] 는 거래소·기록 원천
+     * 이지 DB 읽기가 아니므로 view 를 열지 않는다 — 그래서 잔고를 먼저 읽어도 view 는 여전히
+     * [TradePreparationRepository.findAllActive] 에서 열리고, 그 사이 커밋된 계획이 **보이면서**
+     * 그보다 앞서 읽은 잔고와 대조된다. 위 순서가 그대로 성립한다.
+     *
+     * 계획을 먼저 읽으면 모든 교차에서 안전하다.
+     *
+     * - 조회 **뒤에** 커밋된 계획은 이 트랜잭션의 view 에 없다 → 이번 사이클이 건너뛰고 다음
+     *   사이클이 잡는다. 무효화가 늦어질 뿐 틀리지 않는다
+     * - 보이는 계획은 전부 잔고 읽기보다 **앞서** 존재했다 → 불일치면 결속 뒤에 잔고가 실제로
+     *   바뀐 것이므로 진짜 불일치다
+     *
+     * 대가는 원천이 죽었을 때 `SELECT` 한 번이 헛도는 것뿐이다. 경합과 바꿀 값어치가 없다.
      *
      * 잔고가 `null` 이면 "현재 판정용 잔고 없음"이다 — 계획을 **무효화하지 않고** 그대로 남긴다.
      * 원천이 회복되면 다음 실행이 그대로 재개한다 (D14 의 stream 부재 처리와 같은 형태).
-     *
-     * 조회를 잔고 판정 **뒤에** 두는 것은 의도적이다. 대조할 상대가 없으면 어떤 계획도 읽지
-     * 않는다는 사실이 코드 순서로 드러난다.
      */
     fun reconcile(source: VerifiedBalanceReadPort, now: Instant): TradePreparationReconcileSummary {
+        // ① 계획 먼저. 이 문장이 read view 를 연다 — 이보다 뒤에 커밋된 계획은 보이지 않는다.
+        val plans = repository.findAllActive()
+
+        // ② 그 다음 잔고. 여기서 읽은 값은 위에서 본 계획 전부보다 나중이라 대조가 성립한다.
+        //
+        //    ACT-2 의 `ExchangeBalanceAdapter` 가 들어오면 이 한 줄이 거래소 HTTPS 왕복이 되고,
+        //    그 지연 내내 DB 커넥션을 붙잡는다. 지금은 구현이 0개(D22)이거나 테스트 fake 라
+        //    무해하지만, 실어댑터를 배선할 때는 "계획은 트랜잭션 안 · 잔고는 밖 · 대조는 짧은
+        //    두 번째 트랜잭션" 형태로 나눠야 할 수 있다. 그때도 위 순서(계획 먼저)는 유지한다.
         val balance = source.findForDecision()
             ?: return TradePreparationReconcileSummary.notReconciled(
                 TradePreparationReconcileOutcome.BALANCE_UNAVAILABLE,
             )
 
         var invalidated = 0
-        val plans = repository.findAllActive()
         plans.forEach { plan ->
             // 일치하면 false 다 — 상태를 바꾸지 않고 save 도 하지 않는다 (AC5).
             if (plan.invalidateOnReconcileMismatch(balance.snapshotId, now)) {
