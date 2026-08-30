@@ -17,6 +17,25 @@ enum class ApplicationError {
     PREMIUM_SNAPSHOT_NOT_AVAILABLE,
     STALE_PREMIUM_SNAPSHOT,
     NOTIFICATION_SUBSCRIPTION_NOT_FOUND,
+
+    // 거래 준비 (design.md D3·D10·D13·D16·D23)
+    /** 남의 계획도 여기로 온다 — 403 은 계획 ID 의 존재를 노출한다 (D10). */
+    TRADE_PREPARATION_NOT_FOUND,
+
+    /** 보유 `ACTIVE` tracking 이 있으면 준비도 목표 등록도 거절한다 (D13). */
+    ACTIVE_TRACKING_EXISTS,
+
+    /** owner 당 활성 계획 유일성을 DB unique index 가 막았다 (D16·D23의 심층 방어). */
+    WATCHING_ALREADY_EXISTS,
+
+    /** `ARMED` 계획은 새 등록이 조용히 대체하지 않는다 — owner 가 먼저 refresh·invalidate 한다 (D23). */
+    ARMED_PLAN_EXISTS,
+
+    /** 판정용 잔고가 낡았거나 확보되지 않았다. exposure 를 늘리는 요청만 거절한다 (D3·D20). */
+    STALE_BALANCE_FOR_EXPOSURE,
+
+    /** 레버 캡·효율 캡을 위반해 계획을 만들지 않았다 (design.md §3). */
+    CAP_VIOLATED,
 }
 
 class ApplicationException(val error: ApplicationError, cause: Throwable? = null) : RuntimeException(error.name, cause)

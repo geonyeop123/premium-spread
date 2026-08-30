@@ -11,7 +11,17 @@ class JpaTradePreparationRepositoryAdapter(
     private val tradePreparationRepository: SpringDataTradePreparationRepository,
 ) : TradePreparationRepository {
 
-    override fun save(plan: TradePreparation): TradePreparation = tradePreparationRepository.save(plan)
+    /**
+     * `saveAndFlush` 다. 한 트랜잭션에서 기존 `WATCHING` 계획을 무효화한 뒤 새 계획을 승격하는
+     * 경로(design.md D11·D23)는 두 UPDATE 의 **순서**가 곧 정합성이다 — 커밋 시점에 한꺼번에
+     * flush 하면 Hibernate 가 두 UPDATE 를 어떤 순서로 내보낼지 보장하지 않아,
+     * `uk_trade_preparation_owner_active` 가 승격 UPDATE 를 먼저 보면 정상 경로가 유일성 위반으로
+     * 떨어진다. 호출 순서대로 flush 해 그 창을 없앤다.
+     *
+     * 부수 효과로 제약 위반이 Facade 메서드 **안에서** `DataIntegrityViolationException` 으로
+     * 드러나 안정된 Application error 로 변환할 수 있다 (`JpaMemberRepositoryAdapter` 와 같은 패턴).
+     */
+    override fun save(plan: TradePreparation): TradePreparation = tradePreparationRepository.saveAndFlush(plan)
 
     override fun findById(id: Long): TradePreparation? =
         tradePreparationRepository.findByIdAndDeletedAtIsNull(id)

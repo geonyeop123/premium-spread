@@ -55,6 +55,14 @@ migration:
 aggregation:
   zone: ${AGGREGATION_ZONE:Asia/Seoul}
 
+# 거래 준비 캡과 거래소 lot/step (design.md §3 — 이 값들은 설정이 소유한다)
+# leverage-cap·efficiency-floor 는 ECO-5 §7 owner 결정, lot size 는 TP-OPEN-7 확정 전 잠정값이다.
+trade-preparation:
+  leverage-cap: ${TRADE_PREPARATION_LEVERAGE_CAP:7}
+  efficiency-floor: ${TRADE_PREPARATION_EFFICIENCY_FLOOR:0.60}
+  korea-lot-size: ${TRADE_PREPARATION_KOREA_LOT_SIZE:0.0001}
+  foreign-lot-size: ${TRADE_PREPARATION_FOREIGN_LOT_SIZE:0.001}
+
 management:
   prometheus:
     metrics:
