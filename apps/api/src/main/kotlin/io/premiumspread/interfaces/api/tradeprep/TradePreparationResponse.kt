@@ -25,8 +25,11 @@ class TradePreparationResponse private constructor() {
      * 타입을 그대로 쓴다.
      *
      * [code] 는 그 422 응답에서 오류 envelope 와 **같은 방식으로 분기**할 수 있게 안정된
-     * `ApplicationError` 이름을 싣는다. 성공 응답에서는 `null` 이다. 응답 키 집합은 성공·실패가
-     * 같다 — 결과에 따라 응답 형태가 갈라지지 않는 것이 계약의 일부다.
+     * `ApplicationError` 이름을 싣는다. 성공 응답에서만 `null` 이다 — **모든 422 는 code 를
+     * 갖는다.** 캡을 위반했으면 `CAP_VIOLATED`, 반올림으로 물량이 0 이 됐으면 `NOT_PLANNABLE`
+     * 이다. 둘을 합치거나 후자를 `null` 로 두면 클라이언트가 이 응답을 파싱 실패와 구별하지
+     * 못한다. 응답 키 집합은 성공·실패가 같다 — 결과에 따라 응답 형태가 갈라지지 않는 것이
+     * 계약의 일부다.
      */
     @Suppress("LongParameterList")
     data class Preparation(
@@ -64,7 +67,11 @@ class TradePreparationResponse private constructor() {
             fun from(result: TradePreparationResult.Preparation): Preparation = Preparation(
                 planId = result.planId,
                 status = result.status,
-                code = result.capViolations.takeIf { it.isNotEmpty() }?.let { ApplicationError.CAP_VIOLATED.name },
+                code = when {
+                    result.capViolations.isNotEmpty() -> ApplicationError.CAP_VIOLATED.name
+                    !result.plannable -> ApplicationError.NOT_PLANNABLE.name
+                    else -> null
+                },
                 symbol = result.symbol,
                 koreaExchange = result.koreaExchange,
                 foreignExchange = result.foreignExchange,

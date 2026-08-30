@@ -36,6 +36,15 @@ enum class ApplicationError {
 
     /** 레버 캡·효율 캡을 위반해 계획을 만들지 않았다 (design.md §3). */
     CAP_VIOLATED,
+
+    /**
+     * 캡은 위반하지 않았지만 계획을 만들 수 없다 — lot/step 반올림 뒤 물량이 0 이 된 경우다
+     * (design.md D12, `TradePrepSizingCalculation.isPlannable`).
+     *
+     * [CAP_VIOLATED] 와 합치지 않는다. 위반한 캡이 없는데 `CAP_VIOLATED` 를 실으면 거짓이고,
+     * `code` 를 비우면 클라이언트가 이 422 를 파싱 실패와 구별하지 못한다.
+     */
+    NOT_PLANNABLE,
 }
 
 class ApplicationException(val error: ApplicationError, cause: Throwable? = null) : RuntimeException(error.name, cause)

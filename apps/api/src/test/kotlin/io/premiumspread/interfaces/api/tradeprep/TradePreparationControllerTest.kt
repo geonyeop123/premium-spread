@@ -86,9 +86,13 @@ class TradePreparationControllerTest {
         }
     }
 
-    /** 반올림으로 물량이 0 이 되는 경우다. 계획이 없으므로 201 이 아니고, 위반한 캡은 없다. */
+    /**
+     * 반올림으로 물량이 0 이 되는 경우다. 계획이 없으므로 201 이 아니고, 위반한 캡이 없으므로
+     * `CAP_VIOLATED` 도 아니다. 그렇다고 `code` 를 비우면 클라이언트가 이 422 를 파싱 실패와
+     * 구별하지 못하므로 `NOT_PLANNABLE` 을 싣는다.
+     */
     @Test
-    fun `캡 위반이 없어도 계획을 만들지 못하면 201 이 아니다`() {
+    fun `캡 위반이 없어도 계획을 만들지 못하면 422 NOT_PLANNABLE 이다`() {
         every { facade.prepare(any()) } returns preparation(planId = null, status = null, plannable = false)
 
         mockMvc.post("/api/v1/trade-preparations") {
@@ -97,10 +101,8 @@ class TradePreparationControllerTest {
             content = prepareBody()
         }.andExpect {
             status { isUnprocessableEntity() }
+            jsonPath("$.code") { value("NOT_PLANNABLE") }
             jsonPath("$.capViolations.length()") { value(0) }
-        }.andReturn().response.contentAsString.let {
-            // 위반한 캡이 없으므로 code 도 비어 있다 — 본문의 산출값이 사유를 말한다.
-            assertThat(objectMapper.readTree(it).get("code").isNull).isTrue()
         }
     }
 

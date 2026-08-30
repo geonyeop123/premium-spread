@@ -96,6 +96,7 @@ class GlobalExceptionHandler(private val clock: Clock = Clock.systemUTC()) {
         ApplicationError.INVALID_TRACKING,
         ApplicationError.DOMAIN_ERROR,
         ApplicationError.CAP_VIOLATED,
+        ApplicationError.NOT_PLANNABLE,
         -> HttpStatus.UNPROCESSABLE_ENTITY
     }
 
@@ -131,6 +132,7 @@ class GlobalExceptionHandler(private val clock: Clock = Clock.systemUTC()) {
             "ARMED_PLAN_EXISTS" to "이미 무장된 거래 준비 계획이 있습니다. 먼저 무효화해주세요.",
             "STALE_BALANCE_FOR_EXPOSURE" to "판정용 잔고가 오래되어 사용할 수 없습니다. 잠시 후 다시 시도해주세요.",
             "CAP_VIOLATED" to "레버리지·자본 효율 캡을 위반해 계획을 만들 수 없습니다.",
+            "NOT_PLANNABLE" to "최소 주문 수량에 못 미쳐 계획을 만들 수 없습니다.",
             "UNAUTHORIZED" to "로그인이 필요합니다.",
             "INVALID_ARGUMENT" to "잘못된 요청 값입니다.",
             "METHOD_NOT_ALLOWED" to "해당 경로에서 지원하지 않는 메서드입니다.",

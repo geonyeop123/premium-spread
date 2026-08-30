@@ -44,8 +44,8 @@ class TradePreparationController(private val tradePreparationFacade: TradePrepar
      * 떨어뜨리면 AC3 을 충족하지 못한다.
      *
      * 반올림 뒤 물량이 0 이 되는 경우도 `plannable = false` 다. 계획이 만들어지지 않았으므로
-     * 201 이 아니고, 위반한 캡이 없으므로 `code` 도 비어 있다 — 본문의 산출값이 왜 계획이
-     * 만들어지지 않았는지를 말한다.
+     * 201 이 아니고, 위반한 캡이 없으므로 `CAP_VIOLATED` 가 아니라 `NOT_PLANNABLE` 이다.
+     * **모든 422 가 안정된 code 를 갖는다** — 비워 두면 클라이언트가 파싱 실패와 구별하지 못한다.
      */
     @PostMapping
     fun prepare(
