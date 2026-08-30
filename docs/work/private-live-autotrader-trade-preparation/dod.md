@@ -418,6 +418,32 @@ migration(V16, T3)이 아직 없어 컬럼명 변경에 따른 마이그레이�
 
 결과: 둘 다 `BUILD SUCCESSFUL`. `tradeprep` 패키지 47건 전부 통과(개명 후 재실행, 실패 0건).
 
+### T2 재리뷰 잔여 3건 (R1~R3) 반영 (2026-08-30)
+
+**R1 (Important) — 오도성 테스트.** `DRAFT 계획도 체결 사건으로 직접 무효화된다` 테스트가 이름과
+달리 `invalidateOnOwnerRefresh`를 호출해, `DRAFT`+`TRACKING_EVENT` 직접 무효화 경로가 파일
+전체에서 한 번도 검증되지 않고 있었다. 본문을 `invalidateOnTrackingEvent` 호출·
+`TRACKING_EVENT` assert로 교정해 이름이 주장하는 경로를 실제로 덮도록 했다.
+
+**R2 — blank 가드 미검증.** `TradePreparation.create`와 `registerTarget` 양쪽의
+`boundBalanceSnapshotId.isBlank()` 가드에 대응하는 테스트가 없었다. 빈 문자열·공백 문자열 두
+입력 모두 `InvalidTradePreparationException`을 던지는지 검증하는 테스트 2건을
+`TradePreparationSnapshotBindingTest`에 신설했다(`create` 1건, `registerTarget` 1건 — 후자는
+실패 후 엔티티가 여전히 `DRAFT`로 남아 부분 변경이 없음도 확인한다).
+
+**R3 — ARMED→INVALIDATED의 version 미검증.** `owner 명시 refresh가 ARMED 계획도 무효화한다`에
+`version` assert가 없었다. 실측한 결과 `armedPlan()`(`create`(0)→`registerTarget`(1)→
+`evaluateCondition`의 `ARMED` 전이(2))의 version은 `2`이고, `invalidateOnOwnerRefresh` 이후는
+`3`이다 — 이 값을 그대로 assert에 반영했다(추정치가 아니라 실제 실행으로 확인).
+
+```
+./gradlew :domain:test --tests '*TradePreparation*' --offline --no-daemon
+./gradlew architectureTest --offline --no-daemon
+```
+
+결과: 둘 다 `BUILD SUCCESSFUL`. `tradeprep` 패키지 49건(`TradePreparationSnapshotBindingTest`
+5→7, `TradePreparationInvalidationTest` 14 유지) 전부 통과, 실패 0건.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

@@ -6,6 +6,7 @@ import io.premiumspread.domain.ticker.Symbol
 import java.math.BigDecimal
 import java.time.Instant
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
@@ -76,6 +77,39 @@ class TradePreparationSnapshotBindingTest {
         assertThat(plan.invalidationReason).isEqualTo(TradePreparationInvalidationReason.RECONCILE_MISMATCH)
         assertThat(plan.invalidatedAt).isEqualTo(observedAt)
         assertThat(plan.version).isEqualTo(2L)
+    }
+
+    @Test
+    fun `생성 시 잔고 스냅샷 id가 비어 있거나 공백뿐이면 거절된다`() {
+        assertThatThrownBy { TradePreparation.create(spec(boundSnapshotId = "")) }
+            .isInstanceOf(InvalidTradePreparationException::class.java)
+        assertThatThrownBy { TradePreparation.create(spec(boundSnapshotId = "   ")) }
+            .isInstanceOf(InvalidTradePreparationException::class.java)
+    }
+
+    @Test
+    fun `registerTarget으로 재바인딩하는 잔고 스냅샷 id가 비어 있거나 공백뿐이면 거절된다`() {
+        val draft = TradePreparation.create(spec(boundSnapshotId = "snap-1"))
+
+        assertThatThrownBy {
+            draft.registerTarget(
+                desiredEntryPremiumRate = BigDecimal("3.00"),
+                boundBalanceSnapshotId = "",
+                boundBalanceBasis = BalanceBasis.FRESH,
+                at = observedAt,
+            )
+        }.isInstanceOf(InvalidTradePreparationException::class.java)
+
+        assertThatThrownBy {
+            draft.registerTarget(
+                desiredEntryPremiumRate = BigDecimal("3.00"),
+                boundBalanceSnapshotId = "   ",
+                boundBalanceBasis = BalanceBasis.FRESH,
+                at = observedAt,
+            )
+        }.isInstanceOf(InvalidTradePreparationException::class.java)
+
+        assertThat(draft.status).isEqualTo(TradePreparationStatus.DRAFT)
     }
 
     private fun watchingPlan(boundSnapshotId: String): TradePreparation {

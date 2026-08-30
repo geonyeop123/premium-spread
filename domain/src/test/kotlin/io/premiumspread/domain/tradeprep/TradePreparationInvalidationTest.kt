@@ -46,12 +46,15 @@ class TradePreparationInvalidationTest {
     @Test
     fun `owner 명시 refresh가 ARMED 계획도 무효화한다`() {
         val plan = armedPlan()
+        // armedPlan()은 create(0) -> registerTarget(1) -> evaluateCondition의 ARMED 전이(2)를 거친다.
+        assertThat(plan.version).isEqualTo(2L)
 
         val invalidated = plan.invalidateOnOwnerRefresh(observedAt.plusSeconds(1))
 
         assertThat(invalidated).isTrue
         assertThat(plan.status).isEqualTo(TradePreparationStatus.INVALIDATED)
         assertThat(plan.invalidationReason).isEqualTo(TradePreparationInvalidationReason.OWNER_REFRESH)
+        assertThat(plan.version).isEqualTo(3L)
     }
 
     @Test
@@ -82,11 +85,11 @@ class TradePreparationInvalidationTest {
         assertThat(plan.status).isEqualTo(TradePreparationStatus.DRAFT)
         assertThat(plan.version).isEqualTo(0L)
 
-        val invalidated = plan.invalidateOnOwnerRefresh(observedAt)
+        val invalidated = plan.invalidateOnTrackingEvent(observedAt)
 
         assertThat(invalidated).isTrue
         assertThat(plan.status).isEqualTo(TradePreparationStatus.INVALIDATED)
-        assertThat(plan.invalidationReason).isEqualTo(TradePreparationInvalidationReason.OWNER_REFRESH)
+        assertThat(plan.invalidationReason).isEqualTo(TradePreparationInvalidationReason.TRACKING_EVENT)
         assertThat(plan.version).isEqualTo(1L)
     }
 
