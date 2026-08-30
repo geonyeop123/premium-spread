@@ -63,6 +63,9 @@ class TradePreparationReconcileWithoutBalanceSourceIntegrationTest : BatchIntegr
 
     @Autowired private lateinit var context: ApplicationContext
 
+    /** fixture 시점의 `version` 이다. reconcile 사이클이 지나도 그대로여야 "상태 불변"이다. */
+    private val versionAtFixture = mutableMapOf<Long, Long>()
+
     @Test
     fun `batch 배선에는 판정용 잔고 원천 구현이 없다`() {
         assertThat(context.getBeansOfType(VerifiedBalanceReadPort::class.java)).isEmpty()
@@ -97,6 +100,8 @@ class TradePreparationReconcileWithoutBalanceSourceIntegrationTest : BatchIntegr
         assertThat(plan.status).isEqualTo(expected)
         assertThat(plan.invalidationReason).isNull()
         assertThat(plan.invalidatedAt).isNull()
+        // 모든 전이가 증가시키는 business 카운터다(D11). "손대지 않았다"를 DB row 로 못 박는다.
+        assertThat(plan.version).isEqualTo(versionAtFixture.getValue(planId))
     }
 
     private fun activePlan(email: String, arm: Boolean = false): Long {
@@ -124,7 +129,9 @@ class TradePreparationReconcileWithoutBalanceSourceIntegrationTest : BatchIntegr
             at = NOW,
         )
         if (arm) plan.evaluateCondition(DESIRED_ENTRY_PREMIUM_RATE, NOW)
-        return planRepository.save(plan).id
+        val saved = planRepository.save(plan)
+        versionAtFixture[saved.id] = saved.version
+        return saved.id
     }
 
     /** 판정용 원천 빈을 **등록하지 않는다.** 그것이 이 context 의 존재 이유다. */

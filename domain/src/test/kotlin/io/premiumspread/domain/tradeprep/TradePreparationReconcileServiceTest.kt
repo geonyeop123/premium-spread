@@ -82,10 +82,19 @@ class TradePreparationReconcileServiceTest {
         assertThat(repository.saved).containsExactly(mismatchedWatching, mismatchedArmed)
     }
 
+    /**
+     * `RECONCILED` 는 카운트를 잃어서 안 되고, `BALANCE_SOURCE_UNAVAILABLE` 은 빈 배선 여부라
+     * Domain 이 관측할 수 없는 사실이다 — Job 만 그것을 안다. 막는 이유는 다르지만 둘 다
+     * Domain 결과로 만들어져선 안 된다.
+     */
     @Test
-    fun `RECONCILED 는 notReconciled 로 만들 수 없다`() {
+    fun `Domain 이 만들 수 없는 outcome 은 notReconciled 가 거절한다`() {
         assertThatThrownBy {
             TradePreparationReconcileSummary.notReconciled(TradePreparationReconcileOutcome.RECONCILED)
+        }.isInstanceOf(IllegalArgumentException::class.java)
+
+        assertThatThrownBy {
+            TradePreparationReconcileSummary.notReconciled(TradePreparationReconcileOutcome.BALANCE_SOURCE_UNAVAILABLE)
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
 

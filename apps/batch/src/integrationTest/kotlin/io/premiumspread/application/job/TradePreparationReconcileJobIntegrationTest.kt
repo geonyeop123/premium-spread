@@ -73,6 +73,9 @@ class TradePreparationReconcileJobIntegrationTest : BatchIntegrationTestBase() {
 
     @Autowired private lateinit var balanceSource: MutableVerifiedBalanceSource
 
+    /** fixture 시점의 `version` 이다. reconcile 사이클이 지나도 그대로여야 "상태 불변"이다. */
+    private val versionAtFixture = mutableMapOf<Long, Long>()
+
     /**
      * batch 통합 테스트의 스키마는 Flyway 가 아니라 Entity(`ddl-auto: create-drop`)에서 나온다.
      * `V17` 이 만드는 인덱스를 Entity `@Table` 도 선언해야 두 스키마가 같아진다 — 어긋나면 batch
@@ -213,6 +216,9 @@ class TradePreparationReconcileJobIntegrationTest : BatchIntegrationTestBase() {
         assertThat(plan.status).isEqualTo(expected)
         assertThat(plan.invalidationReason).isNull()
         assertThat(plan.invalidatedAt).isNull()
+        // status 만 보면 "무효화했다가 되돌렸다"와 "손대지 않았다"가 구분되지 않는다. version 은
+        // 모든 전이가 증가시키는 business 카운터라(D11) 그 차이를 DB row 수준에서 드러낸다.
+        assertThat(plan.version).isEqualTo(versionAtFixture.getValue(planId))
     }
 
     private fun reload(planId: Long): TradePreparation = planRepository.findById(planId)!!
@@ -249,7 +255,9 @@ class TradePreparationReconcileJobIntegrationTest : BatchIntegrationTestBase() {
         // ARMED 는 조건 평가의 산물이다. 상태를 손으로 UPDATE 하지 않고 같은 전이 경로로 만든다 —
         // 그래야 reconcile 이 실제 production 상태를 대조한다.
         if (arm) plan.evaluateCondition(DESIRED_ENTRY_PREMIUM_RATE, NOW)
-        return planRepository.save(plan).id
+        val saved = planRepository.save(plan)
+        versionAtFixture[saved.id] = saved.version
+        return saved.id
     }
 
     /**
