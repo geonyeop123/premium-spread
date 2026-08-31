@@ -774,12 +774,13 @@ migration 통합 test 는 `V16TradePreparationMigrationIntegrationTest` 2건,
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: private-live-autotrader-trade-preparation @ e54510f
+DoD VERDICT: private-live-autotrader-trade-preparation @ 1a4062f
   수용기준 표:     20개  (T1 18 · T2 0 · T3 0 · T4 2)
-  T1/T2 자동:      18개 중 18개 PASS   (전부 task 마다 --rerun 강제 실행)
+  T1/T2 자동:      18개 중 18개 PASS
   T3 기록 제출:    0개
   T4 사람 확인:    2개 중 0건 완료, 2건 대기
   변경 요청:       4건 전부 승인 (CR-1 · CR-2 · CR-3 · CR-4)
+  증거:            CI run 33366429271 @ 1a4062f — 7개 job 전부 success
   => AWAITING_HUMAN — 기계 검증 18/18 PASS, 실행 실패·미실행 0건.
      AC10·AC15 에 사람 서명이 기록되면 DONE.
 ```
@@ -833,6 +834,68 @@ DoD VERDICT: private-live-autotrader-trade-preparation @ e54510f
 동결 명령 자체에는 캐시 방지 장치가 없다. 이번 판정은 18건 전부에 `--rerun` 을 붙여 실행했고,
 아래 전체 스위트 수치도 강제 재실행 결과다.
 
+### 최종 판정 (`1a4062f`) — CI run 을 증거로 인용한다
+
+`e54510f` 판정 뒤에 코드 커밋 셋이 붙어 그 판정이 만료됐다 — `56ea6f4`(ktlint 36건 포맷 정정) ·
+`db509f5`(`origin/dev` 머지) · `1a4062f`(detekt `TooManyFunctions` 억제).
+
+**증거: CI run [33366429271](https://github.com/geonyeop123/premium-spread/actions/runs/33366429271),
+head_sha `1a4062f`, 7개 job 전부 `success`.**
+
+| job | 결과 |
+|---|---|
+| 1. Compile + architecture | success |
+| 2. Unit + coverage | success |
+| 3. API integration | success |
+| 4. Batch integration | success |
+| 5. ktlint + detekt | success |
+| 6. Dependency + security scan | success |
+| 7. Docker image build | success |
+
+#### 왜 CI run 을 인용하는가 — 로컬이 이 판정을 낼 수 없다
+
+**로컬 게이트는 lint 를 돌릴 수 없다.** `ci/bootstrap-quality-tools.sh` 가 ktlint·detekt jar 의 네트워크
+부트스트랩을 CI 전용으로 막는다(의도된 게이트이며 우회하지 않았다). 따라서 job `5. ktlint + detekt` 는
+CI 만이 관측할 수 있다.
+
+그리고 **그것이 실제 문제였다.** 동결된 검증 명령 18건에 lint 가 없어서, 로컬 게이트가 18/18 PASS 를
+내는 동안 **CI 는 PR 을 연 시점부터 세 번의 run 내내 실패 상태였다.** 위반 36건은 전부 이 브랜치가
+추가한 코드였다.
+
+`.ai/rules/testing.md` 는 coverage 에 대해 이미 "해당 commit SHA 의 CI artifact 가 최종 증거" 라고
+정하고 있다. lint 도 같은 성질이라 이 판정은 그 선례를 따른다. **lint 를 `AC` 로 편입할지는 owner
+판단이 필요하다** — 편입하면 검증 수단이 "CI artifact" 인 첫 `AC` 가 된다.
+
+#### 이 라운드에 드러난 것 — PR 이 CI 를 띄우지 못하고 있었다
+
+lint 수정을 push 했는데 **run 이 생기지 않았다.** 원인은 CI 실패가 아니라 CI 미실행이었다 —
+`origin/dev` 가 하네스 재편으로 전진하면서 PR 이 `mergeable=false` / `state=dirty` 가 되었고,
+GitHub 은 충돌 상태에서 merge commit 을 만들 수 없어 `pull_request` run 을 **생성하지 않는다.**
+
+충돌은 `docs/work/README.md` 한 파일로, 양쪽이 같은 목록 끝에 한 줄씩 추가한 것뿐이었다(둘 다 유지해
+해소). `origin/dev` 는 소스·빌드를 전혀 건드리지 않았다(`.claude/**` · `docs/work` · `CLAUDE.md`) —
+`git diff --name-only` 로 확인했으므로 머지가 테스트 결과를 바꾸지 않는다.
+
+**함의:** "CI 가 초록이 아니다" 와 "CI 가 돌지 않았다" 는 다른 사실이고, PR 페이지에서는 둘이 비슷하게
+보인다. 판정 증거로 CI 를 인용할 때는 **그 SHA 를 head_sha 로 하는 run 이 실제로 존재하는지** 확인한다.
+
+#### detekt `TooManyFunctions` 억제 근거
+
+`TradePreparationFacade` 가 함수 21개 / 임계값 20 이다. 옮길 자리를 먼저 찾았고 없다고 판정했다.
+
+- 매퍼 3개를 `TradePreparationResult` 의 `companion object { fun from() }` 으로 옮기면 18개가 되고
+  `.ai/rules/naming.md` 의 문서 규칙과도 맞다. 그러나 **저장소의 어떤 `*Result` 도 그 패턴을 쓰지
+  않는다** — 리뷰가 끝난 브랜치에 없던 패턴을 새로 들이는 일이 된다
+- `parsePair` 는 Criteria(원시 문자열) → 도메인 변환이라 Facade 자리가 맞다. Controller 로 옮기면
+  Controller 가 도메인 타입을 만들게 되어 `.ai/rules/http.md` 계층 규칙에 어긋난다
+
+즉 21개인 이유가 **책임 과다가 아니라 분해**다. guard·사이징·매핑을 인라인해 개수를 줄이면 `D10`·`D13`·
+`D18` 의 순서 계약이 한 함수에 뭉쳐 읽을 수 없게 된다. `modules/redis` 의 `RedisKeyGenerator` 선례대로
+근거를 코드 옆에 남기고 억제했다. `baseline.xml` 에는 넣지 않았다.
+
+**남는 신호:** 이 Facade 는 저장소에서 가장 큰 Facade 다(다음은 `TrackingFacade` 16개). 매퍼를 `Result`
+로 옮기는 정리는 문서 규칙과 실제 관례가 갈린 것을 먼저 정하는 게 순서라 이번 범위에 넣지 않았다.
+
 ### 재게이트 (`e54510f`) — 승인된 CR 반영 뒤
 
 `44c4b17` 판정 뒤에 코드 커밋 둘이 붙어 그 판정이 문서 자신의 규칙으로 만료됐다 —
@@ -881,9 +944,11 @@ DoD VERDICT: private-live-autotrader-trade-preparation @ e54510f
 `verifyMigrations` exit 0. **`skipped 0` 은 그 자체로 증거다** — 저장소에서 `@Disabled` 문자열이
 나오는 곳은 그것을 금지하는 `TestIsolationArchitectureTest` 하나뿐이다.
 
-**SHA 유효성.** 게이트는 `e54510f` 에서 clean working tree 로 실행했다. 이 판정을 기록하는
+**SHA 유효성.** 이번 판정의 증거는 `1a4062f` 를 head_sha 로 하는 CI run 33366429271 이다
+(로컬 재실행이 아니다 — 사유는 아래 "왜 CI run 을 인용하는가"). 그 SHA 는 이 판정을 기록하는
+커밋의 직전 tip 이며, 이 커밋의 변경은 이 파일뿐이다. 이 판정을 기록하는
 커밋이 브랜치 tip 을 한 칸 옮기지만 그 커밋의 변경은 이 파일뿐이며 production·test 코드는
-한 줄도 바뀌지 않는다 — `git diff --stat e54510f..HEAD` 로 확인할 수 있다.
+한 줄도 바뀌지 않는다 — `git diff --stat 1a4062f..HEAD` 로 확인할 수 있다.
 코드가 바뀌는 커밋이 그 뒤에 붙으면 이 판정은 만료이고 게이트를 다시 돌려야 한다.
 
 이전 판정(`e567b57`)이 바로 그 규칙으로 만료됐다 — 그 뒤에 production 커밋 8개가 붙었고,
