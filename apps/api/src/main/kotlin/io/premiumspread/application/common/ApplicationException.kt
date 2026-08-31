@@ -19,6 +19,7 @@ enum class ApplicationError {
     NOTIFICATION_SUBSCRIPTION_NOT_FOUND,
 
     // 거래 준비 (design.md D3·D10·D13·D16·D23)
+
     /** 남의 계획도 여기로 온다 — 403 은 계획 ID 의 존재를 노출한다 (D10). */
     TRADE_PREPARATION_NOT_FOUND,
 

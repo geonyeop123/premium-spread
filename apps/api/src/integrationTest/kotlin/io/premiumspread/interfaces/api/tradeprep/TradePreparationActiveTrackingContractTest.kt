@@ -102,17 +102,29 @@ import java.util.concurrent.TimeoutException
 class TradePreparationActiveTrackingContractTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
+
     @Autowired private lateinit var objectMapper: ObjectMapper
+
     @Autowired private lateinit var databaseCleanUp: DatabaseCleanUp
+
     @Autowired private lateinit var memberRepository: MemberRepository
+
     @Autowired private lateinit var passwordEncoder: org.springframework.security.crypto.password.PasswordEncoder
+
     @Autowired private lateinit var tickerRepository: TickerRepository
+
     @Autowired private lateinit var premiumRepository: PremiumRepository
+
     @Autowired private lateinit var trackingRepository: TrackingRepository
+
     @Autowired private lateinit var tradePreparationRepository: TradePreparationRepository
+
     @Autowired private lateinit var transactionManager: PlatformTransactionManager
+
     @Autowired private lateinit var jdbcTemplate: JdbcTemplate
+
     @Autowired private lateinit var redisTemplate: StringRedisTemplate
+
     @Autowired private lateinit var gate: GatedVerifiedBalanceReadPort
 
     private var memberId: Long = 0L

@@ -7,9 +7,8 @@ import io.premiumspread.domain.tradeprep.TradePreparationStatus
 import org.springframework.stereotype.Repository
 
 @Repository
-class JpaTradePreparationRepositoryAdapter(
-    private val tradePreparationRepository: SpringDataTradePreparationRepository,
-) : TradePreparationRepository {
+class JpaTradePreparationRepositoryAdapter(private val tradePreparationRepository: SpringDataTradePreparationRepository) :
+    TradePreparationRepository {
 
     /**
      * `saveAndFlush` 다. 한 트랜잭션에서 기존 `WATCHING` 계획을 무효화한 뒤 새 계획을 승격하는

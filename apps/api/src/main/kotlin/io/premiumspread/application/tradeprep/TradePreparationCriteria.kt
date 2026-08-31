@@ -28,11 +28,7 @@ class TradePreparationCriteria private constructor() {
     )
 
     /** 진입 목표 프리미엄 등록 → `WATCHING` (design.md D6·D13·D18·D20·D23). */
-    data class RegisterTarget(
-        val planId: Long,
-        val memberId: Long,
-        val desiredEntryPremiumRate: BigDecimal,
-    )
+    data class RegisterTarget(val planId: Long, val memberId: Long, val desiredEntryPremiumRate: BigDecimal)
 
     /** owner 의 명시 무효화 (design.md D4·D11). */
     data class Invalidate(val planId: Long, val memberId: Long)

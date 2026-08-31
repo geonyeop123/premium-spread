@@ -224,6 +224,7 @@ class TradePreparation private constructor(
         // (`VerifiedBalance.from` 이 같은 경계를 같은 방식으로 지킨다).
         when (boundBalanceBasis) {
             BalanceBasis.FRESH, BalanceBasis.STALE -> Unit
+
             BalanceBasis.UNVERIFIED, BalanceBasis.UNAVAILABLE ->
                 return TradePreparationConditionOutcome.OBSERVED_ONLY
         }

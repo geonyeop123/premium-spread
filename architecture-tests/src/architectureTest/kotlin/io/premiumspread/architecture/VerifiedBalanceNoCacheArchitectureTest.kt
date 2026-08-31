@@ -267,9 +267,13 @@ class VerifiedBalanceNoCacheArchitectureTest {
         while (index < code.length) {
             when (code[index]) {
                 '(', '<', '[' -> depth++
+
                 ')', '>', ']' -> if (depth > 0) depth--
+
                 ':' -> if (depth == 0 && colon < 0) colon = index
+
                 '{', '}', ';' -> if (depth == 0) return finishSupertypeList(code, colon, index)
+
                 '\n' -> if (depth == 0 && !continuesHeader(code, colon, index)) {
                     return finishSupertypeList(code, colon, index)
                 }
@@ -304,7 +308,9 @@ class VerifiedBalanceNoCacheArchitectureTest {
         text.forEachIndexed { index, character ->
             when (character) {
                 '(', '<', '[' -> depth++
+
                 ')', '>', ']' -> if (depth > 0) depth--
+
                 ',' -> if (depth == 0) {
                     entries += start to text.substring(start, index)
                     start = index + 1
@@ -341,11 +347,16 @@ class VerifiedBalanceNoCacheArchitectureTest {
         while (index < text.length) {
             val end = when {
                 text.startsWith("/*", index) -> blockCommentEnd(text, index)
+
                 text.startsWith("//", index) -> text.indexOf('\n', index).let { if (it < 0) text.length else it }
+
                 text.startsWith("\"\"\"", index) ->
                     text.indexOf("\"\"\"", index + 3).let { if (it < 0) text.length else it + 3 }
+
                 text[index] == '"' -> quotedEnd(text, index, '"')
+
                 text[index] == '\'' -> quotedEnd(text, index, '\'')
+
                 else -> {
                     index++
                     continue
@@ -366,10 +377,12 @@ class VerifiedBalanceNoCacheArchitectureTest {
                     depth++
                     index += 2
                 }
+
                 text.startsWith("*/", index) -> {
                     depth--
                     index += 2
                 }
+
                 else -> index++
             }
         }

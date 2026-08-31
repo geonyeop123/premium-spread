@@ -33,6 +33,7 @@ class VerifiedBalance private constructor(
                         balanceBasis = snapshot.balanceBasis,
                         observedAt = snapshot.observedAt,
                     )
+
                 BalanceBasis.UNAVAILABLE, BalanceBasis.UNVERIFIED -> null
             }
     }

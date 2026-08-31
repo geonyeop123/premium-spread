@@ -174,8 +174,7 @@ class TradePreparationReconcileRollbackIntegrationTest : BatchIntegrationTestBas
      *
      * 무장은 테스트가 명시적으로 켠다 — 기본값은 통과라 대조군 테스트가 같은 배선에서 돈다.
      */
-    class SaveInterceptingRepository(private val delegate: JpaTradePreparationRepositoryAdapter) :
-        TradePreparationRepository by delegate {
+    class SaveInterceptingRepository(private val delegate: JpaTradePreparationRepositoryAdapter) : TradePreparationRepository by delegate {
 
         @Volatile
         private var failAtAttempt: Int = 0
