@@ -774,12 +774,12 @@ migration 통합 test 는 `V16TradePreparationMigrationIntegrationTest` 2건,
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: private-live-autotrader-trade-preparation @ 44c4b17
+DoD VERDICT: private-live-autotrader-trade-preparation @ e54510f
   수용기준 표:     20개  (T1 18 · T2 0 · T3 0 · T4 2)
-  T1/T2 자동:      18개 중 18개 PASS   (전부 --rerun 강제 실행)
+  T1/T2 자동:      18개 중 18개 PASS   (전부 task 마다 --rerun 강제 실행)
   T3 기록 제출:    0개
   T4 사람 확인:    2개 중 0건 완료, 2건 대기
-  변경 요청:       1건 승인 (CR-1) · 3건 대기 (CR-2·CR-3·CR-4)
+  변경 요청:       4건 전부 승인 (CR-1 · CR-2 · CR-3 · CR-4)
   => AWAITING_HUMAN — 기계 검증 18/18 PASS, 실행 실패·미실행 0건.
      AC10·AC15 에 사람 서명이 기록되면 DONE.
 ```
@@ -833,7 +833,37 @@ DoD VERDICT: private-live-autotrader-trade-preparation @ 44c4b17
 동결 명령 자체에는 캐시 방지 장치가 없다. 이번 판정은 18건 전부에 `--rerun` 을 붙여 실행했고,
 아래 전체 스위트 수치도 강제 재실행 결과다.
 
-### 이번 게이트의 전체 스위트 (`44c4b17`, 전부 `--rerun`)
+### 재게이트 (`e54510f`) — 승인된 CR 반영 뒤
+
+`44c4b17` 판정 뒤에 코드 커밋 둘이 붙어 그 판정이 문서 자신의 규칙으로 만료됐다 —
+`702fe4a`(CR-4 의 no-cache architecture test)와 `a459a51`(그 test 의 up-to-date input 정렬).
+아래는 `e54510f` 에서 다시 돌린 결과다.
+
+**승인된 변경 요청 셋을 반영했다** (owner 승인 2026-08-31).
+
+- **CR-2** — `AC3` 검증 명령을 `TradePreparationContractTest` 로 교체. 기존 명령
+  (`:domain:test --tests '*TradePreparationCap*'`)은 `TradePrepPolicy.judge` 순수 단위 테스트라
+  기준 문장의 "**응답에** 명시한다"를 검사할 수 없었다. `CR-1` 과 동형이다.
+- **CR-3** — `AC3` 문장에서 "청산 거리" 제거. 코드는 청산 거리를 `1/L` 로 `LEVERAGE_CAP` 에
+  포섭하며 독립 위반 대상으로 두지 않는다. **검사 범위가 준 것이 아니라 문장이 코드 모델과
+  같아진 것이다** — 레버 캡을 지키면 청산 거리도 지켜진다.
+- **CR-4** — `AC5` 검증 수단에 `VerifiedBalanceNoCacheArchitectureTest` 추가.
+  "판정용 잔고를 캐시에서 읽을 수 없다"(`D2`)를 **지금까지 어느 테스트도 재지 않았다** — 규칙이
+  `VerifiedBalanceReadPort` KDoc 산문에만 있었다. production 구현이 0개라(`D22`) 규칙 자체는
+  공허하게 통과할 수 있어, **스캐너가 살아 있는지 저장소 실제 코드로 되짚는 self-check 넷**을
+  함께 뒀다. 스캔 로직을 지우면 규칙 test 는 통과하지만 self-check 가 전부 실패한다.
+  검증: production 에 캐시를 읽는 `VerifiedBalanceReadPort` 구현을 넣으니 파일·구현 줄·캐시 심볼
+  7개를 지목하며 실패했고, 제거 후 exit 0 으로 돌아왔다.
+
+**게이트 실행 방식 정정.** `--rerun` 은 **바로 앞 task 에만 붙는** task-scoped option 이다.
+`AC5` 의 새 명령처럼 task 가 둘인 경우 끝에 하나만 붙이면 앞쪽 task 가 UP-TO-DATE 로 통과한다
+(실측 확인). 이번 게이트는 **task 마다** `--rerun` 을 넣어 돌렸다.
+
+**중복 명령 처리.** `CR-2` 이후 `AC1` 과 `AC3` 이 같은 명령을 지정한다. 명령은 한 번만 실행하되
+**AC 별로** 결과를 기록한다 — 중복 제거로 행이 사라지면 판정 수가 어긋난다. 게이트 결과에
+`AC` 행 18개가 그대로 남아 있다.
+
+### 이번 게이트의 전체 스위트 (`e54510f`, task 마다 `--rerun`)
 
 | 스위트 | tests | failures | errors | skipped |
 |---|---|---|---|---|
@@ -846,14 +876,14 @@ DoD VERDICT: private-live-autotrader-trade-preparation @ 44c4b17
 | `:infrastructure:common:integrationTest` | 18 | 0 | 0 | 0 |
 | `:infrastructure:api:test` | 31 | 0 | 0 | 0 |
 | `:infrastructure:batch:test` | 71 | 0 | 0 | 0 |
-| `architectureTest` | 25 | 0 | 0 | 0 |
+| `architectureTest` | 30 | 0 | 0 | 0 |
 
 `verifyMigrations` exit 0. **`skipped 0` 은 그 자체로 증거다** — 저장소에서 `@Disabled` 문자열이
 나오는 곳은 그것을 금지하는 `TestIsolationArchitectureTest` 하나뿐이다.
 
-**SHA 유효성.** 게이트는 `44c4b17` 에서 clean working tree 로 실행했다. 이 판정을 기록하는
+**SHA 유효성.** 게이트는 `e54510f` 에서 clean working tree 로 실행했다. 이 판정을 기록하는
 커밋이 브랜치 tip 을 한 칸 옮기지만 그 커밋의 변경은 이 파일뿐이며 production·test 코드는
-한 줄도 바뀌지 않는다 — `git diff --stat 44c4b17..HEAD` 로 확인할 수 있다.
+한 줄도 바뀌지 않는다 — `git diff --stat e54510f..HEAD` 로 확인할 수 있다.
 코드가 바뀌는 커밋이 그 뒤에 붙으면 이 판정은 만료이고 게이트를 다시 돌려야 한다.
 
 이전 판정(`e567b57`)이 바로 그 규칙으로 만료됐다 — 그 뒤에 production 커밋 8개가 붙었고,
