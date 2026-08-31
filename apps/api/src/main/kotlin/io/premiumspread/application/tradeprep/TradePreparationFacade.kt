@@ -74,6 +74,10 @@ import java.time.Clock
  * 규칙의 정의는 Domain 의 [BalanceSnapshot.declared] 한 곳이고 어댑터와 이 Facade 가 같은 것을
  * 쓴다.
  */
+// 유스케이스 5개(prepare·registerTarget·invalidate·refresh·findById)와 그것을 분해한 helper 로
+// 21개다. 임계값을 넘는 이유가 책임 과다가 아니라 분해이므로 합치지 않는다 — guard·사이징·
+// 매핑을 인라인하면 D10·D13·D18 의 순서 계약이 한 함수에 뭉쳐 읽을 수 없게 된다.
+@Suppress("TooManyFunctions")
 @Service
 class TradePreparationFacade(
     private val tradePreparationService: TradePreparationService,
