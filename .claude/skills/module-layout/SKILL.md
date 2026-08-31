@@ -77,8 +77,8 @@ apps:batch/interfaces ┘                      ↑
    — `*Adapter`, `SpringData{Domain}Repository`. 캐시를 쓰면 cache→DB fallback을 **adapter 안에** 숨긴다
 3. `apps/api/.../application/{domain}/` — `{Domain}Facade`, `{Domain}Criteria`, `{Domain}Result`
 4. `apps/api/.../interfaces/api/{domain}/` — `{Domain}Controller`, `{Domain}Request`, `{Domain}Response`
-5. 스키마가 바뀌면 `infrastructure/common/src/main/resources/db/migration/V{다음}__{설명}.sql`
-   — 다음 번호는 `ls infrastructure/common/src/main/resources/db/migration/ | sort -V | tail -1`로 확인해
+5. 스키마가 바뀌면 `infrastructure/common/src/main/resources/db/migration/` 아래에
+   `V{다음}__{설명}.sql` — 다음 번호는 `ls infrastructure/common/src/main/resources/db/migration/ | sort -V | tail -1`로 확인해
    +1 한다. append-only이며 이미 적용된 migration을 수정하지 않는다
 6. `http/api/{domain}.http` 갱신 + contract/integration 테스트
 7. 테스트: Domain 단위 → adapter integration → Facade/Controller → contract/E2E → `architectureTest`
