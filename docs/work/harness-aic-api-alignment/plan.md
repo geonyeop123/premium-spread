@@ -35,14 +35,14 @@
 - Consumes: 없음
 - Produces: `orchestrator` 스킬이 ④⑦⑩에서 `definition-of-done`을, ⑪-b에서 `explain-pr`을 저장소 경로로 호출할 수 있게 된다.
 
-- [ ] **Step 1: 원본을 그대로 복사**
+- [x] **Step 1: 원본을 그대로 복사**
 
 ```bash
 cp -r /home/yeop/.claude/skills/definition-of-done .claude/skills/definition-of-done
 cp -r /home/yeop/.claude/skills/explain-pr .claude/skills/explain-pr
 ```
 
-- [ ] **Step 2: byte-identical 확인 (AC4·AC5)**
+- [x] **Step 2: byte-identical 확인 (AC4·AC5)**
 
 ```bash
 diff -r /home/yeop/.claude/skills/definition-of-done .claude/skills/definition-of-done
@@ -51,7 +51,7 @@ diff -r /home/yeop/.claude/skills/explain-pr .claude/skills/explain-pr
 
 Expected: 두 명령 모두 출력 없음 + exit 0
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add .claude/skills/definition-of-done .claude/skills/explain-pr
@@ -72,7 +72,7 @@ git commit -m "chore: definition-of-done·explain-pr 스킬을 저장소에 벤�
 - Consumes: 없음
 - Produces: `architect`·`implementer`·`spec-reviewer`가 ④⑤⑧⑥⑨에서 참조할 설계 규약. `orchestrator` 단계표가 이 네 이름을 가리킨다.
 
-- [ ] **Step 1: `module-layout` 작성**
+- [x] **Step 1: `module-layout` 작성**
 
 담을 내용:
 - 모듈 트리 — `apps/{api,batch,web}`, `domain`, `infrastructure/{common,api,batch}`, `modules/{jpa,redis}`, `supports/{logging,monitoring,email}`, `architecture-tests`
@@ -82,7 +82,7 @@ git commit -m "chore: definition-of-done·explain-pr 스킬을 저장소에 벤�
 - 새 도메인 추가 파일 목록 (domain → infrastructure adapter → application facade → interfaces controller → migration → 테스트)
 - 근거 링크: `.ai/rules/architecture.md`
 
-- [ ] **Step 2: `dto-pattern` 작성**
+- [x] **Step 2: `dto-pattern` 작성**
 
 담을 내용:
 - 계층별 컨테이너 표 (`*Request`/`*Response` · `*Criteria`/`*Result` · `*Command` · `*Snapshot`)
@@ -92,7 +92,7 @@ git commit -m "chore: definition-of-done·explain-pr 스킬을 저장소에 벤�
 - 시간은 ISO-8601 Instant, 범위는 `[from,to)`
 - 근거 링크: `.ai/rules/naming.md`, `.ai/rules/http.md`
 
-- [ ] **Step 3: `jpa-entity-pattern` 작성**
+- [x] **Step 3: `jpa-entity-pattern` 작성**
 
 담을 내용:
 - JPA Entity는 `data class`가 아니다 — 영속 identity equality + protected mutation
@@ -102,7 +102,7 @@ git commit -m "chore: definition-of-done·explain-pr 스킬을 저장소에 벤�
 - 시간·범위 계약, DB-first(캐시는 정본 아님)
 - 근거 링크: `.ai/rules/naming.md`, `.ai/rules/architecture.md`
 
-- [ ] **Step 4: `swagger-interface-pattern` 작성 (design §7 단서 필수)**
+- [x] **Step 4: `swagger-interface-pattern` 작성 (design §7 단서 필수)**
 
 담을 내용:
 - **현재 상태 명시** — 이 저장소에는 `@Operation`·`*ControllerDocs` 코드가 없고 springdoc 의존만 `apps/api/build.gradle.kts`에 있다
@@ -110,7 +110,7 @@ git commit -m "chore: definition-of-done·explain-pr 스킬을 저장소에 벤�
 - ControllerDocs를 도입할 경우의 규약 — 문서 어노테이션은 인터페이스, 라우팅 어노테이션은 Controller
 - **이 스킬은 ControllerDocs 도입을 강제하지 않는다**는 문장을 명시
 
-- [ ] **Step 5: frontmatter 검증**
+- [x] **Step 5: frontmatter 검증**
 
 ```bash
 head -4 .claude/skills/module-layout/SKILL.md .claude/skills/dto-pattern/SKILL.md .claude/skills/jpa-entity-pattern/SKILL.md .claude/skills/swagger-interface-pattern/SKILL.md
@@ -118,7 +118,7 @@ head -4 .claude/skills/module-layout/SKILL.md .claude/skills/dto-pattern/SKILL.m
 
 Expected: 각 파일이 `---` / `name: <디렉터리명>` / `description: "..."` / `---` 로 시작
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add .claude/skills/module-layout .claude/skills/dto-pattern .claude/skills/jpa-entity-pattern .claude/skills/swagger-interface-pattern
@@ -139,7 +139,7 @@ git commit -m "chore: 설계 패턴 스킬 4종 추가"
 - Consumes: Task 2가 만든 네 스킬 이름 (상호 참조 시 정확히 그 이름을 쓴다)
 - Produces: `implementer`·`qa-agent`·`tech-docs`가 ⑧⑩⑪에서 참조할 실행 규약
 
-- [ ] **Step 1: `test-strategy` 작성**
+- [x] **Step 1: `test-strategy` 작성**
 
 담을 내용:
 - 4계층 — Domain 순수 단위 / adapter·slice / `integrationTest`(Testcontainers) / contract·E2E
@@ -149,7 +149,7 @@ git commit -m "chore: 설계 패턴 스킬 4종 추가"
 - `@Disabled` 금지, flaky를 retry로 숨기지 않기
 - 근거 링크: `.ai/rules/testing.md`
 
-- [ ] **Step 2: `qa-verification` 작성**
+- [x] **Step 2: `qa-verification` 작성**
 
 담을 내용:
 - 검증 순서와 명령
@@ -165,7 +165,7 @@ git commit -m "chore: 설계 패턴 스킬 4종 추가"
 - Docker 부재 등으로 실행 못한 항목을 green으로 기록하지 않는다 (`.ai/rules/testing.md`)
 - 보고 형식 — 실행한 명령·실측 수치·미실행 항목과 사유
 
-- [ ] **Step 3: `tech-docs-sync` 작성**
+- [x] **Step 3: `tech-docs-sync` 작성**
 
 담을 내용:
 - 변경 → 문서 매핑표
@@ -180,11 +180,11 @@ git commit -m "chore: 설계 패턴 스킬 4종 추가"
 - 최소 변경 원칙, 사실 기반(코드에서 읽은 것만)
 - 갱신 후 `bash docs/check-documentation.sh` 실행
 
-- [ ] **Step 4: `task-packet` 작성**
+- [x] **Step 4: `task-packet` 작성**
 
 담을 내용: From/To/Type · Goal · Constraints · Context · Review Stage · Notes 포맷과 사용 예시 2개(구현 요청, 리뷰 피드백)
 
-- [ ] **Step 5: frontmatter 검증**
+- [x] **Step 5: frontmatter 검증**
 
 ```bash
 head -4 .claude/skills/test-strategy/SKILL.md .claude/skills/qa-verification/SKILL.md .claude/skills/tech-docs-sync/SKILL.md .claude/skills/task-packet/SKILL.md
@@ -192,7 +192,7 @@ head -4 .claude/skills/test-strategy/SKILL.md .claude/skills/qa-verification/SKI
 
 Expected: 각 파일이 `---` / `name: <디렉터리명>` / `description: "..."` / `---`
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add .claude/skills/test-strategy .claude/skills/qa-verification .claude/skills/tech-docs-sync .claude/skills/task-packet
@@ -217,7 +217,7 @@ git commit -m "chore: 실행·검증 패턴 스킬 4종 추가"
 - Consumes: Task 2·3이 만든 스킬 8종 이름
 - Produces: `orchestrator` 단계표가 `subagent_type`으로 부를 이름 6개
 
-- [ ] **Step 1: 공통 골격 확정**
+- [x] **Step 1: 공통 골격 확정**
 
 모든 에이전트 파일은 아래 순서를 지킨다.
 
@@ -239,14 +239,14 @@ model: <opus|sonnet>
 ## 팀 통신 프로토콜   ← 마지막 행은 반드시 "호출한 오케스트레이터에게 완료 보고"
 ```
 
-- [ ] **Step 2: `architect` (tools: Read, Grep, Glob, Write / model: opus)**
+- [x] **Step 2: `architect` (tools: Read, Grep, Glob, Write / model: opus)**
 
 - 역할: 요구사항 → `docs/work/{slug}/design.md` + `dod.md` 작성, 모듈 배치·포트 정의·마이그레이션 필요 여부 판단. **코드 미수정.**
 - 참조 스킬: `module-layout`, `dto-pattern`, `jpa-entity-pattern`, `swagger-interface-pattern`, `definition-of-done`
 - 설계 필수 항목 체크리스트: MarketPair identity, `[from,to)` 범위, DB-first/after-commit 순서, Flyway 필요 여부(`infrastructure/common/src/main/resources/db/migration/`, **다음 번호는 `sort -V | tail -1` 결과 +1 — 문서에 상수로 적지 않는다**), 배치면 `JobExecutor` lock key·lease·timeout, 알림이면 claim/fencing
 - 재호출 시: 기존 `docs/work/{slug}/`가 있으면 새로 쓰지 않고 지적된 부분만 보완
 
-- [ ] **Step 3: `implementer` (tools: Read, Write, Edit, Grep, Glob, Bash / model: sonnet)**
+- [x] **Step 3: `implementer` (tools: Read, Write, Edit, Grep, Glob, Bash / model: sonnet)**
 
 - 역할: plan.md 태스크를 TDD로 구현
 - 구현 순서: Domain 불변식 → 포트·Service → infrastructure adapter → Criteria/Result/Facade → Controller 또는 Scheduler→Job → integration → architectureTest
@@ -254,28 +254,28 @@ model: <opus|sonnet>
 - Opus escalate 조건: durable notification claim/fencing, Redis 분산 락 owner token·renew, WebSocket generation fencing·watchdog, premium 계산 정확성, plan 모호
 - 금지: 앱 내부 `infrastructure`/`cache`/`repository`/`client` 패키지 생성, immutable 마이그레이션(V12 등) 수정
 
-- [ ] **Step 4: `spec-reviewer` (tools: Read, Grep, Glob / model: opus)**
+- [x] **Step 4: `spec-reviewer` (tools: Read, Grep, Glob / model: opus)**
 
 - 역할: 계약 준수만 본다. 위반은 `파일:라인`으로 보고. **코드 미수정.**
 - 체크 축 표 (근거 컬럼에 `.ai/rules/*` 문서와 절 번호를 적는다): Controller→Facade 단일 주입 / Facade가 infrastructure 타입 참조 금지 / DTO 6단 네이밍 / MarketPair 보존 / `[from,to)` / Flyway append-only·V12 불변 / Scheduler→Job 단일 호출 / Job이 기술 구현 미참조 / bounded metric tag만 사용 / 공개 endpoint는 method+path 조합
 
-- [ ] **Step 5: `code-reviewer` (tools: Read, Grep, Glob, Bash / model: opus)**
+- [x] **Step 5: `code-reviewer` (tools: Read, Grep, Glob, Bash / model: opus)**
 
 - Phase 1: `./gradlew test architectureTest --offline --no-daemon` 실행. **`lint` 태스크는 이 저장소에 없다.** architectureTest가 커버하는 항목(모듈 의존, import 경계, 바이트코드 경계)은 수동 리뷰에서 제외
 - Phase 2 판단 영역: null/경계, 트랜잭션 경계와 after-commit 순서, N+1, 캐시-DB 정합(부분 캐시 결과 반환 금지), 시간대(UTC 버킷 vs `aggregation.zone`), 동시성(claim fencing·락 lease), 시크릿/PII 로깅, 테스트 누락
 - 출력: Critical / Major / Minor + `[POSSIBLE]` 태그 규칙
 
-- [ ] **Step 6: `qa-agent` (tools: Read, Grep, Glob, Bash / model: sonnet)**
+- [x] **Step 6: `qa-agent` (tools: Read, Grep, Glob, Bash / model: sonnet)**
 
 - 역할: `qa-verification` 스킬 절차를 실제로 실행하고 실측 수치를 보고. 점진 검증(모듈 완료 즉시) 원칙
 - Docker 미가용 시 `[ENV_ISSUE]`로 보고하고 green으로 기록하지 않는다
 
-- [ ] **Step 7: `tech-docs` (tools: Read, Edit, Write, Grep, Glob / model: sonnet)**
+- [x] **Step 7: `tech-docs` (tools: Read, Edit, Write, Grep, Glob / model: sonnet)**
 
 - 역할: `tech-docs-sync` 매핑표대로 문서 동기화 + `bash docs/check-documentation.sh` 통과 확인
 - 없는 경로(`.ai/diagrams/` 등)를 갱신했다고 보고하지 않는다
 
-- [ ] **Step 8: frontmatter 4키 검증 (AC1)**
+- [x] **Step 8: frontmatter 4키 검증 (AC1)**
 
 ```bash
 head -6 .claude/agents/architect.md .claude/agents/implementer.md .claude/agents/spec-reviewer.md .claude/agents/code-reviewer.md .claude/agents/qa-agent.md .claude/agents/tech-docs.md
@@ -283,7 +283,7 @@ head -6 .claude/agents/architect.md .claude/agents/implementer.md .claude/agents
 
 Expected: 각 파일에 `name`·`description`·`tools`·`model` 네 줄이 모두 보이고 `name`이 파일명과 일치
 
-- [ ] **Step 9: 커밋**
+- [x] **Step 9: 커밋**
 
 ```bash
 git add .claude/agents
@@ -301,11 +301,11 @@ git commit -m "chore: 하네스 에이전트를 역할 6축으로 재작성"
 - Consumes: Task 1~4의 스킬 10종·에이전트 6종 이름 전부
 - Produces: 새 세션의 단일 진입점. `CLAUDE.md`가 이 이름을 가리킨다.
 
-- [ ] **Step 1: frontmatter — 트리거 경계를 좁게**
+- [x] **Step 1: frontmatter — 트리거 경계를 좁게**
 
 `description`에 담을 것: 코드 변경을 만드는 작업(기능 추가·도메인 추가·배치 Job·버그픽스·리팩터링)에 사용, **그리고 재실행·보완·업데이트 같은 후속 요청에도 사용**. 단순 질문·단일 파일 사소한 수정은 트리거하지 않는다.
 
-- [ ] **Step 2: 단계 정의 ⓪~⑪**
+- [x] **Step 2: 단계 정의 ⓪~⑪**
 
 | 단계 | 내용 | 스킬 | 에이전트 |
 |---|---|---|---|
@@ -323,7 +323,7 @@ git commit -m "chore: 하네스 에이전트를 역할 6축으로 재작성"
 | ⑩ | 검증 + DoD 판정 | `superpowers:verification-before-completion`, `qa-verification`, `definition-of-done` | `qa-agent` |
 | ⑪ | 마무리 — ⑪-a 문서 동기화 / ⑪-b `explain-pr` / ⑪-c finalize(커밋+PR) / ⑪-d 피드백 수집 (스킵 불가) | `tech-docs-sync`, `explain-pr`, `finalize` | `tech-docs` |
 
-- [ ] **Step 3: 저장소 고유 사항 반영**
+- [x] **Step 3: 저장소 고유 사항 반영**
 
 - MR이 아니라 **PR**이다 — 원격은 GitHub(`geonyeop123/premium-spread`), `gh pr create --base dev`
 - 브랜치 규칙 `<type>/<short-description>`, 커밋 `<type>: <subject>` + 한글 bullet, **`Co-Authored-By: Claude` 금지** (`.ai/rules/git.md`)
@@ -331,11 +331,11 @@ git commit -m "chore: 하네스 에이전트를 역할 6축으로 재작성"
 - ⑪-d 피드백 반영 대상표: 역할 판단 기준 → `.claude/agents/{agent}.md` / 작성 패턴 → `.claude/skills/{skill}/SKILL.md` / 단계·게이트 → `orchestrator` / 전역 계약 → `CLAUDE.md`+`.ai/rules/*`
 - **이 저장소에는 자동 하네스 정합성 게이트가 없다**는 사실과, 하네스 파일을 고쳤으면 `CLAUDE.md ## 하네스` 변경 이력에 한 행을 남긴다는 규칙을 명시
 
-- [ ] **Step 4: Red Flags 표 작성**
+- [x] **Step 4: Red Flags 표 작성**
 
 최소 포함: ① 없이 ②부터 진행 / `dev` 트리에 산출물 생성 / `dev`·`main` 직접 커밋 / DoD 동결 없이 ⑧ / ③⑦⑩ 승인 없이 진행 / 앱 내부 기술 패키지 생성 / immutable 마이그레이션 수정 / MarketPair fallback / 부분 캐시 결과 반환 / PR 머지 전 worktree 삭제 / ⑪ 생략
 
-- [ ] **Step 5: 참조 경로 실재 확인 (AC3 예비)**
+- [x] **Step 5: 참조 경로 실재 확인 (AC3 예비)**
 
 ```bash
 grep -oE '(\.ai|docs|scripts|apps|domain|infrastructure|modules|supports|http|\.claude)/[A-Za-z0-9_./{}*-]+' .claude/skills/orchestrator/SKILL.md
@@ -343,7 +343,7 @@ grep -oE '(\.ai|docs|scripts|apps|domain|infrastructure|modules|supports|http|\.
 
 Expected: 출력된 경로 중 `{slug}`·`{module}` 같은 플레이스홀더를 제외한 실경로가 모두 저장소에 존재
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add .claude/skills/orchestrator
@@ -362,14 +362,14 @@ git commit -m "chore: orchestrator 진입 스킬 추가"
 - Consumes: Task 4·5 완료 (새 하네스가 자리를 잡은 뒤에 지운다)
 - Produces: 에이전트 6개·스킬 11개만 남은 상태
 
-- [ ] **Step 1: 삭제**
+- [x] **Step 1: 삭제**
 
 ```bash
 git rm -r .claude/agents/analyzer.md .claude/agents/planner.md .claude/agents/db-migrator.md .claude/agents/frontend-dev.md .claude/agents/qa-validator.md .claude/agents/tech-writer.md
 git rm -r .claude/skills/planning .claude/skills/api-feature .claude/skills/batch-job .claude/skills/db-migration .claude/skills/frontend .claude/skills/qa-validator .claude/skills/code-review .claude/skills/tech-docs .claude/skills/premium-orchestrator
 ```
 
-- [ ] **Step 2: 개수 확인 (AC1·AC2·AC8)**
+- [x] **Step 2: 개수 확인 (AC1·AC2·AC8)**
 
 ```bash
 ls .claude/agents
@@ -378,7 +378,7 @@ ls .claude/skills
 
 Expected: 에이전트 6개(architect·code-reviewer·implementer·qa-agent·spec-reviewer·tech-docs), 스킬 11개(definition-of-done·dto-pattern·explain-pr·jpa-entity-pattern·module-layout·orchestrator·qa-verification·swagger-interface-pattern·task-packet·tech-docs-sync·test-strategy)
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add -A .claude
@@ -396,7 +396,7 @@ git commit -m "chore: 구 하네스 에이전트 8종·스킬 9종 제거"
 - Consumes: Task 5의 `orchestrator` 이름
 - Produces: 새 세션이 하네스 진입점을 아는 경로
 
-- [ ] **Step 1: 섹션 작성**
+- [x] **Step 1: 섹션 작성**
 
 담을 내용 (aic-api와 같은 형태):
 - 목표 한 줄
@@ -405,7 +405,7 @@ git commit -m "chore: 구 하네스 에이전트 8종·스킬 9종 제거"
 - 자동 하네스 정합성 게이트는 **없다**는 사실 명시
 - 변경 이력 표 — `2026-08-30 | aic-api 구조로 재구성(에이전트 6·스킬 11·orchestrator 진입) | .claude/**, CLAUDE.md | 4월 하네스가 모듈 재편·Flyway 이동·MarketPair 재구조화를 반영하지 못해 잘못된 경로를 지시`
 
-- [ ] **Step 2: 검증 (AC6·AC7)**
+- [x] **Step 2: 검증 (AC6·AC7)**
 
 ```bash
 grep -Pzoq '## 하네스[\s\S]*?### 변경 이력' CLAUDE.md
@@ -416,7 +416,7 @@ Expected: 첫 명령 exit 0 (= `## 하네스` 섹션이 있고 그 **뒤에** `#
 
 GNU grep의 `-P`가 없는 환경이면 대체 명령을 쓴다: `awk '/^## 하네스/{a=1} a&&/^### 변경 이력/{found=1} END{exit !found}' CLAUDE.md`
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add CLAUDE.md
@@ -434,7 +434,7 @@ git commit -m "docs: CLAUDE.md에 하네스 포인터와 변경 이력 등록"
 - Consumes: Task 1~7 전부
 - Produces: AC1~AC8 판정
 
-- [ ] **Step 1: T1 4건 실행**
+- [x] **Step 1: T1 4건 실행**
 
 ```bash
 diff -r /home/yeop/.claude/skills/definition-of-done .claude/skills/definition-of-done
@@ -445,7 +445,7 @@ bash docs/check-documentation.sh
 
 Expected: 네 명령 모두 exit 0
 
-- [ ] **Step 2: T3 4건 관찰 기록**
+- [x] **Step 2: T3 4건 관찰 기록**
 
 - AC1: `head -6 .claude/agents/*.md` 출력에서 frontmatter 4키(`name`·`description`·`tools`·`model`) 확인
 - AC2: `head -3 .claude/skills/*/SKILL.md` 출력에서 `name` ↔ 디렉터리명 일치 확인
@@ -463,7 +463,7 @@ done
 - AC8: `git diff --stat origin/dev...HEAD`가 `.claude/`·`CLAUDE.md`·`docs/work/` 밖 파일을 포함하지 않음. **로컬 `dev`가 아니라 `origin/dev`를 쓴다** (Global Constraints 참조)
 - AC4·AC5 보강: 벤더링 사본의 체크섬을 증거로 남긴다 — `find .claude/skills/definition-of-done .claude/skills/explain-pr -type f -exec sha256sum {} +`
 
-- [ ] **Step 3: 회귀 방어선 R2**
+- [x] **Step 3: 회귀 방어선 R2**
 
 ```bash
 ./gradlew compileKotlin --offline --no-daemon
@@ -471,11 +471,11 @@ done
 
 Expected: `BUILD SUCCESSFUL` (코드 무변경이므로 up-to-date)
 
-- [ ] **Step 4: dod.md 증거 로그와 최종 판정 채우기**
+- [x] **Step 4: dod.md 증거 로그와 최종 판정 채우기**
 
 각 AC 아래 코드블록에 실행 날짜·명령·출력 요약을 append. 최종 판정 블록의 `<p>`·`<q>`·`<k>`·SHA를 실제 값으로 치환.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add docs/work/harness-aic-api-alignment/dod.md

@@ -3,7 +3,7 @@ feature: 하네스 aic-api 정합 재구성
 slug: harness-aic-api-alignment
 status: FROZEN
 frozen_at: 2026-08-31
-verdict_commit:
+verdict_commit: 8ce7009
 source: 2026-08-30 대화 — "aic-server(=aic-api)와 동일하게 하네스 구조 맞춰줘 feature-workflow"
 ---
 
@@ -87,54 +87,142 @@ source: 2026-08-30 대화 — "aic-server(=aic-api)와 동일하게 하네스 �
 
 ## 증거 로그
 
-> 구현 중 append only.
+> 구현 중 append only. 아래 실행은 모두 worktree
+> `.worktrees/chore-harness-aic-api-alignment` (branch `chore/harness-aic-api-alignment`) 에서 수행했다.
 
 ### AC1
 
 ```
-(대기)
+[T3 관찰] 2026-08-31 8ce7009
+$ ls .claude/agents | wc -l
+6
+$ head -6 .claude/agents/*.md | grep -cE '^(name|description|tools|model):'
+24        # 6개 파일 × 4키 = 24, 누락 0
+
+파일별 확인: architect(opus/Read,Grep,Glob,Write) · implementer(sonnet/+Write,Edit,Bash) ·
+spec-reviewer(opus/Read,Grep,Glob) · code-reviewer(opus/+Bash) · qa-agent(sonnet/+Bash) ·
+tech-docs(sonnet/Read,Edit,Write,Grep,Glob). name 은 모두 파일명과 일치.
 ```
 
 ### AC2
 
 ```
-(대기)
+[T3 관찰] 2026-08-31 8ce7009
+$ bash <AC2 확인 스크립트>   # 디렉터리명 ↔ SKILL.md frontmatter name 대조
+OK   definition-of-done / dto-pattern / explain-pr / jpa-entity-pattern / module-layout /
+     orchestrator / qa-verification / swagger-interface-pattern / task-packet /
+     tech-docs-sync / test-strategy
+---
+스킬 11 개 / 불일치 0 건
 ```
 
 ### AC3
 
 ```
-(대기)
+[T3 관찰] 2026-08-31 8ce7009
+대상: .claude/agents/*.md 6개 + 자체 작성 스킬 9종 SKILL.md + CLAUDE.md
+제외: frontmatter, 코드펜스 내부, `{...}` 플레이스홀더, `/.../` 생략 표기,
+      ALLOWED_MISSING(.ai/diagrams/ — 부재를 문서 본문이 명시), 벤더링 사본 2종
+
+검사한 경로 토큰: 96 / 죽은 참조: 0
+
+1차 실행에서 18건이 떴으나 전부 검사기 오탐(frontmatter 의 `·` 구분자, 펜스 내 예시 경로,
+문서가 "없다"고 서술한 .ai/diagrams/)이었다. 실제 수정이 필요했던 것은 1건 —
+module-layout 의 `db/migration/V{다음}__{설명}.sql` 표기가 경로 토큰을 자르던 것으로,
+디렉터리와 파일명 패턴을 분리해 해소했다.
 ```
 
 ### AC4
 
 ```
-(대기)
+[GREEN] 2026-08-31 8ce7009
+$ diff -r /home/yeop/.claude/skills/definition-of-done .claude/skills/definition-of-done
+(출력 없음, exit 0)
+
+$ git ls-files -s .claude/skills/definition-of-done
+100644 ... SKILL.md
+100644 ... template.dod.md          # 심볼릭 링크(120000) 아님
+
+$ sha256sum
+5161281b504adef0c9b11a5b5dd03cfee1715e0aed25003339e0f01385515e31  SKILL.md
+fb2c3893979518fe7937512b03975337ee43475ba437cf7c2a9cf852957b876f  template.dod.md
+
+[RED] 2026-08-31 d90a733 — 최초 복사본은 심볼릭 링크였다.
+원본 ~/.claude/skills/definition-of-done 자체가 /home/yeop/dev/ai-skills/shared/... 로의
+링크라 cp -r 이 링크를 그대로 복사했고 git 에 mode 120000 으로 들어갔다. diff -r 은 양쪽이
+같은 대상을 따라가 통과해 이 상태를 검출하지 못했다(코드 리뷰 P1 이 검출). cp -rL 로 교체.
 ```
 
 ### AC5
 
 ```
-(대기)
+[GREEN] 2026-08-31 8ce7009
+$ diff -r /home/yeop/.claude/skills/explain-pr .claude/skills/explain-pr
+(출력 없음, exit 0)
+
+$ git ls-files -s .claude/skills/explain-pr
+100644 SKILL.md · 100644 template.md · 100755 scripts/gather.sh · 100755 scripts/test_gather.sh
+
+$ sha256sum
+25d6605dacc9aa3bf4cdc7a98fa5aa8fd1e9991b7538903a1a2bdbe4284e0e28  SKILL.md
+bdf382f892e137604fedb3c1d77bdb1566ffbda74e7fa7df489f9b035356333a  template.md
+f7d5f7b4a9b17eaf3425c248e81e16a635007dc40eeb50f80a702550d8012e6d  scripts/gather.sh
+e3b8b9efffb78d709229d78386c32de421af58afe0eba06497a62251394ace8c  scripts/test_gather.sh
+
+[RED] AC4 와 같은 원인. 추가로 worktree 가 /mnt/c(DrvFs)라 실행 비트가 100644 로 죽어
+SKILL.md 가 직접 실행하는 scripts/gather.sh 가 깨질 수 있었다. git update-index --chmod=+x 로 복구.
 ```
 
 ### AC6
 
 ```
-(대기)
+[GREEN] 2026-08-31 8ce7009
+$ grep -Pzoq '## 하네스[\s\S]*?### 변경 이력' CLAUDE.md
+(exit 0)
+
+명령 자체 검증: 정상 표본(## 하네스 + ### 변경 이력) exit 0,
+위반 표본(## 하네스 만 있고 변경 이력 없음) exit 1 을 확인했다.
 ```
 
 ### AC7
 
 ```
-(대기)
+[GREEN] 2026-08-31 8ce7009
+$ bash docs/check-documentation.sh
+documentation check passed (20 files, 15 required paths)
 ```
 
 ### AC8
 
 ```
-(대기)
+[T3 관찰] 2026-08-31 8ce7009
+$ git diff --stat origin/dev...HEAD | tail -1
+40 files changed, 2930 insertions(+), 1853 deletions(-)
+
+$ git diff --name-only origin/dev...HEAD | grep -vE '^(\.claude/|CLAUDE\.md$|docs/work/)'
+(출력 없음 — 범위 밖 파일 0개)
+
+$ ls .claude/agents
+architect.md code-reviewer.md implementer.md qa-agent.md spec-reviewer.md tech-docs.md
+$ ls .claude/skills
+definition-of-done dto-pattern explain-pr jpa-entity-pattern module-layout orchestrator
+qa-verification swagger-interface-pattern task-packet tech-docs-sync test-strategy
+
+구 자산 잔존 0개 (에이전트 analyzer·planner·db-migrator·frontend-dev·qa-validator·tech-writer,
+스킬 planning·api-feature·batch-job·db-migration·frontend·qa-validator·code-review·tech-docs·
+premium-orchestrator 모두 제거). AGENTS.md·.ai/*·docs/* 에 삭제된 이름을 가리키는 참조 없음.
+```
+
+### 회귀 방어선
+
+```
+[R1] 2026-08-31 8ce7009
+$ bash docs/check-documentation.sh
+documentation check passed (20 files, 15 required paths)
+
+[R2] 2026-08-31 8ce7009
+$ ./gradlew compileKotlin --offline --no-daemon
+BUILD SUCCESSFUL in 44s — 15 actionable tasks: 15 executed
 ```
 
 ## 사람 확인 (T4)
@@ -151,14 +239,16 @@ source: 2026-08-30 대화 — "aic-server(=aic-api)와 동일하게 하네스 �
 ## 최종 판정
 
 ```
-DoD VERDICT: harness-aic-api-alignment @ <commit SHA>
+DoD VERDICT: harness-aic-api-alignment @ 8ce7009
   수용기준 표:     8개  (T1 4 · T2 0 · T3 4 · T4 0)
-  T1/T2 자동:      4개 중 <p>개 PASS
-  T3 기록 제출:    4개 중 <q>건
+  T1/T2 자동:      4개 중 4개 PASS
+  T3 기록 제출:    4개 중 4건
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
-  변경 요청:       <k>건
-  =>
+  변경 요청:       0건
+  => PASS
 ```
+
+판정 대상은 구현 최종 커밋 `8ce7009`이며, 이후 커밋은 이 증거 로그를 기록하는 문서 변경뿐이다.
 
 **사람 확인이 필요한 항목**
 
