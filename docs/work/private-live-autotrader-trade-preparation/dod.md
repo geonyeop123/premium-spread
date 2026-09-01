@@ -702,8 +702,9 @@ migration 통합 test 는 `V16TradePreparationMigrationIntegrationTest` 2건,
 
 #### 사람 확인 2건은 채우지 않았다
 
-`AC10`·`AC15` 는 T4 이며 판정 주체가 사람이다. 아래 `## 사람 확인 (T4)` 표는 비워 둔다 —
-앵커를 AI 가 지어내면 그것이 곧 기록 위조다. 두 건 모두 `AWAITING_HUMAN` 이다.
+`AC10`·`AC15` 는 T4 이며 판정 주체가 사람이다. **2026-09-01 owner 가 두 건 모두 승인했고**
+아래 `## 사람 확인 (T4)` 표에 앵커를 기록했다. 앵커는 이 파일 밖의 PR 코멘트이며 판정 근거
+(실잔고 검산 6개 값, 스펙 리뷰 라운드 기록)를 담는다.
 
 - `AC10` — owner 가 응답의 물량·레버리지·캡 판정을 자기 실제 잔고와 대조해야 한다. 잔고를
   아는 사람만 판정할 수 있다. 덧붙여 D19 에 따라 production 배선의 도달 상태는 `WATCHING`
@@ -727,8 +728,8 @@ migration 통합 test 는 `V16TradePreparationMigrationIntegrationTest` 2건,
 
 | # | 확인 사항 | 확인자 | 날짜 | 앵커 |
 |---|---|---|---|---|
-| AC10 | 응답의 물량·레버리지·캡 판정이 실제 잔고와 맞는가 | | | |
-| AC15 | 스펙 리뷰가 정지 규칙까지 수행됐는가 | | | |
+| AC10 | 응답의 물량·레버리지·캡 판정이 실제 잔고와 맞는가 | owner | 2026-09-01 | [PR #72 코멘트](https://github.com/geonyeop123/premium-spread/pull/72#issuecomment-5490601281) |
+| AC15 | 스펙 리뷰가 정지 규칙까지 수행됐는가 | owner | 2026-09-01 | [PR #72 코멘트](https://github.com/geonyeop123/premium-spread/pull/72#issuecomment-5490601281) |
 
 ## 변경 요청
 
@@ -778,11 +779,11 @@ DoD VERDICT: private-live-autotrader-trade-preparation @ 1a4062f
   수용기준 표:     20개  (T1 18 · T2 0 · T3 0 · T4 2)
   T1/T2 자동:      18개 중 18개 PASS
   T3 기록 제출:    0개
-  T4 사람 확인:    2개 중 0건 완료, 2건 대기
+  T4 사람 확인:    2개 중 2건 완료 (owner, 2026-09-01)
   변경 요청:       4건 전부 승인 (CR-1 · CR-2 · CR-3 · CR-4)
   증거:            CI run 33366429271 @ 1a4062f — 7개 job 전부 success
-  => AWAITING_HUMAN — 기계 검증 18/18 PASS, 실행 실패·미실행 0건.
-     AC10·AC15 에 사람 서명이 기록되면 DONE.
+                   사람 확인 앵커 — PR #72 issuecomment-5490601281
+  => DONE — 기계 검증 18/18 PASS, 사람 확인 2/2, 실행 실패·미실행 0건.
 ```
 
 **이 판정은 `e567b57` 기준 이전 판정을 대체한다.** 아래 정정을 함께 읽어야 한다.
