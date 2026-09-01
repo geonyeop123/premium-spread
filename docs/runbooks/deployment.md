@@ -48,6 +48,39 @@ artifact, image 또는 배포 bundle에는 값을 기록하지 않는다. 구체
 GitHub Actions에는 production 또는 exchange credential을 제공하지 않는다. host SSH와 runtime secret 전달은
 Actions의 책임이 아니다.
 
+### 거래 준비 owner 허가 목록
+
+`TRADE_PREPARATION_OWNER_EMAILS`는 거래 준비 계획을 만들 수 있는 회원의 이메일 허가 목록이며 쉼표로
+구분한다. 값은 `member.email`에 **저장된 표기와 정확히 일치**해야 한다.
+
+`member` 테이블은 `utf8mb4_unicode_ci` collation이라 `uk_member_email`도 case-insensitive다. 따라서
+대소문자만 다른 두 회원은 **존재할 수 없다** — 두 번째 가입을 unique index가 거절한다. 그러나 MySQL은
+입력 표기를 그대로 저장하고 허가 목록 비교는 정확 일치다. 그래서 `Owner@example.com`으로 가입한 회원은
+**로그인은 되지만**(조회가 case-insensitive) 허가 목록에 `owner@example.com`이 들어 있으면 영구히
+거절당한다. 가입 시 저장된 표기 그대로 넣어라.
+
+```bash
+TRADE_PREPARATION_OWNER_EMAILS=owner@example.com
+```
+
+**비어 있으면 아무도 계획을 만들 수 없다.** 이는 의도된 fail-closed 기본값이다. 회원 가입이 공개
+endpoint이므로 "설정하지 않았으니 전원 허용"으로 두면 가입한 누구나 자동매매 준비 계획을 만들 수 있다.
+V1은 단일 owner 시스템이며 근거는 [design.md D10](../work/private-live-autotrader-trade-preparation/design.md)과
+[dod.md AC12](../work/private-live-autotrader-trade-preparation/dod.md)다.
+
+증상과 대응:
+
+| 증상 | 확인 |
+|---|---|
+| 로그인은 되는데 `POST /api/v1/trade-preparations`가 계속 404 | 이 변수가 주입됐는지부터 확인한다 |
+| 변수는 주입됐는데 여전히 404 | `SELECT email FROM member`의 저장된 표기와 환경변수의 대소문자를 대조한다 |
+| `POST /api/v1/trade-preparations/{id}/target`도 404 | 같은 원인이다. 두 endpoint가 같은 검사를 쓴다 |
+
+설정 누락과 "그 회원이 owner가 아님"은 **응답이 같다.** 404 + `TRADE_PREPARATION_NOT_FOUND`이며 이는
+계획의 존재를 노출하지 않기 위한 설계다(D10). 그래서 응답만으로는 둘을 구분할 수 없고 주입된 환경변수를
+직접 확인해야 한다. 조회·무효화·refresh는 이 검사를 받지 않으므로 그쪽이 200이라고 해서 허가 목록이
+올바른 것은 아니다.
+
 ## 배포 순서
 
 `docker/deploy.sh`는 다음 순서를 강제한다.

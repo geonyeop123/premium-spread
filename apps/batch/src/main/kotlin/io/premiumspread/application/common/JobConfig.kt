@@ -64,5 +64,19 @@ object DefaultJobConfigProvider : JobConfigProvider {
         JobId.BINANCE_TICKER_FLUSH -> JobConfig(jobId, "lock:ticker:flush:binance", Duration.ofSeconds(5), Duration.ofSeconds(3))
 
         JobId.BITHUMB_TICKER_FLUSH -> JobConfig(jobId, "lock:ticker:flush:bithumb", Duration.ofSeconds(5), Duration.ofSeconds(3))
+
+        JobId.TRADE_PREPARATION_EVALUATION -> JobConfig(
+            jobId,
+            "lock:trade-preparation:evaluation",
+            Duration.ofSeconds(5),
+            Duration.ofSeconds(3),
+        )
+
+        JobId.TRADE_PREPARATION_RECONCILE -> JobConfig(
+            jobId,
+            "lock:trade-preparation:reconcile",
+            Duration.ofSeconds(30),
+            Duration.ofSeconds(20),
+        )
     }
 }

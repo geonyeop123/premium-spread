@@ -14,6 +14,7 @@
 | Redis | localhost 기본 secret 허용 | Testcontainers dynamic properties | `REDIS_*` 필수, localhost/빈 password 차단 |
 | 인증/외부 secret | local 전용 기본값 허용 | deterministic test value | operator가 host에서 runtime 주입, default secret 기동 차단 |
 | Scheduler | 필요 시 활성, `AGGREGATION_ZONE` 적용 | 기본 비활성 | 활성, 모든 aggregation cron에 명시 zone |
+| 거래 준비 owner 허가 | `TRADE_PREPARATION_OWNER_EMAILS` 미주입 시 계획 생성이 전부 404 | 계약 테스트가 자기 fixture 회원을 property로 주입 | operator가 host에서 주입, 빈 목록이면 전원 거부 |
 | Management port | API 9080 / Batch 9081, 기본 loopback | random/loopback 통합 테스트 가능 | 컨테이너 0.0.0.0 + host 127.0.0.1 고정 mapping |
 | Actuator exposure | `health,prometheus` | `health,prometheus` | 동일, public nginx ingress에는 미노출 |
 | 로그 형식 | text console | text console | masking된 JSON console/file |
@@ -28,3 +29,6 @@
 - Docker management port 9080/9081은 healthcheck·Prometheus·rollback smoke의 하나의 고정 계약이다.
   변경하려면 Compose mapping, healthcheck, Prometheus target, deploy smoke를 함께 변경해야 한다.
 - 설정이 없거나 local fallback이 `prd`에 유입되면 요청 처리 전 startup에서 실패해야 한다.
+- `TRADE_PREPARATION_OWNER_EMAILS`는 startup을 막지 않고 **런타임에 전원 거부**로 나타나는 유일한 설정이다.
+  거절이 계획의 존재를 노출하지 않는 404여야 하므로 미설정과 비허가 회원을 응답으로 구분할 수 없다.
+  형식·증상·대응은 [deployment.md](deployment.md)가 소유한다.

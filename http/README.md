@@ -6,9 +6,13 @@
 http/
 ├── http-client.env.json   # 환경 변수 정의
 └── api/
-    ├── premiums.http      # Premium API
-    ├── trackings.http     # 추적 기록 API (실제 주문 아님)
-    └── tickers.http       # Ticker API
+    ├── auth.http                 # 인증(refresh/logout) API
+    ├── members.http              # 회원 API
+    ├── notification.http         # 알림 구독 API
+    ├── premiums.http             # Premium API
+    ├── tickers.http              # Ticker API
+    ├── trackings.http            # 추적 기록 API (실제 주문 아님)
+    └── trade-preparations.http   # 거래 준비 API (주문 제출 아님)
 ```
 
 ## API 추가 시 필수 작업

@@ -1,5 +1,6 @@
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.tasks.ClasspathNormalizer
 
 plugins {
     id("premiumspread.kotlin-library")
@@ -154,6 +155,12 @@ val architectureSourceRoots =
         "apps.batch" to project(":apps:batch").layout.projectDirectory.dir("src/main/kotlin"),
     )
 
+/** source 를 직접 훑는 architecture test 가 실제로 보는 범위 — 모든 subproject 의 production Kotlin. */
+val scannedProductionSources =
+    rootProject.subprojects.map { candidate ->
+        candidate.layout.projectDirectory.dir("src/main/kotlin").asFileTree.matching { include("**/*.kt") }
+    }
+
 val architectureTest by tasks.registering(Test::class) {
     dependsOn(writeProjectDependencyGraph)
     dependsOn(architectureTargets.values)
@@ -164,6 +171,23 @@ val architectureTest by tasks.registering(Test::class) {
         inputs.dir(sourceRoot)
         systemProperty("architecture.source.$propertySuffix", sourceRoot.asFile.absolutePath)
     }
+
+    // ArchUnit 이 실제로 뜯어보는 것은 아래 여섯 jar 과 의존성 그래프 스냅샷이다. dependsOn 은 실행
+    // 순서만 정하고, 경로를 system property 로 넘기는 것은 값 하나일 뿐이라 어느 쪽도 up-to-date
+    // 판정의 입력이 아니다. 선언하지 않으면 infrastructure main 을 고쳐 jar 이 새로 빌드돼도 이
+    // 게이트가 UP-TO-DATE 로 건너뛴다 — 검사하는 대상이 바뀌었는데 검사가 돌지 않는다.
+    inputs.files(architectureTargets.values)
+        .withPropertyName("architectureTargets")
+        .withNormalizer(ClasspathNormalizer::class.java)
+    inputs.file(dependencyGraphSnapshot).withPropertyName("dependencyGraphSnapshot")
+
+    // 위 세 source root 는 system property 로 넘기는 대상일 뿐이다. Observability/TestIsolation/
+    // VerifiedBalanceNoCache 는 그 셋이 아니라 **저장소 전체**의 src/main/kotlin 을 직접 훑는다.
+    // 훑는 곳을 전부 입력으로 선언하지 않으면 선언 밖 모듈에 위반을 넣어도 게이트가 UP-TO-DATE 로
+    // 건너뛴다. modules:jpa 가 실제 구멍이었다 — :domain 을 의존해 domain port 구현이 컴파일되는데
+    // source root 로도, architectureTargets jar 로도 선언돼 있지 않았다.
+    inputs.files(scannedProductionSources)
+        .withPropertyName("scannedProductionSources")
 
     doFirst {
         architectureTargets.forEach { (propertySuffix, targetConfiguration) ->
