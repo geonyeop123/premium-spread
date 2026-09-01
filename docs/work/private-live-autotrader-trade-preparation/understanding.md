@@ -52,19 +52,53 @@ owner 가 "몇 배로 할지" 고르는 게 아니라, 양쪽에 얼마를 넣�
 | Interfaces | REST endpoint 5개 · `ApplicationError` 7개 신설 |
 | Application (batch) | `TradePreparationEvaluationJob`(조건 평가) · `TradePreparationReconcileJob`(주기 대조) |
 
-상태 기계는 이렇다.
-
-```
-DRAFT ──registerTarget──> WATCHING ──조건 충족 + verified 결속──> ARMED
-  └──────────────────────────┴────────── 무효화 3경로 ──────────┘
-                                              ↓
-                                        INVALIDATED (종점)
-```
-
-무효화 producer 셋 — owner 명시 refresh(REST) · 체결(`TrackingFacade`, **같은 트랜잭션**) ·
-주기 reconcile(batch Job). `INVALIDATED` 는 종점이며 어떤 경로로도 `ARMED` 로 되돌아가지 않는다.
+상태 기계와 잠금 순서는 §4 의 두 그림이 소유한다.
 
 ## 4. 설계
+
+두 그림이 이 단위의 뼈대다. 첫째는 **무엇이 상태 전이를 막는가**, 둘째는 **왜 잠금 순서가 고정인가**다.
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT : prepare
+    DRAFT --> WATCHING : registerTarget<br/>resolveBinding 이 basis 를 확정
+    WATCHING --> WATCHING : 조건 충족 + UNVERIFIED 결속<br/>관측만 기록 (OBSERVED_ONLY)
+    WATCHING --> ARMED : 조건 충족 + verified 결속<br/>production 도달 불가
+    DRAFT --> INVALIDATED : 무효화 3경로
+    WATCHING --> INVALIDATED : 무효화 3경로
+    ARMED --> INVALIDATED : 무효화 3경로
+    note right of ARMED
+        production 에 VerifiedBalanceReadPort
+        구현이 0개라 이 전이가 일어나지 않는다.
+        결함이 아니라 D19 의 결론이다.
+    end note
+    note right of INVALIDATED
+        종점. 어떤 경로로도 되돌아가지 않는다.
+    end note
+```
+
+무효화 producer 셋 — owner 명시 refresh(REST) · 체결(`TrackingFacade`, 같은 트랜잭션) ·
+주기 reconcile(batch Job).
+
+`ACTIVE` tracking 과 활성 계획이 공존하지 못하게 막는 것은 **member 행 잠금**이다. 두 경로가 같은
+행을 같은 순서로 잡아 직렬화된다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as registerTarget
+    participant M as member 행
+    participant B as tracking 생성/archive
+    A->>M: SELECT … FOR UPDATE (첫 문장)
+    Note over A: 이 뒤에 ACTIVE 재검사 → 계획 조회 → 승격
+    B->>M: SELECT … FOR UPDATE — A 커밋까지 대기
+    A-->>M: commit
+    B->>B: A 가 만든 활성 계획을 보고 무효화
+    Note over A,B: 순서를 뒤집으면(tracking → member) 교착.<br/>잠금이 첫 조회가 아니면 1차 캐시의 낡은 인스턴스를 읽는다.
+```
+
+교차 테이블 불변식이라 **version 술어도 unique index 도 이것을 막지 못한다** — 자세한 이유는 아래
+"교차 테이블 불변식" 절에 있다.
 
 ### 신뢰 경계 — 관문은 `VerifiedBalance` 타입이 아니라 `boundBalanceBasis` 다
 
