@@ -20,9 +20,9 @@ activation·execution latch·`FENCE`·epoch는 runtime durable control state가 
 | program | `PROGRAM_IN_PROGRESS` |
 
 - 현재 Phase: `Phase 0 완료` · Phase 1 미진입 (진입 전 처리 대상 3건은 `#68` §1)
-- feature branch: `feat/trade-preparation` (거래 준비 단위, PR `#72` open)
-- PR: `#67` merged (`67bc948`) · `#68` `#69` `#70` merged · `#71` merged (게이트 복구) · **`#72` open (거래 준비)**
-- `origin/dev`: `2bcfb9f`
+- feature branch: 없음 (거래 준비 단위 병합 후 삭제)
+- PR: `#67` merged (`67bc948`) · `#68` `#69` `#70` merged · `#71` merged (게이트 복구) · **`#72` merged (`4683d62`, 거래 준비)**
+- `origin/dev`: `4683d62`
 - original master plan commit: `b6e16edb3632978728f62918bddb25f791501467`
 
 **software 축 각주 (2026-08-27).** `MASTER_SPEC_APPROVED` → `FOUNDATION_ALIGNED` 전이를 선언한다.
@@ -850,19 +850,39 @@ Phase 1 진입에는 전이 외에 `#68` §1 의 세 항목이 남아 있고 그
 
 
 
-## 거래 준비 단위 (2026-08-31, PR `#72` open)
+## 거래 준비 단위 (2026-09-01, PR `#72` merged `4683d62`)
 
-**상태축은 전이시키지 않는다.** `design.md` §4.2 는 software 축 전이를 해당 DoD 의 **merged**
-검증 결과로 선언하라고 규정하고, `#72` 는 아직 열려 있다. 아래는 증거 기록이다.
+**상태축을 전이시키지 않는다. 전이 근거가 갖춰졌는데도 전이하지 않는 것이므로 사유를 남긴다.**
+
+merged `dev` Quality Gate 는 통과했다 — run `33483553578` @ `4683d62`, 7개 job 전부 `success`.
+단위 DoD 도 `DONE` 이다(기계 18/18, 사람 확인 2/2, owner 승인 2026-09-01).
+
+그러나 `design.md` §4.2 는 software 축 전이를 **"해당 Phase DoD 의 merged 검증 결과"** 로
+선언하라고 규정한다(같은 절). 거래 준비는 **Phase 가 아니다** — 상위 spec §5 roadmap 밖에서
+Phase 3 outcome 을 앞당긴 단위이며 `design.md` 는 이 단위를 언급하지 않는다. 갖고 있는 것은
+단위 DoD 이고 Phase DoD 가 아니다.
+
+다음 상태 `MARKET_ECONOMICS_READY` 는 Phase 1 종료 조건이고, Phase 1 은 `P1-O1`~`P1-O8` 여덟 개
+outcome 을 요구한다. 이 단위는 그중 어느 것도 완료로 선언하지 않는다. 특히:
+
+- **`P1-O1`(최소 수집 계약)** — 미확정. 두 leg 가격 의미 정합, 호가·수량 관측 수준과 그것이
+  지지하는 체결 모의 범위가 정의되지 않았다
+- **`P1-O5`(공통 경제 엔진)** — 부분. 이 단위가 `TradePrepSizing` 으로 capital 배치와 FX 를
+  다루지만 fee·slippage·funding·margin·residual risk 분리는 없다
+- **`P1-O3`(품질 상태 노출)** — 이 단위가 오히려 미충족 사례를 하나 발견했다. FX 원천이 일 1회
+  갱신인데 그 나이가 응답에 드러나지 않는다(아래)
+
+따라서 software 축은 **`FOUNDATION_ALIGNED` 를 유지한다.** 아래는 증거 기록이다.
 
 - 산출물: `docs/work/private-live-autotrader-trade-preparation/` (`design.md` D1~D23 ·
   `plan.md` T1~T9 · `dod.md` 수용기준 20건 FROZEN)
 - 브랜치 `feat/trade-preparation` 44 커밋 / 94 파일. 마이그레이션 `V16`(계획 테이블) ·
   `V17`(평가 질의 인덱스) 신설, 기존 `V*.sql` 무변경
-- DoD 판정 `@ 44c4b17`: 기계 검증 **18/18 PASS**(전부 `--rerun` 강제 실행), 실행 실패·미실행 0건.
-  전 스위트 `failures 0 · errors 0 · skipped 0`
-- **`AWAITING_HUMAN`** — `AC10`(응답 수치를 owner 실제 잔고와 대조) · `AC15`(스펙 리뷰 서명)는
-  판정 주체가 사람이라 비워 뒀다. 앵커는 `#72` 코멘트에 기록한다
+- DoD 판정 `@ 1a4062f`: 기계 검증 **18/18 PASS**, 사람 확인 **2/2**, 실행 실패·미실행 0건.
+  전 스위트 `failures 0 · errors 0 · skipped 0`. 증거는 CI run `33366429271`
+  (로컬은 lint 를 돌릴 수 없다 — jar 부트스트랩이 CI 전용이다)
+- **`DONE`** — `AC10`·`AC15` owner 승인 2026-09-01. 앵커는 `#72` issuecomment-5490601281 이며
+  실잔고 검산 6개 값이 ECO-5 §2 관계식과 소수 10자리까지 일치함을 기록한다
 - 변경 요청 `CR-2`·`CR-3`·`CR-4` 승인 대기 (`dod.md` 변경 요청 표). 이번 판정을 뒤집지 않는다
 
 **이 단위가 production 에 제공하는 도달 상태는 `WATCHING` 까지다** (`design.md` D19).
@@ -880,3 +900,20 @@ Phase 1 진입에는 전이 외에 `#68` §1 의 세 항목이 남아 있고 그
   이라(`modules/jpa/src/main/resources/jpa.yml:57`) JPA 애너테이션으로 표현할 수 없는 DB 전용
   제약은 테스트 시점에 존재하지 않는다. 이 단위는 해당 테스트에 전용 컨테이너 + `validate` 로
   우회했으나 **저장소 기본값은 그대로다**
+
+### FX 원천 교체 결정 (owner 승인 2026-09-01)
+
+이 단위 검증 중 발견해 결정까지 마친 항목이다. `.ai/rules/batch.md` 는 "FX 30분 수집" 을 계약으로
+적지만 **제공자가 하루 한 번만 갱신한다** — `exchangerate-api.com` v6 응답의
+`time_next_update - time_last_update = 24.0h` 이고 `00:00:01Z` 기준값을 하루 내내 준다.
+낡은 것은 수집이 아니라 원천이다.
+
+환율은 사이징(`R`·`Q`)과 프리미엄 환산 **양쪽**에 걸려 오차가 두 곳에 동시 전이된다. 실측:
+0.26% 환율 오차 → 프리미엄 **0.2655%p**(`ECO-5` 사이클 목표 갭 1%p 의 1/4), `quantity` 0.001 BTC.
+그리고 오차가 무작위가 아니라 **편향**이다 — 상승 추세면 프리미엄이 부풀려 보여 진입이 늦고,
+하락 추세면 일찍 충족된다.
+
+**제공자를 교체한다. 시점은 실주문 단위(`ACT-2`) 착수 전.** 교체 시 `time_last_update` 를 주지
+않는 제공자는 후보에서 제외한다 — 그 필드가 없으면 조회 시각을 `observedAt` 으로 쓰게 되고
+**낡은 값이 신선해 보인다.** 상세와 채택하지 않은 대안은
+`docs/work/private-live-autotrader-trade-preparation/understanding.md` §7 이 소유한다.
