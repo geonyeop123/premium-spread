@@ -11,6 +11,7 @@
 - [진행·acceptance 증거](../../../.ai/planning/private-live-autotrader/progress.md) — 상태축 현재값의 단독 소유처
 - [`ECO-5` 산출](eco-5-capital-cycle.md) — 자본 소진과 연속 cycle 수 (항목 1·2). `ACT-1` 필수 입력
 - [남은 실행 단위 예상 소요](remaining-effort-estimate.md) — 실측 기준선과 민감도. `NOGO-0` 상한 승인 필수 입력
+- [`ACT-1` 평가 시점 결정](act1-evaluation-timing.md) — 세 문서 불일치의 판정과 정정안. **owner 확정 대기**
 
 ## 완료된 실행 단위
 
