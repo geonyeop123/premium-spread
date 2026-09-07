@@ -10,6 +10,7 @@
 - [개발자 이해문서 (master spec 재작성)](understanding-master-spec.md) — 이번 실행 단위의 배경·결정·함정
 - [진행·acceptance 증거](../../../.ai/planning/private-live-autotrader/progress.md) — 상태축 현재값의 단독 소유처
 - [`ECO-5` 산출](eco-5-capital-cycle.md) — 자본 소진과 연속 cycle 수 (항목 1·2). `ACT-1` 필수 입력
+- [남은 실행 단위 예상 소요](remaining-effort-estimate.md) — 실측 기준선과 민감도. `NOGO-0` 상한 승인 필수 입력
 
 ## 완료된 실행 단위
 
