@@ -48,7 +48,7 @@
 |---|---|---|---|
 | 1 | 승인된 viability policy와 전략·데이터 증거 | **evidence clock** | 아니오 |
 | 2 | `ECO-5` 자본 소진·재배치 산출, 운영 가능 cycle 범위 | 항목 1·2 **산출 완료** · 3 실측 · 4 정책 | 아니오 (§4 참고) |
-| 3 | `SAFE-7` liquidation headroom·stress 기준과 breach 대응 | 정책 결정 | 아니오 |
+| 3 | `SAFE-7` liquidation headroom·stress 기준과 breach 대응 | 정책 결정 · 입력은 [`ECO-5`](eco-5-capital-cycle.md) §6-1·§6-2 **산출 완료** | 아니오 |
 | 4 | 선택된 runtime·storage·network·alert와 복구 방식 | **collection readiness (`ECG-1`~`3`)** | 아니오 |
 | 5 | 운영비·거래 자본·허용 손실 owner 승인 | `NOGO-0`과 같은 자리 | 아니오 |
 | 6 | 법률·세무·거래소 자격과 전문가 확인 | 외부. 지금도 가능 | 아니오 |
