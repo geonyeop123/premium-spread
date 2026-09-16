@@ -276,11 +276,18 @@ grep -Fq "${api_integration_command}" <<< "${api_job}" ||
 grep -Fq "${batch_integration_command}" <<< "${batch_job}" ||
   fail "batch-integration job must execute the exact strict Batch integration task"
 
-compile_contract='compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions :build-logic:test --dependency-verification strict'
+compile_contract='compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions harnessCheck harnessCheckTest :build-logic:test --dependency-verification strict'
 grep -q "${compile_contract}" "${quality_workflow}" ||
-  fail "required compiler, architecture, isolation, exclusion and build-logic gates must execute together"
+  fail "required compiler, architecture, isolation, exclusion, harness and build-logic gates must execute together"
 grep -q 'tasks.registering.*verifySecurityDependencyVersions\|val verifySecurityDependencyVersions by tasks.registering' \
   "${root_dir}/build.gradle.kts" || fail "production runtime security-version gate is required"
+grep -q 'val harnessCheck by tasks.registering' "${root_dir}/build.gradle.kts" ||
+  fail "harness integrity gate task is required"
+# 검사기만 있고 자가검증이 없으면 조용히 무력해진 게이트를 알아챌 수 없다.
+grep -q 'val harnessCheckTest by tasks.registering' "${root_dir}/build.gradle.kts" ||
+  fail "harness checker self-verification task is required"
+[[ -f "${root_dir}/docs/check-harness.sh" ]] || fail "harness checker script is required"
+[[ -f "${root_dir}/docs/test-check-harness.sh" ]] || fail "harness checker fixture suite is required"
 grep -q 'SpringLibraryConventionPlugin.importSpringBootBom' \
   "${root_dir}/build-logic/src/main/java/io/premiumspread/buildlogic/SpringBootApplicationConventionPlugin.java" ||
   fail "Boot applications must re-apply the reviewed BOM overrides after the Boot plugin"

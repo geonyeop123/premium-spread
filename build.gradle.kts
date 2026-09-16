@@ -222,6 +222,19 @@ val verifySecurityDependencyVersions by tasks.registering {
     }
 }
 
+val harnessCheck by tasks.registering(Exec::class) {
+    group = "verification"
+    description =
+        "Verifies harness file reference integrity, frontmatter validity, and contract assertions."
+    commandLine("bash", "docs/check-harness.sh")
+}
+
+val harnessCheckTest by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Verifies that check-harness.sh actually detects violations, using fixtures."
+    commandLine("bash", "docs/test-check-harness.sh")
+}
+
 val jacocoTestReport by tasks.registering(JacocoReport::class) {
     group = "verification"
     description = "Generates aggregate unit-test coverage for all production modules."
@@ -300,6 +313,8 @@ tasks.named("check") {
         jacocoTestCoverageVerification,
         verifyTestIsolationPolicy,
         verifyCoverageExclusions,
+        harnessCheck,
+        harnessCheckTest,
     )
 }
 
