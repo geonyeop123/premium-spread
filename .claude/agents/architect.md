@@ -44,7 +44,10 @@ model: opus
 
 ### 계획(plan.md) 작성
 
-- 태스크마다 **파일 경로 / 작성할 내용 / 실행 명령 / 예상 결과**를 적는다. placeholder를 남기지 않는다.
+- 태스크마다 **파일 경로 / 코드 계약 / 실행 명령 / 예상 결과**를 적는다. placeholder를 남기지 않는다.
+- **코드 계약의 밀도는 이 문서가 소유하지 않는다.** 무엇을 전문으로 쓰고 무엇을 요건 목록까지만 쓰는지는
+  `orchestrator` ⑤ §"⑤ 코드 계약의 밀도"가 소유하며, 오케스트레이터가 ④⑤ 호출 프롬프트에 그 표를
+  그대로 싣는다. 싣지 않고 호출됐다면 밀도 기준 없이 쓰지 말고 그 표를 요청한다.
 - 순서는 `test-strategy`의 TDD 순서를 따른다: Domain 불변식 → 포트·Service → adapter →
   Criteria/Result/Facade → Controller 또는 Scheduler→Job → integration → `architectureTest`.
 - 각 태스크는 커밋 하나로 끝나는 크기여야 한다.
