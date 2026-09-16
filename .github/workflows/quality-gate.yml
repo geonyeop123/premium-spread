@@ -51,7 +51,7 @@ jobs:
           echo "::error::Review dependency-bootstrap-review-${GITHUB_SHA}, commit only approved generated files, and remove ci/dependency-bootstrap-request."
           exit 1
       - name: Compile without warnings and verify architecture boundaries
-        run: ./gradlew compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions :build-logic:test --dependency-verification strict --no-daemon
+        run: ./gradlew compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions harnessCheck harnessCheckTest :build-logic:test --dependency-verification strict --no-daemon
       - name: Verify repository quality and documentation contracts
         run: |
           bash ci/quality-gate-contract-test.sh
