@@ -17,9 +17,10 @@ source: docs/work/private-live-autotrader-phase-0/review-findings.md §1 critica
 - "왜 지금인가" 판정 — §4.5·§9.4의 "결과를 보기 전에" 규칙과 evidence clock 미시작의 결합, Phase 1 진입
   차단 판정 (design §2)
 - "프로그램 개시 시" 문면과 현실의 불일치에 대한 판정 기록 (design §3, C안)
-- 8개 값의 의존 구조와 재평가 시점의 반복 gate 성격 (design §5·§6)
+- 8개 값의 의존 구조와 재평가 시점의 gate 성질 (design §5·§6)
 - 종료 판정을 `progress.md` append로 고정 — 새 상태축 없음 (design §7)
-- 상위 `plan.md` §1 gate 표에 `N0` 행, §3에 위임 한 줄 추가 (내용 계약은 design §8)
+- 상위 `plan.md` **세 곳** 편집 — §1 첫 표 Phase 1 행의 진입 조건, §1 gate 표 `N0` 행과 아래 문단,
+  §3 위임 불릿 (내용 계약은 design §8)
 - 이 단위의 검증 러너 `verify.sh` 작성
 
 **제외** *(명시적으로 하지 않는 것 — scope creep 차단선)*
@@ -27,10 +28,11 @@ source: docs/work/private-live-autotrader-phase-0/review-findings.md §1 critica
 - **8개 값 자체** — owner 결정이다. 이 계약서는 값의 존재를 요구하지 않는다
 - 프로그램 총 소요 재계산 — `remaining-effort-estimate.md` §0이 산출 불가를 선언했고 §8이 이유를 적었다
 - `C`(canary)·`L`(LIMITED) 기간의 범위 제시 — 상위 `design.md` §5 Phase 3이 비워 둔 값이다
-- **허용 손실의 소속 판정** — 두 산출물이 갈린다. owner가 ⑦에서 정한다 (design §4 각주 ④)
+- **허용 손실의 소속 판정** — 두 산출물이 갈린다. owner가 ⑦에서 정한다 (design §4 각주 ⑤)
 - `remaining-effort-estimate.md` §7 목록의 수정
 - `ACT-1` 평가 시점 확정 — `act1-evaluation-timing.md` §7의 owner 결정 3건이 소유한다
 - 상위 `design.md` §9.4 문면 수정과 모체 `FROZEN` 산출물(`design.md`·`dod.md`) 변경
+- Phase 1 행의 진입 조건 칸 **외의** 칸과, 다른 Phase 행의 어떤 칸도 (design §9)
 - 환경·보존 비용의 절대 금액과 host·storage 선택 — `ECG-1`~`ECG-3`(`plan.md` §1 `C` 행)이 소유한다
 - 저장소 전역 게이트 신설과 CI workflow 변경
 - 코드·schema·endpoint 변경 (design §0)
@@ -46,7 +48,7 @@ source: docs/work/private-live-autotrader-phase-0/review-findings.md §1 critica
 | custom gradle task | 있다 — `unitTest`·`architectureTest`·`harnessCheck`·`harnessCheckTest`·`verifyTestIsolationPolicy`·`verifyCoverageExclusions`·`verifySecurityDependencyVersions`·`verifyMigrations`·`*:integrationTest` | 회귀 방어선으로만. 문서 대상은 `harnessCheck`뿐이고 그 범위는 `CLAUDE.md`·`.claude/**`다 |
 | CI job | 있다 — 7개. `.github/workflows/quality-gate.yml` 57~59행이 `ci/quality-gate-contract-test.sh`·`ci/local-offline-contract-test.sh`·`docs/check-documentation.sh`를 실행 | **부분적.** `check-documentation.sh`는 정본 문서(`AGENTS.md`·`.ai/*`·`docs/runbooks/*`)만, `check-harness.sh`는 `CLAUDE.md`·`.claude/**`만 본다. **`docs/work/` 아래는 어느 쪽 대상도 아니다** |
 | 단위 검증 러너 선례 | **있다** — `docs/work/private-live-autotrader-phase-0/verify.sh`. dod 표의 AC를 전수 열거하고, 명령이 없는 AC를 `MISSING`으로 실패시키며, T4는 `MANUAL`로 표시해 GREEN으로 세지 않는다 | **이 형태를 그대로 따른다** |
-| 모체 링크 검사 | 있다 — 모체 `dod.md` `AC4`가 `docs/work/private-live-autotrader/*.md`의 상대 링크 실재를 검사한다 | 회귀 방어선. `N0` 행이 이 디렉터리를 링크하므로 다시 통과시켜야 한다 |
+| 모체 링크 검사 | 있다 — 모체 `dod.md` `AC4`가 `docs/work/private-live-autotrader/*.md`의 상대 링크 실재를 검사한다 | 회귀 방어선. 상위 `plan.md`를 편집하므로 다시 통과시켜야 한다 |
 
 **결론.** `docs/work/` 아래의 문서 계약을 검사하는 **저장소 전역** gate는 없고, **만들지 않는다.** 대신
 slug-local `docs/work/private-live-autotrader-nogo-0/verify.sh`를 만든다. 단위의 계약은 단위가 닫히면
@@ -57,11 +59,11 @@ slug-local `docs/work/private-live-autotrader-nogo-0/verify.sh`를 만든다. �
 
 | # | 수용기준 (관찰 가능) | 근거 | 출처 | 티어 | 검증 수단 | 검증 명령 | 통과 조건 |
 |---|---|---|---|---|---|---|---|
-| AC1 | 결정 입력표가 8행이고 `remaining-effort-estimate.md` §7과 번호·값 이름이 1:1로 같은 순서이며, 각 행의 단위·권고 범위 칸이 비어 있지 않고, 권고 범위에 수치가 있는 행은 같은 행에 근거 문서·절을, "권고 없음"인 행은 유도 불가 사유를 갖는다 | design §4. `NOGO-0`이 요구하는 것은 값이 아니라 "결과를 보기 전에 승인할 수 있는 형태"다 | `상위` | T1 | `신규스크립트` `verify.sh` | `bash docs/work/private-live-autotrader-nogo-0/verify.sh check decision-inputs` | exit 0, `decision-inputs: 8/8 rows, unmatched=[] unsourced=[]` |
+| AC1 | 결정 입력표가 8행이고 `remaining-effort-estimate.md` §7과 번호·값 이름이 1:1로 같은 순서이며, 각 행의 단위·권고 범위 칸이 비어 있지 않고, **권고 범위에 수치가 있으면 근거 문서·절 칸이, "권고 없음"이 있으면 유도 불가 사유 칸이, 둘 다면 둘 다** 비어 있지 않다 | design §4와 각주 ④. `NOGO-0`이 요구하는 것은 값이 아니라 "결과를 보기 전에 승인할 수 있는 형태"다 | `상위` | T1 | `신규스크립트` `verify.sh` | `bash docs/work/private-live-autotrader-nogo-0/verify.sh check decision-inputs` | exit 0, `decision-inputs: 8/8 rows, unmatched=[] unsourced=[]` |
 | AC2 | 이 디렉터리 문서가 쓰는 대문자 상태 토큰이 전부 참조 코퍼스에 이미 있는 이름이다. 즉 새 상태 이름을 도입하지 않는다 | design §7. 종료 판정을 새 축 없이 `progress.md` append로 처리한다는 결정이 문서에서 깨지지 않아야 한다 | `요구` (③ 사용자 합의 — "새 상태축을 만들지 않는다") | T1 | `신규스크립트` `verify.sh` | `bash docs/work/private-live-autotrader-nogo-0/verify.sh check state-vocabulary` | exit 0, `state-vocabulary: unknown=[]` |
-| AC3 | 상위 `plan.md` §1 gate 표에 `N0` 행이 있고 `C` 행보다 앞에 있으며, 그 행 안에 반복 gate 표기와 `progress.md` 종료 판정이 있다. §3에도 `NOGO-0` 위임 항목이 있다 | design §8. `Z2`가 이미 `NOGO-0` 재평가 결과를 참조하는데 소유 행이 없고, `review-findings.md` §1이 §1·§3 둘 다를 지적했다 | `리뷰` | T1 | `신규스크립트` `verify.sh` | `bash docs/work/private-live-autotrader-nogo-0/verify.sh check owner-row` | exit 0, `owner-row: present, before C, repeating, delegated` |
+| AC3 | 상위 `plan.md`에 세 편집이 모두 들어간다 — **Phase 1 행의 진입 조건이 `N0`를 포함**하고, gate 표의 `N0` 행이 `C` 행보다 앞에 있으며 그 행에 반복 gate 표기와 `progress.md` 종료 판정이 있고, 표 아래 문단에 거짓-서술 방지 문장이 살아 있으며, §3에 `NOGO-0` 위임 항목이 있다 | design §8. `Z2`가 이미 `NOGO-0` 재평가 결과를 참조하는데 소유 행이 없고, `review-findings.md` §1이 §1·§3 둘 다를 지적했으며, §2 판정은 진입 조건에 걸어야 강제되고, §6.1의 거짓-서술 재발은 기계로 막아야 한다 | `리뷰` | T1 | `신규스크립트` `verify.sh` | `bash docs/work/private-live-autotrader-nogo-0/verify.sh check owner-row` | exit 0, `owner-row: present, before C, repeating, delegated, phase1-gated, caveat` |
 | AC4 | 모체 `FROZEN` 산출물 2종(`design.md`·`dod.md`)이 이 브랜치에서 변경되지 않았다 | 모체 `dod.md` `status: FROZEN`, `definition-of-done` 절대규칙 3 | `상위` | T1 | `기존` `git diff --quiet` | `git diff --quiet origin/dev -- docs/work/private-live-autotrader/design.md docs/work/private-live-autotrader/dod.md` | exit 0 |
-| AC5 | owner가 design §2(Phase 1 진입 차단)·§3(C안)·§7(새 축 없음) 세 판정과 `[DECISION_NEEDED-4]`(허용 손실 소속)를 판정하고 이 계약서가 `FROZEN`으로 전이한다 | `feature-workflow` ⑦. 네 판정 모두 모체 동결 계약의 해석을 바꾸므로 AI 단독 확정 대상이 아니다 | `요구` | T4 | `사람` owner 승인 기록 | — | `status: FROZEN` + `frozen_at` 기입, 앵커는 승인 커밋 SHA |
+| AC5 | owner가 design §10 등기부의 `[DECISION_NEEDED-1]`(C안)·`[DECISION_NEEDED-2]`(새 축 없음)·`[DECISION_NEEDED-4]`(허용 손실 소속)를 판정하고 `[DECISION_NEEDED-5]`(Phase 1 진입 차단)의 편집 문면을 확인한 뒤 이 계약서가 `FROZEN`으로 전이한다 | `feature-workflow` ⑦. 네 항목 모두 모체 동결 계약의 해석을 바꾸므로 AI 단독 확정 대상이 아니다 | `요구` | T4 | `사람` owner 승인 기록 | — | `status: FROZEN` + `frozen_at` 기입, 앵커는 승인 커밋 SHA |
 | AC6 | owner가 8개 값(또는 회차 판정)과 승인 시각을 `progress.md`에 append한다 | 상위 `design.md` §9.4 "상한값과 재평가 시점은 결과를 보기 전에 승인" · §4.2 "승인 근거는 `progress.md`가 소유한다" | `상위` | T4 | `사람` `progress.md` append | — | append 커밋 SHA. **이 항목은 `AWAITING_HUMAN`으로 남는다** |
 
 **`출처`** — `요구`(사용자 요구 원문) / `상위`(상위 동결 문서의 ID) / `리뷰`(리뷰에서 파생) / `추론`(근거 없음).
@@ -73,6 +75,9 @@ slug-local `docs/work/private-live-autotrader-nogo-0/verify.sh`를 만든다. �
 > **AC1은 승인값을 요구하지 않는다.** 결정 입력표의 `값` 칸은 결정 대상의 **이름**이고(design §4 각주 ①),
 > 검사는 그 이름이 `remaining-effort-estimate.md` §7과 일치하는지만 본다. 승인값은 그 표가 아니라
 > `progress.md` append가 담는다.
+>
+> **수치와 "권고 없음"은 배타가 아니다.** §4 표의 4·5·7행이 둘을 동시에 갖는다 — 어떤 축에는 권고가 없고
+> 다른 축에는 유도된 수치가 있다(design §4 각주 ④). 러너 규칙도 배타로 전제하지 않는다.
 
 > **AC2의 참조 코퍼스는 네 파일이다.**
 >
@@ -85,6 +90,9 @@ slug-local `docs/work/private-live-autotrader-nogo-0/verify.sh`를 만든다. �
 >
 > 코퍼스를 모체 `design.md` 하나로 두면 계약서 lifecycle과 러너 판정 어휘가 전부 오탐이 된다. 넷 다 이
 > 저장소가 이미 쓰는 어휘이고, 이 단위가 **새로 만든** 이름이 아니라는 것이 AC2가 보려는 것이다.
+
+> **AC3의 단정 번호는 [`plan.md`](plan.md) §2-4가 정본이다.** 이 계약서는 그 번호를 인용만 한다. 러너를
+> 고칠 때 번호가 갈리면 표본 대응(§2-4의 "단정 ↔ 표본" 표)이 먼저 깨진다.
 
 > **AC4의 baseline은 `origin/dev`다.** 두 파일은 `FROZEN`이므로 다른 작업자도 건드리지 않는 것이 전제다.
 > `origin/dev`가 이 branch 분기점보다 앞서 있고 누군가 그 파일을 바꿨다면 이 명령은 그 변경까지 잡는다.
@@ -124,16 +132,23 @@ bash docs/work/private-live-autotrader-nogo-0/verify.sh check <name>     # 개�
 bash docs/work/private-live-autotrader-nogo-0/verify.sh --root <dir> check <name>
 ```
 
-`<name>` ∈ `decision-inputs` · `state-vocabulary` · `owner-row` · `master-links`
+`<name>` ∈ `decision-inputs` · `state-vocabulary` · `owner-row` · `doc-links`
+
+**단정은 fail-fast다.** 각 check는 첫 실패에서 멈추고 그 사유 한 줄만 출력한다([`plan.md`](plan.md) §2-4).
+그래서 단정마다 대응 표본이 하나씩 있어야 한다.
 
 **각 check가 보는 것**
 
 | check | 대상 | 단정 |
 |---|---|---|
-| `decision-inputs` | 이 디렉터리 `design.md` §4 표 ↔ `docs/work/private-live-autotrader/remaining-effort-estimate.md` §7 표 | ① 양쪽 8행 ② 번호가 1~8 순서 ③ 값 이름이 양쪽에서 문자열 일치 ④ 단위·권고 범위 칸이 비지 않음 ⑤ 권고 범위가 "권고 없음"을 포함하면 유도 불가 사유 칸이, 포함하지 않으면 근거 문서·절 칸이 비지 않음 |
+| `decision-inputs` | 이 디렉터리 `design.md` §4 표 ↔ `docs/work/private-live-autotrader/remaining-effort-estimate.md` §7 표 | ① 양쪽 8행 ② 번호가 1~8 순서 ③ 값 이름이 양쪽에서 문자열 일치 ④ 단위·권고 범위 칸이 비지 않음 ⑤ 권고 범위에 수치가 있으면 근거 문서·절 칸이, "권고 없음"이 있으면 유도 불가 사유 칸이 비지 않음. **두 조건은 배타가 아니며 둘 다 해당하면 둘 다 요구한다** |
 | `state-vocabulary` | 이 디렉터리 `*.md`의 백틱 토큰 중 대문자·밑줄 4자 이상 | 각 토큰이 참조 코퍼스 **네 파일** 중 하나에 문자열로 존재한다 |
-| `owner-row` | `docs/work/private-live-autotrader/plan.md` | ① `N0` 행 존재 ② `N0` 행이 `C` 행보다 위 ③ `N0` 행에 "반복" ④ `N0` 행에 `progress.md` ⑤ §3에 `NOGO-0` 위임 항목 |
-| `master-links` | `docs/work/private-live-autotrader/*.md`의 상대 링크 | 모든 링크 대상이 실재한다 (모체 `dod.md` `AC4`의 회귀 방어) |
+| `owner-row` | `docs/work/private-live-autotrader/plan.md` | ① `N0` 행 존재 ② `C` 행 존재 ③ `N0` 행이 `C` 행보다 위 ④ `N0` 행에 "반복" ⑤ `N0` 행에 `progress.md` ⑥ §3에 `NOGO-0` 위임 항목 ⑦ 첫 표 Phase 1 행의 진입 조건에 `N0` ⑧ §1 절에 "재통과" — 거짓-서술 방지 문장의 생존 증거 |
+| `doc-links` | `docs/work/private-live-autotrader/*.md` **와** `docs/work/private-live-autotrader-nogo-0/*.md`의 상대 링크 | 모든 링크 대상이 실재한다 (모체 `dod.md` `AC4`의 회귀 방어 + 이 디렉터리 자체 링크) |
+
+> **단정 ⑧이 "재통과"를 찾는 이유.** `A1`이나 `CANDIDATE_REJECTED`를 찾으면 그 문장이 없어도 통과한다 —
+> 둘 다 모체 `plan.md` §1의 `A1` 행에 이미 있다. `재통과`는 모체에 0회 등장하므로 새로 넣는 문단만이
+> 이 단정을 통과시킨다.
 
 **위반 검출 증명**
 
@@ -141,15 +156,24 @@ bash docs/work/private-live-autotrader-nogo-0/verify.sh --root <dir> check <name
 |---|---|---|---|
 | `decision-inputs` | 현재 트리의 `design.md` §4 표 | ① 한 행의 근거 문서·절과 유도 불가 사유를 모두 비운 `--root` 사본 ② 8행을 7행으로 줄인 사본 ③ 2행과 3행의 값 이름을 맞바꾼 사본 | 증거 로그 AC1 |
 | `state-vocabulary` | 현재 트리의 이 디렉터리 `*.md` | 참조 코퍼스에 없는 상태 이름을 백틱으로 감싸 본문에 넣은 `--root` 사본 | 증거 로그 AC2 |
-| `owner-row` | `N0` 행과 §3 항목이 추가된 상위 `plan.md` | ① `N0` 행을 지운 `--root` 사본 ② `N0` 행을 `Z2` 뒤로 옮긴 사본 ③ `N0` 행에서 "반복" 표기를 지운 사본 ④ §3 항목을 지운 사본 | 증거 로그 AC3 |
-| `master-links` | 현재 트리 | 상위 `plan.md`에 실재하지 않는 대상을 가리키는 링크를 넣은 `--root` 사본 | 증거 로그 회귀 방어선 |
+| `owner-row` | 세 편집이 모두 반영된 상위 `plan.md` | 단정 ①③④⑤⑥⑦⑧에 각각 대응하는 사본 7종 — `N0` 행 삭제 / `Z2` 뒤로 이동 / "반복" 삭제 / `progress.md` 삭제 / §3 항목 삭제 / Phase 1 진입 조건 되돌림 / "재통과" 문장 삭제. **단정 ②는 표본 면제** | 증거 로그 AC3 |
+| `doc-links` | 현재 트리 | **실트리**에서 상위 `plan.md`에 실재하지 않는 대상을 가리키는 링크 한 줄을 추가하고 실행한 뒤 `git checkout --`로 되돌린다 | 증거 로그 회귀 방어선 |
+
+> **단정 ②(`C` 행 존재)만 표본이 없다.** 모체 gate 표에서 `C` 행이 사라지는 것은 이 단위가 만들 수 있는
+> 회귀가 아니다. 이 단정은 ③(행 번호 비교)의 전제를 성립시키기 위한 것이며, 실패하면 ③이 무의미한 비교를
+> 하는 대신 명시적으로 멈춘다.
+
+> **`doc-links` 위반 표본만 `--root` 사본을 쓰지 않는다.** 이 check는 대상 디렉터리의 **모든** 상대 링크를
+> 보는데 사본에는 링크 대상(상위 문서가 참조하는 `.ai/planning/**` 등)이 없어 사본 자체가 수십 건 broken으로
+> 나온다. 정상 표본이 성립하지 않으므로 검출 증명이 되지 않는다. 대신 실트리에서 한 줄을 넣었다 되돌린다 —
+> 그 파일에 다른 미커밋 변경이 없는 시점에만 수행한다(`git checkout --`가 그 변경까지 지운다).
 
 > 위 위반 표본의 예시 토큰을 이 문서 본문에 **백틱으로 적지 않는다.** 적으면 `state-vocabulary`가 이
 > 계약서 자신을 위반으로 잡는다. 검사 대상에 이 디렉터리의 `*.md` 전부가 들어가기 때문이다.
 
 **CI 등록은 하지 않는다.** 러너의 대상이 이 단위의 문서 계약이고 repository 빌드 산출물이 아니다. 전역
 게이트로 올리면 무관한 PR 전부를 이 프로그램 문서 상태에 묶는다. 재실행 트리거는 `N0` 행이 소유한다 —
-재평가 회차마다 `progress.md` append와 함께 러너 실행 결과를 남긴다(design §8.3).
+재평가 회차마다 `progress.md` append와 함께 러너 실행 결과를 남긴다(design §8.4).
 
 ## 회귀 방어선
 
@@ -160,7 +184,7 @@ bash docs/work/private-live-autotrader-nogo-0/verify.sh --root <dir> check <name
 | R1 | 정본 문서 무결성 (`AGENTS.md`·`.ai/*`·`docs/runbooks/*`의 링크·placeholder·낡은 서술) | `bash docs/check-documentation.sh` |
 | R2 | 하네스 정합성 (`CLAUDE.md`·`.claude/**`의 참조·frontmatter·계약 단정) | `bash docs/check-harness.sh` |
 | R3 | 코드·아키텍처 경계가 이 문서 변경에 영향받지 않음 | `./gradlew test architectureTest --offline --no-daemon` |
-| R4 | 상위 `plan.md` 편집 후에도 모체 `dod.md` `AC4`의 링크 실재 계약이 유지됨 | `bash docs/work/private-live-autotrader-nogo-0/verify.sh check master-links` |
+| R4 | 상위 `plan.md` 편집 후에도 모체 `dod.md` `AC4`의 링크 실재 계약이 유지되고, 이 디렉터리 링크도 실재함 | `bash docs/work/private-live-autotrader-nogo-0/verify.sh check doc-links` |
 
 ## 증거 로그
 
@@ -169,7 +193,8 @@ bash docs/work/private-live-autotrader-nogo-0/verify.sh --root <dir> check <name
 > **AC1·AC2의 RED 처리.** 이 단위는 ④ 스펙 작성이 곧 산출물이라 러너를 만드는 시점에 이미 `design.md`
 > §4 표와 본문이 존재한다. 따라서 AC1·AC2의 RED는 "구현 전 실패"가 아니라 **위반 표본의 exit 1**로
 > 대체한다. 그 실행 없이는 AC1·AC2를 충족으로 처리하지 않는다.
-> AC3은 `N0` 행이 아직 없으므로 **진짜 RED가 존재한다** — 러너 완성 직후 실행해 실패를 남긴다.
+> AC3은 세 편집이 아직 없으므로 **진짜 RED가 존재한다** — 러너 완성 직후 실행해 실패를 남긴다. 다만
+> fail-fast라 그 실행은 단정 ①만 관찰하며, 나머지 단정의 RED는 T4b 표본이 각각 증명한다.
 
 ### AC1
 
@@ -192,7 +217,12 @@ bash docs/work/private-live-autotrader-nogo-0/verify.sh --root <dir> check <name
 ### AC4
 
 ```
-(작성 예정)
+[GREEN] 2026-09-16  (실행자: orchestrator, ⑥ R1 위반 12 처리)
+$ git diff --quiet origin/dev -- docs/work/private-live-autotrader/design.md docs/work/private-live-autotrader/dod.md
+(출력 없음, exit 0)
+
+모체 FROZEN 산출물 2종 무변경 확인. 이 실측은 상위 `plan.md` 편집(T5) 전 시점의 것이므로
+T6에서 편집 후 상태로 한 번 더 실행해 append한다 — T5는 `plan.md`만 건드리므로 결과는 같아야 한다.
 ```
 
 ### 회귀 방어선
@@ -209,7 +239,7 @@ bash docs/work/private-live-autotrader-nogo-0/verify.sh --root <dir> check <name
 
 | # | 확인 사항 | 확인자 | 날짜 | 앵커 |
 |---|---|---|---|---|
-| AC5 | design §2·§3·§7 세 판정과 `[DECISION_NEEDED-4]` 판정, `FROZEN` 전이 | | | |
+| AC5 | design §10의 `[DECISION_NEEDED-1]`·`[DECISION_NEEDED-2]`·`[DECISION_NEEDED-4]` 판정과 `[DECISION_NEEDED-5]` 문면 확인, `FROZEN` 전이 | | | |
 | AC6 | 8개 값(또는 회차 판정)과 승인 시각의 `progress.md` append | | | |
 
 ## 변경 요청
@@ -236,5 +266,5 @@ DoD VERDICT: private-live-autotrader-nogo-0 @ <commit SHA>
 
 **사람 확인이 필요한 항목**
 
-- AC5 — owner가 design §2·§3·§7 판정과 `[DECISION_NEEDED-4]`를 판정하고 이 계약서를 `FROZEN`으로 전이
+- AC5 — owner가 design §10 등기부의 결정 대기 항목을 판정하고 이 계약서를 `FROZEN`으로 전이
 - AC6 — owner가 8개 값과 승인 시각을 `progress.md`에 append (**이 단위는 여기서 `AWAITING_HUMAN`으로 남는다**)
