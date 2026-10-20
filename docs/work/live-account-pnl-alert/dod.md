@@ -316,6 +316,13 @@ GREEN $ 같은 명령 (구현 후)
 - R6: `./gradlew :apps:batch:integrationTest --offline --no-daemon` -> `BUILD SUCCESSFUL` (98 tests, 0 failed).
 - 배선 메모: batch 통합 테스트 스키마는 `batch-schema.sql` fixture 라서 V18 과 같은 두 테이블을 추가하고 `BatchTestConfig.BATCH_TABLES` 에 등록했다.
 
+### AC10 — Task 13 (2026-10-20, 커밋 전)
+
+- RED: 금지 규칙 목록을 비운 채 `./gradlew :architecture-tests:architectureTest --tests 'io.premiumspread.architecture.PrivateAccountReadOnlyArchitectureTest' --offline --no-daemon` → `금지 패턴의 각 대안은 위반 표본에 개별로 매치한다` FAILED.
+- GREEN: 규칙 20개(`.post/.put/.delete/.patch(`, `HttpMethod.POST|PUT|DELETE|PATCH`, 범용 `.method(` 중 `HttpMethod.GET` 아닌 것, 경로·키워드 11종) 구현 → 같은 명령 3 tests, 0 failures. 실제 adapter 2개(Bithumb/Binance) 위반 0건.
+- 전체 `./gradlew architectureTest --offline --no-daemon` BUILD SUCCESSFUL (R1).
+- 주의: dod AC10 명령의 루트 `architectureTest` 는 `--tests` 옵션이 없다 — `:architecture-tests:architectureTest` 로 실행해야 한다.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
