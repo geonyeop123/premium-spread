@@ -258,6 +258,17 @@ $ ./gradlew :infrastructure:common:integrationTest --offline --no-daemon
 BUILD SUCCESSFUL
 ```
 
+### AC7 — Task 8 (2026-10-20, 커밋 전)
+
+```
+RED   $ ./gradlew :infrastructure:batch:test --tests '...bithumb.BithumbPrivateAccountAdapterTest' --offline --no-daemon
+      24 tests completed, 24 failed   (adapter 가 UnsupportedOperationException 을 던지는 stub)
+GREEN $ 같은 명령 (구현 후)
+      BUILD SUCCESSFUL (24건 통과)
+      $ ./gradlew :infrastructure:batch:test :domain:test --offline --no-daemon
+      BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

@@ -15,7 +15,11 @@ enum class AccountReadFailureCategory {
 
 data class PriceLevel(val price: BigDecimal, val quantity: BigDecimal)
 
-class AccountReadException(val category: AccountReadFailureCategory, message: String) : RuntimeException(message)
+class AccountReadException(
+    val category: AccountReadFailureCategory,
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 data class KoreaSpotAccountSnapshot(
     val quantity: BigDecimal,
