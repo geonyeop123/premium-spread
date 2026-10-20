@@ -215,6 +215,23 @@ $ ./gradlew :domain:test --offline --no-daemon
 BUILD SUCCESSFUL
 ```
 
+### AC9 — Task 6 (2026-10-20, 커밋 전)
+
+```
+$ ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon   # RED (TODO() stub)
+AccountPnlMailContentTest > 제목에 순수익률과 순수익금이 있다() FAILED
+AccountPnlMailContentTest > 본문에 계산 근거가 모두 있다() FAILED
+AccountPnlMailContentTest > 미반영 항목을 명시한다() FAILED
+AccountPnlMailContentTest > 평단 수정 표시를 넣는다() FAILED
+AccountPnlMailContentTest > 중단 메일 제목에 범주가 있다() FAILED
+BUILD FAILED
+
+$ (같은 명령, 구현 후)   # GREEN
+BUILD SUCCESSFUL
+$ ./gradlew :domain:test --offline --no-daemon
+BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
