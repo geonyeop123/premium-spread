@@ -1,8 +1,8 @@
 ---
 feature: 실계정 순손익 알림 (Live Account PnL Alert)
 slug: live-account-pnl-alert
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-20T10:39:53+09:00
 verdict_commit:
 source: docs/work/live-account-pnl-alert/design.md (owner 승인 2026-10-20, 커밋 616bb74)
 ---
