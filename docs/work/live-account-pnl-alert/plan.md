@@ -35,11 +35,26 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, Testcontainers(MySQL).
 
 ## Review Focus
 
-1. **로컬 PC 시계 오차** — 신선도는 거래소 응답 timestamp 와 `clock.instant()` 의 차이다. WSL 시계가 수 초 밀리면 매 회차가 실패한다. 미래 timestamp(음수 나이)는 신선으로 보고, 바이낸스 `recvWindow` 는 10000ms. → Task 10 테스트 `미래 시각 호가는 신선으로 본다`.
+1. **로컬 PC 시계 오차** — 신선도는 거래소 응답 timestamp 와 `clock.instant()` 의 차이다. WSL 시계가 수 초 밀리면 매 회차가 실패한다. 미래 timestamp(음수 나이)는 신선으로 보고, 바이낸스 `recvWindow` 는 10000ms. 바이낸스는 로컬 시계가 서버보다 1초 넘게 **빠르면** recvWindow 와 무관하게 `-1021` 로 거부하므로 서명 timestamp 는 `/fapi/v1/time` 으로 잰 서버 시각 오프셋을 보정해 쓴다(Task 0 결론 g). → Task 10 테스트 `미래 시각 호가는 신선으로 본다`, Task 9 테스트.
 2. **빗썸 잠긴 수량** — 매도 주문을 걸어 두면 `balance` 가 줄고 `locked` 가 는다. 수량 = balance + locked. → Task 8 테스트.
 3. **에피소드 중 포지션 교체** — 한 시간 안에 청산 후 새로 진입하면(1분 사이 flat 을 관측 못 할 수 있다) 이전 에피소드의 재발송 타이머가 새 포지션에 붙는다. 어느 leg 든 수량·평단(진입가)이 바뀌면 새 포지션으로 보고 에피소드를 초기화한다. → Task 4 테스트.
 4. **SMTP 실패** — 발송 실패한 메일은 다음 회차에 재시도되고, 재발송 타이머는 발송 결정 시각 기준이라 SMTP 장애가 1시간 재발송을 앞당기거나 늦추지 않는다. → Task 10 테스트.
 5. **청산 후 dust** — 전량 매도 후 빗썸에 0.00001 BTC 같은 잔량이 남으면 포지션이 열려 있는 것으로 보면 안 된다. 빗썸 수량 `< 0.0001` BTC 는 0 으로 본다(내 판단, design §2 dust 위임). → Task 2 테스트.
+
+## Task 0 결론에 따른 보정 (2026-10-20, owner 승인)
+
+Task 0 Step 3 보고 후 owner 가 승인한 보정이다. dod 수용기준 문구는 바뀌지 않는다. 근거는 `understanding.md` `### plan 가정과의 차이`.
+
+| # | 보정 | 반영 태스크 |
+|---|---|---|
+| P1 | 빗썸 `avg_buy_price` 수수료 포함 여부는 문서에 없다 → **미포함으로 가정**하고 `paid_fee` 를 진입 수수료로 따로 뺀다. AC13 에서 owner 가 검산해 포함으로 드러나면 그때 변경 요청 | Task 8 |
+| P2 | `avg_buy_price_modified=true` 면 그 평단을 그대로 쓰고 메일 본문에 `빗썸 평단 사용자 수정됨` 한 줄을 넣는다. 판정 불변 | Task 1·6·8 |
+| P3 | 빗썸 체결 이력은 `GET /v1/orders?market=KRW-BTC&states[]=done&states[]=cancel&order_by=desc&limit=100&page=N`. `executed_volume>0` 인 bid 만 합산(부분 체결 후 취소 포함). 탐색 상한 10 페이지 — 넘으면 `entryFeeKrw=null` | Task 8 |
+| P4 | 바이낸스 income `page` 폐지(2026-10-16) → 펀딩은 `startTime`=직전 응답 마지막 `time`+1 로 시각 기반 페이지네이션(limit 1000), 양끝 포함 경계 중복은 `tranId` 로 제거. userTrades 는 7일 창·최근 3개월 한도라 3개월보다 오래된 포지션은 unrecovered | Task 9 |
+| P5 | 바이낸스 서명 timestamp 는 `/fapi/v1/time` 오프셋 보정. `-1021` 은 `NETWORK` | Task 9 |
+| P6 | 가격은 `GET /fapi/v2/ticker/price` (v1 deprecated 예정) | Task 9 |
+| P7 | AC10 금지 경로 목록 교체 — `/v1/orders"`(조회 endpoint)·`/order"`(조회 `GET /v1/order` 오탐) 삭제, 실제 주문·취소·출금·이체 경로로 대체 | Task 13 |
+| P8 | 조회용이지만 POST 인 `POST /v2/orders/search` 는 쓰지 않는다. 조회는 GET 만 | Task 8·13 |
 
 ---
 
@@ -107,6 +122,7 @@ class AccountReadException(val category: AccountReadFailureCategory, message: St
 data class KoreaSpotAccountSnapshot(
     val quantity: BigDecimal,            // balance + locked, BTC
     val averageBuyPrice: BigDecimal,     // KRW
+    val averageBuyPriceModified: Boolean, // avg_buy_price_modified (P2)
     val entryFeeKrw: BigDecimal?,        // null = 이력 미확보
     val sellFeeRate: BigDecimal,         // 0.0004 = 0.04%
     val bidLevels: List<PriceLevel>,     // 가격 내림차순
@@ -269,9 +285,9 @@ object AccountPnlMailContent {
 }
 ```
 
-제목 형식 (exact copy): 수익 `[김프 알림] 순수익률 +1.23% · +456,789원`, 중단 `[김프 알림] 모니터링 중단 — <범주 한글>`, 복구 `[김프 알림] 모니터링 복구`. 범주 한글: BITHUMB_AUTH `빗썸 인증 실패(허용 IP 확인)`, BINANCE_AUTH `바이낸스 인증 실패`, NETWORK `네트워크·요청 한도 오류`, STALE_MARKET_DATA `시세 지연`, STALE_FX `환율 수집 지연`, INSUFFICIENT_DEPTH `호가 깊이 부족`, UNEXPECTED `기타 오류(로그 확인)`. 본문의 청산가는 VWAP 값이다. 본문: design §4.3 항목을 줄 단위로, 시각은 `Asia/Seoul` 표기 + ISO-8601 Instant, 미반영 항목은 `진입 수수료(빗썸) 미반영(이력 없음)` 형식.
+제목 형식 (exact copy): 수익 `[김프 알림] 순수익률 +1.23% · +456,789원`, 중단 `[김프 알림] 모니터링 중단 — <범주 한글>`, 복구 `[김프 알림] 모니터링 복구`. 범주 한글: BITHUMB_AUTH `빗썸 인증 실패(허용 IP 확인)`, BINANCE_AUTH `바이낸스 인증 실패`, NETWORK `네트워크·요청 한도 오류`, STALE_MARKET_DATA `시세 지연`, STALE_FX `환율 수집 지연`, INSUFFICIENT_DEPTH `호가 깊이 부족`, UNEXPECTED `기타 오류(로그 확인)`. 본문의 청산가는 VWAP 값이다. 본문: design §4.3 항목을 줄 단위로, 시각은 `Asia/Seoul` 표기 + ISO-8601 Instant, 미반영 항목은 `진입 수수료(빗썸) 미반영(이력 없음)` 형식. `averageBuyPriceModified` 면 `빗썸 평단 사용자 수정됨` 한 줄 (P2).
 
-- [ ] **Step 1: 실패 테스트** — `제목에 순수익률과 순수익금이 있다`(+1.23%, +456,789원 / 음수는 `-`), `본문에 계산 근거가 모두 있다`(gross·수수료·펀딩·예상 청산 수수료·체결가 기준 수익률·수량·평단·청산가·체결가·환율·관측 시각 각 라벨 포함), `미반영 항목을 명시한다`, `중단 메일 제목에 범주가 있다`.
+- [ ] **Step 1: 실패 테스트** — `제목에 순수익률과 순수익금이 있다`(+1.23%, +456,789원 / 음수는 `-`), `본문에 계산 근거가 모두 있다`(gross·수수료·펀딩·예상 청산 수수료·체결가 기준 수익률·수량·평단·청산가·체결가·환율·관측 시각 각 라벨 포함), `미반영 항목을 명시한다`, `평단 수정 표시를 넣는다`(P2), `중단 메일 제목에 범주가 있다`.
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` → RED. 증거 로그 AC9.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 실계정 순손익 알림 메일 내용 추가`
 
@@ -316,9 +332,9 @@ V18: `account_pnl_monitor_state`(id TINYINT PK 고정 1, in_episode, position_fi
 
 **Interfaces — Consumes:** Task 1. **Produces:** `class BithumbPrivateAccountAdapter(webClient: WebClient, accessKey: String, secretKey: String, clock: Clock) : KoreaSpotAccountReadPort`; `object BithumbJwtSigner { fun sign(accessKey: String, secretKey: String, query: String?, nonce: String, timestampMillis: Long): String }` — HS256 를 `javax.crypto.Mac` 로 직접 (새 JWT 의존성 추가 금지).
 
-동작 (Task 0 결론으로 확정된 endpoint 사용): 계정 → KRW-BTC `balance + locked`, `avg_buy_price`. 호가 → 공개 orderbook 의 bid 레벨 전부(가격·잔량)와 timestamp. 진입 수수료: 체결 완료 주문을 최신부터 거꾸로 걸어 bid 체결량 누적이 보유 수량과 같아지면 그 주문들의 `paid_fee` 합; 이력이 끝나거나 누적이 수량을 넘으면 `null`. 같은 보유(수량·평단) 동안 결과와 **마지막으로 본 체결 주문 식별자**를 메모리에 보관한다. 매 회차 그 이후의 체결 주문만 한 페이지 조회해 새 체결이 하나라도 있으면 캐시를 버리고 다시 계산한다(같은 수량·평단으로 재진입해도 무효화된다). 매도 수수료율·bid·last 는 매 회차 조회. 401 → `BITHUMB_AUTH`, 연결·타임아웃·5xx·429 → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. adapter 는 모든 실패를 `AccountReadException` 으로만 던진다. 예외 메시지에 key·JWT 를 넣지 않는다.
+동작 (Task 0 결론으로 확정된 endpoint 사용): 계정 `GET /v1/accounts` → BTC 행의 `balance + locked`, `avg_buy_price`, `avg_buy_price_modified`(P2). 호가 → 공개 `GET /v1/orderbook?markets=KRW-BTC` 의 `orderbook_units` bid 레벨 전부(`bid_price`·`bid_size`)와 `timestamp`(ms). 최근 체결가 → `GET /v1/ticker?markets=KRW-BTC` 의 `trade_price`. 매도 수수료율 → `GET /v1/orders/chance?market=KRW-BTC` 의 `ask_fee`. 호가·현재가는 JSON number 이므로 정밀도 손실 없이 `BigDecimal` 로 파싱한다. 진입 수수료(P1·P3): `GET /v1/orders?market=KRW-BTC&states[]=done&states[]=cancel&order_by=desc&limit=100&page=N` 을 최신부터 걸어 `executed_volume>0` 인 bid 주문의 체결량 누적이 보유 수량과 같아지면 그 주문들의 `paid_fee` 합; 이력이 끝나거나 10 페이지를 넘거나 누적이 수량을 넘으면 `null`. query hash 는 실제 전송 query 문자열(배열은 `key[]=v` 반복) 의 SHA-512 hex, `query_hash_alg=SHA512`. 같은 보유(수량·평단) 동안 결과와 **마지막으로 본 체결 주문 식별자**를 메모리에 보관한다. 매 회차 그 이후의 체결 주문만 한 페이지 조회해 새 체결이 하나라도 있으면 캐시를 버리고 다시 계산한다(같은 수량·평단으로 재진입해도 무효화된다). 매도 수수료율·bid·last 는 매 회차 조회. 401 → `BITHUMB_AUTH`, 연결·타임아웃·5xx·429 → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. adapter 는 모든 실패를 `AccountReadException` 으로만 던진다. 예외 메시지에 key·JWT 를 넣지 않는다.
 
-- [ ] **Step 1: 실패 테스트** (MockWebServer + Task 0 fixture): `Authorization 헤더 JWT 를 테스트 secret 으로 검증할 수 있고 payload 에 access_key·nonce·timestamp·query_hash 가 있다`, `잠긴 수량을 포함한다`(Review Focus 2), `체결 주문 수수료를 보유 수량만큼 합산한다`, `이력으로 보유 수량을 채우지 못하면 entryFeeKrw 는 null`, `같은 보유이고 새 체결이 없으면 두 번째 호출은 전체 이력을 다시 걷지 않는다`(MockWebServer 요청 경로 검사), `같은 수량·평단이어도 새 체결이 있으면 수수료를 다시 계산한다`, `401 은 BITHUMB_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `orderbook bid 레벨을 가격 내림차순으로 낸다`, `예외 메시지에 secret 이 없다`.
+- [ ] **Step 1: 실패 테스트** (MockWebServer + Task 0 fixture): `Authorization 헤더 JWT 를 테스트 secret 으로 검증할 수 있고 payload 에 access_key·nonce·timestamp·query_hash 가 있다`, `잠긴 수량을 포함한다`(Review Focus 2), `체결 주문 수수료를 보유 수량만큼 합산한다`, `이력으로 보유 수량을 채우지 못하면 entryFeeKrw 는 null`, `같은 보유이고 새 체결이 없으면 두 번째 호출은 전체 이력을 다시 걷지 않는다`(MockWebServer 요청 경로 검사), `같은 수량·평단이어도 새 체결이 있으면 수수료를 다시 계산한다`, `401 은 BITHUMB_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `orderbook bid 레벨을 가격 내림차순으로 낸다`, `부분 체결 후 취소된 주문의 수수료도 합산한다`(P3), `10 페이지를 넘으면 entryFeeKrw 는 null`(P3), `avg_buy_price_modified 를 그대로 전달한다`(P2), `예외 메시지에 secret 이 없다`.
 - [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapterTest' --offline --no-daemon` → RED. 증거 로그 AC7.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 빗썸 read-only 계정 조회 adapter 추가`
 
@@ -328,9 +344,9 @@ V18: `account_pnl_monitor_state`(id TINYINT PK 고정 1, in_episode, position_fi
 
 **Produces:** `class BinanceFuturesPrivateAccountAdapter(webClient: WebClient, apiKey: String, secretKey: String, clock: Clock, recvWindowMillis: Long = 10_000) : ForeignPerpAccountReadPort`; `object BinanceRequestSigner { fun sign(secretKey: String, query: String): String }` (HMAC-SHA256 hex).
 
-동작: positionRisk(BTCUSDT; hedge mode 면 `positionSide=SHORT` 행) → signedQuantity·entryPrice. 진입 시각·수수료: `userTrades` 를 최신부터 거꾸로 걸어 부호 있는 체결량 누적이 `positionAmt` 와 같아지는 지점까지의 `commission` 합(`commissionAsset` USDT 는 그대로, BNB 는 `GET /fapi/v1/ticker/price?symbol=BNBUSDT` 현재가로 환산, 그 밖의 자산이면 `AccountReadException(UNEXPECTED)`), 그 첫 체결 시각 = 진입 시각; 못 찾으면 수수료·펀딩 null. 펀딩: 진입 시각부터 `income?incomeType=FUNDING_FEE` 페이지를 끝까지 합산(첫 계산 후에는 마지막 조회 시각 이후 증분만). 진입 시각·**자산별 원 수수료 수량**(USDT 합·BNB 합)·마지막 체결 `id` 는 fingerprint 동안 메모리 보관하되, 매 회차 `userTrades?fromId=마지막id+1` 한 번으로 새 체결을 확인해 있으면 캐시를 버린다. 그리고 BNB 분은 **매 회차** BNBUSDT 현재가로 다시 환산한다. takerFeeRate·`GET /fapi/v1/depth?symbol=BTCUSDT&limit=20` ask 레벨(+`T` 시각)·ticker price 는 매 회차. 401/`-2014`/`-2015`/`-1022` → `BINANCE_AUTH`, 연결·5xx·429·418 → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. 모든 실패를 `AccountReadException` 으로만 던진다.
+동작: positionRisk(BTCUSDT; hedge mode 면 `positionSide=SHORT` 행) → signedQuantity·entryPrice. 진입 시각·수수료: `userTrades` 를 최신부터 거꾸로 걸어 부호 있는 체결량 누적이 `positionAmt` 와 같아지는 지점까지의 `commission` 합(`commissionAsset` USDT 는 그대로, BNB 는 `GET /fapi/v2/ticker/price?symbol=BNBUSDT` 현재가로 환산(P6), 그 밖의 자산이면 `AccountReadException(UNEXPECTED)`), 그 첫 체결 시각 = 진입 시각; 못 찾으면 수수료·펀딩 null. userTrades 는 7일 창(`startTime`/`endTime`)을 과거로 옮기며 걷고 최근 3개월(약 13창)을 넘으면 수수료·펀딩 null. 펀딩(P4): 진입 시각부터 `income?incomeType=FUNDING_FEE&symbol=BTCUSDT&limit=1000&startTime=` 을 직전 응답 마지막 `time`+1 로 이어 받아 끝까지 합산, `tranId` 로 중복 제거(첫 계산 후에는 마지막 조회 시각 이후 증분만). 서명 timestamp 는 `/fapi/v1/time` 으로 잰 서버 오프셋을 더한 값(P5, 오프셋은 인스턴스 메모리에 두고 `-1021` 이면 다시 잰다). 진입 시각·**자산별 원 수수료 수량**(USDT 합·BNB 합)·마지막 체결 `id` 는 fingerprint 동안 메모리 보관하되, 매 회차 `userTrades?fromId=마지막id+1` 한 번으로 새 체결을 확인해 있으면 캐시를 버린다. 그리고 BNB 분은 **매 회차** BNBUSDT 현재가로 다시 환산한다. takerFeeRate·`GET /fapi/v1/depth?symbol=BTCUSDT&limit=20` ask 레벨(+`T` 시각)·ticker price 는 매 회차. 401/`-2014`/`-2015`/`-1022` → `BINANCE_AUTH`, 연결·5xx·429·418·`-1021` → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. 모든 실패를 `AccountReadException` 으로만 던진다.
 
-- [ ] **Step 1: 실패 테스트**: `서명은 문서 예제 벡터와 같다`(Task 0 에 기록한 secret·query·signature 3값), `X-MBX-APIKEY 헤더와 recvWindow=10000 이 붙는다`, `숏 수량과 진입가를 읽는다`, `hedge mode 면 SHORT 행을 읽는다`, `체결 수수료를 포지션 수량만큼 합산한다`, `BNB 수수료는 BNBUSDT 현재가로 환산해 합산한다`, `같은 포지션에서 BNBUSDT 가 바뀌면 다음 회차 환산 수수료도 바뀐다`(전체 userTrades 를 다시 걷지 않음), `같은 수량·진입가로 재진입해 새 체결이 생기면 진입 시각·수수료·펀딩을 다시 계산한다`, `USDT·BNB 외 수수료 자산이면 UNEXPECTED`, `펀딩을 여러 페이지에 걸쳐 합산한다`, `두 번째 회차는 펀딩 증분만 요청한다`, `-2015 는 BINANCE_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `depth ask 레벨을 가격 오름차순으로 낸다`, `예외 메시지에 secret 이 없다`.
+- [ ] **Step 1: 실패 테스트**: `서명은 문서 예제 벡터와 같다`(Task 0 에 기록한 secret·query·signature 3값), `X-MBX-APIKEY 헤더와 recvWindow=10000 이 붙는다`, `숏 수량과 진입가를 읽는다`, `hedge mode 면 SHORT 행을 읽는다`, `체결 수수료를 포지션 수량만큼 합산한다`, `BNB 수수료는 BNBUSDT 현재가로 환산해 합산한다`, `같은 포지션에서 BNBUSDT 가 바뀌면 다음 회차 환산 수수료도 바뀐다`(전체 userTrades 를 다시 걷지 않음), `같은 수량·진입가로 재진입해 새 체결이 생기면 진입 시각·수수료·펀딩을 다시 계산한다`, `USDT·BNB 외 수수료 자산이면 UNEXPECTED`, `펀딩을 시각 기반 여러 페이지에 걸쳐 합산하고 경계 중복 tranId 는 한 번만 센다`(P4), `두 번째 회차는 펀딩 증분만 요청한다`, `서명 timestamp 에 서버 시각 오프셋을 반영한다`(P5), `-1021 은 NETWORK`(P5), `-2015 는 BINANCE_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `depth ask 레벨을 가격 오름차순으로 낸다`, `예외 메시지에 secret 이 없다`.
 - [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest' --offline --no-daemon` → RED. 증거 로그 AC8.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 바이낸스 선물 read-only 계정 조회 adapter 추가`
 
@@ -387,7 +403,7 @@ class AccountPnlMonitorJob(
 
 **Files:** Test `architecture-tests/src/architectureTest/kotlin/io/premiumspread/architecture/PrivateAccountReadOnlyArchitectureTest.kt`
 
-`VerifiedBalanceNoCacheArchitectureTest` 의 소스 순회 방식을 따른다. 대상: 파일명 `*PrivateAccountAdapter.kt` 인 production 소스. 금지: `.post(`, `.put(`, `.delete(`, `.patch(`, `HttpMethod.POST|PUT|DELETE|PATCH`, 경로 문자열 `/v1/orders"`(POST 용 단수 주문 경로 포함 여부는 Task 0 결과로 확정), `withdraw`, `/order"`, `transfer`. 자기검증: 대상 파일이 2개 미만이면 실패, 금지 패턴 각 대안이 위반 표본 문자열에서 개별로 매치하는지 검사하는 테스트를 같은 클래스에 둔다.
+`VerifiedBalanceNoCacheArchitectureTest` 의 소스 순회 방식을 따른다. 대상: 파일명 `*PrivateAccountAdapter.kt` 인 production 소스. 금지(P7·P8): `.post(`, `.put(`, `.delete(`, `.patch(`, `HttpMethod.POST|PUT|DELETE|PATCH`, 경로 문자열 `/v2/orders"`(빗썸 주문)·`/v2/order"`(빗썸 취소)·`/orders/batch`·`/orders/cancel`·`/orders/search`·`/twap`·`/fapi/v1/order"`·`batchOrders`·`withdraw`·`deposit`·`transfer`. 조회 경로 `/v1/orders`·`/v1/order` 는 금지 대상이 아니다. 자기검증: 대상 파일이 2개 미만이면 실패, 금지 패턴 각 대안이 위반 표본 문자열에서 개별로 매치하는지 검사하는 테스트를 같은 클래스에 둔다.
 
 - [ ] **Step 1:** 테스트 작성. **Step 2:** 위반 표본 검사 + 실제 소스 검사 실행 → 위반 표본 테스트가 먼저 RED(검사 함수 미구현) 확인. 증거 로그 AC10.
 - [ ] **Step 3:** `./gradlew architectureTest --offline --no-daemon` 전체 PASS (R1 포함). **Commit** — `test: private 계정 adapter 조회 전용 아키텍처 테스트`
