@@ -269,6 +269,17 @@ GREEN $ 같은 명령 (구현 후)
       BUILD SUCCESSFUL
 ```
 
+### AC8 — Task 9 (2026-10-20, 커밋 전)
+
+```
+RED   $ ./gradlew :infrastructure:batch:test --tests '...binance.BinanceFuturesPrivateAccountAdapterTest' --offline --no-daemon
+      23 tests completed, 22 failed   (adapter 가 UnsupportedOperationException 을 던지는 stub; 서명 벡터 테스트만 통과)
+GREEN $ 같은 명령 (구현 후)
+      BUILD SUCCESSFUL (23건 통과)
+      $ ./gradlew :infrastructure:batch:test --offline --no-daemon
+      BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
