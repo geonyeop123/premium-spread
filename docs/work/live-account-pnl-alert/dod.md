@@ -3,7 +3,7 @@ feature: 실계정 순손익 알림 (Live Account PnL Alert)
 slug: live-account-pnl-alert
 status: FROZEN
 frozen_at: 2026-10-20T10:39:53+09:00
-verdict_commit:
+verdict_commit: 6028ff9
 source: docs/work/live-account-pnl-alert/design.md (owner 승인 2026-10-20, 커밋 616bb74)
 ---
 
@@ -366,6 +366,27 @@ GREEN $ 같은 명령 (구현 후)
   `./gradlew harnessCheck --offline --no-daemon` → BUILD SUCCESSFUL; `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)`
 - 미실행: CI 의 ktlint·detekt 는 로컬 도구(`.ci-tools/`)가 없어 실행하지 못했다
 
+### ⑩ 검증 (2026-10-20, `6028ff9`, clean 재실행)
+
+```
+$ ./gradlew test architectureTest --offline --no-daemon          exit=0  unit 768 · arch 33 · 실패 0
+$ ./gradlew :infrastructure:common:integrationTest ...            exit=0  32 · 실패 0
+$ ./gradlew :apps:api:integrationTest ...                         exit=0  174 · 실패 0
+$ ./gradlew :apps:batch:integrationTest ...                       exit=0  100 · 실패 0   (R6)
+$ ./gradlew :infrastructure:common:verifyMigrations --rerun ...   exit=0                 (R5)
+$ ./gradlew harnessCheck harnessCheckTest --rerun-tasks ...       exit=0                 (R7)
+$ bash docs/check-documentation.sh                                exit=0
+$ ./gradlew jacocoTestReport jacocoTestCoverageVerification ...   exit=0  (overall·domain·application 게이트 실행)
+AC1~AC11 dod 검증 명령(AC10 은 변경 요청 반영) 각각 exit=0 · R1~R4 exit=0
+```
+
+간헐 실패 1건 (재현 안 됨, 이 브랜치 diff 밖): 첫 clean 실행에서 `:infrastructure:api:test`
+`RedisRefreshSessionStoreIntegrationTest > initializationError` — Testcontainers Redis `HostPortWaitStrategy` 대기 초과.
+같은 모듈 `cleanTest` 2회·전체 clean 재실행 모두 exit 0. 호스트에 다른 worktree 컨테이너 다수 가동 중(환경 경합 추정, 미확정).
+retry 로 숨기지 않고 기록한다.
+
+AC12 (T3): `understanding.md` `## 외부 API 조사` 8행에 URL·확인일·결론 기록 — 사람 사후 검토 대상.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -385,11 +406,11 @@ GREEN $ 같은 명령 (구현 후)
 ## 최종 판정
 
 ```
-DoD VERDICT: live-account-pnl-alert @ <commit SHA>
+DoD VERDICT: live-account-pnl-alert @ 6028ff9
   수용기준 표:     13개  (T1 11 · T2 0 · T3 1 · T4 1)
-  T1/T2 자동:      11개 중 <p>개 PASS
-  T3 기록 제출:    1개 중 <q>건
-  T4 사람 확인:    1개 중 <r>건 완료, <1-r>건 대기
-  변경 요청:       <k>건
-  =>
+  T1/T2 자동:      11개 중 11개 PASS
+  T3 기록 제출:    1개 중 1건
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기 (AC13 owner 실계정 검산)
+  변경 요청:       1건 (AC10 검증 명령, 승인)
+  => AWAITING_HUMAN
 ```
