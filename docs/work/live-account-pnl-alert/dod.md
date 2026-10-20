@@ -305,6 +305,17 @@ GREEN $ 같은 명령 (구현 후)
 - R2: `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` -> `BUILD SUCCESSFUL`.
 - 로그 마스킹: `LoggingAutoConfigurationTest` 에 access key/secret 케이스 추가, `./gradlew test architectureTest --offline --no-daemon` -> `BUILD SUCCESSFUL`.
 
+### AC6 — Task 12 (2026-10-20, 커밋 전)
+
+- 첫 실행이 통과해 RED 가 없었다 (Task 7·10 완료 상태). 그래서 `JdbcAccountPnlAlertStore.save` 첫 줄에 `if (true) return true`
+  를 임시로 넣고 같은 명령을 실행했다 -> `5 tests completed, 4 failed` (재발송 타이머·SMTP 실패 재시도·동시 인스턴스·stale
+  fencing 4건 FAILED, 시나리오 순수익률 검증만 통과). 이어서 `git checkout -- <store 파일>` 로 되돌렸고 `git diff --stat` 이
+  비었음을 확인했다.
+- GREEN: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon`
+  -> `BUILD SUCCESSFUL` (5 tests, 0 failed).
+- R6: `./gradlew :apps:batch:integrationTest --offline --no-daemon` -> `BUILD SUCCESSFUL` (98 tests, 0 failed).
+- 배선 메모: batch 통합 테스트 스키마는 `batch-schema.sql` fixture 라서 V18 과 같은 두 테이블을 추가하고 `BatchTestConfig.BATCH_TABLES` 에 등록했다.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
