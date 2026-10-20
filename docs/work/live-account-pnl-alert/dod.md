@@ -140,6 +140,23 @@ $ ./gradlew compileKotlin compileTestKotlin --offline --no-daemon -q
 exit=0
 ```
 
+### AC2 — Task 2 (2026-10-20, 커밋 전)
+
+```
+$ ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountHedgePositionTest' --offline --no-daemon   # RED (resolve 가 항상 포지션 반환하는 stub)
+AccountHedgePositionTest > 빗썸 수량 0 이면 포지션 없음() FAILED
+AccountHedgePositionTest > 바이낸스 롱이면 포지션 없음() FAILED
+AccountHedgePositionTest > 바이낸스 수량 0 이면 포지션 없음() FAILED
+AccountHedgePositionTest > 빗썸 수량이 dust 미만이면 포지션 없음() FAILED
+7 tests completed, 4 failed
+BUILD FAILED
+
+$ (같은 명령, dust/롱 판정 구현 후)   # GREEN
+BUILD SUCCESSFUL
+$ ./gradlew :domain:test --offline --no-daemon
+BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
