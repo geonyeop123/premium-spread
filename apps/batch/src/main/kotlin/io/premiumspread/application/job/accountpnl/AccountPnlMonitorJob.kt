@@ -207,12 +207,13 @@ class AccountPnlMonitorJob(
                 mailSender.send(mail.mail)
                 true
             } catch (exception: Exception) {
-                // SMTP 예외 메시지에는 수신 주소가 실릴 수 있어 타입만 남긴다
+                // SMTP 예외 메시지에는 수신 주소가 실릴 수 있어 예외·원인 타입만 남긴다
                 log.warn(
-                    "Account PnL mail send failed: id={}, attempt={}, error={}",
+                    "Account PnL mail send failed: id={}, attempt={}, error={}, cause={}",
                     mail.id,
                     mail.attemptCount + 1,
                     exception.javaClass.simpleName,
+                    exception.cause?.javaClass?.simpleName ?: "none",
                 )
                 false
             }

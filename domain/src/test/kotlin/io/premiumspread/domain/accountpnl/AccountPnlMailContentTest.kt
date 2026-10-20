@@ -81,7 +81,7 @@ class AccountPnlMailContentTest {
         val mail = AccountPnlMailContent.profit(pnl(), zone)
 
         assertThat(mail.subject).isEqualTo("[김프 알림] 순수익률 +1.23% · +456,789원")
-        assertThat(mail.eventKey).isEqualTo("profit|2026-10-20T00:00:05Z")
+        assertThat(mail.eventKey).isEqualTo("account-pnl-profit-1792454405000")
     }
 
     @Test
@@ -175,7 +175,7 @@ class AccountPnlMailContentTest {
         expected.forEach { (category, label) ->
             val mail = AccountPnlMailContent.outage(OutageNotice.Outage(category, bidObservedAt), now, zone)
             assertThat(mail.subject).isEqualTo("[김프 알림] 모니터링 중단 — $label")
-            assertThat(mail.eventKey).isEqualTo("outage|2026-10-20T01:00:00Z")
+            assertThat(mail.eventKey).isEqualTo("account-pnl-outage-1792458000000")
             assertThat(mail.body).contains(label, "2026-10-20 09:00:00 (2026-10-20T00:00:00Z)", "docs/runbooks/account-pnl-alert.md")
         }
     }
@@ -196,8 +196,23 @@ class AccountPnlMailContentTest {
         val mail = AccountPnlMailContent.recovered(Instant.parse("2026-10-20T01:00:00Z"), zone)
 
         assertThat(mail.subject).isEqualTo("[김프 알림] 모니터링 복구")
-        assertThat(mail.eventKey).isEqualTo("recovered|2026-10-20T01:00:00Z")
+        assertThat(mail.eventKey).isEqualTo("account-pnl-recovered-1792458000000")
         assertThat(mail.body).contains("2026-10-20 10:00:00 (2026-10-20T01:00:00Z)")
+    }
+
+    @Test
+    fun `세 종류 eventKey 는 SMTP deliveryId 형식을 만족한다`() {
+        // 출처: supports/email JavaMailEmailSender.DELIVERY_ID_PATTERN — 어긋나면 발송이 매번 예외로 끝난다
+        val deliveryIdPattern = Regex("[A-Za-z0-9._-]{1,128}")
+        val now = Instant.parse("2026-10-20T01:00:00Z")
+        val keys = listOf(
+            AccountPnlMailContent.profit(pnl(), zone).eventKey,
+            AccountPnlMailContent.outage(OutageNotice.Outage(AccountReadFailureCategory.NETWORK, null), now, zone).eventKey,
+            AccountPnlMailContent.recovered(now, zone).eventKey,
+        )
+
+        keys.forEach { key -> assertThat(deliveryIdPattern.matches(key)).describedAs(key).isTrue() }
+        assertThat(keys).doesNotHaveDuplicates()
     }
 
     @Test

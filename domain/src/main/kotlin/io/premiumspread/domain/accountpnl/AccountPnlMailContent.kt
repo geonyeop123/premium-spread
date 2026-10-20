@@ -67,7 +67,7 @@ object AccountPnlMailContent {
             add("")
             add("※ 금액은 표시 시 원 단위 반올림(계산은 전체 정밀도)")
         }
-        return AccountPnlMail("profit|${pnl.calculatedAt}", subject, lines.joinToString("\n"))
+        return AccountPnlMail(eventKey("profit", pnl.calculatedAt), subject, lines.joinToString("\n"))
     }
 
     fun outage(notice: OutageNotice.Outage, now: Instant, zone: ZoneId): AccountPnlMail {
@@ -82,17 +82,23 @@ object AccountPnlMailContent {
             }
             add("조치 안내: $RUNBOOK")
         }
-        return AccountPnlMail("outage|$now", "[김프 알림] 모니터링 중단 — $label", lines.joinToString("\n"))
+        return AccountPnlMail(eventKey("outage", now), "[김프 알림] 모니터링 중단 — $label", lines.joinToString("\n"))
     }
 
     fun recovered(now: Instant, zone: ZoneId): AccountPnlMail =
         AccountPnlMail(
-            "recovered|$now",
+            eventKey("recovered", now),
             "[김프 알림] 모니터링 복구",
             "실계정 순손익 모니터링이 복구되었습니다.\n복구 시각: ${time(now, zone)}",
         )
 
     private const val FOREIGN_PRICE_SCALE = 4
+
+    /**
+     * outbox 중복 제거 키이자 SMTP Message-ID 식별자다. 메일 발송기의 deliveryId 형식 `[A-Za-z0-9._-]{1,128}` 을
+     * 지켜야 한다 — 어긋나면 발송이 매번 예외로 끝나 5회 뒤 FAILED 가 된다.
+     */
+    private fun eventKey(kind: String, at: Instant): String = "account-pnl-$kind-${at.toEpochMilli()}"
 
     private fun label(category: AccountReadFailureCategory): String = when (category) {
         AccountReadFailureCategory.BITHUMB_AUTH -> "빗썸 인증 실패(허용 IP 확인)"

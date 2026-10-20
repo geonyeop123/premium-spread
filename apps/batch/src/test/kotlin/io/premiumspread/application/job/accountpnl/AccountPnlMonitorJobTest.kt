@@ -29,6 +29,9 @@ import io.premiumspread.domain.ticker.Currency
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Duration
@@ -419,6 +422,20 @@ class AccountPnlMonitorJobTest {
     }
 
     @Test
+    @ExtendWith(OutputCaptureExtension::class)
+    fun `발송 실패 로그는 예외와 cause 타입만 남기고 메시지·주소는 남기지 않는다`(output: CapturedOutput) {
+        sender.failure = IllegalStateException(
+            "send to owner@example.test failed",
+            IllegalArgumentException("deliveryId rejected for owner@example.test"),
+        )
+
+        job.run()
+
+        assertThat(output.all).contains("error=IllegalStateException", "cause=IllegalArgumentException")
+            .doesNotContain("owner@example.test")
+    }
+
+    @Test
     fun `JobId tag 는 다른 작업과 같은 snake_case 다`() {
         assertThat(JobId.ACCOUNT_PNL_MONITOR.tag).isEqualTo("account_pnl_monitor")
     }
@@ -618,9 +635,11 @@ class AccountPnlMonitorJobTest {
     class FakeSender : AccountPnlMailSender {
         var failing = false
         var failSubjects: (String) -> Boolean = { false }
+        var failure: Exception? = null
         val sent = mutableListOf<AccountPnlMail>()
 
         override fun send(mail: AccountPnlMail) {
+            failure?.let { throw it }
             if (failing || failSubjects(mail.subject)) throw IllegalStateException("smtp down")
             sent += mail
         }
