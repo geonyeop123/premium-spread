@@ -180,6 +180,24 @@ $ ./gradlew :domain:test --offline --no-daemon
 BUILD SUCCESSFUL
 ```
 
+### AC3 — Task 4 (2026-10-20, 커밋 전)
+
+```
+$ ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.PnlAlertPolicyTest' --offline --no-daemon   # RED (decide 가 상태 불변·send=false 를 반환하는 stub)
+PnlAlertPolicyTest > 0_99에서 1_00으로 오르면 즉시 발송() FAILED
+PnlAlertPolicyTest > scale 이 달라도 1에 해당하면 발송한다() FAILED
+PnlAlertPolicyTest > 에피소드 중 60분에 재발송한다() FAILED
+PnlAlertPolicyTest > 에피소드 중 바이낸스 쪽이 바뀌어 fingerprint 가 바뀌면 새 에피소드로 즉시 발송() FAILED
+PnlAlertPolicyTest > 에피소드 중 빗썸 쪽만 바뀌어도 새 에피소드로 즉시 발송() FAILED
+12 tests completed, 8 failed
+BUILD FAILED
+
+$ (같은 명령, 상태기계 구현 후)   # GREEN
+BUILD SUCCESSFUL
+$ ./gradlew :domain:test --offline --no-daemon
+BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
