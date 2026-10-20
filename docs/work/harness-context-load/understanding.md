@@ -1,6 +1,6 @@
 # 개발자 이해문서 — chore: 세션 자동 로드 문서 정리
 
-- PR/MR: (생성 전)
+- PR/MR: https://github.com/geonyeop123/premium-spread/pull/81
 - 브랜치: `chore/harness-context-load` ← `dev` (분기점 `df15e79`)
 - 작성: 2026-10-20 · 문맥: warm
 
