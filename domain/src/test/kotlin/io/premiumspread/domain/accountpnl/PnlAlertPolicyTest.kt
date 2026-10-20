@@ -30,11 +30,15 @@ class PnlAlertPolicyTest {
         askObservedAt = t0,
     )
 
-    private fun position(koreaAvg: String = "113016278", foreignEntry: String = "83549.4") =
-        AccountHedgePosition(
-            korea.copy(averageBuyPrice = BigDecimal(koreaAvg)),
-            foreign.copy(entryPrice = BigDecimal(foreignEntry)),
-        )
+    private fun position(
+        koreaAvg: String = "113016278",
+        foreignEntry: String = "83549.4",
+        koreaQty: String = "0.266",
+        foreignQty: String = "-0.266",
+    ) = AccountHedgePosition(
+        korea.copy(averageBuyPrice = BigDecimal(koreaAvg), quantity = BigDecimal(koreaQty)),
+        foreign.copy(entryPrice = BigDecimal(foreignEntry), signedQuantity = BigDecimal(foreignQty)),
+    )
 
     /** netPercent 만 지정한 관측. 판정은 scale 2 netPercent 만 본다. */
     private fun at(percent: String, position: AccountHedgePosition = position()): PnlObservation.Computed {
@@ -143,6 +147,28 @@ class PnlAlertPolicyTest {
     @Test
     fun `에피소드 중 빗썸 쪽만 바뀌어도 새 에피소드로 즉시 발송`() {
         val changed = position(koreaAvg = "112000000")
+        val now = t0.plusSeconds(60)
+
+        val d = PnlAlertPolicy.decide(episode(), at("1.20", changed), now)
+
+        assertThat(d.send).isTrue()
+        assertThat(d.next).isEqualTo(PnlAlertState(true, changed.fingerprint, now))
+    }
+
+    @Test
+    fun `에피소드 중 빗썸 수량만 바뀌어도 새 에피소드로 즉시 발송`() {
+        val changed = position(koreaQty = "0.3")
+        val now = t0.plusSeconds(60)
+
+        val d = PnlAlertPolicy.decide(episode(), at("1.20", changed), now)
+
+        assertThat(d.send).isTrue()
+        assertThat(d.next).isEqualTo(PnlAlertState(true, changed.fingerprint, now))
+    }
+
+    @Test
+    fun `에피소드 중 바이낸스 수량만 바뀌어도 새 에피소드로 즉시 발송`() {
+        val changed = position(foreignQty = "-0.3")
         val now = t0.plusSeconds(60)
 
         val d = PnlAlertPolicy.decide(episode(), at("1.20", changed), now)
