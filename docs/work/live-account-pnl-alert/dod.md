@@ -157,6 +157,29 @@ $ ./gradlew :domain:test --offline --no-daemon
 BUILD SUCCESSFUL
 ```
 
+### AC1 — Task 3 (2026-10-20, 커밋 전)
+
+```
+$ ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountNetPnlTest' --offline --no-daemon   # RED (calculate 가 전부 0 을 반환하는 stub)
+AccountNetPnlTest > 호가 기준 순손익을 공식대로 계산한다() FAILED          (expected: -239381.4066 but was: 0)
+AccountNetPnlTest > 진입 수수료 이력 미확보면 0 과 플래그() FAILED
+AccountNetPnlTest > 펀딩 지급은 손실로 반영한다() FAILED
+AccountNetPnlTest > 호가 깊이가 수량보다 부족하면 INSUFFICIENT_DEPTH() FAILED   (Expecting code to raise a throwable)
+AccountNetPnlTest > 체결가 기준 gross 는 Tracking grossPnl 과 같다() FAILED
+AccountNetPnlTest > 체결가 기준 값은 lastPrice 로 계산한다() FAILED
+AccountNetPnlTest > 최우선 잔량이 부족하면 다음 레벨까지 VWAP 로 청산가를 계산한다() FAILED
+AccountNetPnlTest > 바이낸스 매도호가도 앞 레벨부터 소화한다() FAILED
+8 tests completed, 8 failed
+BUILD FAILED
+
+$ (같은 명령, VWAP·design §3 공식 구현 후)   # GREEN
+BUILD SUCCESSFUL
+$ ./gradlew :domain:test --tests 'io.premiumspread.domain.tracking.TrackingTest' --offline --no-daemon   # R3
+BUILD SUCCESSFUL
+$ ./gradlew :domain:test --offline --no-daemon
+BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
