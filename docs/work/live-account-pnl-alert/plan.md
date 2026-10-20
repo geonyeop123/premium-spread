@@ -117,7 +117,7 @@ data class KoreaSpotAccountSnapshot(
 data class ForeignPerpAccountSnapshot(
     val signedQuantity: BigDecimal,      // 숏 < 0, BTC
     val entryPrice: BigDecimal,          // USDT
-    val entryCommissionUsdt: BigDecimal?, // null = 미확보 (USDT 외 자산 수수료 포함 시도 null)
+    val entryCommissionUsdt: BigDecimal?, // null = 이력 미확보. BNB 수수료는 USDT 로 환산된 값
     val fundingUsdt: BigDecimal?,        // 받은 것 +, null = 미확보
     val takerFeeRate: BigDecimal,
     val askLevels: List<PriceLevel>,     // 가격 오름차순
@@ -328,9 +328,9 @@ V18: `account_pnl_monitor_state`(id TINYINT PK 고정 1, in_episode, position_fi
 
 **Produces:** `class BinanceFuturesPrivateAccountAdapter(webClient: WebClient, apiKey: String, secretKey: String, clock: Clock, recvWindowMillis: Long = 10_000) : ForeignPerpAccountReadPort`; `object BinanceRequestSigner { fun sign(secretKey: String, query: String): String }` (HMAC-SHA256 hex).
 
-동작: positionRisk(BTCUSDT; hedge mode 면 `positionSide=SHORT` 행) → signedQuantity·entryPrice. 진입 시각·수수료: `userTrades` 를 최신부터 거꾸로 걸어 부호 있는 체결량 누적이 `positionAmt` 와 같아지는 지점까지의 `commission` 합(USDT 외 `commissionAsset` 이 하나라도 있으면 null), 그 첫 체결 시각 = 진입 시각; 못 찾으면 수수료·펀딩 null. 펀딩: 진입 시각부터 `income?incomeType=FUNDING_FEE` 페이지를 끝까지 합산(첫 계산 후에는 마지막 조회 시각 이후 증분만). 진입 시각·수수료는 fingerprint 동안 메모리 보관. takerFeeRate·`GET /fapi/v1/depth?symbol=BTCUSDT&limit=20` ask 레벨(+`T` 시각)·ticker price 는 매 회차. 401/`-2014`/`-2015`/`-1022` → `BINANCE_AUTH`, 연결·5xx·429·418 → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. 모든 실패를 `AccountReadException` 으로만 던진다.
+동작: positionRisk(BTCUSDT; hedge mode 면 `positionSide=SHORT` 행) → signedQuantity·entryPrice. 진입 시각·수수료: `userTrades` 를 최신부터 거꾸로 걸어 부호 있는 체결량 누적이 `positionAmt` 와 같아지는 지점까지의 `commission` 합(`commissionAsset` USDT 는 그대로, BNB 는 `GET /fapi/v1/ticker/price?symbol=BNBUSDT` 현재가로 환산, 그 밖의 자산이면 `AccountReadException(UNEXPECTED)`), 그 첫 체결 시각 = 진입 시각; 못 찾으면 수수료·펀딩 null. 펀딩: 진입 시각부터 `income?incomeType=FUNDING_FEE` 페이지를 끝까지 합산(첫 계산 후에는 마지막 조회 시각 이후 증분만). 진입 시각·수수료는 fingerprint 동안 메모리 보관. takerFeeRate·`GET /fapi/v1/depth?symbol=BTCUSDT&limit=20` ask 레벨(+`T` 시각)·ticker price 는 매 회차. 401/`-2014`/`-2015`/`-1022` → `BINANCE_AUTH`, 연결·5xx·429·418 → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. 모든 실패를 `AccountReadException` 으로만 던진다.
 
-- [ ] **Step 1: 실패 테스트**: `서명은 문서 예제 벡터와 같다`(Task 0 에 기록한 secret·query·signature 3값), `X-MBX-APIKEY 헤더와 recvWindow=10000 이 붙는다`, `숏 수량과 진입가를 읽는다`, `hedge mode 면 SHORT 행을 읽는다`, `체결 수수료를 포지션 수량만큼 합산한다`, `BNB 수수료가 섞이면 entryCommissionUsdt 는 null`, `펀딩을 여러 페이지에 걸쳐 합산한다`, `두 번째 회차는 펀딩 증분만 요청한다`, `-2015 는 BINANCE_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `depth ask 레벨을 가격 오름차순으로 낸다`, `예외 메시지에 secret 이 없다`.
+- [ ] **Step 1: 실패 테스트**: `서명은 문서 예제 벡터와 같다`(Task 0 에 기록한 secret·query·signature 3값), `X-MBX-APIKEY 헤더와 recvWindow=10000 이 붙는다`, `숏 수량과 진입가를 읽는다`, `hedge mode 면 SHORT 행을 읽는다`, `체결 수수료를 포지션 수량만큼 합산한다`, `BNB 수수료는 BNBUSDT 현재가로 환산해 합산한다`, `USDT·BNB 외 수수료 자산이면 UNEXPECTED`, `펀딩을 여러 페이지에 걸쳐 합산한다`, `두 번째 회차는 펀딩 증분만 요청한다`, `-2015 는 BINANCE_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `depth ask 레벨을 가격 오름차순으로 낸다`, `예외 메시지에 secret 이 없다`.
 - [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest' --offline --no-daemon` → RED. 증거 로그 AC8.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 바이낸스 선물 read-only 계정 조회 adapter 추가`
 
