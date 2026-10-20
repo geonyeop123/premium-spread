@@ -29,7 +29,7 @@ model: sonnet
 | 배포·프로필 | `docs/runbooks/deployment.md`, `configuration-profiles.md` |
 | 진행 상황·TODO | `.ai/PROJECT_STATUS.md` |
 | 도메인 개념 | `.ai/context/project-overview.md` |
-| 하네스(에이전트·스킬·단계) | `CLAUDE.md`의 `## 하네스` 변경 이력에 한 행 |
+| 하네스(에이전트·스킬·단계) | `docs/harness-changelog.md`에 한 행 |
 
 ## 하지 않는 것
 

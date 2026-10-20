@@ -59,7 +59,8 @@ SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun & # Batch 서버 (808
 
 `harnessCheck`(`docs/check-harness.sh`)는 하네스 파일 **본문**(펜스 코드블록과 frontmatter 제외)이
 언급하는 경로와 `@import` 대상이 실재하는지, agent/skill frontmatter가 유효한지, 그리고 이 저장소가
-정한 하네스 계약(필수 절·단계 순서·스킬 디렉터리 형태)을 검사한다. 게이트가 빨간데 죽은 참조가 없으면
+정한 하네스 계약(필수 절·단계 순서·스킬 디렉터리 형태·`docs/harness-changelog.md`의 존재와 표 헤더)을
+검사한다. 변경 이력 파일은 과거 경로를 담는 기록이라 경로 검사 대상이 아니다. 게이트가 빨간데 죽은 참조가 없으면
 계약 단정 쪽을 본다. `harnessCheckTest`(`docs/test-check-harness.sh`)는 그 검사기가 위반을 실제로
 검출하는지 픽스처로 확인한다 — 검사기만 있고 자가검증이 없으면 조용히 무력해진 게이트를 알아챌 수 없다.
 둘 다 `check` 태스크와 CI `quality-gate.yml`에 걸려 있다.

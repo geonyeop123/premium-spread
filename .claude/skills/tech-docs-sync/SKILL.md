@@ -20,7 +20,7 @@ description: "기술 문서 동기화 스킬. 코드 변경 유형별로 갱신�
 | 마이그레이션 추가 | `docs/runbooks/v12-migration.md`(해당 시) + `.ai/PROJECT_STATUS.md` |
 | 진행 상황·TODO | `.ai/PROJECT_STATUS.md` |
 | 비즈니스 도메인 개념 추가 | `.ai/context/project-overview.md` |
-| 하네스(에이전트·스킬·단계) 변경 | `CLAUDE.md`의 `## 하네스` 변경 이력에 한 행 |
+| 하네스(에이전트·스킬·단계) 변경 | `docs/harness-changelog.md`에 한 행 |
 
 ## 원칙
 
