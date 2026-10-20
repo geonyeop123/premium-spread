@@ -330,6 +330,42 @@ GREEN $ 같은 명령 (구현 후)
 - `bash docs/check-documentation.sh` -> exit 0 (`documentation check passed (20 files, 15 required paths)`).
 - runbook `docs/runbooks/account-pnl-alert.md` 추가. AC13 은 owner 가 체크리스트대로 검산하고 PR 코멘트로 남긴다.
 
+### ⑨ 재작업 1 (2026-10-20)
+
+통합 리뷰 지적 A–F 수정. 수용기준 문구는 바꾸지 않았다.
+
+- A (AC11) scheduling 비활성 → Job·Scheduler·두 private adapter·메일 adapter 0개
+  - RED: `AccountPnlMonitorWiringTest` 의 scheduling off 단언을 기준대로 바꾸고 legacy `scheduling.enabled=false` 케이스 추가 →
+    `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → `13 tests completed, 2 failed`
+  - GREEN: Job 구성에 `@ConditionalOnBatchScheduling`, adapter 구성에 같은 키·기본값의 `@ConditionalOnExpression` → 같은 명령 BUILD SUCCESSFUL (13 tests, 0 failed)
+- B (AC9 경로·발송) eventKey 를 `account-pnl-{profit|outage|recovered}-<epochMilli>` 로
+  - RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` → `12 tests completed, 4 failed`
+    (`DELIVERY_ID_PATTERN` 형식 단언 + 키 값 3건);
+    `./gradlew :infrastructure:batch:test --tests '*AccountPnlEmailSenderAdapterTest' --offline --no-daemon` → `2 tests completed, 2 failed`
+    (`EmailDeliveryException` ← `IllegalArgumentException: deliveryId must contain only RFC Message-ID safe characters`);
+    발송 실패 로그 cause 타입 → `AccountPnlMonitorJobTest` `34 tests completed, 1 failed`
+  - GREEN: 세 명령 모두 BUILD SUCCESSFUL
+- C (AC7·AC8) 호가 마지막 조회, 진입 이력 미발견 캐시
+  - RED: `./gradlew :infrastructure:batch:test --tests '*PrivateAccountAdapterTest' --offline --no-daemon` → `55 tests completed, 3 failed`
+    (빗썸 호가 순서, 바이낸스 depth 순서, 바이낸스 13창 소진 미발견 후 두 번째 회차 userTrades 13건). 1000건 창 캐시 테스트는 감지 요청의
+    `startTime` 단언으로 좁힌 뒤 RED(`27 tests completed, 3 failed`). 빗썸 수수료 null 캐시는 기존 구현이 이미 만족해 첫 실행부터 통과(회귀 방어)
+  - GREEN: `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL
+- D (AC5) 호가 나이·환율 공백·`calculatedAt` 을 조회 완료 시각으로
+  - RED: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest' --offline --no-daemon` → `36 tests completed, 2 failed`
+  - GREEN: 같은 명령 BUILD SUCCESSFUL. 기존 신선도 경계 테스트(10초·10초1ms·skew 5초·미래 시각·FX 2시간)는 조회 중 시계가 움직이지 않아 의미 그대로 통과
+- E (AC3) 에피소드 중 빗썸 수량만·바이낸스 수량만 변경 → 즉시 발송
+  - 구현은 이미 만족(fingerprint 에 수량 포함). RED 는 fingerprint 에서 수량을 임시로 뺀 변이로 확인 →
+    `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.PnlAlertPolicyTest' --offline --no-daemon` → `14 tests completed, 2 failed`. 변이 되돌림 후 `git diff --stat -- domain/src/main` 빈 출력
+  - GREEN: 같은 명령 BUILD SUCCESSFUL (14 tests, 0 failed)
+- F (AC5·AC6) claim 을 concurrency 1 로 반복, 회차당 최대 10건, interrupt 시 중단
+  - RED: `AccountPnlMonitorJobTest` → `40 tests completed, 4 failed`
+  - GREEN: 같은 명령 BUILD SUCCESSFUL (40 tests). SMTP 실패 건은 회차 끝에서 `markAttemptFailed` 로 되돌려 같은 회차 재claim 을 막는다
+  - `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` → BUILD SUCCESSFUL (5 tests)
+- 회귀: `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL;
+  `./gradlew :infrastructure:common:integrationTest :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL (batch 100 tests, common 32 tests, 0 failed);
+  `./gradlew harnessCheck --offline --no-daemon` → BUILD SUCCESSFUL; `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)`
+- 미실행: CI 의 ktlint·detekt 는 로컬 도구(`.ci-tools/`)가 없어 실행하지 못했다
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
