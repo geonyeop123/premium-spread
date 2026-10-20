@@ -1,0 +1,144 @@
+---
+feature: 실계정 순손익 알림 (Live Account PnL Alert)
+slug: live-account-pnl-alert
+status: DRAFT
+frozen_at:
+verdict_commit:
+source: docs/work/live-account-pnl-alert/design.md (owner 승인 2026-10-20, 커밋 616bb74)
+---
+
+## 범위
+
+**포함**
+
+- 빗썸 private REST 조회 adapter — 잔고·평균매수가·체결 수수료·매도 수수료율 (design §1.2)
+- 바이낸스 USDⓈ-M signed REST 조회 adapter — 포지션·진입가·`COMMISSION`·`FUNDING_FEE` 이력·taker 수수료율 (§1.2)
+- 계정 포지션 정의 — 계정 상태 그대로, 한쪽 0·바이낸스 롱이면 포지션 없음 (§2)
+- 순수익률 계산 — 호가 기준 판정값 + 체결가 기준 병기값, 이력 미확보 항목 0 처리 + 미반영 플래그 (§3, §3.1)
+- 수익 알림 규칙 — 1% 돌파 즉시, 1시간 재발송, 0.9% 재무장 (§4.1)
+- 모니터링 중단·복구 알림 — 5분 (§4.2)
+- 메일 내용 (§4.3)
+- 알림 상태 DB 저장과 재시작 내구성 (§4.4)
+- 기본 꺼짐, 환경변수 credential, 비노출 (§5)
+- 외부 API 조사 기록 (§7, `TP-OPEN-1`)
+
+**제외** *(scope creep 차단선)*
+
+- 주문·취소·출금·이체 API 구현 (§1.3)
+- 웹 화면·REST endpoint (§1.3)
+- master spec·거래 준비 산출물 수정 (§0.1, §0.2)
+- 기존 `Tracking`·`TrackingGrossPnl`·`grossPnl` 계약 변경 (§1.3)
+- 분할 매매의 실현손익·수수료 배분 (§3)
+- BTC 외 심볼, 다른 거래소, 다중 계정 (§1.3)
+
+## 기존 gate 조사
+
+> Gate 1 필수. 2026-10-20 worktree `df15e79` 기준으로 실제로 찾고 실행했다.
+
+| 찾아본 것 | 있었나 | 쓸 수 있나 |
+|---|---|---|
+| architecture test | **있다** — `architecture-tests/` 독립 source set, `./gradlew architectureTest`. `ArchitectureBoundaryTest`, `KotlinSourceDependencyScanner`, `ObservabilityCardinalityArchitectureTest`, `VerifiedBalanceNoCacheArchitectureTest` 등 9개. 2026-10-20 실행 exit 0 | **그대로 쓴다.** 모듈 경계·import 회귀 방어선. 조회 전용 강제(AC10)는 같은 source set 에 신규 테스트를 얹는다 |
+| lint 규칙 | 있다 — ktlint·detekt (CI `quality-gate.yml`). 로컬 gradle task 없음 | 회귀 방어선(CI)으로만 |
+| custom gradle task | **있다** — `architectureTest`, `*:integrationTest`, `verifyMigrations`, `verifyTestIsolationPolicy`, `verifyCoverageExclusions`, `harnessCheck` | **그대로 쓴다** |
+| CI job | 있다 — `.github/workflows/quality-gate.yml` | 회귀 방어선 |
+| 동결 계약 테스트 | **있다** — `io.premiumspread.config.TradePreparationWiringContractTest` (거래 준비 AC20: production 잔고 포트 구현 = `DeclaredBalanceAdapter` 뿐). 2026-10-20 실행 exit 0 | 회귀 방어선 R2. 이 단위가 그 포트를 구현하지 않음을 지킨다 |
+| 기존 gross 계산 테스트 | **있다** — `domain/src/test/.../tracking/TrackingTest.kt` | 회귀 방어선 R3 |
+| 외부 HTTP mock 패턴 | **있다** — `infrastructure/batch` 의 `ExchangeRateClientTest` (MockWebServer) | adapter 테스트(AC7·AC8)가 같은 패턴을 따른다 |
+
+**결론.** 모든 수용기준을 `기존` 또는 `신규테스트` 로 덮는다. `신규스크립트` 는 필요 없다.
+
+**오프라인 실행 메모.** 2026-10-20 첫 `--offline` 실행은 worktree Gradle cache 부재(`kotlin-allopen:2.0.20`)로
+실패했고, 한 번 온라인 실행으로 cache 를 채운 뒤 `--offline` 이 동작했다. 아래 명령은 cache 가 채워진 상태 전제다.
+
+**신규테스트 명령의 작성 시점 실행.** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountNetPnlTest'
+--offline --no-daemon` 을 2026-10-20 실행 — `No tests found for given includes` exit 1. 테스트 클래스 부재에 의한
+실패이므로 **RED 가 아니다.** 각 AC 의 RED 는 plan 의 해당 태스크에서 테스트를 먼저 작성한 뒤 기대한 assertion
+실패로 기록한다.
+
+## 수용기준
+
+| # | 수용기준 (관찰 가능) | 근거 | 출처 | 티어 | 검증 수단 | 검증 명령 | 통과 조건 |
+|---|---|---|---|---|---|---|---|
+| AC1 | 고정 입력(빗썸 수량·평단·bid·최근체결가, 바이낸스 수량·진입가·ask·최근체결가, 환율, 진입 수수료, 펀딩, 수수료율)에 대해 순손익 계산이 design §3 공식의 `gross`·`entryFee`·`funding`·`exitFeeEst`·`net`·`netPercent`(호가 기준)·`netPercentLast`(체결가 기준)를 손으로 계산한 기대값과 정확히 같은 `BigDecimal` 로 낸다. 같은 입력을 최근 체결가로 넣은 `gross` 는 `Tracking.grossPnl` 의 `totalGrossPnlKrw` 와 같다. 진입 수수료·펀딩 이력이 미확보로 주어지면 그 항목은 0 이고 결과에 항목별 미반영 플래그가 참이다 | design §3, §3.1 | `요구` (수수료·펀딩 반영, 지금 청산 기준, 호가 판정·체결가 병기, 미확보 시 0 + 명시) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.AccountNetPnlTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountNetPnlTest' --offline --no-daemon` | exit 0 |
+| AC2 | 빗썸 수량 0, 바이낸스 수량 0, 바이낸스 포지션이 롱인 각 경우에 계정 포지션 판정이 "포지션 없음" 을 낸다. 빗썸 수량>0 이고 바이낸스 숏 수량>0 이면 두 leg 의 수량을 각자 보존한 포지션을 낸다 | design §2 | `요구` (계정에 김프 포지션만 있음) + 롱 처리는 `추론` (design §6 내 판단) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.AccountHedgePositionTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountHedgePositionTest' --offline --no-daemon` | exit 0 |
+| AC3 | 고정 `Clock` 으로 순수익률 시계열을 넣었을 때 알림 정책이 다음 발송 결정을 낸다: 1% 미만→1% 이상 전이 시 즉시 1회 / 에피소드 중 1% 이상이고 마지막 발송 후 정확히 60분 미만이면 0회, 60분 이상이면 1회 / 에피소드 중 0.9% 이상 1% 미만에서는 60분이 지나도 0회 / 0.9% 미만 하락 후 다시 1% 이상이면 즉시 1회 / 포지션 없음이면 에피소드 종료·0회 / 계산 실패 회차는 상태 불변·0회 | design §4.1 | `요구` (돌파 즉시·1시간 재발송·내려갔다 올라가면 즉시) + 0.9% 재무장은 `추론` (design §6 내 판단) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.PnlAlertPolicyTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.PnlAlertPolicyTest' --offline --no-daemon` | exit 0 |
+| AC4 | 고정 `Clock` 으로 마지막 계산 성공 후 5분 이하에서는 중단 발송 0회, 5분 초과 첫 회차에 원인 범주(빗썸 인증 / 바이낸스 인증 / 네트워크 / 시세·환율 오래됨) 하나를 담은 중단 발송 1회, 이후 실패가 계속돼도 추가 0회, 그 뒤 첫 성공 회차에 복구 발송 1회를 낸다 | design §4.2 | `요구` (조회 실패 지속 시 중단 알림) + 5분·복구 메일은 `추론` (design §6 내 판단) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.MonitoringOutagePolicyTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.MonitoringOutagePolicyTest' --offline --no-daemon` | exit 0 |
+| AC5 | 모니터링 Job 이 fake port 로 실행될 때: 호가 관측이 10초 초과로 오래됐거나 환율 수집 마지막 성공이 2시간 초과면 그 회차를 계산 실패로 기록하고 수익 발송을 enqueue 하지 않는다. 환율 값 자체가 2시간 넘게 같아도 수집 마지막 성공이 2시간 이내면 계산을 성공시킨다. 1% 이상 정상 회차에는 발송 1건을 enqueue 한다 | design §3 신선도 | `추론` (design §6 내 판단: 신선도 기준) | T1 | `신규테스트` `io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest` | `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest' --offline --no-daemon` | exit 0 |
+| AC6 | 실제 MySQL(Testcontainers)에서 1% 이상 회차로 발송 1건이 저장된 뒤, 새 Job 인스턴스(재시작 모사)가 같은 에피소드 안 60분 이내 1% 이상 회차를 처리하면 추가 발송 row 가 0건이다. 발송 대상은 at-least-once 로 SMTP fake 에 전달된다 | design §4.4 | `상위` (`.ai/rules/batch.md` Durable notification) | T1 | `신규테스트` `io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` | exit 0 |
+| AC7 | MockWebServer 에서 빗썸 adapter 가 (a) 요청 Authorization 헤더의 JWT 를 공식 문서 규격(access key·nonce·timestamp·query hash)대로 서명하고 테스트 secret 으로 검증 가능하며, (b) 기록 응답에서 KRW-BTC 수량·평균매수가·체결 수수료·매도 수수료율을 Snapshot 으로 내고, (c) 401 응답을 "빗썸 인증" 실패 범주로 낸다 | design §1.2, §7 | `요구` (빗썸 실보유내역) | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapterTest` | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapterTest' --offline --no-daemon` | exit 0 |
+| AC8 | MockWebServer 에서 바이낸스 adapter 가 (a) query 서명을 공식 문서 예제 벡터와 같은 HMAC-SHA256 값으로 만들고 `X-MBX-APIKEY` 헤더를 붙이며, (b) 기록 응답에서 BTCUSDT 숏 수량·진입가·`COMMISSION`·`FUNDING_FEE` 합계(여러 페이지)·taker 수수료율을 Snapshot 으로 내고, (c) 401/서명 오류 응답을 "바이낸스 인증" 실패 범주로 낸다 | design §1.2, §7 | `요구` (바이낸스 포지션·수수료·펀딩비) | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest` | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest' --offline --no-daemon` | exit 0 |
+| AC9 | 고정 계산 결과로 만든 수익 메일의 제목에 순수익률(소수 둘째 자리 %)과 순수익금(원 단위)이 들어 있고, 본문에 gross·진입 수수료·누적 펀딩·예상 청산 수수료·체결가 기준 수익률·양 leg 수량/평단/청산가/최근체결가·환율·관측 시각이 있으며, 미반영 항목이 있으면 "미반영" 문구가 있다. 제목·본문 어디에도 테스트용 API key·secret 문자열이 없다 | design §4.3 | `요구` (수익률·수익금 명시) + 근거 표기는 `추론` (design §6 내 판단) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.AccountPnlMailContentTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` | exit 0 |
+| AC10 | `architectureTest` 가 신규 private 계정 adapter 소스(빗썸·바이낸스)에서 GET 외 HTTP method 호출과 주문·출금·이체 경로 문자열을 찾으면 실패하고, 현재 소스에서는 통과한다 | design §0.1 (`LIVE-3`·`LIVE-4` 유지), §1.3 | `상위` (master spec `LIVE-3`·`LIVE-4`) | T1 | `신규테스트` `io.premiumspread.architecture.PrivateAccountReadOnlyArchitectureTest` | `./gradlew architectureTest --tests 'io.premiumspread.architecture.PrivateAccountReadOnlyArchitectureTest' --offline --no-daemon` | exit 0 |
+| AC11 | 기능 플래그가 없거나 false 이거나 credential 환경변수 중 하나라도 비어 있거나 `batch.scheduling.enabled=false` 이면 batch context 에 모니터링 Job·Scheduler·private adapter bean 이 0개다. 플래그 true + credential·수신 주소 전부 존재 + 메일 발송 bean(`EmailSender`) 존재면 각 1개다. credential 값은 configuration properties 의 `toString()` 과 startup 로그에 나타나지 않는다 | design §5 | `요구` (로컬 실행, 조회 전용 key) + 기본 꺼짐·비노출은 `상위` (`LIVE-2`) | T1 | `신규테스트` `io.premiumspread.config.AccountPnlMonitorWiringTest` | `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` | exit 0 |
+| AC12 | `understanding.md` 에 design §7 조사 표의 8개 항목 각각에 대해 공식 문서 URL·확인일·결론이 기록되어 있다 (`TP-OPEN-1` 해소 근거) | design §7 | `상위` (거래 준비 `TP-OPEN-1`) | T3 | 기록 문서 `docs/work/live-account-pnl-alert/understanding.md` | — | 8개 항목 전부 URL·확인일·결론 존재, 사람 사후 검토 |
+| AC13 | owner 가 로컬에서 실제 read-only key 로 batch 를 실행했을 때, 메일에 찍힌 순수익률·수익금이 owner 가 거래소 화면에서 확인한 수량·평단·수수료·펀딩으로 검산한 값과 일치함을 owner 가 확인한다 | design §0, §5 | `요구` (실제 보유내역 기반 손익) | T4 | owner 확인 | — | PR 코멘트에 owner 확인 기록 |
+
+**기준 개수**: 13개
+
+**분할하지 않는 이유**: 13개는 계산(AC1·AC2) → 판정(AC3·AC4·AC5) → 저장(AC6) → 외부 조회(AC7·AC8) → 출력(AC9) →
+경계(AC10·AC11) → 실측(AC12·AC13) 의 하나의 수직 경로다. 조회 adapter 만 먼저 머지하면 소비자가 없는 bean 이 되고,
+판정만 먼저 머지하면 입력이 fake 뿐이라 owner 에게 가치가 0 이다. owner 가 원하는 것은 "메일이 온다"는 하나의 결과이고,
+AC13 은 전 경로가 있어야만 검증된다. 대신 plan 태스크를 위 순서로 쪼개 태스크 단위 리뷰를 받는다.
+
+**티어 강등 사유** *(T1 이 아닌 항목만. Gate 1 에서 사람이 함께 승인한다)*
+
+- AC12 → T3: 산출물이 외부 공식 문서를 읽고 내린 사람의 판단 기록이다. 문서 URL 의 내용이 맞는지는 exit code 로 잴 수
+  없다. 형식(항목 존재)만 재는 스크립트를 만들면 내용 없는 표도 통과하므로 T1 흉내가 된다.
+- AC13 → T4: 실 credential·실계정은 테스트·CI 에서 쓰지 않는다(프로젝트 testing 규칙, master spec). 실계정 값과의 일치는
+  owner 만 거래소 화면으로 확인할 수 있다.
+
+## 회귀 방어선
+
+이번 변경으로 깨질 수 있는 기존 동작. RED 면제 대상이다.
+
+| # | 지켜야 할 동작 | 검증 명령 |
+|---|---|---|
+| R1 | 모듈 경계·import·관측 cardinality 아키텍처 규칙 | `./gradlew architectureTest --offline --no-daemon` |
+| R2 | 거래 준비 AC20 — production 잔고 포트 구현은 `DeclaredBalanceAdapter` 뿐 | `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` |
+| R3 | 기존 `Tracking.grossPnl` 결과 불변 | `./gradlew :domain:test --tests 'io.premiumspread.domain.tracking.TrackingTest' --offline --no-daemon` |
+| R4 | 전체 unit test | `./gradlew test --offline --no-daemon` |
+| R5 | migration append-only·빈 DB→latest·이전→latest | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` |
+| R6 | 기존 premium threshold 알림 durable delivery (outbox 를 일반화하는 경우 특히) | `./gradlew :apps:batch:integrationTest --offline --no-daemon` |
+| R7 | 정본 문서·하네스 정합성 | `./gradlew harnessCheck --offline --no-daemon` |
+
+## 증거 로그
+
+> 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### Gate 1 기준선 (2026-10-20, `616bb74`)
+
+```
+$ ./gradlew architectureTest :apps:api:test --tests '*TradePreparationWiring*' --no-daemon -q
+exit=0   (R1·R2 기준선. 첫 --offline 실행은 cache 부재로 실패 → 온라인 1회로 cache 채움)
+
+$ ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountNetPnlTest' --offline --no-daemon
+> No tests found for given includes: [io.premiumspread.domain.accountpnl.AccountNetPnlTest](--tests filter)
+BUILD FAILED  exit=1   (테스트 부재 — RED 아님. RED 는 구현 태스크에서 기록)
+```
+
+## 사람 확인 (T4)
+
+> 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
+
+| # | 확인 사항 | 확인자 | 날짜 | 앵커 |
+|---|---|---|---|---|
+| AC13 | 실계정 메일 값과 거래소 화면 검산 일치 | | | |
+
+## 변경 요청
+
+> 동결 후 기준을 바꿔야 할 때만 작성. 사람이 승인하기 전까지 구현을 중단한다.
+
+| 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
+|---|---|---|---|---|
+
+## 최종 판정
+
+```
+DoD VERDICT: live-account-pnl-alert @ <commit SHA>
+  수용기준 표:     13개  (T1 11 · T2 0 · T3 1 · T4 1)
+  T1/T2 자동:      11개 중 <p>개 PASS
+  T3 기록 제출:    1개 중 <q>건
+  T4 사람 확인:    1개 중 <r>건 완료, <1-r>건 대기
+  변경 요청:       <k>건
+  =>
+```
