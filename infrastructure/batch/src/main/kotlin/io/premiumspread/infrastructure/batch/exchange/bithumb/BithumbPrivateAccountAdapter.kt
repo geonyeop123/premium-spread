@@ -68,6 +68,7 @@ class BithumbPrivateAccountAdapter(
         val locked = row.dec("locked")
         val avg = row.dec("avg_buy_price")
         if (balance.signum() < 0 || locked.signum() < 0 || avg.signum() < 0) unexpected("account value is negative")
+        if (balance.add(locked).signum() > 0 && avg.signum() == 0) unexpected("average buy price is zero for a held position")
         return Account(balance.add(locked), avg, row.path("avg_buy_price_modified").asBoolean(false))
     }
 
@@ -150,21 +151,25 @@ class BithumbPrivateAccountAdapter(
 
     private fun getJson(path: String, query: String?, signed: Boolean): JsonNode {
         val body = try {
+            var wireQuery: String? = null
             webClient.get()
                 .uri { builder ->
-                    builder.path(path).also { if (query != null) it.query(query) }.build()
+                    val uri = builder.path(path).also { if (query != null) it.query(query) }.build()
+                    wireQuery = uri.rawQuery
+                    uri
                 }
                 .headers { headers ->
                     if (signed) {
                         val jwt = BithumbJwtSigner.sign(
-                            accessKey, secretKey, query, UUID.randomUUID().toString(), clock.millis(),
+                            accessKey, secretKey, wireQuery, UUID.randomUUID().toString(), clock.millis(),
                         )
                         headers.setBearerAuth(jwt)
                     }
                 }
                 .retrieve()
                 .bodyToMono(String::class.java)
-                .block(timeout)
+                .timeout(timeout)
+                .block()
         } catch (e: WebClientResponseException) {
             throw AccountReadException(statusCategory(e.statusCode.value()), "Bithumb $path responded ${e.statusCode.value()}", e)
         } catch (e: WebClientRequestException) {

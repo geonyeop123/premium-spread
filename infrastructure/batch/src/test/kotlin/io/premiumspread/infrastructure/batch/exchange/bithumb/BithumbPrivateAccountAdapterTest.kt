@@ -70,8 +70,8 @@ class BithumbPrivateAccountAdapterTest {
         assertThat(String(Base64.getUrlDecoder().decode(header))).isEqualTo("""{"alg":"HS256","typ":"JWT"}""")
         val body = String(Base64.getUrlDecoder().decode(payload))
         assertThat(body).contains("\"access_key\":\"test-access-key\"", "\"timestamp\":${clock.millis()}", "\"nonce\":\"", "\"query_hash_alg\":\"SHA512\"")
-        val query = URLDecoder.decode(request.requestUrl!!.encodedQuery, Charsets.UTF_8)
-        assertThat(query).contains("states[]=done&states[]=cancel")
+        val query = request.requestUrl!!.encodedQuery!!
+        assertThat(URLDecoder.decode(query, Charsets.UTF_8)).contains("states[]=done&states[]=cancel")
         assertThat(body).contains("\"query_hash\":\"${BithumbJwtSigner.sha512Hex(query)}\"")
     }
 
@@ -82,6 +82,27 @@ class BithumbPrivateAccountAdapterTest {
         val request = recorded().first { it.requestUrl!!.encodedPath == "/v1/accounts" }
         val payload = request.getHeader("Authorization")!!.removePrefix("Bearer ").split(".")[1]
         assertThat(String(Base64.getUrlDecoder().decode(payload))).doesNotContain("query_hash")
+    }
+
+    @Test
+    fun `보유 수량이 있는데 평단이 0 이면 UNEXPECTED`() {
+        accountsBody = accounts(balance = "0.005", locked = "0").replace("36340973", "0")
+
+        assertCategory(AccountReadFailureCategory.UNEXPECTED)
+    }
+
+    @Test
+    fun `네트워크 실패와 타임아웃 예외에도 secret 이 없다`() {
+        responses["/v1/accounts"] = { json(accountsBody).setBodyDelay(2, java.util.concurrent.TimeUnit.SECONDS) }
+        val timedOut = catchRead(adapter(timeout = Duration.ofMillis(200)))
+        val slow = adapter()
+        server.shutdown()
+        val refused = catchRead(slow)
+
+        listOf(timedOut, refused).forEach { e ->
+            val text = generateSequence<Throwable>(e) { it.cause }.joinToString(" ") { it.message.orEmpty() }
+            assertThat(text).doesNotContain("test-secret-key").doesNotContain("test-access-key").doesNotContain("Bearer")
+        }
     }
 
     @Test
