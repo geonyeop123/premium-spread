@@ -223,6 +223,27 @@ class BithumbPrivateAccountAdapterTest {
     }
 
     @Test
+    fun `수수료 미발견 null 결과도 캐시해 두 번째 호출은 page 1 만 조회한다`() {
+        for (page in 1..11) orderPages[page] = orders(*Array(100) { order("p$page-$it", "0", "0") })
+        val adapter = adapter()
+
+        assertThat(adapter.read().entryFeeKrw).isNull()
+        assertThat(adapter.read().entryFeeKrw).isNull()
+
+        assertThat(orderRequestPages()).isEqualTo((1..10).toList() + 1)
+    }
+
+    @Test
+    fun `호가는 계정 수수료율 현재가 주문이력 다음 마지막으로 조회한다`() {
+        orderPages[1] = orders(order("u1", "0.005", "10"))
+
+        adapter().read()
+
+        val paths = recorded().map { it.requestUrl!!.encodedPath }.distinct()
+        assertThat(paths).containsExactly("/v1/accounts", "/v1/orders/chance", "/v1/ticker", "/v1/orders", "/v1/orderbook")
+    }
+
+    @Test
     fun `같은 수량 평단이어도 새 체결이 있으면 수수료를 다시 계산한다`() {
         orderPages[1] = orders(order("u1", "0.005", "8"))
         val adapter = adapter()

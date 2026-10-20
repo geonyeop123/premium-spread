@@ -31,13 +31,17 @@ class BithumbPrivateAccountAdapter(
     @Volatile
     private var feeCache: FeeCache? = null
 
+    /**
+     * 호가는 마지막에 조회한다 — 주문 이력 탐색(최대 10 페이지)이 길어져도 판정 호가 관측 시각이 바이낸스 호가와
+     * 벌어지지 않게 한다(시세 신선도 skew 5초). 수수료 미발견(null)도 같은 보유·새 체결 없음이면 캐시를 쓴다.
+     */
     @Synchronized
     override fun read(): KoreaSpotAccountSnapshot {
         val account = readAccount()
-        val orderbook = readOrderbook()
-        val lastPrice = readLastPrice()
         val sellFeeRate = readSellFeeRate()
+        val lastPrice = readLastPrice()
         val entryFee = if (account.quantity.signum() > 0) readEntryFee(account.quantity, account.averageBuyPrice) else null
+        val orderbook = readOrderbook()
         return KoreaSpotAccountSnapshot(
             quantity = account.quantity,
             averageBuyPrice = account.averageBuyPrice,

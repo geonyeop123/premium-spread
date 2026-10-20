@@ -236,6 +236,69 @@ class BinanceFuturesPrivateAccountAdapterTest {
     }
 
     @Test
+    fun `진입 미발견 13창 소진 결과도 캐시해 두 번째 회차는 창을 다시 걷지 않는다`() {
+        trades += T(1, now - 100 * day, "SELL", "0.002")
+        val clock = MutableClock(Instant.ofEpochMilli(now))
+        val adapter = adapter(clock)
+        assertThat(adapter.read().entryCommissionUsdt).isNull()
+        assertThat(userTradeCalls()).hasSize(13)
+        requests.clear()
+        clock.advance(60_000)
+
+        val second = adapter.read()
+
+        assertThat(second.entryCommissionUsdt).isNull()
+        val calls = userTradeCalls()
+        assertThat(calls).describedAs("새 체결 감지 1건만").hasSize(1)
+        assertThat(calls.single().requestUrl!!.queryParameter("startTime")).isEqualTo("${now + 1}")
+    }
+
+    @Test
+    fun `1000건 창으로 진입을 못 찾은 결과도 캐시해 두 번째 회차는 창을 다시 걷지 않는다`() {
+        (1..1000L).forEach { trades += T(it, now - day + it, if (it % 2 == 0L) "BUY" else "SELL", "0.002") }
+        val clock = MutableClock(Instant.ofEpochMilli(now))
+        val adapter = adapter(clock)
+        assertThat(adapter.read().entryCommissionUsdt).isNull()
+        requests.clear()
+        clock.advance(60_000)
+
+        adapter.read()
+
+        val calls = userTradeCalls()
+        assertThat(calls).describedAs("새 체결 감지 1건만").hasSize(1)
+        assertThat(calls.single().requestUrl!!.queryParameter("startTime")).describedAs("7일 창이 아니라 미발견 시점 이후")
+            .isEqualTo("${now + 1}")
+    }
+
+    @Test
+    fun `미발견 캐시는 새 체결이 생기면 다시 걷는다`() {
+        trades += T(1, now - 100 * day, "SELL", "0.002")
+        val clock = MutableClock(Instant.ofEpochMilli(now))
+        val adapter = adapter(clock)
+        assertThat(adapter.read().entryCommissionUsdt).isNull()
+        trades += T(2, now + 30_000, "BUY", "0.001")
+        trades += T(3, now + 40_000, "SELL", "0.001", fee = "0.03")
+        clock.advance(60_000)
+        requests.clear()
+
+        adapter.read()
+
+        assertThat(userTradeCalls().size).isGreaterThan(1)
+    }
+
+    @Test
+    fun `깊이는 포지션 이력 수수료율 현재가 다음 마지막으로 조회한다`() {
+        trades += T(1, now - day, "SELL", "0.002", asset = "BNB")
+
+        adapter().read()
+
+        val paths = requests.map { it.requestUrl!!.encodedPath }.filterNot { it == "/fapi/v1/time" }
+        assertThat(paths.last()).isEqualTo("/fapi/v1/depth")
+        assertThat(paths.count { it == "/fapi/v1/depth" }).isEqualTo(1)
+        assertThat(paths.indexOf("/fapi/v2/ticker/price")).isLessThan(paths.indexOf("/fapi/v1/depth"))
+    }
+
+    @Test
     fun `userTrades 창은 7일을 넘지 않고 겹치지 않는다`() {
         adapter().read()
 
@@ -355,13 +418,25 @@ class BinanceFuturesPrivateAccountAdapterTest {
         assertThat(requests.map { it.method }.toSet()).containsExactly("GET")
     }
 
-    private fun adapter() = BinanceFuturesPrivateAccountAdapter(
+    private fun adapter(clock: Clock = this.clock) = BinanceFuturesPrivateAccountAdapter(
         WebClient.builder().baseUrl(server.url("/").toString().removeSuffix("/")).build(),
         "test-api-key",
         "test-secret-key",
         clock,
         timeout = java.time.Duration.ofSeconds(3),
     )
+
+    private fun userTradeCalls() = requests.filter { it.requestUrl!!.encodedPath == "/fapi/v1/userTrades" }
+
+    private class MutableClock(private var instant: Instant) : Clock() {
+        fun advance(millis: Long) {
+            instant = instant.plusMillis(millis)
+        }
+
+        override fun instant(): Instant = instant
+        override fun getZone(): java.time.ZoneId = ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId?): Clock = this
+    }
 
     private fun catchRead(adapter: BinanceFuturesPrivateAccountAdapter = adapter()): AccountReadException {
         var thrown: Throwable? = null

@@ -34,17 +34,22 @@ class BinanceFuturesPrivateAccountAdapter(
 
     private var cache: EntryCache? = null
 
+    /**
+     * 깊이(호가)는 마지막에 조회한다 — 체결·펀딩 이력 탐색이 길어져도 판정 호가 관측 시각이 빗썸 호가와 벌어지지
+     * 않게 한다(시세 신선도 skew 5초).
+     */
     @Synchronized
     override fun read(): ForeignPerpAccountSnapshot {
         val position = readPosition()
         val history = if (position.amount.signum() != 0) resolveHistory(position) else null
         val fee = readTakerFeeRate()
-        val depth = readDepth()
+        val entryCommission = history?.let { commissionUsdt(it) }
         val lastPrice = readPrice(SYMBOL)
+        val depth = readDepth()
         return ForeignPerpAccountSnapshot(
             signedQuantity = position.amount,
             entryPrice = position.entryPrice,
-            entryCommissionUsdt = history?.let { commissionUsdt(it) },
+            entryCommissionUsdt = entryCommission,
             fundingUsdt = history?.funding?.sum,
             takerFeeRate = fee,
             askLevels = depth.first,
@@ -68,10 +73,15 @@ class BinanceFuturesPrivateAccountAdapter(
 
     private data class History(val usdt: BigDecimal, val bnb: BigDecimal, val funding: FundingState)
 
+    /**
+     * 진입 이력 탐색 결과(미발견 포함)를 같은 포지션 동안 보관한다. 새 체결 감지:
+     * [lastTradeId] 가 있으면 그 다음 id 부터, 없으면(체결 없음·1000건 창) [walkedAtMillis] 이후 시각부터 1건 조회.
+     */
     private data class EntryCache(
         val amount: BigDecimal,
         val entryPrice: BigDecimal,
         val lastTradeId: Long?,
+        val walkedAtMillis: Long,
         val history: History?,
     )
 
@@ -94,17 +104,18 @@ class BinanceFuturesPrivateAccountAdapter(
 
     private fun resolveHistory(position: Position): History? {
         val cached = cache?.takeIf { it.amount.compareTo(position.amount) == 0 && it.entryPrice.compareTo(position.entryPrice) == 0 }
-        if (cached != null && cached.lastTradeId != null && !hasNewTrades(cached.lastTradeId)) {
+        if (cached != null && !hasNewTrades(cached)) {
             val refreshed = cached.history?.let { it.copy(funding = readFunding(it.funding)) }
             cache = cached.copy(history = refreshed)
             return refreshed
         }
         cache = null
-        val walk = walkTrades(position)
+        val walkedAt = nowMillis()
+        val walk = walkTrades(position, walkedAt)
         val history = walk.found?.let {
             History(it.usdt, it.bnb, readFunding(FundingState(BigDecimal.ZERO, it.entryTime, emptySet())))
         }
-        cache = EntryCache(position.amount, position.entryPrice, walk.lastTradeId, history)
+        cache = EntryCache(position.amount, position.entryPrice, walk.lastTradeId, walkedAt, history)
         return history
     }
 
@@ -113,14 +124,27 @@ class BinanceFuturesPrivateAccountAdapter(
         return history.usdt.add(history.bnb.multiply(readPrice("BNBUSDT")))
     }
 
-    private fun hasNewTrades(lastTradeId: Long): Boolean {
-        val rows = signedGet("/fapi/v1/userTrades", "symbol=$SYMBOL&fromId=${lastTradeId + 1}&limit=1")
+    private fun hasNewTrades(cached: EntryCache): Boolean {
+        val params = if (cached.lastTradeId != null) {
+            "symbol=$SYMBOL&fromId=${cached.lastTradeId + 1}&limit=1"
+        } else {
+            val now = nowMillis()
+            if (now <= cached.walkedAtMillis) return false
+            // userTrades 의 startTime~endTime 은 7일 이하다. 그보다 오래된 미발견 캐시는 다시 걷는다
+            if (now - cached.walkedAtMillis > WINDOW_MILLIS) return true
+            "symbol=$SYMBOL&startTime=${cached.walkedAtMillis + 1}&endTime=$now&limit=1"
+        }
+        val rows = signedGet("/fapi/v1/userTrades", params)
         if (!rows.isArray) unexpected("userTrades response is not an array")
         return rows.size() > 0
     }
 
-    private fun walkTrades(position: Position): WalkResult {
-        var end = nowMillis()
+    /**
+     * [walkedAt] 부터 7일 창을 거꾸로 걷는다. 반환 lastTradeId 는 끝까지 받은(1000건 미만) 창에서 본 최신 체결 id 다 —
+     * 1000건으로 잘린 창의 id 는 최신이 아닐 수 있어 쓰지 않는다(그 경우 시각 기준으로 새 체결을 감지한다).
+     */
+    private fun walkTrades(position: Position, walkedAt: Long): WalkResult {
+        var end = walkedAt
         var cumulative = BigDecimal.ZERO
         var usdt = BigDecimal.ZERO
         var bnb = BigDecimal.ZERO
@@ -129,7 +153,7 @@ class BinanceFuturesPrivateAccountAdapter(
         repeat(MAX_WINDOWS) {
             val start = end - WINDOW_MILLIS
             val raw = readTrades(start, end)
-            if (raw.size >= TRADE_LIMIT) return WalkResult(null, null)
+            if (raw.size >= TRADE_LIMIT) return WalkResult(newestId, null)
             raw.maxOfOrNull { it.id }?.let { id -> newestId = maxOf(newestId ?: id, id) }
             val trades = raw.filter { position.positionSide == "BOTH" || it.positionSide == position.positionSide }
                 .sortedWith(compareByDescending<Trade> { it.time }.thenByDescending { it.id })
