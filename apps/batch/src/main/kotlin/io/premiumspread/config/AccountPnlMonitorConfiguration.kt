@@ -9,6 +9,7 @@ import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
+import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Condition
@@ -16,6 +17,7 @@ import org.springframework.context.annotation.ConditionContext
 import org.springframework.context.annotation.Conditional
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.type.AnnotatedTypeMetadata
+import org.springframework.core.type.ClassMetadata
 import java.time.Clock
 
 /**
@@ -27,8 +29,16 @@ import java.time.Clock
 class AccountPnlMonitorEnabledCondition : Condition {
     override fun matches(context: ConditionContext, metadata: AnnotatedTypeMetadata): Boolean {
         val env = context.environment
-        return env.getProperty("account-pnl-monitor.enabled") == "true" &&
+        val featureOn = env.getProperty("account-pnl-monitor.enabled").equals("true", ignoreCase = true) &&
             REQUIRED.all { !env.getProperty(it).isNullOrBlank() }
+        if (!featureOn) return false
+        // EmailAutoConfiguration 은 notification.email.enabled=true 일 때만 EmailSender 를 만든다.
+        val emailOn = env.getProperty("notification.email.enabled").equals("true", ignoreCase = true)
+        if (!emailOn && (metadata as? ClassMetadata)?.className == AccountPnlMonitorConfiguration::class.java.name) {
+            LoggerFactory.getLogger(AccountPnlMonitorEnabledCondition::class.java)
+                .warn("account-pnl-monitor enabled but email disabled; monitor not started")
+        }
+        return emailOn
     }
 
     companion object {

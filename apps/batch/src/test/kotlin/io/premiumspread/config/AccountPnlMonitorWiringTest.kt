@@ -37,6 +37,7 @@ import java.time.ZoneOffset
 class AccountPnlMonitorWiringTest {
 
     private val enabledProps = arrayOf(
+        "notification.email.enabled=true",
         "account-pnl-monitor.enabled=true",
         "account-pnl-monitor.recipient=owner@example.test",
         "account-pnl-monitor.bithumb.access-key=BITHUMB-ACCESS-SECRET-VALUE",
@@ -109,6 +110,38 @@ class AccountPnlMonitorWiringTest {
             assertThat(ctx).hasNotFailed()
             assertThat(ctx.getBeansOfType(JobLastSuccessReadPort::class.java).values)
                 .singleElement().isInstanceOf(RedisJobRunRecorderAdapter::class.java)
+        }
+    }
+
+    @Test
+    fun `메일이 비활성이면 Job·Scheduler 0개이고 context 는 기동한다`(output: CapturedOutput) {
+        runner.withPropertyValues(*enabledProps, "notification.email.enabled=false").run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).doesNotHaveBean(AccountPnlMonitorJob::class.java)
+            assertThat(ctx).doesNotHaveBean(AccountPnlMonitorScheduler::class.java)
+        }
+        assertThat(output.all).contains("account-pnl-monitor enabled but email disabled")
+            .doesNotContain("BITHUMB-ACCESS-SECRET-VALUE", "BINANCE-API-SECRET-VALUE")
+    }
+
+    @Test
+    fun `메일 설정이 없고 EmailSender 도 없으면 Job·Scheduler 0개`() {
+        ApplicationContextRunner()
+            .withUserConfiguration(AccountPnlMonitorAdapterConfiguration::class.java, ClockOnly::class.java,
+                AccountPnlMonitorConfiguration::class.java, AccountPnlMonitorScheduler::class.java)
+            .withPropertyValues(*enabledProps.filterNot { it.startsWith("notification.") }.toTypedArray())
+            .run { ctx ->
+                assertThat(ctx).hasNotFailed()
+                assertThat(ctx).doesNotHaveBean(AccountPnlMonitorJob::class.java)
+                assertThat(ctx).doesNotHaveBean(AccountPnlMonitorScheduler::class.java)
+            }
+    }
+
+    @Test
+    fun `플래그 값은 대소문자를 구분하지 않는다`() {
+        runner.withPropertyValues(*enabledProps, "account-pnl-monitor.enabled=TRUE").run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).hasSingleBean(AccountPnlMonitorJob::class.java)
         }
     }
 
