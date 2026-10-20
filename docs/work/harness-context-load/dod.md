@@ -186,6 +186,8 @@ cat CLAUDE.md .ai/rules/architecture.md .ai/rules/testing.md .ai/rules/naming.md
 
 | 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
 |---|---|---|---|---|
+| AC6 검증 수단·티어 | T3 · `claude -p` 자기보고 프롬프트 3회, 5줄 모두 기대값 | T2 · `bash docs/work/harness-context-load/probe-rule-load.sh none` 1회 → `none instructions=['testing'] nested_memory=[]` (batch·http가 어느 형태로도 없음). 기존 자기보고 3회 결과는 보조 증거로 남김 | ⑩에서 transcript(`~/.claude/projects/<cwd>/<session>.jsonl`)의 `attachment` 기록이 규칙 로딩을 결정적으로 보여줌을 확인. 자기보고보다 강한 수단이 생겼으므로 같은 관찰을 결정적으로 고정 | 사용자 2026-10-20 (⑩ AskUserQuestion) |
+| AC7 검증 수단·티어·통과 조건 | T3 · Read 허용 `claude -p` 자기보고 각 3회, 3/3 인용 | T2 · `probe-rule-load.sh batch` → `nested_memory`에 `batch` 포함 · `probe-rule-load.sh http` → `nested_memory`에 `http` 포함, 각 1회 | ⑩ 실측에서 자기보고는 batch 3/3·http 1/3(기본), batch 2/3·http 2/3(`/tmp`)로 비결정적이었고, 미인용 회차도 "Read 결과에 안내문이 붙어 있었다"고 보고 — 로딩이 아니라 모델의 인용 판단이 흔들림. transcript attachment는 Read 시점의 `nested_memory` 주입을 직접 기록 | 사용자 2026-10-20 (⑩ AskUserQuestion) |
 
 ## 최종 판정
 
