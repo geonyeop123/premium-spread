@@ -280,6 +280,19 @@ GREEN $ 같은 명령 (구현 후)
       BUILD SUCCESSFUL
 ```
 
+### AC5 — Task 10 (2026-10-20, 커밋 전)
+
+```
+RED   $ ./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest' --offline --no-daemon
+      26 tests completed, 25 failed   (Job 이 Skipped("stub") 를 돌려주는 stub; typed JobConfig 테스트만 통과)
+GREEN $ 같은 명령 (구현 후)
+      BUILD SUCCESSFUL (26건 통과)
+      $ ./gradlew :apps:batch:test :infrastructure:batch:test :domain:test --offline --no-daemon
+      BUILD SUCCESSFUL
+      $ ./gradlew architectureTest --offline --no-daemon
+      BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

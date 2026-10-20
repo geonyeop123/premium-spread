@@ -50,6 +50,27 @@ class RedisJobObservabilityTest {
     }
 
     @Test
+    fun `마지막 성공 시각은 프로세스 내 성공 기록에서 읽고 성공이 없으면 null 이다`() {
+        every { redis.opsForValue() } returns values
+        every { values.set(any(), any(), any<Duration>()) } just runs
+        val first = Instant.parse("2026-07-15T00:00:10Z")
+        val recorder = RedisJobRunRecorderAdapter(redis, registry, Clock.fixed(first, ZoneOffset.UTC))
+
+        assertThat(recorder.findLastSuccess(JobId.FX_INGESTION)).isNull()
+
+        recorder.completed(JobId.FX_INGESTION, "run-1", JobRunOutcome.SUCCEEDED, first, null)
+        recorder.completed(JobId.FX_INGESTION, "run-2", JobRunOutcome.FAILED, first.plusSeconds(1800), "boom")
+        recorder.completed(JobId.FX_INGESTION, "run-3", JobRunOutcome.SKIPPED, first.plusSeconds(1801), "lock")
+
+        assertThat(recorder.findLastSuccess(JobId.FX_INGESTION)).isEqualTo(first)
+        assertThat(recorder.findLastSuccess(JobId.PREMIUM_REALTIME)).isNull()
+
+        recorder.completed(JobId.FX_INGESTION, "run-4", JobRunOutcome.SUCCEEDED, first.plusSeconds(3600), null)
+
+        assertThat(recorder.findLastSuccess(JobId.FX_INGESTION)).isEqualTo(first.plusSeconds(3600))
+    }
+
+    @Test
     fun `lock not acquired and redis errors have bounded outcomes without lock key tags`() {
         every { redis.opsForValue() } returns values
         every { values.setIfAbsent(any(), any(), any<Duration>()) } returns false

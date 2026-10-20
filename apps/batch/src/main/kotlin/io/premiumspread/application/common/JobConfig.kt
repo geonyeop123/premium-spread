@@ -78,5 +78,12 @@ object DefaultJobConfigProvider : JobConfigProvider {
             Duration.ofSeconds(30),
             Duration.ofSeconds(20),
         )
+
+        JobId.ACCOUNT_PNL_MONITOR -> JobConfig(
+            jobId,
+            "lock:account-pnl:monitor",
+            Duration.ofSeconds(50),
+            Duration.ofSeconds(40),
+        )
     }
 }
