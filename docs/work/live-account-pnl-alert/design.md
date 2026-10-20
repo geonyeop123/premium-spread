@@ -6,7 +6,7 @@
 | slug | `live-account-pnl-alert` |
 | base branch | `dev` (`df15e79`) |
 | branch | `feat/live-account-pnl-alert` |
-| 상태 | `DRAFT` — ⑥ 스펙 리뷰 · ⑦ 사용자 승인 전 |
+| 상태 | `APPROVED` — ⑥ 스펙 리뷰 R6 approve · ⑦ owner 승인 2026-10-20 |
 
 ## 0. 이 단위의 성격
 
