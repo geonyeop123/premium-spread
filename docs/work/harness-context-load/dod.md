@@ -1,7 +1,8 @@
 ---
 feature: 세션 자동 로드 문서 정리
 slug: harness-context-load
-status: DRAFT
+status: FROZEN
+frozen_at: 2026-10-20
 source: 2026-10-20 대화 — 매 세션 자동 로드 문서(CLAUDE.md + .claude/rules/*.md @import) 점검 결과 세 문제 수정 (③ 합의)
 ---
 
