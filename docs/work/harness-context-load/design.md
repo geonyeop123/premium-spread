@@ -165,3 +165,13 @@ T1 변경 이력 이전 → T2 게이트 단정 + 자가검증 → T3 참조 4�
 | 5 | minor | `check-harness.sh:165` 주석이 T4 뒤 거짓이 된다 | plan T2 Step 3 (d)에 정정 전문 |
 | 6 | minor | `CLAUDE.md:59-61` 계약 서술에 새 단정이 빠진다, dod 범위 문구 부정확 | plan T3에 교체 전/후 전문(오케스트레이터 결정으로 범위 포함), dod 범위 "2개 파일(4곳)" |
 | 관찰 | — | 리뷰어 세션에 베이스 경로 `.ai/rules`가 실려 있었다 | §3·§8, plan T6 Step 4를 AC6·AC7 공통으로 |
+
+## 11. 구현 중 바뀐 사항
+
+- **줄바꿈.** `CLAUDE.md`·`docs/harness-changelog.md`는 원래 CRLF라 그대로 둔다. `.claude/rules/batch.md`·`http.md`는
+  LF다 — CRLF면 dod AC4의 행 끝 앵커(`^@`류 끝 앵커 검사)가 GNU grep에서 CR 때문에 실패한다.
+- **AC6·AC7 검증 수단 개정(사용자 승인).** LLM 자기보고(프롬프트에 답하게 하는 방식)를 세션 transcript의
+  attachment 판정으로 바꿨다. 판정기는 `docs/work/harness-context-load/probe-rule-load.sh`이며 import로 펼쳐진 정본
+  경로도 로드로 본다. 명령과 증거는 dod가 소유한다.
+- **⑨ 리뷰 보류 minor 2건(고치지 않음, plan이 지정한 정규식 유지).** 헤더 정규식에 끝 앵커가 없다.
+  앞뒤에 공백을 덧댄 패딩 헤더는 허용하지 않는다.

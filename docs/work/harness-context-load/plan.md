@@ -41,14 +41,14 @@
 **Interfaces:**
 - Produces: 경로 `docs/harness-changelog.md`와 표 헤더 `| 날짜 | 변경 내용 | 대상 | 사유 |` — T2의 단정과 T3·T4의 참조가 이것을 가리킨다.
 
-- [ ] **Step 1: RED 기록 (dod AC2)**
+- [x] **Step 1: RED 기록 (dod AC2)**
 
 ```bash
 grep -c '^### 변경 이력' CLAUDE.md
 ```
 Expected: `1`. dod 증거 로그 AC2에 RED로 남긴다.
 
-- [ ] **Step 2: `docs/harness-changelog.md` 생성**
+- [x] **Step 2: `docs/harness-changelog.md` 생성**
 
 파일 전문은 아래와 같다. 마지막 `{기존 3행}`은 placeholder가 아니라 **`git show "$BASE":CLAUDE.md`의 73~75행을
 바이트 그대로 붙이는 지시**다(순서 유지). 손으로 다시 타이핑하지 않는다.
@@ -68,7 +68,7 @@ rename한 뒤 게이트가 소급 실패하면 안 된다. 게이트는 이 파�
 {기존 3행}
 ```
 
-- [ ] **Step 3: `CLAUDE.md` 수정**
+- [x] **Step 3: `CLAUDE.md` 수정**
 
 (a) 57행 교체 — 지시 5곳 중 1번.
 
@@ -90,7 +90,7 @@ rename한 뒤 게이트가 소급 실패하면 안 된다. 게이트는 이 파�
 `## 관련 문서` 사이에는 빈 줄 하나만 남긴다. `## 하네스` 제목과 그 아래 두 설명 문단은 여기서는 그대로 둔다
 (계약 서술 문단은 T3에서 고친다).
 
-- [ ] **Step 4: 검증**
+- [x] **Step 4: 검증**
 
 ```bash
 grep -c '^### 변경 이력' CLAUDE.md
@@ -100,7 +100,7 @@ grep -c '^| 20' docs/harness-changelog.md
 ```
 Expected: `0` / `3` / `4` / `BUILD SUCCESSFUL` (이 시점 `harnessCheckTest`는 기존 24종).
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add docs/harness-changelog.md CLAUDE.md
@@ -122,7 +122,7 @@ git commit -m "chore: 하네스 변경 이력을 docs/harness-changelog.md 로 �
 - Consumes: T1의 파일 경로와 표 헤더
 - Produces: 아래 실패 메시지 두 종. T3이 orchestrator 하네스 정합성 절과 `CLAUDE.md` 계약 서술에 이 단정을 올린다.
 
-- [ ] **Step 1: 자가검증 픽스처 먼저 추가**
+- [x] **Step 1: 자가검증 픽스처 먼저 추가**
 
 `make_ok` 요건: `"$r/docs"`는 이미 생긴다(`docs/runbooks`를 만들므로). `"$r/docs/harness-changelog.md"`를 아래 내용으로 만든다.
 ```
@@ -160,7 +160,7 @@ git commit -m "chore: 하네스 변경 이력을 docs/harness-changelog.md 로 �
   expect_output "필수 섹션 누락(변경 이력 헤더)" '^\| 날짜 \| 변경 내용 \| 대상 \| 사유 \|'
   ```
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 ```bash
 bash docs/test-check-harness.sh
@@ -175,7 +175,7 @@ FAIL [필수 섹션 누락(변경 이력 헤더)] 기대 문자열 없음: ^\| �
 `ok [변경 이력의 과거 경로 무시] exit 0`은 처음부터 초록이다 — 회귀 방어용 정상 표본이라 RED가 없는 것이 맞다.
 기존 24종은 전부 `ok`. 출력 전체를 dod 증거 로그 AC1에 RED로 붙인다.
 
-- [ ] **Step 3: `docs/check-harness.sh` 수정**
+- [x] **Step 3: `docs/check-harness.sh` 수정**
 
 (a) 상단 주석(14~15행, check-documentation.sh와의 대상 구분 문단) 뒤에 의도 한두 줄 추가. 요건: 이력 파일은 축 3에서
 존재와 표 헤더만 단정하고 축 1 대상에 넣지 않는다, 과거 경로를 담는 기록이라 rename 뒤 소급 실패하면 안 된다.
@@ -220,7 +220,7 @@ require_section docs/harness-changelog.md '^\| 날짜 \| 변경 내용 \| 대상
 
 `check_refs` 호출 목록(211~231행)은 바꾸지 않는다.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 ```bash
 bash docs/test-check-harness.sh
@@ -229,7 +229,7 @@ grep -c '^run_case ' docs/test-check-harness.sh
 ```
 Expected: `== 모든 케이스 통과 ==` exit 0 / `27` / `BUILD SUCCESSFUL`.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add docs/check-harness.sh docs/test-check-harness.sh
@@ -254,7 +254,7 @@ git commit -m "chore: harnessCheck 에 변경 이력 파일 단정 추가" \
 **Interfaces:**
 - Consumes: T1의 경로, T2의 단정
 
-- [ ] **Step 1: RED 기록 (dod AC3)**
+- [x] **Step 1: RED 기록 (dod AC3)**
 
 ```bash
 grep -rnE 'CLAUDE\.md.{0,20}## 하네스.{0,10}변경 이력|아래 변경 이력' CLAUDE.md .claude
@@ -262,7 +262,7 @@ grep -rnE 'CLAUDE\.md.{0,20}## 하네스.{0,10}변경 이력|아래 변경 이�
 Expected: 4건 — `.claude/skills/orchestrator/SKILL.md:525`, `:542`, `.claude/agents/tech-docs.md:32`, `.claude/skills/tech-docs-sync/SKILL.md:23`
 (`CLAUDE.md:57`은 T1에서 이미 바뀌었다). 기록한다.
 
-- [ ] **Step 2: 교체**
+- [x] **Step 2: 교체**
 
 **2번 — `.claude/skills/orchestrator/SKILL.md:525` (⑪-d)**
 
@@ -335,7 +335,7 @@ Expected: 4건 — `.claude/skills/orchestrator/SKILL.md:525`, `:542`, `.claude/
 검사한다. 변경 이력 파일은 과거 경로를 담는 기록이라 경로 검사 대상이 아니다. 게이트가 빨간데 죽은 참조가 없으면
 ```
 
-- [ ] **Step 3: 검증**
+- [x] **Step 3: 검증**
 
 ```bash
 grep -c 'docs/harness-changelog.md' CLAUDE.md .claude/skills/orchestrator/SKILL.md .claude/agents/tech-docs.md .claude/skills/tech-docs-sync/SKILL.md
@@ -351,7 +351,7 @@ CLAUDE.md:3
 ```
 두 번째 명령은 출력 없음(exit 1). 세 번째는 `BUILD SUCCESSFUL`.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add .claude/skills/orchestrator/SKILL.md .claude/agents/tech-docs.md .claude/skills/tech-docs-sync/SKILL.md CLAUDE.md
@@ -372,7 +372,7 @@ git commit -m "chore: 변경 이력 기록 위치 지시를 docs/harness-changel
 **Interfaces:**
 - Produces: 판정 문자열 `Batch 규칙 진입 안내`, `HTTP 규칙 진입 안내` — dod AC4·AC6·AC7이 쓴다.
 
-- [ ] **Step 1: RED 기록 (dod AC4·AC6)**
+- [x] **Step 1: RED 기록 (dod AC4·AC6)**
 
 ```bash
 grep -c '^@' .claude/rules/batch.md .claude/rules/http.md
@@ -382,7 +382,7 @@ Expected: `.claude/rules/batch.md:1` / `.claude/rules/http.md:1`. 이어서 dod 
 (규칙 본문 두 줄은 ③ 실측의 재현. 안내문 두 줄은 아직 존재하지 않는 제목이므로 착수 전에도 ABSENT가 맞다 —
 이 두 줄은 변경 후에 무조건 로드되지 않는다는 것을 보는 기준이고, RED가 아니라 기준선이다).
 
-- [ ] **Step 2: 파일 전문으로 교체**
+- [x] **Step 2: 파일 전문으로 교체**
 
 `.claude/rules/batch.md`:
 ```markdown
@@ -419,7 +419,7 @@ paths:
 
 `paths` 블록은 원본과 글자까지 같아야 한다. 나머지 네 래퍼(`architecture`·`testing`·`naming`·`git`)는 건드리지 않는다.
 
-- [ ] **Step 3: 검증**
+- [x] **Step 3: 검증**
 
 ```bash
 grep -c '^@' .claude/rules/batch.md .claude/rules/http.md
@@ -431,7 +431,7 @@ Expected: 각 파일 `:0` / 각 파일 `:1` / diff hunk가 frontmatter(`---`~`--
 (안내문의 백틱 경로 `apps/batch`·`.ai/rules/batch.md`·`http/`·`apps/api`·`.ai/rules/http.md`·`AGENTS.md`·
 `docs/harness-changelog.md`가 축 1을 통과한다).
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add .claude/rules/batch.md .claude/rules/http.md
@@ -450,21 +450,21 @@ git commit -m "chore: path-scoped 규칙 래퍼의 @import 를 Read 안내문으
 - Modify: `.claude/agents/tech-docs.md` (3행 description, 22행) — [ASSUMPTION, design §4]
 - Modify: `.claude/skills/tech-docs-sync/SKILL.md` (3행 description, 12행) — [ASSUMPTION, design §4]
 
-- [ ] **Step 1: RED 기록 (dod AC5)**
+- [x] **Step 1: RED 기록 (dod AC5)**
 
 ```bash
 grep -cE '^(├──|└──)' CLAUDE.md
 ```
 Expected: `7`. 기록한다.
 
-- [ ] **Step 2: `CLAUDE.md` 수정**
+- [x] **Step 2: `CLAUDE.md` 수정**
 
 `## Module Structure` 제목은 남기고, 그 아래 펜스 블록(여는 펜스부터 닫는 펜스까지, 현재 13~26행)을 아래 한 줄로 바꾼다.
 ```
 모듈 구조는 `AGENTS.md`의 `## Module Structure`가 정본이다. 여기에 옮겨 적지 않는다 — 옮겨 적으면 두 곳이 갈린다.
 ```
 
-- [ ] **Step 3: 모듈 트리 갱신 지시 정정**
+- [x] **Step 3: 모듈 트리 갱신 지시 정정**
 
 `.claude/agents/tech-docs.md:22`
 
@@ -490,7 +490,7 @@ Expected: `7`. 기록한다.
 
 두 파일의 3행 description에서 `AGENTS/CLAUDE 모듈 트리`를 `AGENTS 모듈 트리`로 바꾼다. description의 나머지 문구는 그대로.
 
-- [ ] **Step 4: 검증**
+- [x] **Step 4: 검증**
 
 ```bash
 grep -cE '^(├──|└──)' CLAUDE.md
@@ -500,7 +500,7 @@ grep -cE 'CLAUDE\.md`(의)? 모듈 트리|AGENTS/CLAUDE' .claude/agents/tech-doc
 ```
 Expected: `0` / `1` / 각 파일 `:0` / `BUILD SUCCESSFUL`.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add CLAUDE.md .claude/agents/tech-docs.md .claude/skills/tech-docs-sync/SKILL.md
@@ -516,7 +516,7 @@ git commit -m "chore: CLAUDE.md 모듈 트리를 AGENTS.md 포인터로 교체" 
 **Files:**
 - Modify: `docs/work/harness-context-load/dod.md` (증거 로그 append only)
 
-- [ ] **Step 1: 게이트 (dod AC1, R1)**
+- [x] **Step 1: 게이트 (dod AC1, R1)**
 
 ```bash
 ./gradlew harnessCheck harnessCheckTest --offline --no-daemon
@@ -525,17 +525,17 @@ bash docs/check-documentation.sh
 ```
 Expected: `BUILD SUCCESSFUL` / `27` / `documentation check passed (20 files, 15 required paths)`.
 
-- [ ] **Step 2: 문구 단정 재실행 (dod AC2~AC5, R2)**
+- [x] **Step 2: 문구 단정 재실행 (dod AC2~AC5, R2)**
 
 dod 수용기준 표의 AC2~AC5·R2 검증 명령을 그대로 다시 돌려 최종 커밋 기준 출력을 기록한다.
 
-- [ ] **Step 3: 런타임 로딩 실측 (dod AC6·AC7)**
+- [x] **Step 3: 런타임 로딩 실측 (dod AC6·AC7)**
 
 명령 전문은 dod §AC6·§AC7이 소유한다. 프롬프트는 `PROMPT` 변수에 담아 stdin으로 넘기고, 도구 목록은 쉼표로 이은
 한 인자로 준다(가변 인자 플래그 뒤에 프롬프트가 먹히는 문제를 피한다). 각 명령을 **3회** 실행한다. 3/3이 통과 조건과
 일치해야 PASS다. 한 번이라도 어긋나면 재시도로 덮지 않고 세 출력을 모두 기록한 뒤 Step 4로 간다.
 
-- [ ] **Step 4: 이상 시 대체 절차 (AC6·AC7 공통)**
+- [x] **Step 4: 이상 시 대체 절차 (AC6·AC7 공통)**
 
 AC6에서 ABSENT를 기대한 항목이 하나라도 PRESENT이거나 AC7이 기대 문자열을 내지 않으면, worktree가 베이스 저장소 디렉터리
 아래에 있어 상위 경로의 메모리 파일(⑥ 리뷰어 세션에서는 베이스의 `.ai/rules`가 실렸다)이 섞였을 가능성을 먼저 배제한다(design §3).
@@ -545,18 +545,18 @@ git worktree add --detach /tmp/harness-context-load-probe HEAD
 `/tmp/harness-context-load-probe`에서 **AC6와 AC7을 모두** 다시 각 3회 돌리고 두 위치의 결과를 모두 기록한다. 끝나면
 `git worktree remove /tmp/harness-context-load-probe`. 판정은 오케스트레이터에 맡긴다(혼자 PASS로 적지 않는다).
 
-- [ ] **Step 5: 로드량 실측 (dod AC8)**
+- [x] **Step 5: 로드량 실측 (dod AC8)**
 
 dod §AC8의 두 명령을 돌려 변경 전·후 수치를 기록한다.
 
-- [ ] **Step 6: 범위 확인 (dod R3)**
+- [x] **Step 6: 범위 확인 (dod R3)**
 
 ```bash
 git diff --name-only "$BASE"...HEAD
 ```
 Expected: Global Constraints의 9개 파일과 `docs/work/harness-context-load/` 아래 파일만.
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 커밋**
 
 ```bash
 git add docs/work/harness-context-load/dod.md
