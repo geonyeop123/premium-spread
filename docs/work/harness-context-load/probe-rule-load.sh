@@ -34,15 +34,23 @@ out, mode, cwd = sys.argv[1:4]
 sid = json.load(open(out))["session_id"]
 proj = os.path.expanduser("~/.claude/projects/" + cwd.replace("/", "-").replace(".", "-"))
 transcript = os.path.join(proj, sid + ".jsonl")
+# instructions: 세션 시작 시 로드된 파일들(a["files"][*].path).
+# nested_memory: 파일 접근 시 붙는 조건부 규칙(a["content"].path).
+# 래퍼(.claude/rules/x.md)와 import 로 펼쳐진 정본(.ai/rules/x.md)을 모두 x 로 센다 —
+# 분기점에서 즉시 로드된 것은 래퍼가 아니라 정본이었다.
 found = {"instructions": set(), "nested_memory": set()}
 for line in open(transcript):
     a = json.loads(line).get("attachment") or {}
     kind = a.get("type")
-    if kind not in found:
+    if kind == "instructions":
+        paths = [f.get("path", "") for f in a.get("files", [])]
+    elif kind == "nested_memory":
+        paths = [(a.get("content") or {}).get("path", "")]
+    else:
         continue
-    blob = json.dumps(a, ensure_ascii=False)
-    for name in ("batch", "http", "testing"):
-        if f".claude/rules/{name}.md" in blob:
-            found[kind].add(name)
+    for p in paths:
+        for name in ("batch", "http", "testing"):
+            if p.endswith((f"/.claude/rules/{name}.md", f"/.ai/rules/{name}.md")):
+                found[kind].add(name)
 print(mode, *(f"{k}={sorted(v)}" for k, v in found.items()))
 PY
