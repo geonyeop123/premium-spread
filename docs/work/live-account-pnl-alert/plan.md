@@ -5,9 +5,10 @@
 **Goal:** 빗썸·바이낸스 read-only 계정을 1분마다 읽어 "지금 전량 청산하면 남는" 순수익률을 계산하고, 1% 이상이면 이메일을 보낸다.
 
 **Architecture:** `infrastructure:batch` 의 두 private REST adapter 가 계정·호가 Snapshot 을 Domain port 로 내고, Domain
-순수함수(포지션 판정 → 순손익 → 알림·중단 정책)가 발송 결정을 낸다. `apps:batch` Job 이 이를 조합해 상태와 발송할 메일을
-`infrastructure:common` 의 전용 테이블(V18)에 한 트랜잭션으로 저장한 뒤 미발송 메일을 SMTP 로 보낸다(at-least-once).
-기존 premium 알림 outbox(`notification_delivery`)는 subscription FK 에 묶여 있어 재사용하지 않는다.
+순수함수(포지션 판정 → 순손익 → 알림·중단 정책)가 발송 결정을 낸다. `apps:batch` Job 이 이를 조합해 상태(낙관적 버전)와
+발송할 메일을 `infrastructure:common` 의 전용 테이블(V18)에 한 트랜잭션으로 저장한 뒤, `PROCESSING` claim(SKIP LOCKED,
+claim token fencing)을 commit 하고 SMTP 로 보낸다(at-least-once). 기존 premium 알림 outbox(`notification_delivery`)는
+subscription FK 에 묶여 있어 재사용하지 않지만 같은 claim·fencing 계약을 따른다.
 
 **Tech Stack:** Kotlin 2.0, Spring Boot 3.5, WebFlux `WebClient`(기존 `ExchangeWebClientConfig` 패턴), JdbcTemplate, Flyway,
 JUnit5 + AssertJ, okhttp3 MockWebServer, Testcontainers(MySQL).
@@ -17,7 +18,10 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, Testcontainers(MySQL).
 ## Global Constraints
 
 - 판정: `netPercent ≥ 1.00` (호가 기준). 재무장: `netPercent < 0.90`. 재발송 간격: 60분. 중단 판정: 마지막 계산 성공 후 5분 초과.
-- 시세 신선도: 판정 호가(빗썸 bid, 바이낸스 ask) 관측이 10초 초과면 실패. 환율 신선도: `FX_INGESTION` 마지막 성공 후 2시간 초과면 실패.
+- 청산가: 빗썸 매수호가·바이낸스 매도호가 깊이를 각 leg 수량만큼 소화한 VWAP. 깊이 부족이면 계산 실패(`INSUFFICIENT_DEPTH`).
+- 시세 신선도: 판정 호가(빗썸 bid, 바이낸스 ask) 관측이 10초 초과면 실패.
+- 모든 조회·해석·신선도·계산 실패는 `AccountReadFailureCategory` 로 정규화해 중단 정책에 입력한다(미분류 = `UNEXPECTED`). 저장소 실패만 `JobResult.Failure`.
+- outbox: SMTP 전 `PROCESSING` claim commit, claim token fencing, stale `PROCESSING` 5분 → `PENDING`, 최대 5회 시도 후 `FAILED`(redrive 없음). 환율 신선도: `FX_INGESTION` 마지막 성공 후 2시간 초과면 실패.
 - 순손익 공식은 design §3 그대로. `netPercent` 분모 = 빗썸 청산가(bid) × 빗썸 수량. 표시 반올림: % 소수 둘째 자리 HALF_UP, 금액 원 단위 HALF_UP. 계산 중에는 반올림하지 않는다.
 - 진입 수수료·펀딩 이력 미확보 → 0 + 항목별 `unrecovered` 플래그, 알림은 그대로.
 - 분할 매매 미고려 (전량 진입·전량 청산).
@@ -92,7 +96,11 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, Testcontainers(MySQL).
 **Interfaces — Produces:**
 
 ```kotlin
-enum class AccountReadFailureCategory { BITHUMB_AUTH, BINANCE_AUTH, NETWORK, STALE_MARKET_DATA, STALE_FX }
+enum class AccountReadFailureCategory {
+    BITHUMB_AUTH, BINANCE_AUTH, NETWORK /* 연결·타임아웃·5xx·429 */, STALE_MARKET_DATA, STALE_FX, INSUFFICIENT_DEPTH, UNEXPECTED,
+}
+
+data class PriceLevel(val price: BigDecimal, val quantity: BigDecimal)
 
 class AccountReadException(val category: AccountReadFailureCategory, message: String) : RuntimeException(message)
 
@@ -101,9 +109,9 @@ data class KoreaSpotAccountSnapshot(
     val averageBuyPrice: BigDecimal,     // KRW
     val entryFeeKrw: BigDecimal?,        // null = 이력 미확보
     val sellFeeRate: BigDecimal,         // 0.0004 = 0.04%
-    val bestBid: BigDecimal,
+    val bidLevels: List<PriceLevel>,     // 가격 내림차순
     val lastPrice: BigDecimal,
-    val bestBidObservedAt: Instant,
+    val bidObservedAt: Instant,
 )
 
 data class ForeignPerpAccountSnapshot(
@@ -112,9 +120,9 @@ data class ForeignPerpAccountSnapshot(
     val entryCommissionUsdt: BigDecimal?, // null = 미확보 (USDT 외 자산 수수료 포함 시도 null)
     val fundingUsdt: BigDecimal?,        // 받은 것 +, null = 미확보
     val takerFeeRate: BigDecimal,
-    val bestAsk: BigDecimal,
+    val askLevels: List<PriceLevel>,     // 가격 오름차순
     val lastPrice: BigDecimal,
-    val bestAskObservedAt: Instant,
+    val askObservedAt: Instant,
 )
 
 fun interface KoreaSpotAccountReadPort { fun read(): KoreaSpotAccountSnapshot }      // 실패 시 AccountReadException
@@ -173,9 +181,14 @@ data class AccountNetPnl(
 }
 ```
 
-체결가 기준은 같은 공식에서 청산가만 `lastPrice` 로 바꾼 것이다 (exitFee 도 lastPrice 기준). 미확보 항목(null)은 0 으로 계산한다.
+호가 기준 청산가는 `vwap(levels, quantity)` — 앞 레벨부터 남은 수량만큼 소화한 수량가중 평균. 소화하지 못하면
+`AccountReadException(INSUFFICIENT_DEPTH, ...)` 를 던진다. VWAP 는 계산 중 반올림하지 않는다(`MathContext.DECIMAL128`).
+결과에 `koreaExitPrice`·`foreignExitPrice`(VWAP) 를 보존한다. 체결가 기준은 같은 공식에서 청산가만 `lastPrice` 로 바꾼
+것이다 (exitFee 도 lastPrice 기준). 미확보 항목(null)은 0 으로 계산한다.
 
-- [ ] **Step 1: 실패 테스트** — 고정 입력: 빗썸 qty 0.266, 평단 113016278, bid 109500000, last 109575000, entryFeeKrw 12000, sellFeeRate 0.0004; 바이낸스 signedQty -0.266, entry 83549.4, ask 81580, last 81577, entryCommission 8.9, funding 3.2, taker 0.0005; fx 1328.5.
+- [ ] **Step 1: 실패 테스트** — 고정 입력: 빗썸 qty 0.266, 평단 113016278, bidLevels [(109500000, 1.0)], last 109575000, entryFeeKrw 12000, sellFeeRate 0.0004; 바이낸스 signedQty -0.266, entry 83549.4, askLevels [(81580, 5.0)], last 81577, entryCommission 8.9, funding 3.2, taker 0.0005; fx 1328.5.
+  - `최우선 잔량이 부족하면 다음 레벨까지 VWAP 로 청산가를 계산한다` — bidLevels [(109500000, 0.1), (109490000, 0.2)] → 빗썸 청산가 = (109500000×0.1 + 109490000×0.166) / 0.266
+  - `호가 깊이가 수량보다 부족하면 INSUFFICIENT_DEPTH` — bidLevels [(109500000, 0.1)]
   - `호가 기준 순손익을 공식대로 계산한다` — 기대값은 테스트 안에서 `BigDecimal` 로 design §3 을 그대로 전개해 상수로 적는다 (gross = (109500000−113016278)×0.266 + (83549.4−81580)×0.266×1328.5 등). `netPercent` 는 scale 2 HALF_UP.
   - `체결가 기준 값은 lastPrice 로 계산한다`
   - `체결가 기준 gross 는 Tracking.grossPnl 과 같다` — 같은 수량·평단·진입가로 `Tracking.create(TrackingRecordSpec(...))` 를 만들고 `grossPnl(koreaPrice=109575000, foreignPrice=81577, fxRate=1328.5, ...)` 의 `totalGrossPnlKrw` 와 `compareTo == 0`.
@@ -223,6 +236,7 @@ object PnlAlertPolicy {
 
 ```kotlin
 data class OutageState(val lastSuccessAt: Instant?, val monitoringSince: Instant?, val outageNotified: Boolean)
+// 첫 실패 범주가 아니라 5분 초과 판정 회차의 범주를 메일에 싣는다
 sealed interface OutageNotice {
     data class Outage(val category: AccountReadFailureCategory, val lastSuccessAt: Instant?) : OutageNotice
     data object Recovered : OutageNotice
@@ -255,7 +269,7 @@ object AccountPnlMailContent {
 }
 ```
 
-제목 형식 (exact copy): 수익 `[김프 알림] 순수익률 +1.23% · +456,789원`, 중단 `[김프 알림] 모니터링 중단 — <범주 한글>`, 복구 `[김프 알림] 모니터링 복구`. 범주 한글: BITHUMB_AUTH `빗썸 인증 실패(허용 IP 확인)`, BINANCE_AUTH `바이낸스 인증 실패`, NETWORK `네트워크 오류`, STALE_MARKET_DATA `시세 지연`, STALE_FX `환율 수집 지연`. 본문: design §4.3 항목을 줄 단위로, 시각은 `Asia/Seoul` 표기 + ISO-8601 Instant, 미반영 항목은 `진입 수수료(빗썸) 미반영(이력 없음)` 형식.
+제목 형식 (exact copy): 수익 `[김프 알림] 순수익률 +1.23% · +456,789원`, 중단 `[김프 알림] 모니터링 중단 — <범주 한글>`, 복구 `[김프 알림] 모니터링 복구`. 범주 한글: BITHUMB_AUTH `빗썸 인증 실패(허용 IP 확인)`, BINANCE_AUTH `바이낸스 인증 실패`, NETWORK `네트워크·요청 한도 오류`, STALE_MARKET_DATA `시세 지연`, STALE_FX `환율 수집 지연`, INSUFFICIENT_DEPTH `호가 깊이 부족`, UNEXPECTED `기타 오류(로그 확인)`. 본문의 청산가는 VWAP 값이다. 본문: design §4.3 항목을 줄 단위로, 시각은 `Asia/Seoul` 표기 + ISO-8601 Instant, 미반영 항목은 `진입 수수료(빗썸) 미반영(이력 없음)` 형식.
 
 - [ ] **Step 1: 실패 테스트** — `제목에 순수익률과 순수익금이 있다`(+1.23%, +456,789원 / 음수는 `-`), `본문에 계산 근거가 모두 있다`(gross·수수료·펀딩·예상 청산 수수료·체결가 기준 수익률·수량·평단·청산가·체결가·환율·관측 시각 각 라벨 포함), `미반영 항목을 명시한다`, `중단 메일 제목에 범주가 있다`.
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` → RED. 증거 로그 AC9.
@@ -272,23 +286,27 @@ object AccountPnlMailContent {
 **Interfaces — Produces:**
 
 ```kotlin
-data class AccountPnlMonitorState(val alert: PnlAlertState, val outage: OutageState)
-data class PendingAccountPnlMail(val id: Long, val mail: AccountPnlMail, val attemptCount: Int)
+data class AccountPnlMonitorState(val alert: PnlAlertState, val outage: OutageState, val version: Long)  // version 0 = row 없음
+data class ClaimedAccountPnlMail(val id: Long, val mail: AccountPnlMail, val claimToken: String, val attemptCount: Int)
 interface AccountPnlAlertStore {
-    fun load(): AccountPnlMonitorState                                   // row 없으면 INITIAL
-    fun save(state: AccountPnlMonitorState, mails: List<AccountPnlMail>) // 한 트랜잭션, 중복 eventKey 는 무시
-    fun pending(limit: Int): List<PendingAccountPnlMail>                 // status=PENDING, id 오름차순
-    fun markSent(id: Long, sentAt: Instant)
-    fun markAttemptFailed(id: Long)
+    fun load(): AccountPnlMonitorState                                   // row 없으면 INITIAL·version 0
+    // 한 트랜잭션: version 일치 시에만 상태 갱신(+1), 중복 eventKey 메일은 무시. 불일치면 아무것도 쓰지 않고 false
+    fun save(expectedVersion: Long, state: AccountPnlMonitorState, mails: List<AccountPnlMail>): Boolean
+    // 짧은 트랜잭션: PENDING 을 id 오름차순 FOR UPDATE SKIP LOCKED 로 limit 개 잡아 PROCESSING·locked_by·claim_token·locked_at 기록 후 commit
+    fun claim(owner: String, limit: Int, now: Instant): List<ClaimedAccountPnlMail>
+    fun markSent(id: Long, claimToken: String, sentAt: Instant): Boolean          // token 불일치면 false
+    // attempt+1; attempt >= MAX_ATTEMPTS(5) 면 FAILED, 아니면 PENDING. token 불일치면 false
+    fun markAttemptFailed(id: Long, claimToken: String, now: Instant): Boolean
+    fun recoverStale(now: Instant, staleAfter: Duration): Int                     // locked_at < now−staleAfter 인 PROCESSING → PENDING, token 제거
 }
 fun interface AccountPnlMailSender { fun send(mail: AccountPnlMail) }    // 수신자는 adapter 설정
 ```
 
-V18: `account_pnl_monitor_state`(id TINYINT PK 고정 1, in_episode, position_fingerprint, last_sent_at, last_success_at, monitoring_since, outage_notified, updated_at — 시각은 `DATETIME(6)` UTC), `account_pnl_mail`(id BIGINT AUTO_INCREMENT, event_key VARCHAR(128) UNIQUE, subject VARCHAR(255), body TEXT, status VARCHAR(16) DEFAULT 'PENDING', attempt_count INT DEFAULT 0, created_at, sent_at NULL, INDEX(status,id)). 수신자 주소는 저장하지 않는다.
+V18: `account_pnl_monitor_state`(id TINYINT PK 고정 1, in_episode, position_fingerprint, last_sent_at, last_success_at, monitoring_since, outage_notified, updated_at — 시각은 `DATETIME(6)` UTC), `account_pnl_mail`(id BIGINT AUTO_INCREMENT, event_key VARCHAR(128) UNIQUE, subject VARCHAR(255), body TEXT, status VARCHAR(16) DEFAULT 'PENDING' — PENDING/PROCESSING/SENT/FAILED, attempt_count INT DEFAULT 0, locked_by VARCHAR(64) NULL, claim_token CHAR(36) NULL, locked_at DATETIME(6) NULL, created_at, sent_at NULL, INDEX(status,id)). state 테이블에 `version BIGINT NOT NULL`. 수신자 주소는 저장하지 않는다.
 
-- [ ] **Step 1: 실패 테스트** (Testcontainers MySQL, 기존 `infrastructure:common` integrationTest 패턴): `빈 테이블이면 초기 상태`, `상태와 메일을 저장하고 다시 읽는다`, `같은 eventKey 메일은 한 번만 저장된다`, `markSent 후 pending 에서 빠진다`, `markAttemptFailed 는 attempt_count 를 올리고 PENDING 유지`.
+- [ ] **Step 1: 실패 테스트** (Testcontainers MySQL, 기존 `JdbcNotificationDeliveryRepository` integrationTest 패턴): `빈 테이블이면 초기 상태 version 0`, `상태와 메일을 저장하고 다시 읽는다`, `version 이 다르면 상태도 메일도 저장하지 않는다`, `같은 eventKey 메일은 한 번만 저장된다`, `동시에 두 claim 해도 한 행은 한쪽만 잡는다`(두 스레드), `claim 은 commit 후 PROCESSING 이다`, `다른 token 의 markSent 는 false 이고 상태를 바꾸지 않는다`, `5번째 실패에서 FAILED`, `stale PROCESSING 은 PENDING 으로 복구되고 이전 token 의 markSent 는 false`.
 - [ ] **Step 2:** `./gradlew :infrastructure:common:integrationTest --tests '*JdbcAccountPnlAlertStoreIntegrationTest' --offline --no-daemon` → RED.
-- [ ] **Step 3:** migration + adapter (`JdbcTemplate`, `@Repository`, `TransactionTemplate` 로 save 원자성, `INSERT IGNORE` 대신 unique 위반 catch 로 중복 무시).
+- [ ] **Step 3:** migration + adapter (`JdbcTemplate`, `@Repository`, `TransactionTemplate` 로 save·claim 원자성, 상태는 `UPDATE ... WHERE version = ?`(row 없으면 `INSERT` + 중복키면 false), 메일 중복은 unique 위반 catch 로 무시).
 - [ ] **Step 4:** PASS + R5 `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` PASS.
 - [ ] **Step 5: Commit** — `feat: 실계정 알림 상태·메일 outbox 저장소 추가`
 
@@ -298,9 +316,9 @@ V18: `account_pnl_monitor_state`(id TINYINT PK 고정 1, in_episode, position_fi
 
 **Interfaces — Consumes:** Task 1. **Produces:** `class BithumbPrivateAccountAdapter(webClient: WebClient, accessKey: String, secretKey: String, clock: Clock) : KoreaSpotAccountReadPort`; `object BithumbJwtSigner { fun sign(accessKey: String, secretKey: String, query: String?, nonce: String, timestampMillis: Long): String }` — HS256 를 `javax.crypto.Mac` 로 직접 (새 JWT 의존성 추가 금지).
 
-동작 (Task 0 결론으로 확정된 endpoint 사용): 계정 → KRW-BTC `balance + locked`, `avg_buy_price`. 진입 수수료: 체결 완료 주문을 최신부터 거꾸로 걸어 bid 체결량 누적이 보유 수량과 같아지면 그 주문들의 `paid_fee` 합; 이력이 끝나거나 누적이 수량을 넘으면 `null`. 같은 보유(수량·평단) 동안 결과를 메모리에 보관해 매분 이력을 다시 읽지 않는다. 매도 수수료율·bid·last 는 매 회차 조회. 401 → `BITHUMB_AUTH`, 연결·타임아웃·5xx → `NETWORK`. 예외 메시지에 key·JWT 를 넣지 않는다.
+동작 (Task 0 결론으로 확정된 endpoint 사용): 계정 → KRW-BTC `balance + locked`, `avg_buy_price`. 호가 → 공개 orderbook 의 bid 레벨 전부(가격·잔량)와 timestamp. 진입 수수료: 체결 완료 주문을 최신부터 거꾸로 걸어 bid 체결량 누적이 보유 수량과 같아지면 그 주문들의 `paid_fee` 합; 이력이 끝나거나 누적이 수량을 넘으면 `null`. 같은 보유(수량·평단) 동안 결과를 메모리에 보관해 매분 이력을 다시 읽지 않는다. 매도 수수료율·bid·last 는 매 회차 조회. 401 → `BITHUMB_AUTH`, 연결·타임아웃·5xx·429 → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. adapter 는 모든 실패를 `AccountReadException` 으로만 던진다. 예외 메시지에 key·JWT 를 넣지 않는다.
 
-- [ ] **Step 1: 실패 테스트** (MockWebServer + Task 0 fixture): `Authorization 헤더 JWT 를 테스트 secret 으로 검증할 수 있고 payload 에 access_key·nonce·timestamp·query_hash 가 있다`, `잠긴 수량을 포함한다`(Review Focus 2), `체결 주문 수수료를 보유 수량만큼 합산한다`, `이력으로 보유 수량을 채우지 못하면 entryFeeKrw 는 null`, `같은 보유면 두 번째 호출은 주문 이력을 다시 요청하지 않는다`(MockWebServer requestCount), `401 은 BITHUMB_AUTH`, `예외 메시지에 secret 이 없다`.
+- [ ] **Step 1: 실패 테스트** (MockWebServer + Task 0 fixture): `Authorization 헤더 JWT 를 테스트 secret 으로 검증할 수 있고 payload 에 access_key·nonce·timestamp·query_hash 가 있다`, `잠긴 수량을 포함한다`(Review Focus 2), `체결 주문 수수료를 보유 수량만큼 합산한다`, `이력으로 보유 수량을 채우지 못하면 entryFeeKrw 는 null`, `같은 보유면 두 번째 호출은 주문 이력을 다시 요청하지 않는다`(MockWebServer requestCount), `401 은 BITHUMB_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `orderbook bid 레벨을 가격 내림차순으로 낸다`, `예외 메시지에 secret 이 없다`.
 - [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapterTest' --offline --no-daemon` → RED. 증거 로그 AC7.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 빗썸 read-only 계정 조회 adapter 추가`
 
@@ -310,9 +328,9 @@ V18: `account_pnl_monitor_state`(id TINYINT PK 고정 1, in_episode, position_fi
 
 **Produces:** `class BinanceFuturesPrivateAccountAdapter(webClient: WebClient, apiKey: String, secretKey: String, clock: Clock, recvWindowMillis: Long = 10_000) : ForeignPerpAccountReadPort`; `object BinanceRequestSigner { fun sign(secretKey: String, query: String): String }` (HMAC-SHA256 hex).
 
-동작: positionRisk(BTCUSDT; hedge mode 면 `positionSide=SHORT` 행) → signedQuantity·entryPrice. 진입 시각·수수료: `userTrades` 를 최신부터 거꾸로 걸어 부호 있는 체결량 누적이 `positionAmt` 와 같아지는 지점까지의 `commission` 합(USDT 외 `commissionAsset` 이 하나라도 있으면 null), 그 첫 체결 시각 = 진입 시각; 못 찾으면 수수료·펀딩 null. 펀딩: 진입 시각부터 `income?incomeType=FUNDING_FEE` 페이지를 끝까지 합산(첫 계산 후에는 마지막 조회 시각 이후 증분만). 진입 시각·수수료는 fingerprint 동안 메모리 보관. takerFeeRate·bookTicker ask·ticker price 는 매 회차. 401/`-2014`/`-2015`/`-1022` → `BINANCE_AUTH`, 연결·5xx → `NETWORK`.
+동작: positionRisk(BTCUSDT; hedge mode 면 `positionSide=SHORT` 행) → signedQuantity·entryPrice. 진입 시각·수수료: `userTrades` 를 최신부터 거꾸로 걸어 부호 있는 체결량 누적이 `positionAmt` 와 같아지는 지점까지의 `commission` 합(USDT 외 `commissionAsset` 이 하나라도 있으면 null), 그 첫 체결 시각 = 진입 시각; 못 찾으면 수수료·펀딩 null. 펀딩: 진입 시각부터 `income?incomeType=FUNDING_FEE` 페이지를 끝까지 합산(첫 계산 후에는 마지막 조회 시각 이후 증분만). 진입 시각·수수료는 fingerprint 동안 메모리 보관. takerFeeRate·`GET /fapi/v1/depth?symbol=BTCUSDT&limit=20` ask 레벨(+`T` 시각)·ticker price 는 매 회차. 401/`-2014`/`-2015`/`-1022` → `BINANCE_AUTH`, 연결·5xx·429·418 → `NETWORK`, 응답 해석 실패·그 밖의 4xx → `UNEXPECTED`. 모든 실패를 `AccountReadException` 으로만 던진다.
 
-- [ ] **Step 1: 실패 테스트**: `서명은 문서 예제 벡터와 같다`(Task 0 에 기록한 secret·query·signature 3값), `X-MBX-APIKEY 헤더와 recvWindow=10000 이 붙는다`, `숏 수량과 진입가를 읽는다`, `hedge mode 면 SHORT 행을 읽는다`, `체결 수수료를 포지션 수량만큼 합산한다`, `BNB 수수료가 섞이면 entryCommissionUsdt 는 null`, `펀딩을 여러 페이지에 걸쳐 합산한다`, `두 번째 회차는 펀딩 증분만 요청한다`, `-2015 는 BINANCE_AUTH`, `예외 메시지에 secret 이 없다`.
+- [ ] **Step 1: 실패 테스트**: `서명은 문서 예제 벡터와 같다`(Task 0 에 기록한 secret·query·signature 3값), `X-MBX-APIKEY 헤더와 recvWindow=10000 이 붙는다`, `숏 수량과 진입가를 읽는다`, `hedge mode 면 SHORT 행을 읽는다`, `체결 수수료를 포지션 수량만큼 합산한다`, `BNB 수수료가 섞이면 entryCommissionUsdt 는 null`, `펀딩을 여러 페이지에 걸쳐 합산한다`, `두 번째 회차는 펀딩 증분만 요청한다`, `-2015 는 BINANCE_AUTH`, `429 는 NETWORK`, `깨진 JSON 은 UNEXPECTED`, `depth ask 레벨을 가격 오름차순으로 낸다`, `예외 메시지에 secret 이 없다`.
 - [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest' --offline --no-daemon` → RED. 증거 로그 AC8.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 바이낸스 선물 read-only 계정 조회 adapter 추가`
 
@@ -335,9 +353,9 @@ class AccountPnlMonitorJob(
 ) { fun run(): JobResult }
 ```
 
-순서 (executor 안): load → 조회(korea·foreign) → 신선도(호가 나이 = `now − observedAt`, 음수는 0 으로 봄, >10초면 `STALE_MARKET_DATA`; `findLastSuccess(FX_INGESTION)` 이 null 이거나 `now − 그 값 > 2시간`이면 `STALE_FX`; `fx.findLatest(USD, KRW)` null 도 `STALE_FX`) → resolve → calculate → 두 정책 → 메일 생성 → `store.save` → `store.pending(10)` 각각 send, 성공 `markSent`, 예외 `markAttemptFailed` 후 다음 메일 계속. `AccountReadException` 은 정책의 실패 입력이고 Job 결과는 `Success` (매분 CRITICAL operator alert 를 막는다). 그 밖의 예외만 `Failure`. 포지션 null 사유(롱 등)는 info 로그.
+순서 (executor 안): `store.recoverStale(now, 5분)` → load → **관측 단계**[조회(korea·foreign) → 신선도(호가 나이 = `now − observedAt`, 음수는 0 으로 봄, >10초면 `STALE_MARKET_DATA`; `findLastSuccess(FX_INGESTION)` 이 null 이거나 `now − 그 값 > 2시간`이면 `STALE_FX`; `fx.findLatest(USD, KRW)` null 도 `STALE_FX`) → resolve → calculate] → 두 정책 → 메일 생성 → `store.save(load 한 version, ...)` (false 면 `JobResult.Skipped("state-version-conflict")`) → `store.claim(owner = "account-pnl-monitor:" + UUID(인스턴스당 1회), 10, now)` 각각 send, 성공 `markSent`, 예외 `markAttemptFailed` 후 다음 메일 계속. **관측 단계의 모든 예외**는 `AccountReadException` 이면 그 범주, 아니면 `UNEXPECTED` 로 정책의 실패 입력이 되고(스택은 warn 로그, 메시지에 secret 없음) Job 결과는 `Success` (매분 CRITICAL operator alert 를 막는다). store 예외만 `Failure` → 기존 `OperatorAlert`. 포지션 null 사유(롱 등)는 info 로그.
 
-- [ ] **Step 1: 실패 테스트** (fake port, 고정 Clock, `JobExecutor` 는 기존 테스트의 fake lock 패턴): `1% 이상이면 메일 1건을 저장하고 보낸다`, `호가가 10초 넘게 오래되면 계산 실패로 보고 수익 메일을 만들지 않는다`, `미래 시각 호가는 신선으로 본다`(Review Focus 1), `환율 수집 마지막 성공이 2시간을 넘으면 STALE_FX`, `환율 값이 오래돼도 수집 성공이 2시간 이내면 계산한다`, `SMTP 실패 메일은 PENDING 으로 남고 다음 회차에 다시 보낸다`, `SMTP 실패가 재발송 타이머를 바꾸지 않는다`(Review Focus 4), `조회 실패는 Job 실패가 아니다`.
+- [ ] **Step 1: 실패 테스트** (fake port, 고정 Clock, `JobExecutor` 는 기존 테스트의 fake lock 패턴): `1% 이상이면 메일 1건을 저장하고 보낸다`, `호가가 10초 넘게 오래되면 계산 실패로 보고 수익 메일을 만들지 않는다`, `미래 시각 호가는 신선으로 본다`(Review Focus 1), `환율 수집 마지막 성공이 2시간을 넘으면 STALE_FX`, `환율 값이 오래돼도 수집 성공이 2시간 이내면 계산한다`, `SMTP 실패 메일은 PENDING 으로 남고 다음 회차에 다시 보낸다`, `SMTP 실패가 재발송 타이머를 바꾸지 않는다`(Review Focus 4), `조회 실패는 Job 실패가 아니다`, `분류되지 않은 예외는 UNEXPECTED 로 중단 정책에 들어간다`, `호가 깊이 부족은 INSUFFICIENT_DEPTH 로 중단 정책에 들어간다`, `상태 version 충돌이면 메일을 보내지 않고 Skipped`, `store 예외는 Failure`.
 - [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest' --offline --no-daemon` → RED. 증거 로그 AC5.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 실계정 순손익 모니터링 Job 추가`
 
@@ -361,7 +379,7 @@ class AccountPnlMonitorJob(
 
 **Files:** Test `apps/batch/src/integrationTest/kotlin/io/premiumspread/application/job/AccountPnlAlertDurabilityIntegrationTest.kt`
 
-- [ ] **Step 1: 테스트** (기존 batch integrationTest 의 MySQL/Redis Testcontainers 설정, fake 계정 port 2개, 기록용 fake `AccountPnlMailSender`, 조작 가능한 Clock): 1회차 1.20% → 메일 row 1·전송 1. 새 `AccountPnlMonitorJob` 인스턴스(같은 store) 로 30분 뒤 1.30% → 메일 row 증가 0. 60분 뒤 → 증가 1. 첫 전송에서 sender 예외 → row PENDING, 다음 회차에 전송·SENT.
+- [ ] **Step 1: 테스트** (기존 batch integrationTest 의 MySQL/Redis Testcontainers 설정, fake 계정 port 2개, 기록용 fake `AccountPnlMailSender`, 조작 가능한 Clock): 1회차 1.20% → 메일 row 1·전송 1. 새 `AccountPnlMonitorJob` 인스턴스(같은 store) 로 30분 뒤 1.30% → 메일 row 증가 0. 60분 뒤 → 증가 1. 첫 전송에서 sender 예외 → row PENDING, 다음 회차에 전송·SENT. 두 Job 인스턴스를 동시에 실행(같은 시각, 1.20%, lock 우회 fake executor) → 메일 row 1·전송 1(version 충돌 쪽은 Skipped). 발송 중 claim 이 stale 복구된 뒤 늦은 `markSent` → false, 재claim 한 쪽이 SENT.
 - [ ] **Step 2:** `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` → Task 10·7 완료 상태에서 첫 실행이 통과하면 RED 가 없으므로, 먼저 store 의 save 를 임시로 무력화한 상태에서 RED 를 확인하고 되돌린다 (증거 로그에 그 사실 기록).
 - [ ] **Step 3:** PASS + R6 `./gradlew :apps:batch:integrationTest --offline --no-daemon` PASS. **Commit** — `test: 실계정 알림 재시작 내구성 통합 테스트`
 
