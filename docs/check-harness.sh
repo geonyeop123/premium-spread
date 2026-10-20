@@ -13,6 +13,8 @@
 #
 # docs/check-documentation.sh 는 정본 문서(AGENTS.md·.ai/*·docs/runbooks/*)를 보고,
 # 이 스크립트는 하네스 파일(CLAUDE.md·.claude/**)을 본다. 둘은 대상이 겹치지 않는다.
+# docs/harness-changelog.md 는 축 3 에서 존재와 표 헤더만 단정하고 축 1 대상에 넣지 않는다.
+# 과거 경로를 그대로 담는 기록이라 rename 뒤 소급 실패하면 안 된다.
 set -uo pipefail
 shopt -s nullglob
 
@@ -162,7 +164,8 @@ check_path() {  # <파일> <라인번호> <토큰>
 }
 
 # @../../.ai/rules/x.md 처럼 파일 기준 상대 경로인 import 를 해석해 검사한다.
-# .claude/rules/*.md 는 본문이 이 한 줄뿐이라 대상이 옮겨가면 파일 전체가 조용히 무의미해진다.
+# paths 없는 .claude/rules/*.md 래퍼는 본문이 이 한 줄뿐이라 대상이 옮겨가면 파일 전체가 조용히 무의미해진다.
+# paths 래퍼(batch·http)는 import 대신 백틱 경로로 정본을 가리키며, 그 경로는 check_path 가 검사한다.
 check_import() {  # <파일> <라인번호> <@뒤 토큰>
   local file="$1" lineno="$2" tok="$3" dir resolved
   tok="${tok%%[[:space:]]*}"
@@ -323,9 +326,14 @@ for f in .claude/agents/*.md; do
     '허브형 완료 보고 의무를 버리려면 각 에이전트의 팀 통신 프로토콜 표에서 이 행을 지우고, 이 require_section 호출을 같은 커밋에서 함께 지운다'
 done
 
-# 하네스 진입점. 사라지면 트리거 규칙과 변경 이력이 함께 사라진다.
+# 하네스 진입점. 사라지면 트리거 규칙과 변경 이력 포인터가 함께 사라진다.
 require_section CLAUDE.md '^## 하네스' \
-  '하네스 진입점을 다른 곳으로 옮기려면 트리거 규칙과 변경 이력을 이전한 뒤 이 require_section 호출을 같은 커밋에서 지운다'
+  '하네스 진입점을 다른 곳으로 옮기려면 트리거 규칙과 변경 이력 포인터(docs/harness-changelog.md)를 이전한 뒤 이 require_section 호출을 같은 커밋에서 지운다'
+
+# 하네스 변경 이력. 사라지면 "한 행을 남긴다" 는 지시 다섯 곳이 가리킬 자리가 없어진다.
+# 축 1 대상이 아니다 — 과거 경로를 그대로 담는 기록이라 rename 뒤 소급 실패하면 안 된다.
+require_section docs/harness-changelog.md '^\| 날짜 \| 변경 내용 \| 대상 \| 사유 \|' \
+  '변경 이력을 다른 곳으로 옮기려면 CLAUDE.md 하네스 표의 포인터와 이 파일을 가리키는 하네스 참조(orchestrator ⑪-d·하네스 정합성, tech-docs, tech-docs-sync)를 함께 옮긴 뒤 이 require_section 호출을 같은 커밋에서 지운다'
 
 # 컨텍스트 확인. 없으면 후속 실행을 초기 실행으로 오인하고 동결된 dod 위에 새 요구가 얹힌다.
 require_section "$ORCH" '^## ⓪ 컨텍스트 확인' \

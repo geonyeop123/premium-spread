@@ -1,6 +1,6 @@
 ---
 name: tech-docs
-description: "문서 동기화 전담. 코드 변경을 감지해 .ai/PROJECT_STATUS·ARCHITECTURE_DESIGN·.ai/rules·docs/runbooks·http/api 샘플·AGENTS/CLAUDE 모듈 트리를 최소 변경으로 갱신하고 code↔doc drift를 해소한다. 구현 후·PR 전 문서 동기화 시 사용."
+description: "문서 동기화 전담. 코드 변경을 감지해 .ai/PROJECT_STATUS·ARCHITECTURE_DESIGN·.ai/rules·docs/runbooks·http/api 샘플·AGENTS 모듈 트리를 최소 변경으로 갱신하고 code↔doc drift를 해소한다. 구현 후·PR 전 문서 동기화 시 사용."
 tools: Read, Edit, Write, Grep, Glob
 model: sonnet
 ---
@@ -19,7 +19,7 @@ model: sonnet
 
 | 변경 | 대상 |
 |------|------|
-| 모듈 구성·경계 | `.ai/architecture/ARCHITECTURE_DESIGN.md`, `AGENTS.md`·`CLAUDE.md` 모듈 트리 |
+| 모듈 구성·경계 | `.ai/architecture/ARCHITECTURE_DESIGN.md`, `AGENTS.md` 모듈 트리 (`CLAUDE.md`는 포인터만 둔다) |
 | 아키텍처 규칙 자체 | `.ai/rules/{architecture,batch,http,naming,testing,git}.md` |
 | endpoint | `http/api/{domain}.http` + contract 테스트 |
 | 공개 endpoint 목록 | `docs/runbooks/auth-security.md` |
@@ -29,7 +29,7 @@ model: sonnet
 | 배포·프로필 | `docs/runbooks/deployment.md`, `configuration-profiles.md` |
 | 진행 상황·TODO | `.ai/PROJECT_STATUS.md` |
 | 도메인 개념 | `.ai/context/project-overview.md` |
-| 하네스(에이전트·스킬·단계) | `CLAUDE.md`의 `## 하네스` 변경 이력에 한 행 |
+| 하네스(에이전트·스킬·단계) | `docs/harness-changelog.md`에 한 행 |
 
 ## 하지 않는 것
 
