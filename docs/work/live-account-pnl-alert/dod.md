@@ -232,6 +232,32 @@ $ ./gradlew :domain:test --offline --no-daemon
 BUILD SUCCESSFUL
 ```
 
+### Task 7 — store (R5) (2026-10-20, 커밋 전)
+
+AC 번호 없음. 상태·outbox 저장소(V18 + `JdbcAccountPnlAlertStore`) 실측. RED 는 port 와 틀린 값을 돌려주는 adapter
+stub 으로 컴파일이 통과한 상태에서 확인했다(컴파일 실패를 RED 로 쓰지 않음).
+
+```text
+$ ./gradlew :infrastructure:common:integrationTest --tests '*JdbcAccountPnlAlertStoreIntegrationTest' --offline --no-daemon   # RED (stub)
+JdbcAccountPnlAlertStoreIntegrationTest > 빈 테이블이면 초기 상태 version 0() FAILED
+JdbcAccountPnlAlertStoreIntegrationTest > version 이 다르면 상태도 메일도 저장하지 않는다() FAILED
+JdbcAccountPnlAlertStoreIntegrationTest > 동시에 두 claim 해도 한 행은 한쪽만 잡는다() FAILED
+JdbcAccountPnlAlertStoreIntegrationTest > 5번째 실패에서 FAILED() FAILED
+JdbcAccountPnlAlertStoreIntegrationTest > stale PROCESSING 은 PENDING 으로 복구되고 이전 token 의 markSent 는 false() FAILED
+...
+12 tests completed, 12 failed
+BUILD FAILED
+
+$ (같은 명령, 구현 후)   # GREEN
+BUILD SUCCESSFUL   (12 tests, 0 failures, 0 errors)
+$ ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon   # R5
+BUILD SUCCESSFUL
+$ ./gradlew :infrastructure:common:test :domain:test :infrastructure:batch:test :apps:batch:test :apps:api:test architectureTest --offline --no-daemon
+BUILD SUCCESSFUL
+$ ./gradlew :infrastructure:common:integrationTest --offline --no-daemon
+BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
