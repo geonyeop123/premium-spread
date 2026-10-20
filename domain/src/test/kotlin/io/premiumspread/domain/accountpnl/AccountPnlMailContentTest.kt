@@ -14,12 +14,17 @@ class AccountPnlMailContentTest {
     private val calculatedAt = Instant.parse("2026-10-20T00:00:05Z")
     private val fakeSecrets = listOf("test-access-key", "test-secret", "@example.com")
 
-    private fun position(modified: Boolean = false) = AccountHedgePosition(
+    private fun position(
+        modified: Boolean = false,
+        koreaFee: BigDecimal? = BigDecimal("12000"),
+        commission: BigDecimal? = BigDecimal("8.9"),
+        funding: BigDecimal? = BigDecimal("3.2"),
+    ) = AccountHedgePosition(
         KoreaSpotAccountSnapshot(
             quantity = BigDecimal("0.266"),
             averageBuyPrice = BigDecimal("113016278"),
             averageBuyPriceModified = modified,
-            entryFeeKrw = BigDecimal("12000"),
+            entryFeeKrw = koreaFee,
             sellFeeRate = BigDecimal("0.0004"),
             bidLevels = listOf(PriceLevel(BigDecimal("109500000"), BigDecimal("1.0"))),
             lastPrice = BigDecimal("109575000"),
@@ -28,8 +33,8 @@ class AccountPnlMailContentTest {
         ForeignPerpAccountSnapshot(
             signedQuantity = BigDecimal("-0.266"),
             entryPrice = BigDecimal("83549.4"),
-            entryCommissionUsdt = BigDecimal("8.9"),
-            fundingUsdt = BigDecimal("3.2"),
+            entryCommissionUsdt = commission,
+            fundingUsdt = funding,
             takerFeeRate = BigDecimal("0.0005"),
             askLevels = listOf(PriceLevel(BigDecimal("81580"), BigDecimal("5.0"))),
             lastPrice = BigDecimal("81577"),
@@ -46,7 +51,7 @@ class AccountPnlMailContentTest {
         fundingUnrecovered: Boolean = false,
     ) = AccountNetPnl(
         grossKrw = BigDecimal("500000.5"),
-        entryFeeKrw = BigDecimal("23826.65"),
+        entryFeeKrw = BigDecimal("23823.65"),
         fundingKrw = BigDecimal("4251.2"),
         exitFeeEstimateKrw = BigDecimal("15000.1"),
         netKrw = BigDecimal(netKrw),
@@ -60,7 +65,12 @@ class AccountPnlMailContentTest {
         koreaEntryFeeUnrecovered = koreaFeeUnrecovered,
         foreignEntryFeeUnrecovered = foreignFeeUnrecovered,
         fundingUnrecovered = fundingUnrecovered,
-        position = position(modified),
+        position = position(
+            modified,
+            koreaFee = if (koreaFeeUnrecovered) null else BigDecimal("12000"),
+            commission = if (foreignFeeUnrecovered) null else BigDecimal("8.9"),
+            funding = if (fundingUnrecovered) null else BigDecimal("3.2"),
+        ),
         fxRate = BigDecimal("1328.5"),
         fxObservedAt = fxObservedAt,
         calculatedAt = calculatedAt,
@@ -95,6 +105,38 @@ class AccountPnlMailContentTest {
             "2026-10-20 09:00:05 (2026-10-20T00:00:05Z)",
         )
         assertThat(body).doesNotContain("미반영", "평단 사용자 수정됨")
+    }
+
+    @Test
+    fun `진입 수수료를 leg 별로 따로 보여준다`() {
+        val body = AccountPnlMailContent.profit(pnl(), zone).body
+
+        assertThat(body).contains(
+            "진입 수수료: -23,824원",
+            "  - 빗썸: -12,000원",
+            "  - 바이낸스: -8.9 USDT (-11,824원)",
+            "누적 펀딩비: +4,251원 (+3.2 USDT)",
+            "청산가(호가 VWAP): 109,500,000.00원",
+            "청산가(호가 VWAP): 81580.0000 USDT",
+            "※ 금액은 표시 시 원 단위 반올림(계산은 전체 정밀도)",
+        )
+    }
+
+    @Test
+    fun `0원인 수수료와 펀딩은 부호 없이 0원으로 표시한다`() {
+        val zero = pnl().copy(
+            entryFeeKrw = BigDecimal("0.3"),
+            fundingKrw = BigDecimal("-0.2"),
+            exitFeeEstimateKrw = BigDecimal.ZERO,
+            position = position().let {
+                it.copy(korea = it.korea.copy(entryFeeKrw = BigDecimal.ZERO))
+            },
+        )
+
+        val body = AccountPnlMailContent.profit(zero, zone).body
+
+        assertThat(body).contains("진입 수수료: 0원", "  - 빗썸: 0원", "누적 펀딩비: 0원", "예상 청산 수수료: 0원")
+        assertThat(body).doesNotContain("-0원", "+0원")
     }
 
     @Test

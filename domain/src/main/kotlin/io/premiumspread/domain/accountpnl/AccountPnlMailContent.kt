@@ -26,24 +26,37 @@ object AccountPnlMailContent {
             add("체결가 기준 순수익률(대조용): ${percent(pnl.netPercentAtLast)} / 순수익금 ${krw(pnl.netKrwAtLast)}")
             add("")
             add("gross: ${krw(pnl.grossKrw)}")
-            add("진입 수수료: -${plainKrw(pnl.entryFeeKrw)}")
-            add("누적 펀딩비: ${krw(pnl.fundingKrw)}")
-            add("예상 청산 수수료: -${plainKrw(pnl.exitFeeEstimateKrw)}")
-            if (pnl.koreaEntryFeeUnrecovered) add("진입 수수료(빗썸) 미반영(이력 없음)")
-            if (pnl.foreignEntryFeeUnrecovered) add("진입 수수료(바이낸스) 미반영(이력 없음)")
-            if (pnl.fundingUnrecovered) add("펀딩비 미반영(이력 없음)")
+            add("진입 수수료: ${cost(pnl.entryFeeKrw)}")
+            if (pnl.koreaEntryFeeUnrecovered) {
+                add("  - 빗썸: 진입 수수료(빗썸) 미반영(이력 없음)")
+            } else {
+                add("  - 빗썸: ${cost(korea.entryFeeKrw ?: BigDecimal.ZERO)}")
+            }
+            val commission = foreign.entryCommissionUsdt
+            if (commission == null) {
+                add("  - 바이낸스: 진입 수수료(바이낸스) 미반영(이력 없음)")
+            } else {
+                add("  - 바이낸스: ${costUsdt(commission)} (${cost(commission.multiply(pnl.fxRate))})")
+            }
+            val funding = foreign.fundingUsdt
+            if (funding == null) {
+                add("누적 펀딩비: ${krwOrZero(pnl.fundingKrw)}  펀딩비 미반영(이력 없음)")
+            } else {
+                add("누적 펀딩비: ${krwOrZero(pnl.fundingKrw)} (${signedUsdt(funding)})")
+            }
+            add("예상 청산 수수료: ${cost(pnl.exitFeeEstimateKrw)}")
             if (korea.averageBuyPriceModified) add("빗썸 평단 사용자 수정됨")
             add("")
             add("[빗썸 현물]")
             add("수량: ${plain(korea.quantity)}")
             add("평단: ${plainKrw(korea.averageBuyPrice)}원")
-            add("청산가(호가 VWAP): ${plainKrw(pnl.koreaExitPrice)}원")
+            add("청산가(호가 VWAP): ${format("#,##0.00", pnl.koreaExitPrice)}원")
             add("최근 체결가: ${plainKrw(korea.lastPrice)}원")
             add("")
             add("[바이낸스 선물 숏]")
             add("수량: ${plain(foreign.signedQuantity.abs())}")
             add("진입가: ${plain(foreign.entryPrice)} USDT")
-            add("청산가(호가 VWAP): ${plain(pnl.foreignExitPrice.setScale(PRICE_SCALE, RoundingMode.HALF_UP))} USDT")
+            add("청산가(호가 VWAP): ${pnl.foreignExitPrice.setScale(FOREIGN_PRICE_SCALE, RoundingMode.HALF_UP).toPlainString()} USDT")
             add("최근 체결가: ${plain(foreign.lastPrice)} USDT")
             add("")
             add("환율: ${plain(pnl.fxRate)} KRW/USDT")
@@ -51,6 +64,8 @@ object AccountPnlMailContent {
             add("바이낸스 호가 관측: ${time(foreign.askObservedAt, zone)}")
             add("환율 관측: ${time(pnl.fxObservedAt, zone)}")
             add("계산 시각: ${time(pnl.calculatedAt, zone)}")
+            add("")
+            add("※ 금액은 표시 시 원 단위 반올림(계산은 전체 정밀도)")
         }
         return AccountPnlMail("profit|${pnl.calculatedAt}", subject, lines.joinToString("\n"))
     }
@@ -77,7 +92,7 @@ object AccountPnlMailContent {
             "실계정 순손익 모니터링이 복구되었습니다.\n복구 시각: ${time(now, zone)}",
         )
 
-    private const val PRICE_SCALE = 2
+    private const val FOREIGN_PRICE_SCALE = 4
 
     private fun label(category: AccountReadFailureCategory): String = when (category) {
         AccountReadFailureCategory.BITHUMB_AUTH -> "빗썸 인증 실패(허용 IP 확인)"
@@ -110,4 +125,19 @@ object AccountPnlMailContent {
 
     /** 부호 없는 원 단위 천 단위 구분 표기. */
     private fun plainKrw(value: BigDecimal): String = format("#,##0", value.abs().setScale(0, RoundingMode.HALF_UP))
+
+    private fun isZero(value: BigDecimal): Boolean = value.setScale(0, RoundingMode.HALF_UP).signum() == 0
+
+    /** 차감 항목(수수료). 반올림 후 0 이면 부호 없이 `0원`. */
+    private fun cost(value: BigDecimal): String =
+        if (isZero(value)) "0원" else "-${plainKrw(value)}원"
+
+    /** 부호 있는 금액이되 반올림 후 0 이면 `0원`. */
+    private fun krwOrZero(value: BigDecimal): String = if (isZero(value)) "0원" else krw(value)
+
+    private fun costUsdt(value: BigDecimal): String =
+        if (value.signum() == 0) "0 USDT" else "-${plain(value.abs())} USDT"
+
+    private fun signedUsdt(value: BigDecimal): String =
+        if (value.signum() == 0) "0 USDT" else "${sign(value)}${plain(value.abs())} USDT"
 }
