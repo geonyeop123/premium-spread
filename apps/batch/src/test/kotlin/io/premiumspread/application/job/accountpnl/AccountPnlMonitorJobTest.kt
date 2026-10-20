@@ -119,10 +119,10 @@ class AccountPnlMonitorJobTest {
         job.run()
 
         assertThat(store.calls.take(2)).containsExactly("recoverStale@$t0/PT5M", "load")
-        assertThat(store.owners).hasSize(2)
+        assertThat(store.owners).describedAs("두 회차 모두 claim 한다 (회차마다 빈 결과까지 반복)").hasSize(3)
         assertThat(store.owners.toSet()).hasSize(1)
         assertThat(store.owners.first()).startsWith("account-pnl-monitor:")
-        assertThat(store.claimLimits).containsOnly(10)
+        assertThat(store.claimLimits).describedAs("순차 발송이므로 실행 가능한 concurrency 1 만큼만 claim").containsOnly(1)
     }
 
     // ---- 시세 신선도 ----
@@ -404,6 +404,56 @@ class AccountPnlMonitorJobTest {
     }
 
     @Test
+    fun `claim 은 한 건씩 반복하고 빈 결과면 끝낸다`() {
+        job.run()
+
+        assertThat(store.claimLimits).containsExactly(1, 1)
+        assertThat(sender.sent).hasSize(1)
+    }
+
+    @Test
+    fun `회차당 최대 10건까지만 claim 해 보낸다`() {
+        givenPendingMails(12)
+        korea.bid = BigDecimal("100500000") // 이 회차는 새 메일을 만들지 않는다
+
+        assertThat(job.run()).isEqualTo(JobResult.Success)
+
+        assertThat(store.claimLimits).hasSize(10).containsOnly(1)
+        assertThat(sender.sent.map { it.eventKey }).containsExactlyElementsOf((1..10).map { "k$it" })
+        assertThat(store.rows.filter { it.status == Status.PENDING }.map { it.mail.eventKey }).containsExactly("k11", "k12")
+    }
+
+    @Test
+    fun `같은 회차에 SMTP 실패한 메일을 다시 claim 하지 않는다`() {
+        givenPendingMails(2)
+        korea.bid = BigDecimal("100500000")
+        sender.failSubjects = { it == "subject k1" }
+
+        job.run()
+
+        assertThat(sender.attempts.map { it.eventKey }).containsExactly("k1", "k2")
+        assertThat(store.rows.map { it.status }).containsExactly(Status.PENDING, Status.SENT)
+        assertThat(store.rows.first().attempts).isEqualTo(1)
+    }
+
+    @Test
+    fun `발송 중 인터럽트되면 보낸 건은 SENT 로 표시하고 claim 루프를 멈춘다`() {
+        givenPendingMails(3)
+        korea.bid = BigDecimal("100500000")
+        sender.onSend = { Thread.currentThread().interrupt() }
+
+        try {
+            job.run()
+
+            assertThat(sender.sent.map { it.eventKey }).containsExactly("k1")
+            assertThat(store.rows.map { it.status }).containsExactly(Status.SENT, Status.PENDING, Status.PENDING)
+            assertThat(store.claimLimits).hasSize(1)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
     fun `fencing 으로 mark 가 거부돼도 Job 실패가 아니다`() {
         store.fenceMarks = true
 
@@ -471,7 +521,7 @@ class AccountPnlMonitorJobTest {
 
         job.run()
 
-        assertThat(store.claimTimes).containsExactly(t0.plusSeconds(3))
+        assertThat(store.claimTimes).isNotEmpty().containsOnly(t0.plusSeconds(3))
     }
 
     // ---- 재시작·취소 ----
@@ -562,6 +612,10 @@ class AccountPnlMonitorJobTest {
             OutageState(t0.minus(Duration.ofMinutes(6)), t0.minus(Duration.ofHours(1)), false),
             7,
         )
+    }
+
+    private fun givenPendingMails(count: Int) {
+        (1..count).forEach { store.rows += Row(it.toLong(), AccountPnlMail("k$it", "subject k$it", "body")) }
     }
 
     private fun assertNoProfitMail() {
@@ -663,9 +717,13 @@ class AccountPnlMonitorJobTest {
         var failing = false
         var failSubjects: (String) -> Boolean = { false }
         var failure: Exception? = null
+        var onSend: () -> Unit = {}
         val sent = mutableListOf<AccountPnlMail>()
+        val attempts = mutableListOf<AccountPnlMail>()
 
         override fun send(mail: AccountPnlMail) {
+            attempts += mail
+            onSend()
             failure?.let { throw it }
             if (failing || failSubjects(mail.subject)) throw IllegalStateException("smtp down")
             sent += mail

@@ -13,6 +13,7 @@ import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
+import io.premiumspread.domain.accountpnl.ClaimedAccountPnlMail
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
@@ -200,39 +201,70 @@ class AccountPnlMonitorJob(
         }
     }
 
+    /**
+     * 발송은 순차이므로 실행 가능한 concurrency(1)만큼만 claim 한다 (`.ai/rules/batch.md` Durable notification).
+     * 빈 결과·회차 상한([MAX_MAILS_PER_RUN])·취소(interrupt) 중 먼저 오는 것에서 멈춘다.
+     *
+     * SMTP 실패한 메일은 회차 끝에서 시도 실패로 되돌린다. 바로 `PENDING` 으로 돌리면 id 순 claim 이 같은 회차에
+     * 그 메일을 다시 잡아 한 회차에 시도 횟수를 소진한다. 되돌리기 전까지는 이 owner 의 `PROCESSING` 이므로
+     * 프로세스가 죽으면 stale 복구가 한 번의 시도로 센다.
+     */
     private fun deliver(): JobResult {
-        val claimed = try {
-            store.claim(owner, CLAIM_LIMIT, clock.instant())
-        } catch (exception: Exception) {
-            return storeFailure("claim", exception)
-        }
-        for (mail in claimed) {
-            val sent = try {
-                mailSender.send(mail.mail)
-                true
+        val failed = mutableListOf<ClaimedAccountPnlMail>()
+        var result: JobResult = JobResult.Success
+        for (round in 1..MAX_MAILS_PER_RUN) {
+            if (Thread.currentThread().isInterrupted) {
+                log.warn("Account PnL mail delivery was cancelled; remaining mails stay pending")
+                break
+            }
+            val mail = try {
+                store.claim(owner, CLAIM_CONCURRENCY, clock.instant()).firstOrNull()
             } catch (exception: Exception) {
-                // SMTP 예외 메시지에는 수신 주소가 실릴 수 있어 예외·원인 타입만 남긴다
-                log.warn(
-                    "Account PnL mail send failed: id={}, attempt={}, error={}, cause={}",
-                    mail.id,
-                    mail.attemptCount + 1,
-                    exception.javaClass.simpleName,
-                    exception.cause?.javaClass?.simpleName ?: "none",
-                )
-                false
+                result = storeFailure("claim", exception)
+                break
+            } ?: break
+            if (!send(mail)) {
+                failed += mail
+                continue
             }
             val applied = try {
-                if (sent) {
-                    store.markSent(mail.id, mail.claimToken, clock.instant())
-                } else {
-                    store.markAttemptFailed(mail.id, mail.claimToken, clock.instant())
-                }
+                store.markSent(mail.id, mail.claimToken, clock.instant())
             } catch (exception: Exception) {
-                return storeFailure(if (sent) "markSent" else "markAttemptFailed", exception)
+                result = storeFailure("markSent", exception)
+                break
             }
             if (!applied) log.warn("Account PnL mail {} transition was fenced (claim no longer owned)", mail.id)
         }
-        return JobResult.Success
+        return releaseFailed(failed, result)
+    }
+
+    private fun send(mail: ClaimedAccountPnlMail): Boolean = try {
+        mailSender.send(mail.mail)
+        true
+    } catch (exception: Exception) {
+        // SMTP 예외 메시지에는 수신 주소가 실릴 수 있어 예외·원인 타입만 남긴다
+        log.warn(
+            "Account PnL mail send failed: id={}, attempt={}, error={}, cause={}",
+            mail.id,
+            mail.attemptCount + 1,
+            exception.javaClass.simpleName,
+            exception.cause?.javaClass?.simpleName ?: "none",
+        )
+        false
+    }
+
+    private fun releaseFailed(failed: List<ClaimedAccountPnlMail>, result: JobResult): JobResult {
+        var outcome = result
+        for (mail in failed) {
+            val applied = try {
+                store.markAttemptFailed(mail.id, mail.claimToken, clock.instant())
+            } catch (exception: Exception) {
+                if (outcome !is JobResult.Failure) outcome = storeFailure("markAttemptFailed", exception)
+                continue
+            }
+            if (!applied) log.warn("Account PnL mail {} transition was fenced (claim no longer owned)", mail.id)
+        }
+        return outcome
     }
 
     private fun storeFailure(operation: String, exception: Exception): JobResult {
@@ -245,7 +277,8 @@ class AccountPnlMonitorJob(
         val MAX_QUOTE_SKEW: Duration = Duration.ofSeconds(5)
         val MAX_FX_INGESTION_GAP: Duration = Duration.ofHours(2)
         val STALE_CLAIM_AFTER: Duration = Duration.ofMinutes(5)
-        const val CLAIM_LIMIT = 10
+        const val CLAIM_CONCURRENCY = 1
+        const val MAX_MAILS_PER_RUN = 10
         const val VERSION_CONFLICT = "state-version-conflict"
         const val CANCELLED = "cancelled"
     }
