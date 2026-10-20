@@ -6,6 +6,7 @@ import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPriv
 import io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.notification.AccountPnlEmailSenderAdapter
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -38,8 +39,12 @@ class AccountPnlCredentialsPresentCondition : Condition {
 /**
  * 실계정 조회 adapter 와 메일 발송 adapter. 플래그·credential·EmailSender 가 모두 있을 때만 존재한다.
  * 이 설정은 `BatchInfrastructureAutoConfiguration` 이 import 하므로 EmailSender 는 이미 등록돼 있다.
+ *
+ * scheduling 이 꺼지면 소비자(Job)가 없으므로 adapter 도 만들지 않는다 (dod AC11). 조건식은 apps:batch 의
+ * `ConditionalOnBatchScheduling` 과 같은 키·기본값이다 — infrastructure 는 앱 타입을 import 하지 않는다.
  */
 @Configuration(proxyBeanMethods = false)
+@ConditionalOnExpression("\${batch.scheduling.enabled:true} and \${scheduling.enabled:true}")
 @ConditionalOnProperty(prefix = "account-pnl-monitor", name = ["enabled"], havingValue = "true")
 @Conditional(AccountPnlCredentialsPresentCondition::class)
 @ConditionalOnBean(EmailSender::class)

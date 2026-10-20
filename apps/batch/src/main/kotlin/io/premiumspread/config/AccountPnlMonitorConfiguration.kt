@@ -9,6 +9,7 @@ import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
+import io.premiumspread.interfaces.scheduling.ConditionalOnBatchScheduling
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -52,7 +53,9 @@ class AccountPnlMonitorEnabledCondition : Condition {
     }
 }
 
+/** scheduling 이 꺼지면(`batch.scheduling.enabled=false`) Job 도 만들지 않는다 (dod AC11). */
 @Configuration(proxyBeanMethods = false)
+@ConditionalOnBatchScheduling
 @ConditionalOnProperty(prefix = "account-pnl-monitor", name = ["enabled"], havingValue = "true")
 @Conditional(AccountPnlMonitorEnabledCondition::class)
 class AccountPnlMonitorConfiguration {

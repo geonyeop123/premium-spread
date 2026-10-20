@@ -84,12 +84,13 @@ class AccountPnlMonitorWiringTest {
     }
 
     @Test
-    fun `scheduling 비활성이면 Scheduler 0개`() {
-        runner.withPropertyValues(*enabledProps, "batch.scheduling.enabled=false").run { ctx ->
-            assertThat(ctx).hasNotFailed()
-            assertThat(ctx).doesNotHaveBean(AccountPnlMonitorScheduler::class.java)
-            assertThat(ctx).hasSingleBean(AccountPnlMonitorJob::class.java)
-        }
+    fun `scheduling 비활성이면 Job·Scheduler·두 private adapter·메일 adapter 0개`() {
+        runner.withPropertyValues(*enabledProps, "batch.scheduling.enabled=false").assertNoBeans()
+    }
+
+    @Test
+    fun `legacy scheduling 비활성 별칭이어도 0개`() {
+        runner.withPropertyValues(*enabledProps, "scheduling.enabled=false").assertNoBeans()
     }
 
     @Test
