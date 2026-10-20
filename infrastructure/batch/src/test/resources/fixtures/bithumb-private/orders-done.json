@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "order_id": "C0101000007410714029",
+      "side": "bid",
+      "order_type": "limit",
+      "price": "50000000.0",
+      "state": "done",
+      "market": "KRW-BTC",
+      "created_at": "2026-04-06T12:00:00.000+09:00",
+      "volume": "0.001",
+      "remaining_volume": "0.0",
+      "reserved_fee": "25.0",
+      "remaining_fee": "0.0",
+      "paid_fee": "25.0",
+      "locked": "0.0",
+      "executed_volume": "0.001",
+      "executed_funds": "50000.0",
+      "trades_count": 1,
+      "client_order_id": "my-order-001",
+      "stp_type": "cancel_taker"
+    }
+  ],
+  "has_next": true,
+  "next_key": "eyJvcmRlckR0bUVwb2NoIjoxNzc1NTE2MDAwMDAwfQ=="
+}

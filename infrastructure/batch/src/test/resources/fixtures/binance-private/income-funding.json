@@ -1,0 +1,12 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "incomeType": "FUNDING_FEE",
+    "income": "-0.00123456",
+    "asset": "USDT",
+    "info": "FUNDING_FEE",
+    "time": 1570636800000,
+    "tranId": 9689322393,
+    "tradeId": ""
+  }
+]

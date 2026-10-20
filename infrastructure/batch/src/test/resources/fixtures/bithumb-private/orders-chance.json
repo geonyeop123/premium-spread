@@ -1,0 +1,53 @@
+{
+  "bid_fee": "0.0025",
+  "ask_fee": "0.0025",
+  "maker_bid_fee": "0.0025",
+  "maker_ask_fee": "0.0025",
+  "market": {
+    "id": "BTC-ETH",
+    "name": "ETH/BTC",
+    "order_types": [
+      "limit"
+    ],
+    "order_sides": [
+      "ask",
+      "bid"
+    ],
+    "bid_types": [
+      "limit",
+      "price"
+    ],
+    "ask_types": [
+      "limit",
+      "market"
+    ],
+    "bid": {
+      "currency": "BTC",
+      "price_unit": "0.00000001",
+      "min_total": "0.0005"
+    },
+    "ask": {
+      "currency": "ETH",
+      "price_unit": "0.00000001",
+      "min_total": "0.0005"
+    },
+    "max_total": "5",
+    "state": "active"
+  },
+  "bid_account": {
+    "currency": "BTC",
+    "balance": "124.45372908",
+    "locked": "0.0001",
+    "avg_buy_price": "36341394",
+    "avg_buy_price_modified": false,
+    "unit_currency": "KRW"
+  },
+  "ask_account": {
+    "currency": "ETH",
+    "balance": "106993.5839313",
+    "locked": "0",
+    "avg_buy_price": "23993",
+    "avg_buy_price_modified": false,
+    "unit_currency": "KRW"
+  }
+}
