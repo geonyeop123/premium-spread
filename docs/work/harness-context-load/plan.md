@@ -10,6 +10,9 @@
 **밀도:** 오케스트레이터 ⑤ 표를 따른다. 결합점(셸 호출 형태·정규식·실패 메시지·픽스처 케이스 이름과 기대
 문자열·산출 파일의 고정 문구·다른 문서가 인용하는 문구의 교체 전/후)은 전문, 구현부·테스트 본문·주석은 요건까지.
 
+**⑥ 반영 (1라운드, 6건 ACCEPT):** T2 Step 3 (d) 추가(#5), T3에 `CLAUDE.md:59-61` 추가(#6), T4 Step 1 RED 기대에
+안내문 ABSENT 추가(#1), T6 Step 3·4를 stdin 방식과 AC6·AC7 공통 재측정으로(#3·관찰). 상세는 design §10.
+
 ## Global Constraints
 
 - 모든 작업은 worktree `/home/yeop/IdeaProjects/premium-spread/.worktrees/chore-harness-context-load`에서 한다.
@@ -84,7 +87,8 @@ rename한 뒤 게이트가 소급 실패하면 안 된다. 게이트는 이 파�
 ```
 
 (c) `### 변경 이력` 제목부터 표 마지막 행까지(현재 69~75행)를 지운다. `check-documentation.sh` 설명 문단과
-`## 관련 문서` 사이에는 빈 줄 하나만 남긴다. `## 하네스` 제목과 그 아래 두 설명 문단은 그대로 둔다.
+`## 관련 문서` 사이에는 빈 줄 하나만 남긴다. `## 하네스` 제목과 그 아래 두 설명 문단은 여기서는 그대로 둔다
+(계약 서술 문단은 T3에서 고친다).
 
 - [ ] **Step 4: 검증**
 
@@ -116,7 +120,7 @@ git commit -m "chore: 하네스 변경 이력을 docs/harness-changelog.md 로 �
 
 **Interfaces:**
 - Consumes: T1의 파일 경로와 표 헤더
-- Produces: 아래 실패 메시지 두 종. T3이 orchestrator 하네스 정합성 절의 단정 목록에 이 단정을 올린다.
+- Produces: 아래 실패 메시지 두 종. T3이 orchestrator 하네스 정합성 절과 `CLAUDE.md` 계약 서술에 이 단정을 올린다.
 
 - [ ] **Step 1: 자가검증 픽스처 먼저 추가**
 
@@ -202,6 +206,18 @@ require_section docs/harness-changelog.md '^\| 날짜 \| 변경 내용 \| 대상
 - 파일 부재: `docs/harness-changelog.md: 필수 파일 부재`
 - 헤더 누락: `docs/harness-changelog.md:1: 필수 섹션 누락 — ^\| 날짜 \| 변경 내용 \| 대상 \| 사유 \| — 제거 조건: ` 뒤에 (c)의 제거 조건 문자열 전문
 
+(d) 165행 `check_import` 위 주석 교체 — T4 뒤 batch·http 래퍼는 import가 없어 기존 문장이 거짓이 된다(⑥ #5).
+
+교체 전:
+```bash
+# .claude/rules/*.md 는 본문이 이 한 줄뿐이라 대상이 옮겨가면 파일 전체가 조용히 무의미해진다.
+```
+교체 후:
+```bash
+# paths 없는 .claude/rules/*.md 래퍼는 본문이 이 한 줄뿐이라 대상이 옮겨가면 파일 전체가 조용히 무의미해진다.
+# paths 래퍼(batch·http)는 import 대신 백틱 경로로 정본을 가리키며, 그 경로는 check_path 가 검사한다.
+```
+
 `check_refs` 호출 목록(211~231행)은 바꾸지 않는다.
 
 - [ ] **Step 4: GREEN 확인**
@@ -220,18 +236,20 @@ git add docs/check-harness.sh docs/test-check-harness.sh
 git commit -m "chore: harnessCheck 에 변경 이력 파일 단정 추가" \
   -m "- docs/harness-changelog.md 의 존재와 표 헤더를 require_section 으로 단정
 - CLAUDE.md 하네스 진입점 단정의 주석·제거 조건에서 이전된 변경 이력 서술을 정정
+- check_import 주석을 paths 없는 래퍼에만 해당하도록 정정
 - 자가검증 케이스 3종 추가(정상 1 · 위반 2), 합계 27종
 - 이력 파일은 과거 경로를 담는 기록이라 참조 무결성 대상에서 제외함을 정상 표본으로 고정"
 ```
 
 ---
 
-### Task 3: "한 행을 남긴다" 지시 4곳 갱신 (2~5번)
+### Task 3: "한 행을 남긴다" 지시 4곳(2~5번)과 게이트 서술 2곳 갱신
 
 **Files:**
 - Modify: `.claude/skills/orchestrator/SKILL.md` (525행, 538행, 542~543행)
 - Modify: `.claude/agents/tech-docs.md` (32행)
 - Modify: `.claude/skills/tech-docs-sync/SKILL.md` (23행)
+- Modify: `CLAUDE.md` (61행 — `harnessCheck` 계약 서술 문단, ⑥ #6)
 
 **Interfaces:**
 - Consumes: T1의 경로, T2의 단정
@@ -305,6 +323,18 @@ Expected: 4건 — `.claude/skills/orchestrator/SKILL.md:525`, `:542`, `.claude/
 | 하네스(에이전트·스킬·단계) 변경 | `docs/harness-changelog.md`에 한 행 |
 ```
 
+**6 — `CLAUDE.md:61` (`harnessCheck` 계약 서술 문단)** — ⑥ #6, 오케스트레이터 결정으로 범위 포함
+
+교체 전:
+```
+정한 하네스 계약(필수 절·단계 순서·스킬 디렉터리 형태)을 검사한다. 게이트가 빨간데 죽은 참조가 없으면
+```
+교체 후 (같은 문단 안에서 줄바꿈 재배치 허용, 59~60·62~64행 문구는 그대로):
+```
+정한 하네스 계약(필수 절·단계 순서·스킬 디렉터리 형태·`docs/harness-changelog.md`의 존재와 표 헤더)을
+검사한다. 변경 이력 파일은 과거 경로를 담는 기록이라 경로 검사 대상이 아니다. 게이트가 빨간데 죽은 참조가 없으면
+```
+
 - [ ] **Step 3: 검증**
 
 ```bash
@@ -314,7 +344,7 @@ grep -rnE 'CLAUDE\.md.{0,20}## 하네스.{0,10}변경 이력|아래 변경 이�
 ```
 Expected:
 ```
-CLAUDE.md:2
+CLAUDE.md:3
 .claude/skills/orchestrator/SKILL.md:3
 .claude/agents/tech-docs.md:1
 .claude/skills/tech-docs-sync/SKILL.md:1
@@ -324,10 +354,11 @@ CLAUDE.md:2
 - [ ] **Step 4: 커밋**
 
 ```bash
-git add .claude/skills/orchestrator/SKILL.md .claude/agents/tech-docs.md .claude/skills/tech-docs-sync/SKILL.md
+git add .claude/skills/orchestrator/SKILL.md .claude/agents/tech-docs.md .claude/skills/tech-docs-sync/SKILL.md CLAUDE.md
 git commit -m "chore: 변경 이력 기록 위치 지시를 docs/harness-changelog.md 로 갱신" \
   -m "- orchestrator ⑪-d·하네스 정합성 절, tech-docs 에이전트, tech-docs-sync 스킬의 기록 위치를 새 파일로 변경
-- 하네스 정합성 절의 단정 목록에 변경 이력 파일 단정을 추가하고, 게이트가 행 추가 여부는 보지 않음을 명시"
+- 하네스 정합성 절과 CLAUDE.md 의 harnessCheck 계약 서술에 변경 이력 파일 단정을 추가
+- 게이트가 행 추가 여부는 보지 않음을 명시"
 ```
 
 ---
@@ -339,15 +370,17 @@ git commit -m "chore: 변경 이력 기록 위치 지시를 docs/harness-changel
 - Modify: `.claude/rules/http.md`
 
 **Interfaces:**
-- Produces: 판정 문자열 `Batch 규칙 진입 안내`, `HTTP 규칙 진입 안내` — dod AC4·AC7이 쓴다.
+- Produces: 판정 문자열 `Batch 규칙 진입 안내`, `HTTP 규칙 진입 안내` — dod AC4·AC6·AC7이 쓴다.
 
 - [ ] **Step 1: RED 기록 (dod AC4·AC6)**
 
 ```bash
 grep -c '^@' .claude/rules/batch.md .claude/rules/http.md
 ```
-Expected: `.claude/rules/batch.md:1` / `.claude/rules/http.md:1`. 이어서 dod AC6 명령을 **1회** 돌려
-`BATCH=PRESENT`·`HTTP=PRESENT`가 나오는 것을 RED로 기록한다(③ 실측의 재현).
+Expected: `.claude/rules/batch.md:1` / `.claude/rules/http.md:1`. 이어서 dod §AC6 명령을 **1회** 돌려 RED를 기록한다.
+기대: `BATCH=PRESENT`, `HTTP=PRESENT`, `TESTING=PRESENT`, `BATCH_GUIDE=ABSENT`, `HTTP_GUIDE=ABSENT`
+(규칙 본문 두 줄은 ③ 실측의 재현. 안내문 두 줄은 아직 존재하지 않는 제목이므로 착수 전에도 ABSENT가 맞다 —
+이 두 줄은 변경 후에 무조건 로드되지 않는다는 것을 보는 기준이고, RED가 아니라 기준선이다).
 
 - [ ] **Step 2: 파일 전문으로 교체**
 
@@ -487,9 +520,10 @@ git commit -m "chore: CLAUDE.md 모듈 트리를 AGENTS.md 포인터로 교체" 
 
 ```bash
 ./gradlew harnessCheck harnessCheckTest --offline --no-daemon
+grep -c '^run_case ' docs/test-check-harness.sh
 bash docs/check-documentation.sh
 ```
-Expected: `BUILD SUCCESSFUL` / `documentation check passed (20 files, 15 required paths)`.
+Expected: `BUILD SUCCESSFUL` / `27` / `documentation check passed (20 files, 15 required paths)`.
 
 - [ ] **Step 2: 문구 단정 재실행 (dod AC2~AC5, R2)**
 
@@ -497,24 +531,23 @@ dod 수용기준 표의 AC2~AC5·R2 검증 명령을 그대로 다시 돌려 최
 
 - [ ] **Step 3: 런타임 로딩 실측 (dod AC6·AC7)**
 
-명령 전문은 dod AC6·AC7 칸이 소유한다. 각 명령을 **3회** 실행한다. 3/3이 통과 조건과 일치해야 PASS다.
-한 번이라도 어긋나면 재시도로 덮지 않고 세 출력을 모두 기록한 뒤 오케스트레이터에 보고한다.
+명령 전문은 dod §AC6·§AC7이 소유한다. 프롬프트는 `PROMPT` 변수에 담아 stdin으로 넘기고, 도구 목록은 쉼표로 이은
+한 인자로 준다(가변 인자 플래그 뒤에 프롬프트가 먹히는 문제를 피한다). 각 명령을 **3회** 실행한다. 3/3이 통과 조건과
+일치해야 PASS다. 한 번이라도 어긋나면 재시도로 덮지 않고 세 출력을 모두 기록한 뒤 Step 4로 간다.
 
-주의: 프롬프트는 `-p` 바로 뒤에 둔다. `--disallowedTools`·`--allowedTools`는 가변 인자라 그 뒤에 프롬프트를 두면
-도구 이름으로 먹힌다.
+- [ ] **Step 4: 이상 시 대체 절차 (AC6·AC7 공통)**
 
-- [ ] **Step 4: AC6가 PRESENT로 나올 때의 대체 절차**
-
-worktree가 베이스 저장소 디렉터리 아래에 있어 상위 경로의 메모리 파일이 섞였을 가능성을 먼저 배제한다(design §3).
+AC6에서 ABSENT를 기대한 항목이 하나라도 PRESENT이거나 AC7이 기대 문자열을 내지 않으면, worktree가 베이스 저장소 디렉터리
+아래에 있어 상위 경로의 메모리 파일(⑥ 리뷰어 세션에서는 베이스의 `.ai/rules`가 실렸다)이 섞였을 가능성을 먼저 배제한다(design §3).
 ```bash
 git worktree add --detach /tmp/harness-context-load-probe HEAD
 ```
-`/tmp/harness-context-load-probe`에서 AC6 명령을 다시 3회 돌리고 두 결과를 모두 기록한다. 끝나면
+`/tmp/harness-context-load-probe`에서 **AC6와 AC7을 모두** 다시 각 3회 돌리고 두 위치의 결과를 모두 기록한다. 끝나면
 `git worktree remove /tmp/harness-context-load-probe`. 판정은 오케스트레이터에 맡긴다(혼자 PASS로 적지 않는다).
 
 - [ ] **Step 5: 로드량 실측 (dod AC8)**
 
-dod AC8 칸의 두 명령을 돌려 변경 전·후 수치를 기록한다.
+dod §AC8의 두 명령을 돌려 변경 전·후 수치를 기록한다.
 
 - [ ] **Step 6: 범위 확인 (dod R3)**
 

@@ -10,10 +10,11 @@ source: 2026-10-20 대화 — 매 세션 자동 로드 문서(CLAUDE.md + .claud
 **포함**
 
 - `.claude/rules/batch.md`·`.claude/rules/http.md`의 `@import`를 Read 안내문으로 교체 (`paths` 유지)
-- `CLAUDE.md ## Module Structure` 펜스 트리를 `AGENTS.md` 포인터 한 줄로 교체, 모듈 트리 갱신 지시 2곳 정정
+- `CLAUDE.md ## Module Structure` 펜스 트리를 `AGENTS.md` 포인터 한 줄로 교체, 모듈 트리 갱신 지시 2개 파일(4곳) 정정
 - `CLAUDE.md ### 변경 이력`을 `docs/harness-changelog.md`로 이전하고 이번 작업 행 추가
 - "한 행을 남긴다" 지시 5곳을 새 파일로 갱신
-- `docs/check-harness.sh`에 변경 이력 파일 존재·표 헤더 단정 추가, 기존 `## 하네스` 단정 문구 정정
+- `harnessCheck` 계약 서술 2곳(`CLAUDE.md:59-61`, orchestrator SKILL.md 하네스 정합성 절)에 새 단정 반영
+- `docs/check-harness.sh`에 변경 이력 파일 존재·표 헤더 단정 추가, 기존 `## 하네스` 단정 문구와 `check_import` 주석 정정
 - `docs/test-check-harness.sh`에 케이스 3종 추가 (정상 1 · 위반 2)
 
 **제외** *(scope creep 차단선)*
@@ -38,12 +39,12 @@ source: 2026-10-20 대화 — 매 세션 자동 로드 문서(CLAUDE.md + .claud
 
 | # | 수용기준 (관찰 가능) | 근거 | 출처 | 티어 | 검증 수단 | 검증 명령 | 통과 조건 |
 |---|---|---|---|---|---|---|---|
-| AC1 | `docs/harness-changelog.md`가 없거나 표 헤더 행이 없을 때 `harnessCheck`가 실패하고, 이력 행에 실재하지 않는 경로가 있어도 실패하지 않으며, 실 트리에서 두 게이트가 통과한다 | design §5.3·§5.4 | `요구` | T1 | `기존` `harnessCheck`·`harnessCheckTest` | `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` | exit 0. 출력에 C1~C3 케이스 `ok` 줄 포함, 케이스 27종 |
+| AC1 | `docs/harness-changelog.md`가 없거나 표 헤더 행이 없을 때 `harnessCheck`가 실패하고, 이력 행에 실재하지 않는 경로가 있어도 실패하지 않으며, 실 트리에서 두 게이트가 통과한다 | design §5.3·§5.4 | `요구` | T1 | `기존` `harnessCheck`·`harnessCheckTest` | `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` | exit 0, 출력에 C1~C3 케이스 `ok` 줄 포함. 케이스 수는 보조 명령 `grep -c '^run_case ' docs/test-check-harness.sh` → `27` |
 | AC2 | `CLAUDE.md`에 `### 변경 이력` 제목이 없고, `docs/harness-changelog.md`에 기존 3행이 바이트 그대로 있으며 2026-10-20 행이 첫 데이터 행이다 | design §5.1 | `요구` | T2 | 아래 §AC2 명령 | §AC2 | §AC2 기대 출력과 일치 |
-| AC3 | 지시 5곳이 `docs/harness-changelog.md`를 가리키고, 하네스 파일에 "`CLAUDE.md` `## 하네스` 변경 이력" 류 문구와 "아래 변경 이력"이 남지 않는다 | design §5.2 | `요구` | T2 | 아래 §AC3 명령 | §AC3 | §AC3 기대 출력과 일치 |
+| AC3 | 지시 5곳과 `CLAUDE.md` 계약 서술이 `docs/harness-changelog.md`를 가리키고, 하네스 파일에 "`CLAUDE.md` `## 하네스` 변경 이력" 류 문구와 "아래 변경 이력"이 남지 않는다 | design §5.2 | `요구` · `리뷰`(⑥ #6, `CLAUDE.md:59-61`) | T2 | 아래 §AC3 명령 | §AC3 | §AC3 기대 출력과 일치 |
 | AC4 | `.claude/rules/batch.md`·`http.md`에 `@`로 시작하는 행이 없고, 원본 `paths` 값과 안내문 제목(`# Batch 규칙 진입 안내` / `# HTTP 규칙 진입 안내`)을 가진다 | design §3 | `요구` | T2 | 아래 §AC4 명령 | §AC4 | §AC4 기대 출력과 일치 |
-| AC5 | `CLAUDE.md ## Module Structure` 아래에 트리 행이 없고 `AGENTS.md` 포인터 한 줄이 있으며, tech-docs 2곳이 `CLAUDE.md` 모듈 트리를 갱신 대상으로 지시하지 않는다 | design §4 | `요구`(트리 교체) · `추론`(tech-docs 2곳, [ASSUMPTION]) | T2 | 아래 §AC5 명령 | §AC5 | §AC5 기대 출력과 일치 |
-| AC6 | worktree에서 파일을 건드리지 않은 `claude -p` 세션이 `# Batch Architecture Rules`·`# HTTP/API Rules`는 ABSENT, `# Testing Rules`는 PRESENT로 보고한다 | design §3 | `요구` | T3 | `관찰` 아래 §AC6 명령 3회 | §AC6 | 3회 모두 `BATCH=ABSENT`·`HTTP=ABSENT`·`TESTING=PRESENT` |
+| AC5 | `CLAUDE.md ## Module Structure` 아래에 트리 행이 없고 `AGENTS.md` 포인터 한 줄이 있으며, tech-docs 2개 파일이 `CLAUDE.md` 모듈 트리를 갱신 대상으로 지시하지 않는다 | design §4 | `요구`(트리 교체) · `추론`(tech-docs 2개 파일, [ASSUMPTION]) | T2 | 아래 §AC5 명령 | §AC5 | §AC5 기대 출력과 일치 |
+| AC6 | worktree에서 파일을 건드리지 않은 `claude -p` 세션이 `# Batch Architecture Rules`·`# HTTP/API Rules`·`# Batch 규칙 진입 안내`·`# HTTP 규칙 진입 안내`는 ABSENT, `# Testing Rules`는 PRESENT로 보고한다 | design §3 | `요구` · `리뷰`(⑥ #1, 안내문 두 줄) | T3 | `관찰` 아래 §AC6 명령 3회 | §AC6 | 3회 모두 `BATCH=ABSENT`·`HTTP=ABSENT`·`TESTING=PRESENT`·`BATCH_GUIDE=ABSENT`·`HTTP_GUIDE=ABSENT` |
 | AC7 | Read를 허용한 `claude -p` 세션이 `apps/batch` 아래 `.kt`를 읽은 뒤 `Batch 규칙 진입 안내`를, `apps/api` interfaces 아래 `.kt`를 읽은 뒤 `HTTP 규칙 진입 안내`를 인용한다 | design §3 | `요구`(batch) · `추론`(http 대칭 확인) | T3 | `관찰` 아래 §AC7 명령 각 3회 | §AC7 | 각 3회 모두 stdout에 해당 문자열 포함 |
 | AC8 | 세션 시작 시 무조건 로드되는 문서의 문자 수가 변경 전(`$BASE`)보다 작다 | design §1 | `요구` | T2 | 아래 §AC8 명령 | §AC8 | `after < before`, 두 수치 기록. `before`는 약 15.7K자로 ③ 실측을 재현 |
 
@@ -60,8 +61,9 @@ source: 2026-10-20 대화 — 매 세션 자동 로드 문서(CLAUDE.md + .claud
 - AC8 → T2: 변경 전·후 수치의 비교라 단일 명령의 exit code로 표현되지 않는다.
 - AC6·AC7 → T3: Claude Code가 세션에 주입한 메모리를 결정적으로 관찰하는 수단이 없다(기존 gate 조사표 4행).
   **판정은 모델의 자기보고에 기대므로 결정적이지 않다** — 오보 가능성이 있다. 완화책으로 각 명령을 3회 돌려 3/3 일치만
-  PASS로 하고, 불일치는 재시도로 덮지 않고 기록 후 보고한다. AC7이 일관되게 실패하면 "래퍼가 Read 시점에 발동하지
-  않는다"는 설계 수준의 발견이므로 재시도가 아니라 `## 변경 요청`으로 올린다.
+  PASS로 하고, 불일치는 재시도로 덮지 않고 기록 후 보고한다. 조건부 로딩은 AC6(안내문 ABSENT)와 AC7(안내문 PRESENT)이
+  **함께** 성립할 때만 증명된다. AC7이 일관되게 실패하면 "래퍼가 Read 시점에 발동하지 않는다"는 설계 수준의 발견이므로
+  재시도가 아니라 `## 변경 요청`으로 올린다.
 
 ## 검증 명령
 
@@ -83,7 +85,7 @@ grep -m1 '^| 20' docs/harness-changelog.md
 grep -c 'docs/harness-changelog.md' CLAUDE.md .claude/skills/orchestrator/SKILL.md .claude/agents/tech-docs.md .claude/skills/tech-docs-sync/SKILL.md
 grep -rnE 'CLAUDE\.md.{0,20}## 하네스.{0,10}변경 이력|아래 변경 이력' CLAUDE.md .claude
 ```
-기대: `CLAUDE.md:2` / `.claude/skills/orchestrator/SKILL.md:3` / `.claude/agents/tech-docs.md:1` /
+기대: `CLAUDE.md:3` / `.claude/skills/orchestrator/SKILL.md:3` / `.claude/agents/tech-docs.md:1` /
 `.claude/skills/tech-docs-sync/SKILL.md:1`. 두 번째 명령은 출력 없음, exit 1.
 
 ### AC4
@@ -117,36 +119,43 @@ grep -cE 'CLAUDE\.md`(의)? 모듈 트리|AGENTS/CLAUDE' .claude/agents/tech-doc
 
 ### AC6
 
-프롬프트는 `-p` 바로 뒤에 둔다(`--disallowedTools`는 가변 인자라 뒤에 두면 프롬프트가 도구 이름으로 먹힌다).
+프롬프트는 stdin으로 넘기고, 도구 목록은 쉼표로 이은 한 인자로 준다.
 
 ```bash
-claude -p "도구를 쓰지 마라. 이 사용자 메시지는 제외하고, 세션 시작 시 주입된 컨텍스트(CLAUDE.md 와 규칙 문서)만 보고 답하라. 아래 세 제목 줄 각각이 그 컨텍스트에 제목 줄로 그대로 있으면 PRESENT, 없으면 ABSENT 다. 설명 없이 정확히 세 줄만 출력하라. 첫 줄 BATCH=PRESENT 또는 BATCH=ABSENT (대상: # Batch Architecture Rules). 둘째 줄 HTTP=PRESENT 또는 HTTP=ABSENT (대상: # HTTP/API Rules). 셋째 줄 TESTING=PRESENT 또는 TESTING=ABSENT (대상: # Testing Rules)." --model haiku --max-turns 1 --disallowedTools Read Bash Grep Glob
+PROMPT='도구를 쓰지 마라. 이 사용자 메시지는 제외하고, 세션 시작 시 주입된 컨텍스트(CLAUDE.md 와 규칙 문서)만 보고 답하라. 아래 다섯 제목 줄 각각이 그 컨텍스트에 제목 줄로 그대로 있으면 PRESENT, 없으면 ABSENT 다. 설명 없이 정확히 다섯 줄만 출력하라. 첫째 줄 BATCH=PRESENT 또는 BATCH=ABSENT (대상: # Batch Architecture Rules). 둘째 줄 HTTP=PRESENT 또는 HTTP=ABSENT (대상: # HTTP/API Rules). 셋째 줄 TESTING=PRESENT 또는 TESTING=ABSENT (대상: # Testing Rules). 넷째 줄 BATCH_GUIDE=PRESENT 또는 BATCH_GUIDE=ABSENT (대상: # Batch 규칙 진입 안내). 다섯째 줄 HTTP_GUIDE=PRESENT 또는 HTTP_GUIDE=ABSENT (대상: # HTTP 규칙 진입 안내).'
+printf '%s' "$PROMPT" | claude -p --model haiku --max-turns 1 --disallowedTools "Read,Bash,Grep,Glob,Edit,Write,Task"
 ```
-기대(3회 모두): `BATCH=ABSENT` / `HTTP=ABSENT` / `TESTING=PRESENT`. RED(T4 착수 전 1회): `BATCH=PRESENT` / `HTTP=PRESENT` / `TESTING=PRESENT`.
-PRESENT가 나오면 plan T6 Step 4(베이스 트리 밖 임시 worktree에서 재측정)를 먼저 수행한다.
+기대(3회 모두): `BATCH=ABSENT` / `HTTP=ABSENT` / `TESTING=PRESENT` / `BATCH_GUIDE=ABSENT` / `HTTP_GUIDE=ABSENT`.
+RED(T4 착수 전 1회): `BATCH=PRESENT` / `HTTP=PRESENT` / `TESTING=PRESENT` / `BATCH_GUIDE=ABSENT` / `HTTP_GUIDE=ABSENT`
+(안내문은 착수 전에는 존재하지 않으므로 ABSENT가 맞다 — 이 두 줄은 RED가 아니라 기준선이다).
+기대와 다르면 plan T6 Step 4(베이스 트리 밖 임시 worktree에서 AC6·AC7 재측정)를 먼저 수행한다.
 
 ### AC7
 
-판정 문자열이 프롬프트에 들어가지 않도록 "새로 들어온 안내문의 제목을 인용하라"고만 묻는다.
+판정 문자열이 프롬프트에 들어가지 않도록 "새로 들어온 안내문의 제목을 인용하라"고만 묻는다. Read만 허용한다.
 
 ```bash
-claude -p "apps/batch/src/main/kotlin/io/premiumspread/PremiumSpreadBatchApplication.kt 파일을 Read 도구로 한 번 읽어라. 파일 내용은 요약하지 마라. 읽은 뒤 컨텍스트에 새로 들어온 규칙 안내문(system-reminder 등으로 붙은 것)이 있으면 그 안내문의 첫 번째 마크다운 제목 줄을 그대로 인용하라. 없으면 NONE 한 단어만 출력하라." --model haiku --max-turns 3 --allowedTools Read --disallowedTools Bash Grep Glob
+PROMPT='apps/batch/src/main/kotlin/io/premiumspread/PremiumSpreadBatchApplication.kt 파일을 Read 도구로 한 번 읽어라. 파일 내용은 요약하지 마라. 읽은 뒤 컨텍스트에 새로 들어온 규칙 안내문(system-reminder 등으로 붙은 것)이 있으면 그 안내문의 첫 번째 마크다운 제목 줄을 그대로 인용하라. 없으면 NONE 한 단어만 출력하라.'
+printf '%s' "$PROMPT" | claude -p --model haiku --max-turns 3 --allowedTools "Read" --disallowedTools "Bash,Grep,Glob,Edit,Write,Task"
 ```
 ```bash
-claude -p "apps/api/src/main/kotlin/io/premiumspread/interfaces/api/premium/PremiumController.kt 파일을 Read 도구로 한 번 읽어라. 파일 내용은 요약하지 마라. 읽은 뒤 컨텍스트에 새로 들어온 규칙 안내문(system-reminder 등으로 붙은 것)이 있으면 그 안내문의 첫 번째 마크다운 제목 줄을 그대로 인용하라. 없으면 NONE 한 단어만 출력하라." --model haiku --max-turns 3 --allowedTools Read --disallowedTools Bash Grep Glob
+PROMPT='apps/api/src/main/kotlin/io/premiumspread/interfaces/api/premium/PremiumController.kt 파일을 Read 도구로 한 번 읽어라. 파일 내용은 요약하지 마라. 읽은 뒤 컨텍스트에 새로 들어온 규칙 안내문(system-reminder 등으로 붙은 것)이 있으면 그 안내문의 첫 번째 마크다운 제목 줄을 그대로 인용하라. 없으면 NONE 한 단어만 출력하라.'
+printf '%s' "$PROMPT" | claude -p --model haiku --max-turns 3 --allowedTools "Read" --disallowedTools "Bash,Grep,Glob,Edit,Write,Task"
 ```
 기대(각 3회 모두): 첫 명령 stdout에 `Batch 규칙 진입 안내`, 둘째 명령 stdout에 `HTTP 규칙 진입 안내`.
+기대와 다르면 AC6와 같이 plan T6 Step 4를 먼저 수행한다.
 
 ### AC8
 
 ```bash
-for f in CLAUDE.md .ai/rules/architecture.md .ai/rules/batch.md .ai/rules/http.md .ai/rules/testing.md .ai/rules/naming.md .ai/rules/git.md; do git show "$BASE:$f"; done | wc -m
-cat CLAUDE.md .ai/rules/architecture.md .ai/rules/testing.md .ai/rules/naming.md .ai/rules/git.md | wc -m
+for f in CLAUDE.md .ai/rules/architecture.md .ai/rules/batch.md .ai/rules/http.md .ai/rules/testing.md .ai/rules/naming.md .ai/rules/git.md; do git show "$BASE:$f"; done | LC_ALL=C.UTF-8 wc -m
+cat CLAUDE.md .ai/rules/architecture.md .ai/rules/testing.md .ai/rules/naming.md .ai/rules/git.md | LC_ALL=C.UTF-8 wc -m
 ```
 첫 줄이 `before`(변경 전 무조건 로드: `CLAUDE.md` + 래퍼 6종이 펼친 `.ai/rules` 6종), 둘째 줄이 `after`(변경 후: `CLAUDE.md` +
 무조건 래퍼 4종이 펼친 `.ai/rules` 4종. batch·http 래퍼는 경로 접촉 시에만 실린다). `.claude/rules/*.md`의 import 행 자체는
 펼쳐진 내용으로 대체되므로 합산하지 않는다. 사용자 레벨 메모리와, worktree 세션에서 상위 경로로 함께 읽힐 수 있는 베이스 트리
-`CLAUDE.md`는 이 저장소의 머지 후 상태와 무관하므로 제외한다. [ASSUMPTION] `after`는 약 10K자로 예상(미측정).
+메모리 파일은 이 저장소의 머지 후 상태와 무관하므로 제외한다. `LC_ALL=C.UTF-8`은 `wc -m`이 바이트가 아니라 문자를 세게
+고정한다. [ASSUMPTION] `after`는 약 10K자로 예상(미측정).
 
 ## 검사 산출물
 

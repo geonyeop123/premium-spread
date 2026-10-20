@@ -38,20 +38,23 @@
 - 두 래퍼에서 `@import` 행을 지우고 "이 경로를 고치기 전에 `.ai/rules/{batch,http}.md`를 Read로 읽는다"는
   안내문으로 바꾼다. `paths` frontmatter는 그대로 둔다. 안내문 전문은 plan T4가 소유한다.
 - 정본은 `.ai/rules/`에 그대로 둔다. `AGENTS.md`(Codex)와 공유하는 문서라 래퍼에 내용을 옮겨 적지 않는다.
-- 안내문의 고유 제목(`# Batch 규칙 진입 안내` / `# HTTP 규칙 진입 안내`)은 조건부 발동 실측(dod AC7)의
-  판정 문자열이다. 이 두 문자열은 다른 자동 로드 문서에 나오지 않는다.
+- 안내문의 고유 제목(`# Batch 규칙 진입 안내` / `# HTTP 규칙 진입 안내`)이 조건부 로딩 실측의 판정 문자열이다.
+  이 두 문자열은 다른 자동 로드 문서에 나오지 않는다. 조건부 로딩을 증명하려면 **두 쪽을 모두** 봐야 한다 —
+  파일을 건드리지 않은 세션에서는 안내문이 ABSENT(dod AC6), 경로를 읽은 세션에서는 PRESENT(dod AC7).
+  AC7만으로는 "무조건 로드"와 구별되지 않는다.
 - 안내문의 어떤 행도 `@`로 시작하지 않는다. `@`는 인라인 코드(`` `@` ``)로만 언급한다.
 - **죽은 참조 보호는 유지된다.** `check-harness.sh` 축 1은 `.claude/rules/*.md`를 `check_refs`로 훑고,
   import 행이 아닌 행에서는 백틱 토큰을 `check_path`로 검사한다. 안내문의 `` `.ai/rules/batch.md` ``는
   `.ai/` 소유 접두에 걸리므로, 정본이 옮겨가면 지금의 "죽은 import"와 같은 자리에서 "죽은 참조"로 실패한다.
-  `check_import` 주석("본문이 이 한 줄뿐이라…")은 나머지 네 래퍼에 여전히 참이므로 고치지 않는다.
+- `check_import` 위 주석(`check-harness.sh:165`, "`.claude/rules/*.md` 는 본문이 이 한 줄뿐이라…")은 이 변경 뒤
+  거짓이 된다. `paths` 없는 래퍼에만 해당하도록 고친다(plan T2 Step 3 (d)).
 - 나머지 네 래퍼(`architecture`·`testing`·`naming`·`git`)는 `paths`가 없는 무조건 로드이며 `@import`를 유지한다.
 
 **측정상 주의.** 이 worktree는 베이스 저장소 디렉터리 아래(`.worktrees/`)에 있다. Claude Code는 cwd에서
-상위로 올라가며 `CLAUDE.md`를 읽으므로 worktree 세션에는 베이스 트리의 `CLAUDE.md`도 실릴 수 있다. 베이스의
-`CLAUDE.md`에는 규칙 제목 문자열이 없으므로 AC6 판정에는 영향이 없다. 직전 실측에서 베이스의 `.claude/rules/`는
-실리지 않았다(Batch ABSENT가 나왔으므로). AC6가 예상과 다르게 PRESENT로 나오면 재시도하기 전에 이 경로부터
-의심한다(plan T6 Step 4의 대체 절차). 로드량(AC8)은 세션이 아니라 파일 합산으로 잰다.
+상위로 올라가며 메모리 파일을 읽으므로 worktree 세션에는 베이스 트리의 `CLAUDE.md`도 실릴 수 있다. 직전 실측에서는
+베이스의 `.claude/rules/`가 실리지 않았지만(Batch ABSENT), ⑥ 리뷰어 세션에는 베이스 경로의 `.ai/rules`가 실려
+있었다. 그래서 AC6에서 ABSENT를 기대한 항목이 PRESENT로 나오거나 AC7이 기대와 다르면, 재시도하기 전에 **두 AC 모두**
+베이스 트리 밖 임시 worktree에서 다시 잰다(plan T6 Step 4). 로드량(AC8)은 세션이 아니라 파일 합산으로 잰다.
 
 ## 4. 결정 2 — Module Structure를 포인터로 바꾼다 (P2)
 
@@ -69,18 +72,20 @@
 - 표 헤더는 기존과 같다: `| 날짜 | 변경 내용 | 대상 | 사유 |`.
 - `CLAUDE.md ## 하네스` 절은 유지한다(harnessCheck 단정 대상). 진입점 표에 `변경 이력` 행을 추가해 새 파일을 가리킨다.
 
-### 5.2 "한 행을 남긴다" 지시 5곳
+### 5.2 "한 행을 남긴다" 지시 5곳과 게이트 서술
 
 | # | 위치 | 갱신 |
 |---|------|------|
-| 1 | `CLAUDE.md:57` 하네스 표 `정합성 검사` 행 — "아래 변경 이력에" | 새 파일 경로로 |
-| 2 | `.claude/skills/orchestrator/SKILL.md:525` ⑪-d | 새 파일 경로로 |
-| 3 | `.claude/skills/orchestrator/SKILL.md:542` 하네스 정합성 절 | 새 파일 경로로 |
-| 4 | `.claude/agents/tech-docs.md:32` | 새 파일 경로로 |
-| 5 | `.claude/skills/tech-docs-sync/SKILL.md:23` | 새 파일 경로로 |
+| 1 | `CLAUDE.md:57` 하네스 표 `정합성 검사` 행 — "아래 변경 이력에" | 새 파일 경로로 (T1) |
+| 2 | `.claude/skills/orchestrator/SKILL.md:525` ⑪-d | 새 파일 경로로 (T3) |
+| 3 | `.claude/skills/orchestrator/SKILL.md:542` 하네스 정합성 절 | 새 파일 경로로 (T3) |
+| 4 | `.claude/agents/tech-docs.md:32` | 새 파일 경로로 (T3) |
+| 5 | `.claude/skills/tech-docs-sync/SKILL.md:23` | 새 파일 경로로 (T3) |
 
-교체 전/후 전문은 plan T1(1번)·T3(2~5번)이 소유한다. 추가로 같은 SKILL.md의 하네스 정합성 절이 `harnessCheck`가
-보는 계약을 나열하는데(537~538행), 새 단정을 그 목록에 넣는다 — **[ASSUMPTION]** 새 단정의 직접 귀결.
+교체 전/후 전문은 plan이 소유한다. 그 밖에 `harnessCheck`가 보는 계약을 나열하는 서술 두 곳에 새 단정을 넣는다.
+
+- `.claude/skills/orchestrator/SKILL.md:537~538` 하네스 정합성 절의 단정 목록 — **[ASSUMPTION]** 새 단정의 직접 귀결 (T3)
+- `CLAUDE.md:59~61` `harnessCheck` 계약 서술 문단 — ⑥ 리뷰 반영, 오케스트레이터 결정으로 범위에 넣음 (T3)
 
 ### 5.3 게이트 (`docs/check-harness.sh`)
 
@@ -111,7 +116,7 @@ glob을 쓰지 않는다. `docs/harness-changelog.md`는 그 목록에 없으므
 
 ## 6. 태스크 순서와 그 이유
 
-T1 변경 이력 이전 → T2 게이트 단정 + 자가검증 → T3 참조 4곳 → T4 래퍼 교체 → T5 모듈 트리 포인터 → T6 전체 검증.
+T1 변경 이력 이전 → T2 게이트 단정 + 자가검증 → T3 참조 4곳 + 게이트 서술 2곳 → T4 래퍼 교체 → T5 모듈 트리 포인터 → T6 전체 검증.
 
 오케스트레이터 제안(T1 게이트 → T2 이전)과 T1·T2가 바뀌었다. 게이트 단정을 먼저 넣으면 그 커밋의 실 트리에는
 `docs/harness-changelog.md`가 없어 `harnessCheck`가 빨갛다 — 커밋마다 `check`가 초록이어야 한다는 규칙
@@ -126,8 +131,8 @@ T1 변경 이력 이전 → T2 게이트 단정 + 자가검증 → T3 참조 4�
 | 실 트리 정합 | 새 파일·참조·래퍼의 백틱 경로가 실재하고 단정이 통과하는가 | `harnessCheck` |
 | 정본 문서 회귀 | 변경이 정본 문서 검사에 영향 없음 | `bash docs/check-documentation.sh` |
 | 문구 단정 | 이력 제거·트리 제거·참조 교체·래퍼에 import 없음 | 단일 `grep -c` 명령과 기대 출력 (dod T2) |
-| 런타임 로딩 | 무조건 로드에서 batch/http 본문이 빠지고, 경로 접촉 시 안내문이 실리는가 | `claude -p --model haiku` 실측 3회 (dod T3, 비결정적) |
-| 로드량 | 변경 전/후 문자 수 | `wc -m` 합산 (dod T2) |
+| 런타임 로딩 | 무조건 로드에서 batch/http 본문과 안내문이 모두 빠지고, 경로 접촉 시 안내문이 실리는가 | `claude -p --model haiku` 실측 3회 (dod T3, 비결정적) |
+| 로드량 | 변경 전/후 문자 수 | `LC_ALL=C.UTF-8 wc -m` 합산 (dod T2) |
 
 ## 8. 리스크
 
@@ -135,6 +140,7 @@ T1 변경 이력 이전 → T2 게이트 단정 + 자가검증 → T3 참조 4�
 |------|------|------|
 | 안내문을 읽지 않고 고침 | 조건부 로드되는 것은 안내문뿐이라 에이전트가 Read를 건너뛰면 규칙 없이 batch/http를 고칠 수 있다 | 안내문 제목·첫 문장을 명령형으로 둔다. `implementer`·`spec-reviewer`는 이미 `.ai/rules/*`를 참조 대상으로 지시받는다. 효과가 부족하면 ⑪-d 피드백으로 되돌린다 |
 | LLM 자기보고의 비결정성 | AC6·AC7은 모델이 자기 컨텍스트를 보고하는 것이라 오보 가능성이 있다 | 각 3회 실행, 3/3 일치일 때만 PASS. 불일치는 재시도로 덮지 않고 기록 후 보고 |
+| 상위 경로 메모리 혼입 | worktree가 베이스 트리 아래라 베이스의 `CLAUDE.md`·규칙이 측정 세션에 섞일 수 있다(⑥ 리뷰어 세션에서 관찰) | §3 "측정상 주의" — 이상 시 두 AC 모두 `/tmp` worktree에서 재측정 |
 | 변경 이력 행 추가 누락 | 게이트는 헤더만 보고 행 추가 여부는 보지 않는다 | 기존과 같은 수준(이전에도 판정하지 않았다). orchestrator 하네스 정합성 절에 그 한계를 명시(T3) |
 | 이력 파일을 나중에 `check_refs`에 넣음 | 과거 경로로 게이트가 소급 실패한다 | 정상 표본 "변경 이력의 과거 경로 무시"가 그 변경을 빨갛게 만든다 |
 
@@ -145,3 +151,17 @@ T1 변경 이력 이전 → T2 게이트 단정 + 자가검증 → T3 참조 4�
 | `.claude/skills/orchestrator/SKILL.md:319` | "이 저장소에는 하네스 자동 게이트가 없으므로" — 2026-09-16 `harnessCheck` 신설 이후 낡았다. 다만 "밀도 표 전달 누락은 게이트가 잡지 않는다"는 결론 자체는 여전히 참이라 문장 수정이 필요하다 |
 | `.claude/skills/tech-docs-sync/SKILL.md:44-45` | "하네스 문서가 가리키는 경로가 실재하는지는 사람이 확인해야 한다" — `harnessCheck` 축 1이 이미 검사한다 |
 | `CLAUDE.md:85` 관련 문서 표 | `docs/work/{slug}/`를 "`feature-workflow` 산출물"로 적는다. 현재 진입 스킬은 `orchestrator`다 |
+
+## 10. 스펙 리뷰(⑥) 반영
+
+1라운드 6건 전부 ACCEPT.
+
+| # | 등급 | 지적 | 반영 |
+|---|------|------|------|
+| 1 | major | AC6가 안내문 부재를 확인하지 않아 AC7만으로는 조건부 로딩이 증명되지 않는다 | AC6에 `BATCH_GUIDE`·`HTTP_GUIDE` 두 줄 추가, 기대 3회 모두 ABSENT(RED도 ABSENT). §3에 근거 명시 |
+| 2 | minor | AC1의 "27종"을 출력에서 관찰할 수 없다 | AC1 통과 조건에 `grep -c '^run_case '` → `27` 추가 |
+| 3 | minor | `claude -p` 인자 순서가 깨지기 쉽다 | 프롬프트는 stdin, 도구 목록은 쉼표로 이은 한 인자 |
+| 4 | minor | `wc -m`이 로케일에 따라 바이트를 센다 | `LC_ALL=C.UTF-8` 고정 |
+| 5 | minor | `check-harness.sh:165` 주석이 T4 뒤 거짓이 된다 | plan T2 Step 3 (d)에 정정 전문 |
+| 6 | minor | `CLAUDE.md:59-61` 계약 서술에 새 단정이 빠진다, dod 범위 문구 부정확 | plan T3에 교체 전/후 전문(오케스트레이터 결정으로 범위 포함), dod 범위 "2개 파일(4곳)" |
+| 관찰 | — | 리뷰어 세션에 베이스 경로 `.ai/rules`가 실려 있었다 | §3·§8, plan T6 Step 4를 AC6·AC7 공통으로 |
