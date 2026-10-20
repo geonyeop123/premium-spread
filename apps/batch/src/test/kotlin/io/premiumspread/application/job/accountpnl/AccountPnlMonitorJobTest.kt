@@ -173,6 +173,31 @@ class AccountPnlMonitorJobTest {
     }
 
     @Test
+    fun `호가 나이는 조회를 마친 뒤 시각으로 잰다`() {
+        givenLastCalculationSucceededLongAgo()
+        // 회차 시작 기준이면 두 호가 모두 6초(신선)지만, 바이낸스 조회가 5초 걸려 조회 완료 기준으로는 11초다
+        korea.age = Duration.ofSeconds(6)
+        foreign.onRead = { clock.advance(Duration.ofSeconds(5)) }
+        foreign.age = Duration.ofSeconds(11)
+
+        assertThat(job.run()).isEqualTo(JobResult.Success)
+
+        assertNoProfitMail()
+        assertOutageMail("시세 지연")
+    }
+
+    @Test
+    fun `계산 시각은 조회를 마친 뒤 시각이다`() {
+        korea.onRead = { clock.advance(Duration.ofSeconds(3)) }
+
+        job.run()
+
+        val completedAt = t0.plusSeconds(3)
+        assertThat(store.rows.single().mail.eventKey).isEqualTo("account-pnl-profit-${completedAt.toEpochMilli()}")
+        assertThat(store.rows.single().mail.body).contains("계산 시각: 2026-10-20 12:00:03")
+    }
+
+    @Test
     fun `두 호가 시각 차이 5초는 계산하고 5초 1밀리초는 STALE_MARKET_DATA`() {
         korea.age = Duration.ZERO
         foreign.age = Duration.ofSeconds(5)
@@ -597,8 +622,10 @@ class AccountPnlMonitorJobTest {
         var signedQuantity = BigDecimal("-0.01")
         var age: Duration = Duration.ZERO
         var failure: Exception? = null
+        var onRead: () -> Unit = {}
 
         override fun read(): ForeignPerpAccountSnapshot {
+            onRead()
             failure?.let { throw it }
             return ForeignPerpAccountSnapshot(
                 signedQuantity = signedQuantity,

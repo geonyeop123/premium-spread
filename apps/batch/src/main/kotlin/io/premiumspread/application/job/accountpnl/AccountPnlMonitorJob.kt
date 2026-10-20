@@ -45,6 +45,8 @@ import java.util.concurrent.atomic.AtomicReference
  *   (매분 CRITICAL 운영 알림을 막는다). 분류되지 않은 예외는 [AccountReadFailureCategory.UNEXPECTED].
  * - 상태 저장소 예외만 [JobResult.Failure] 다 — 중단 메일도 저장할 수 없으므로 운영 알림 경로에 맡긴다.
  * - 재발송 타이머(`lastSentAt`)는 발송 결정과 함께 저장되므로 SMTP 성공·실패가 바꾸지 않는다.
+ * - 시각: 관측 판정(호가 나이·환율 수집 공백·`calculatedAt`)은 두 계정 조회를 마친 뒤의 `clock.instant()` 를,
+ *   상태 전이(stale 복구·수익·중단 정책·메일 시각)는 회차 시작 시각 `now` 를 쓴다. claim·mark 는 그 순간의 시각이다.
  */
 @Suppress("LongParameterList", "TooManyFunctions")
 class AccountPnlMonitorJob(
@@ -79,7 +81,7 @@ class AccountPnlMonitorJob(
             return storeFailure("recoverStale/load", exception)
         }
 
-        val observed = observe(now)
+        val observed = observe()
         val alert = PnlAlertPolicy.decide(loaded.alert, observed.observation, now)
         val outage = MonitoringOutagePolicy.decide(loaded.outage, observed.failure, now)
         val mails = buildMails(observed.observation, alert.send, outage.notice, now)
@@ -108,18 +110,20 @@ class AccountPnlMonitorJob(
 
     private data class Observed(val observation: PnlObservation, val failure: AccountReadFailureCategory?)
 
-    private fun observe(now: Instant): Observed = try {
+    private fun observe(): Observed = try {
         val koreaSnapshot = korea.read()
         val foreignSnapshot = foreign.read()
-        checkMarketFreshness(koreaSnapshot, foreignSnapshot, now)
-        val fxSnapshot = checkFxFreshness(now)
+        // 조회(이력 탐색 포함)에 걸린 시간을 호가 나이에 넣는다 — 회차 시작 시각으로 재면 오래된 호가가 신선해 보인다
+        val completedAt = clock.instant()
+        checkMarketFreshness(koreaSnapshot, foreignSnapshot, completedAt)
+        val fxSnapshot = checkFxFreshness(completedAt)
 
         val position = AccountHedgePosition.resolve(koreaSnapshot, foreignSnapshot)
         if (position == null) {
             log.info("No account hedge position: {}", noPositionReason(koreaSnapshot, foreignSnapshot))
             Observed(PnlObservation.NoPosition, null)
         } else {
-            val pnl = AccountNetPnl.calculate(position, fxSnapshot.rate, fxSnapshot.observedAt, now)
+            val pnl = AccountNetPnl.calculate(position, fxSnapshot.rate, fxSnapshot.observedAt, completedAt)
             Observed(PnlObservation.Computed(pnl), null)
         }
     } catch (exception: Exception) {
