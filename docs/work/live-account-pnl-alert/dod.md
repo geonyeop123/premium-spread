@@ -101,6 +101,18 @@ AC13 은 전 경로가 있어야만 검증된다. 대신 plan 태스크를 위 �
 | R6 | 기존 premium threshold 알림 durable delivery (outbox 를 일반화하는 경우 특히) | `./gradlew :apps:batch:integrationTest --offline --no-daemon` |
 | R7 | 정본 문서·하네스 정합성 | `./gradlew harnessCheck --offline --no-daemon` |
 
+## 스펙 리뷰 라운드 기록 (⑥ codex adversarial-review)
+
+| 라운드 | 지적 | 처리 | 반영 커밋 |
+|---|---|---|---|
+| R0 (형식 미지정 실행) | high 2 — master spec credential 경계 우회, outbox 동시성 | 전자 REBUT(owner 승인 결정 design §0.1, 범위 밖) · 후자 R1 과 중복 | — |
+| R1 | high 2 · medium 1 — outbox claim·fencing 부재, 미분류 예외의 중단 정책 우회, 최우선 호가 전량 청산 과대평가 | ACCEPT 3 | `7f7654c` |
+| R2 | medium 2 — 두 호가 시점 skew, fingerprint 의 한국 leg 누락 | ACCEPT 2 | `47b24e8` |
+| R3 | medium 1 — BNB 수수료 0 처리 | ACCEPT | `ceaadaf` |
+| R4 | medium 1 — BNB 환산값 캐시 고정 | ACCEPT | `cc9e0d6` |
+| R5 | medium 1 — 같은 fingerprint 재진입 시 캐시 고정 | ACCEPT | `06a6e51` |
+| R6 | 없음 — verdict approve | — | — |
+
 ## 증거 로그
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
