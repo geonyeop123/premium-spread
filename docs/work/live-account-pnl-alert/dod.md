@@ -293,6 +293,18 @@ GREEN $ 같은 명령 (구현 후)
       BUILD SUCCESSFUL
 ```
 
+### AC11 — Task 11 (2026-10-20, 커밋 전)
+
+- RED: 조건 클래스(`AccountPnlCredentialsPresentCondition`, `AccountPnlMonitorEnabledCondition`) 적용을 제거하고
+  `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon`
+  -> `9 tests completed, 1 failed` (`key 하나라도 비면 0개() FAILED`) — credential 이 비어도 bean 이 생긴다.
+- GREEN: 조건 복원 후 같은 명령 -> `BUILD SUCCESSFUL` (9 tests, 0 failed). 케이스: 플래그 없음/false/key 누락 0개,
+  scheduling 비활성 시 Scheduler 0개, 활성 시 Job·Scheduler·두 adapter·메일 adapter 각 1개,
+  `JobLastSuccessReadPort` -> `RedisJobRunRecorderAdapter`(R-3), EmailSender 없으면 adapter 0개,
+  `Properties toString`·startup 로그(OutputCapture)에 secret 값 없음.
+- R2: `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` -> `BUILD SUCCESSFUL`.
+- 로그 마스킹: `LoggingAutoConfigurationTest` 에 access key/secret 케이스 추가, `./gradlew test architectureTest --offline --no-daemon` -> `BUILD SUCCESSFUL`.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

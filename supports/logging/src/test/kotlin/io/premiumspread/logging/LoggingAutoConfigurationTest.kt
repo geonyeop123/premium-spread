@@ -106,6 +106,15 @@ class LoggingAutoConfigurationTest {
     }
 
     @Test
+    fun `거래소 access key와 secret 값도 마스킹한다`() {
+        val source = "access_key=AK-123 accessKey: AK-456 api_secret=AS-789 secret=S-000 apiKey=K-111 secret_key=SK-222"
+
+        val masked = LogMaskingFilter.mask(source)
+
+        assertThat(masked).doesNotContain("AK-123", "AK-456", "AS-789", "S-000", "K-111", "SK-222")
+    }
+
+    @Test
     fun `Hibernate SQL logger는 local과 test에서만 DEBUG다`() {
         val xml = ClassPathResource("logback-spring.xml").inputStream.bufferedReader().use { it.readText() }
         val common = xml.substringBefore("<springProfile name=\"local\">")
