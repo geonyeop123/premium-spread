@@ -1,0 +1,147 @@
+# 세션 자동 로드 문서 정리 — 설계
+
+- 작업 슬러그: `harness-context-load`
+- 브랜치: `chore/harness-context-load` (base `dev`, 분기점은 구현 시 `git merge-base HEAD origin/dev`로 확정 — [ASSUMPTION] `df15e79`)
+- 작성일: 2026-10-20
+- 성격: 하네스 파일 변경 (문서 + 셸 스크립트). 애플리케이션 코드·Gradle 스크립트는 바꾸지 않는다.
+
+## 1. 배경
+
+매 세션 자동으로 로드되는 문서는 `CLAUDE.md`와 `.claude/rules/*.md`(각각 `.ai/rules/*.md`를 `@import`)다.
+점검 결과 세 문제가 있다.
+
+| # | 문제 | 근거 |
+|---|------|------|
+| P1 | path-scoped 래퍼 `.claude/rules/batch.md`(`paths: apps/batch/**/*.kt`)·`.claude/rules/http.md`(`paths: http/**`, `apps/api/**/interfaces/**/*.kt`)의 조건부 로딩이 무력화돼 있다 | 실측(이 worktree, `claude -p --model haiku`, 도구 금지, 파일 미접촉). 원본 상태 → `# Batch Architecture Rules`·`# HTTP/API Rules` 모두 PRESENT. `batch.md`의 import를 지우고 고유 마커만 남긴 래퍼로 바꾸자 → Batch 본문 ABSENT, 마커 ABSENT(래퍼 자체는 정상 보류), HTTP는 여전히 PRESENT. **결론: path-scoped 래퍼 안의 `@import`는 `paths` 조건과 무관하게 세션 시작 시 즉시 펼쳐진다** |
+| P2 | `CLAUDE.md ## Module Structure` 트리가 실제와 다르다 — `domain/`, `infrastructure/{common,api,batch}`, `architecture-tests/`, `apps/web`이 빠져 있다 | `AGENTS.md ## Module Structure`는 `settings.gradle.kts` include와 일치(③에서 대조 완료). `apps/web`은 Gradle 모듈이 아닌 Next.js 디렉터리로 실재 |
+| P3 | `CLAUDE.md ### 변경 이력` 표(3행, 1,573자)가 매 세션 로드되지만 작업 중 거의 읽히지 않는다 | 하네스를 바꿀 때만 쓰는 기록이다 |
+
+기본 로드량(`CLAUDE.md` + `.ai/rules/{architecture,batch,http,testing,naming,git}.md`)은 약 15.7K자다.
+
+## 2. 목표와 비목표
+
+**목표**
+
+- G1. `batch`·`http` 규칙 본문이 해당 경로를 건드리기 전까지 컨텍스트에 실리지 않는다.
+- G2. `CLAUDE.md`가 모듈 구조를 옮겨 적지 않고 `AGENTS.md`를 가리킨다.
+- G3. 변경 이력을 `docs/harness-changelog.md`로 옮기고, 그 파일의 존재와 표 헤더를 `harnessCheck`가 단정한다.
+
+**비목표**
+
+- `architecture.md`·`testing.md`·`naming.md`·`git.md` 래퍼를 조건부로 바꾸는 것
+- `CLAUDE.md ## Tech Stack` 정리
+- 과거 `docs/work/*` 산출물(동결 기록) 수정
+- orchestrator SKILL.md의 다른 낡은 서술 정리 — §9 "범위 밖 발견"에 기록만 한다
+
+## 3. 결정 1 — path-scoped 래퍼를 Read 안내문으로 바꾼다 (P1)
+
+- 두 래퍼에서 `@import` 행을 지우고 "이 경로를 고치기 전에 `.ai/rules/{batch,http}.md`를 Read로 읽는다"는
+  안내문으로 바꾼다. `paths` frontmatter는 그대로 둔다. 안내문 전문은 plan T4가 소유한다.
+- 정본은 `.ai/rules/`에 그대로 둔다. `AGENTS.md`(Codex)와 공유하는 문서라 래퍼에 내용을 옮겨 적지 않는다.
+- 안내문의 고유 제목(`# Batch 규칙 진입 안내` / `# HTTP 규칙 진입 안내`)은 조건부 발동 실측(dod AC7)의
+  판정 문자열이다. 이 두 문자열은 다른 자동 로드 문서에 나오지 않는다.
+- 안내문의 어떤 행도 `@`로 시작하지 않는다. `@`는 인라인 코드(`` `@` ``)로만 언급한다.
+- **죽은 참조 보호는 유지된다.** `check-harness.sh` 축 1은 `.claude/rules/*.md`를 `check_refs`로 훑고,
+  import 행이 아닌 행에서는 백틱 토큰을 `check_path`로 검사한다. 안내문의 `` `.ai/rules/batch.md` ``는
+  `.ai/` 소유 접두에 걸리므로, 정본이 옮겨가면 지금의 "죽은 import"와 같은 자리에서 "죽은 참조"로 실패한다.
+  `check_import` 주석("본문이 이 한 줄뿐이라…")은 나머지 네 래퍼에 여전히 참이므로 고치지 않는다.
+- 나머지 네 래퍼(`architecture`·`testing`·`naming`·`git`)는 `paths`가 없는 무조건 로드이며 `@import`를 유지한다.
+
+**측정상 주의.** 이 worktree는 베이스 저장소 디렉터리 아래(`.worktrees/`)에 있다. Claude Code는 cwd에서
+상위로 올라가며 `CLAUDE.md`를 읽으므로 worktree 세션에는 베이스 트리의 `CLAUDE.md`도 실릴 수 있다. 베이스의
+`CLAUDE.md`에는 규칙 제목 문자열이 없으므로 AC6 판정에는 영향이 없다. 직전 실측에서 베이스의 `.claude/rules/`는
+실리지 않았다(Batch ABSENT가 나왔으므로). AC6가 예상과 다르게 PRESENT로 나오면 재시도하기 전에 이 경로부터
+의심한다(plan T6 Step 4의 대체 절차). 로드량(AC8)은 세션이 아니라 파일 합산으로 잰다.
+
+## 4. 결정 2 — Module Structure를 포인터로 바꾼다 (P2)
+
+- `CLAUDE.md ## Module Structure`의 펜스 트리를 지우고 한 줄 포인터만 남긴다(전문은 plan T5). `## Module Structure`
+  제목은 유지한다 — 이 제목으로 찾아오는 사람이 포인터를 만나게 하려는 것이다.
+- `tech-docs` 에이전트와 `tech-docs-sync` 스킬의 매핑표·description이 "`AGENTS.md`·`CLAUDE.md` 모듈 트리"를
+  갱신 대상으로 지시한다. 트리가 사라지면 없는 대상을 가리키게 되므로 같은 태스크에서 `AGENTS.md`만 남긴다.
+  **[ASSUMPTION]** 합의된 변경 2의 직접 귀결로 보고 범위에 넣었다. 범위 밖이라고 판단하면 T5 Step 3을 빼면 된다.
+
+## 5. 결정 3 — 변경 이력을 `docs/harness-changelog.md`로 옮긴다 (P3)
+
+### 5.1 새 파일
+
+- 기존 3행을 **글자 그대로** 옮기고(순서 유지, 최신 행이 위), 이번 작업 한 행(2026-10-20)을 맨 위에 추가한다.
+- 표 헤더는 기존과 같다: `| 날짜 | 변경 내용 | 대상 | 사유 |`.
+- `CLAUDE.md ## 하네스` 절은 유지한다(harnessCheck 단정 대상). 진입점 표에 `변경 이력` 행을 추가해 새 파일을 가리킨다.
+
+### 5.2 "한 행을 남긴다" 지시 5곳
+
+| # | 위치 | 갱신 |
+|---|------|------|
+| 1 | `CLAUDE.md:57` 하네스 표 `정합성 검사` 행 — "아래 변경 이력에" | 새 파일 경로로 |
+| 2 | `.claude/skills/orchestrator/SKILL.md:525` ⑪-d | 새 파일 경로로 |
+| 3 | `.claude/skills/orchestrator/SKILL.md:542` 하네스 정합성 절 | 새 파일 경로로 |
+| 4 | `.claude/agents/tech-docs.md:32` | 새 파일 경로로 |
+| 5 | `.claude/skills/tech-docs-sync/SKILL.md:23` | 새 파일 경로로 |
+
+교체 전/후 전문은 plan T1(1번)·T3(2~5번)이 소유한다. 추가로 같은 SKILL.md의 하네스 정합성 절이 `harnessCheck`가
+보는 계약을 나열하는데(537~538행), 새 단정을 그 목록에 넣는다 — **[ASSUMPTION]** 새 단정의 직접 귀결.
+
+### 5.3 게이트 (`docs/check-harness.sh`)
+
+- 축 3에 단정 하나를 추가한다: `docs/harness-changelog.md`가 존재하고 표 헤더 행을 가진다. 기존 `require_section`을
+  그대로 쓴다 — 파일이 없으면 `require_section`이 "필수 파일 부재"를, 헤더가 없으면 "필수 섹션 누락"을 보고한다.
+  정규식·제거 조건 전문은 plan T2.
+- `require_section CLAUDE.md '^## 하네스'`(326~328행)의 주석과 제거 조건이 "변경 이력이 함께 사라진다 / 변경 이력을
+  이전한 뒤"라고 적는다. 이제 이력은 `CLAUDE.md`에 없으므로 "변경 이력 포인터"로 고친다.
+- **변경 이력 파일은 축 1(참조 무결성) 대상에 넣지 않는다 [합의된 결정].** 과거 시점의 경로를 그대로 담는
+  기록이라, 경로를 rename한 뒤 게이트가 소급 실패하면 안 된다. 현재 `check_refs` 대상은 `CLAUDE.md`,
+  `.claude/agents/*.md`, `.claude/rules/*.md`, 비벤더 `SKILL.md`뿐이므로 **코드 변경 없이 성립한다.** 이 의도를
+  스크립트 상단 주석에 한 줄 남기고, 자가검증에 정상 표본("변경 이력의 과거 경로 무시")을 하나 넣어 누군가
+  나중에 이 파일을 `check_refs`에 추가하면 `harnessCheckTest`가 실패하게 한다. **[ASSUMPTION]** 이 정상 표본은
+  합의된 결정을 고정하려고 추가한 것이다.
+
+### 5.4 자가검증 (`docs/test-check-harness.sh`)
+
+- `make_ok`가 헤더와 한 행을 가진 `docs/harness-changelog.md`를 만든다.
+- 케이스 3개를 추가한다 — 정상 1(과거 경로 무시), 위반 2(파일 부재 / 헤더 누락). 기존 24종은 그대로 통과해야 한다.
+- 합계 24 → **27종(정상 6 · 위반 21)**. 이 수치를 새 changelog 행에 적는다.
+
+### 5.5 `docs/check-documentation.sh`와 무관함
+
+이 스크립트는 고정 목록 `authoritative_files`(`AGENTS.md`, `.ai/*` 10개, `docs/runbooks/*` 9개, 계 20개)만 읽고
+glob을 쓰지 않는다. `docs/harness-changelog.md`는 그 목록에 없으므로 placeholder·링크·낡은 서술 검사 어디에도
+걸리지 않는다. `CLAUDE.md:66-67`의 "두 검사는 대상이 겹치지 않는다"는 서술은 그대로 참이다. 이 스크립트는
+고치지 않는다.
+
+## 6. 태스크 순서와 그 이유
+
+T1 변경 이력 이전 → T2 게이트 단정 + 자가검증 → T3 참조 4곳 → T4 래퍼 교체 → T5 모듈 트리 포인터 → T6 전체 검증.
+
+오케스트레이터 제안(T1 게이트 → T2 이전)과 T1·T2가 바뀌었다. 게이트 단정을 먼저 넣으면 그 커밋의 실 트리에는
+`docs/harness-changelog.md`가 없어 `harnessCheck`가 빨갛다 — 커밋마다 `check`가 초록이어야 한다는 규칙
+(`CLAUDE.md` Coding Guidelines 4)에 어긋난다. TDD RED는 픽스처 기반인 `harnessCheckTest`에서 그대로 확보된다
+(T2 Step 1~2). 이 단정은 실 트리와 무관하게 임시 디렉터리에서 검증된다.
+
+## 7. 테스트 전략
+
+| 계층 | 대상 | 수단 |
+|------|------|------|
+| 게이트 자가검증 | 새 단정이 위반을 검출하고 과거 경로를 무시하는가 | `harnessCheckTest` — 새 케이스 3개, RED → GREEN |
+| 실 트리 정합 | 새 파일·참조·래퍼의 백틱 경로가 실재하고 단정이 통과하는가 | `harnessCheck` |
+| 정본 문서 회귀 | 변경이 정본 문서 검사에 영향 없음 | `bash docs/check-documentation.sh` |
+| 문구 단정 | 이력 제거·트리 제거·참조 교체·래퍼에 import 없음 | 단일 `grep -c` 명령과 기대 출력 (dod T2) |
+| 런타임 로딩 | 무조건 로드에서 batch/http 본문이 빠지고, 경로 접촉 시 안내문이 실리는가 | `claude -p --model haiku` 실측 3회 (dod T3, 비결정적) |
+| 로드량 | 변경 전/후 문자 수 | `wc -m` 합산 (dod T2) |
+
+## 8. 리스크
+
+| 항목 | 내용 | 처리 |
+|------|------|------|
+| 안내문을 읽지 않고 고침 | 조건부 로드되는 것은 안내문뿐이라 에이전트가 Read를 건너뛰면 규칙 없이 batch/http를 고칠 수 있다 | 안내문 제목·첫 문장을 명령형으로 둔다. `implementer`·`spec-reviewer`는 이미 `.ai/rules/*`를 참조 대상으로 지시받는다. 효과가 부족하면 ⑪-d 피드백으로 되돌린다 |
+| LLM 자기보고의 비결정성 | AC6·AC7은 모델이 자기 컨텍스트를 보고하는 것이라 오보 가능성이 있다 | 각 3회 실행, 3/3 일치일 때만 PASS. 불일치는 재시도로 덮지 않고 기록 후 보고 |
+| 변경 이력 행 추가 누락 | 게이트는 헤더만 보고 행 추가 여부는 보지 않는다 | 기존과 같은 수준(이전에도 판정하지 않았다). orchestrator 하네스 정합성 절에 그 한계를 명시(T3) |
+| 이력 파일을 나중에 `check_refs`에 넣음 | 과거 경로로 게이트가 소급 실패한다 | 정상 표본 "변경 이력의 과거 경로 무시"가 그 변경을 빨갛게 만든다 |
+
+## 9. 범위 밖 발견 (기록만, 이번에 고치지 않는다)
+
+| 위치 | 내용 |
+|------|------|
+| `.claude/skills/orchestrator/SKILL.md:319` | "이 저장소에는 하네스 자동 게이트가 없으므로" — 2026-09-16 `harnessCheck` 신설 이후 낡았다. 다만 "밀도 표 전달 누락은 게이트가 잡지 않는다"는 결론 자체는 여전히 참이라 문장 수정이 필요하다 |
+| `.claude/skills/tech-docs-sync/SKILL.md:44-45` | "하네스 문서가 가리키는 경로가 실재하는지는 사람이 확인해야 한다" — `harnessCheck` 축 1이 이미 검사한다 |
+| `CLAUDE.md:85` 관련 문서 표 | `docs/work/{slug}/`를 "`feature-workflow` 산출물"로 적는다. 현재 진입 스킬은 `orchestrator`다 |
