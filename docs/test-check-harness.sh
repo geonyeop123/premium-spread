@@ -30,6 +30,14 @@ make_ok() {
   : > "$r/apps/api/build.gradle.kts"
   : > "$r/docs/runbooks/redis-contract.md"
 
+  cat > "$r/docs/harness-changelog.md" <<'FIXTURE'
+# 하네스 변경 이력
+
+| 날짜 | 변경 내용 | 대상 | 사유 |
+|------|----------|------|------|
+| 2026-01-01 | 픽스처 | `docs/runbooks/redis-contract.md` | 테스트 |
+FIXTURE
+
   cat > "$r/CLAUDE.md" <<'FIXTURE'
 # CLAUDE.md
 
@@ -178,6 +186,14 @@ m_external() {  # 이 저장소가 소유하지 않는 경로는 검사하지 �
 }
 run_case "외부 경로 무시" 0 m_external
 
+# 이력 파일은 check_refs 대상이 아니다 — 과거 경로를 담는 기록이라 rename 뒤 소급 실패하면 안 된다.
+# 누가 이 파일을 축 1에 넣으면 이 케이스가 실패한다.
+m_changelog_old_path() {
+  printf '%s\n' '| 2026-01-02 | rename 전 기록 | `apps/renamed-away/build.gradle.kts` | 과거 경로 |' \
+    >> "$1/docs/harness-changelog.md"
+}
+run_case "변경 이력의 과거 경로 무시" 0 m_changelog_old_path
+
 # ── 위반 표본: 축 1 참조 무결성 ─────────────────────────────────────────
 
 m_dead_docs() { printf '\n`docs/runbooks/gone.md` 를 본다.\n' >> "$1/.claude/agents/alpha.md"; }
@@ -240,6 +256,14 @@ expect_output "필수 행 누락(완료 보고)" "호출한 오케스트레이�
 m_no_harness_section() { sed -i '/^## 하네스$/d' "$1/CLAUDE.md"; }
 run_case "필수 섹션 누락(CLAUDE 하네스)" 1 m_no_harness_section
 expect_output "필수 섹션 누락(CLAUDE 하네스)" "^## 하네스"
+
+m_no_changelog() { rm -f "$1/docs/harness-changelog.md"; }
+run_case "필수 파일 부재(변경 이력)" 1 m_no_changelog
+expect_output "필수 파일 부재(변경 이력)" "docs/harness-changelog.md: 필수 파일 부재"
+
+m_no_changelog_header() { sed -i '/^| 날짜 | 변경 내용 | 대상 | 사유 |$/d' "$1/docs/harness-changelog.md"; }
+run_case "필수 섹션 누락(변경 이력 헤더)" 1 m_no_changelog_header
+expect_output "필수 섹션 누락(변경 이력 헤더)" '^\| 날짜 \| 변경 내용 \| 대상 \| 사유 \|'
 
 m_no_stage0() { sed -i '/^## ⓪ 컨텍스트 확인/d' "$1/.claude/skills/orchestrator/SKILL.md"; }
 run_case "필수 섹션 누락(⓪)" 1 m_no_stage0
