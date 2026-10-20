@@ -19,7 +19,7 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, Testcontainers(MySQL).
 
 - 판정: `netPercent ≥ 1.00` (호가 기준). 재무장: `netPercent < 0.90`. 재발송 간격: 60분. 중단 판정: 마지막 계산 성공 후 5분 초과.
 - 청산가: 빗썸 매수호가·바이낸스 매도호가 깊이를 각 leg 수량만큼 소화한 VWAP. 깊이 부족이면 계산 실패(`INSUFFICIENT_DEPTH`).
-- 시세 신선도: 판정 호가(빗썸 bid, 바이낸스 ask) 관측이 10초 초과면 실패.
+- 시세 신선도: 판정 호가(빗썸 bid, 바이낸스 ask) 관측이 10초 초과이거나 두 호가 관측 시각 차이가 5초 초과면 실패(`STALE_MARKET_DATA`).
 - 모든 조회·해석·신선도·계산 실패는 `AccountReadFailureCategory` 로 정규화해 중단 정책에 입력한다(미분류 = `UNEXPECTED`). 저장소 실패만 `JobResult.Failure`.
 - outbox: SMTP 전 `PROCESSING` claim commit, claim token fencing, stale `PROCESSING` 5분 → `PENDING`, 최대 5회 시도 후 `FAILED`(redrive 없음). 환율 신선도: `FX_INGESTION` 마지막 성공 후 2시간 초과면 실패.
 - 순손익 공식은 design §3 그대로. `netPercent` 분모 = 빗썸 청산가(bid) × 빗썸 수량. 표시 반올림: % 소수 둘째 자리 HALF_UP, 금액 원 단위 HALF_UP. 계산 중에는 반올림하지 않는다.
@@ -37,7 +37,7 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, Testcontainers(MySQL).
 
 1. **로컬 PC 시계 오차** — 신선도는 거래소 응답 timestamp 와 `clock.instant()` 의 차이다. WSL 시계가 수 초 밀리면 매 회차가 실패한다. 미래 timestamp(음수 나이)는 신선으로 보고, 바이낸스 `recvWindow` 는 10000ms. → Task 10 테스트 `미래 시각 호가는 신선으로 본다`.
 2. **빗썸 잠긴 수량** — 매도 주문을 걸어 두면 `balance` 가 줄고 `locked` 가 는다. 수량 = balance + locked. → Task 8 테스트.
-3. **에피소드 중 포지션 교체** — 한 시간 안에 청산 후 새로 진입하면(1분 사이 flat 을 관측 못 할 수 있다) 이전 에피소드의 재발송 타이머가 새 포지션에 붙는다. 바이낸스 진입가·수량이 바뀌면 새 포지션으로 보고 에피소드를 초기화한다. → Task 4 테스트.
+3. **에피소드 중 포지션 교체** — 한 시간 안에 청산 후 새로 진입하면(1분 사이 flat 을 관측 못 할 수 있다) 이전 에피소드의 재발송 타이머가 새 포지션에 붙는다. 어느 leg 든 수량·평단(진입가)이 바뀌면 새 포지션으로 보고 에피소드를 초기화한다. → Task 4 테스트.
 4. **SMTP 실패** — 발송 실패한 메일은 다음 회차에 재시도되고, 재발송 타이머는 발송 결정 시각 기준이라 SMTP 장애가 1시간 재발송을 앞당기거나 늦추지 않는다. → Task 10 테스트.
 5. **청산 후 dust** — 전량 매도 후 빗썸에 0.00001 BTC 같은 잔량이 남으면 포지션이 열려 있는 것으로 보면 안 된다. 빗썸 수량 `< 0.0001` BTC 는 0 으로 본다(내 판단, design §2 dust 위임). → Task 2 테스트.
 
@@ -141,7 +141,7 @@ fun interface ForeignPerpAccountReadPort { fun read(): ForeignPerpAccountSnapsho
 data class AccountHedgePosition(val korea: KoreaSpotAccountSnapshot, val foreign: ForeignPerpAccountSnapshot) {
     val koreaQuantity: BigDecimal          // korea.quantity
     val foreignQuantity: BigDecimal        // foreign.signedQuantity.abs()
-    val fingerprint: String                // "${foreign.signedQuantity.toPlainString()}|${foreign.entryPrice.toPlainString()}"
+    val fingerprint: String                // "${korea.quantity.stripTrailingZeros().toPlainString()}|${korea.averageBuyPrice.stripTrailingZeros().toPlainString()}|${foreign.signedQuantity.stripTrailingZeros().toPlainString()}|${foreign.entryPrice.stripTrailingZeros().toPlainString()}"
     companion object {
         val KOREA_DUST: BigDecimal = BigDecimal("0.0001")
         fun resolve(korea: KoreaSpotAccountSnapshot, foreign: ForeignPerpAccountSnapshot): AccountHedgePosition?  // null = 포지션 없음
@@ -155,7 +155,7 @@ data class AccountHedgePosition(val korea: KoreaSpotAccountSnapshot, val foreign
   - `바이낸스 수량 0 이면 포지션 없음`
   - `바이낸스 롱이면 포지션 없음` (signedQuantity = 0.266)
   - `빗썸 0.266 과 바이낸스 -0.265 이면 각 leg 수량을 보존한다` → koreaQuantity 0.266, foreignQuantity 0.265
-  - `fingerprint 는 바이낸스 수량과 진입가로 정해진다`
+  - `fingerprint 는 양 leg 수량과 평단·진입가로 정해지고 빗썸 평단만 바뀌어도 달라진다`
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountHedgePositionTest' --offline --no-daemon` → assertion 실패(RED). dod 증거 로그 AC2 에 붙인다.
 - [ ] **Step 3:** 구현. 롱이면 경고 로그는 Domain 에서 남기지 않는다(Job 이 null 사유를 로그) — `resolve` 는 순수.
 - [ ] **Step 4:** 같은 명령 → PASS. 증거 로그 GREEN.
@@ -224,7 +224,7 @@ object PnlAlertPolicy {
 
 규칙: 비에피소드 & ≥1.00 → send, 에피소드 시작(lastSentAt=now, fingerprint 기록). 에피소드 & fingerprint 변경 → 에피소드 종료 후 같은 회차를 비에피소드로 다시 판정. 에피소드 & <0.90 → 종료(send=false). 에피소드 & ≥1.00 & `now − lastSentAt ≥ 60분` → send, lastSentAt=now. 에피소드 & 0.90 ≤ x < 1.00 → 유지, send=false. NoPosition → INITIAL, send=false. Failed → 상태 불변, send=false.
 
-- [ ] **Step 1: 실패 테스트** — dod AC3 의 각 경계 하나씩: `0.99에서 1.00으로 오르면 즉시 발송`, `에피소드 중 59분59초에는 재발송하지 않는다`, `에피소드 중 60분에 재발송한다`, `0.95에서는 60분이 지나도 재발송하지 않는다`, `0.89로 내려간 뒤 1.00이면 즉시 발송`, `0.90에서는 재무장하지 않는다`, `포지션 없음이면 초기화`, `계산 실패는 상태를 바꾸지 않는다`, `에피소드 중 포지션 fingerprint 가 바뀌면 새 에피소드로 즉시 발송` (Review Focus 3).
+- [ ] **Step 1: 실패 테스트** — dod AC3 의 각 경계 하나씩: `0.99에서 1.00으로 오르면 즉시 발송`, `에피소드 중 59분59초에는 재발송하지 않는다`, `에피소드 중 60분에 재발송한다`, `0.95에서는 60분이 지나도 재발송하지 않는다`, `0.89로 내려간 뒤 1.00이면 즉시 발송`, `0.90에서는 재무장하지 않는다`, `포지션 없음이면 초기화`, `계산 실패는 상태를 바꾸지 않는다`, `에피소드 중 바이낸스 쪽이 바뀌어 fingerprint 가 바뀌면 새 에피소드로 즉시 발송`, `에피소드 중 빗썸 쪽만 바뀌어도 새 에피소드로 즉시 발송` (Review Focus 3).
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.PnlAlertPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC3.
 - [ ] **Step 3:** 구현. **Step 4:** PASS, 증거 로그. **Step 5: Commit** — `feat: 순수익률 알림 정책 추가`
 
@@ -353,9 +353,9 @@ class AccountPnlMonitorJob(
 ) { fun run(): JobResult }
 ```
 
-순서 (executor 안): `store.recoverStale(now, 5분)` → load → **관측 단계**[조회(korea·foreign) → 신선도(호가 나이 = `now − observedAt`, 음수는 0 으로 봄, >10초면 `STALE_MARKET_DATA`; `findLastSuccess(FX_INGESTION)` 이 null 이거나 `now − 그 값 > 2시간`이면 `STALE_FX`; `fx.findLatest(USD, KRW)` null 도 `STALE_FX`) → resolve → calculate] → 두 정책 → 메일 생성 → `store.save(load 한 version, ...)` (false 면 `JobResult.Skipped("state-version-conflict")`) → `store.claim(owner = "account-pnl-monitor:" + UUID(인스턴스당 1회), 10, now)` 각각 send, 성공 `markSent`, 예외 `markAttemptFailed` 후 다음 메일 계속. **관측 단계의 모든 예외**는 `AccountReadException` 이면 그 범주, 아니면 `UNEXPECTED` 로 정책의 실패 입력이 되고(스택은 warn 로그, 메시지에 secret 없음) Job 결과는 `Success` (매분 CRITICAL operator alert 를 막는다). store 예외만 `Failure` → 기존 `OperatorAlert`. 포지션 null 사유(롱 등)는 info 로그.
+순서 (executor 안): `store.recoverStale(now, 5분)` → load → **관측 단계**[조회(korea·foreign) → 신선도(호가 나이 = `now − observedAt`, 음수는 0 으로 봄, >10초면 `STALE_MARKET_DATA`; `|koreaBidObservedAt − foreignAskObservedAt| > 5초`도 `STALE_MARKET_DATA`; `findLastSuccess(FX_INGESTION)` 이 null 이거나 `now − 그 값 > 2시간`이면 `STALE_FX`; `fx.findLatest(USD, KRW)` null 도 `STALE_FX`) → resolve → calculate] → 두 정책 → 메일 생성 → `store.save(load 한 version, ...)` (false 면 `JobResult.Skipped("state-version-conflict")`) → `store.claim(owner = "account-pnl-monitor:" + UUID(인스턴스당 1회), 10, now)` 각각 send, 성공 `markSent`, 예외 `markAttemptFailed` 후 다음 메일 계속. **관측 단계의 모든 예외**는 `AccountReadException` 이면 그 범주, 아니면 `UNEXPECTED` 로 정책의 실패 입력이 되고(스택은 warn 로그, 메시지에 secret 없음) Job 결과는 `Success` (매분 CRITICAL operator alert 를 막는다). store 예외만 `Failure` → 기존 `OperatorAlert`. 포지션 null 사유(롱 등)는 info 로그.
 
-- [ ] **Step 1: 실패 테스트** (fake port, 고정 Clock, `JobExecutor` 는 기존 테스트의 fake lock 패턴): `1% 이상이면 메일 1건을 저장하고 보낸다`, `호가가 10초 넘게 오래되면 계산 실패로 보고 수익 메일을 만들지 않는다`, `미래 시각 호가는 신선으로 본다`(Review Focus 1), `환율 수집 마지막 성공이 2시간을 넘으면 STALE_FX`, `환율 값이 오래돼도 수집 성공이 2시간 이내면 계산한다`, `SMTP 실패 메일은 PENDING 으로 남고 다음 회차에 다시 보낸다`, `SMTP 실패가 재발송 타이머를 바꾸지 않는다`(Review Focus 4), `조회 실패는 Job 실패가 아니다`, `분류되지 않은 예외는 UNEXPECTED 로 중단 정책에 들어간다`, `호가 깊이 부족은 INSUFFICIENT_DEPTH 로 중단 정책에 들어간다`, `상태 version 충돌이면 메일을 보내지 않고 Skipped`, `store 예외는 Failure`.
+- [ ] **Step 1: 실패 테스트** (fake port, 고정 Clock, `JobExecutor` 는 기존 테스트의 fake lock 패턴): `1% 이상이면 메일 1건을 저장하고 보낸다`, `호가가 10초 넘게 오래되면 계산 실패로 보고 수익 메일을 만들지 않는다`, `미래 시각 호가는 신선으로 본다`(Review Focus 1), `두 호가 시각 차이 5초는 계산하고 5초 1밀리초는 STALE_MARKET_DATA`, `환율 수집 마지막 성공이 2시간을 넘으면 STALE_FX`, `환율 값이 오래돼도 수집 성공이 2시간 이내면 계산한다`, `SMTP 실패 메일은 PENDING 으로 남고 다음 회차에 다시 보낸다`, `SMTP 실패가 재발송 타이머를 바꾸지 않는다`(Review Focus 4), `조회 실패는 Job 실패가 아니다`, `분류되지 않은 예외는 UNEXPECTED 로 중단 정책에 들어간다`, `호가 깊이 부족은 INSUFFICIENT_DEPTH 로 중단 정책에 들어간다`, `상태 version 충돌이면 메일을 보내지 않고 Skipped`, `store 예외는 Failure`.
 - [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest' --offline --no-daemon` → RED. 증거 로그 AC5.
 - [ ] **Step 3–4:** 구현, PASS. **Step 5: Commit** — `feat: 실계정 순손익 모니터링 Job 추가`
 
