@@ -1,6 +1,6 @@
 ---
 name: tech-docs-sync
-description: "기술 문서 동기화 스킬. 코드 변경 유형별로 갱신할 문서(.ai/PROJECT_STATUS·ARCHITECTURE_DESIGN·runbooks·http 샘플·AGENTS/CLAUDE 모듈 트리)를 매핑하고 최소 변경 원칙과 검사 명령을 가이드한다. 구현 후 문서 동기화, PR 전 문서 확인, 문서 갱신 요청 시 반드시 이 스킬을 사용할 것."
+description: "기술 문서 동기화 스킬. 코드 변경 유형별로 갱신할 문서(.ai/PROJECT_STATUS·ARCHITECTURE_DESIGN·runbooks·http 샘플·AGENTS 모듈 트리)를 매핑하고 최소 변경 원칙과 검사 명령을 가이드한다. 구현 후 문서 동기화, PR 전 문서 확인, 문서 갱신 요청 시 반드시 이 스킬을 사용할 것."
 ---
 
 # 기술 문서 동기화
@@ -9,7 +9,7 @@ description: "기술 문서 동기화 스킬. 코드 변경 유형별로 갱신�
 
 | 코드/설정 변경 | 갱신 대상 |
 |---------------|----------|
-| 모듈 구성·경계 변경 | `.ai/architecture/ARCHITECTURE_DESIGN.md`, `AGENTS.md`·`CLAUDE.md`의 모듈 트리 |
+| 모듈 구성·경계 변경 | `.ai/architecture/ARCHITECTURE_DESIGN.md`, `AGENTS.md`의 모듈 트리 (`CLAUDE.md`는 포인터만 둔다) |
 | 아키텍처 규칙 자체가 바뀜 | `.ai/rules/{architecture,batch,http,naming,testing,git}.md` (정본) |
 | endpoint 추가·변경 | `http/api/{domain}.http` + contract/integration 테스트 |
 | 공개 endpoint 목록 변경 | `docs/runbooks/auth-security.md` + management endpoint contract test |

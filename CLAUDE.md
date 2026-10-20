@@ -10,20 +10,7 @@
 
 ## Module Structure
 
-```
-apps/
-├── api/          # REST API 서버 (Port 8080)
-└── batch/        # 배치 스케줄러 (Port 8081, WebSocket 실시간 시세 수집 + FX 30분 수집 + 1분/1시간/1일 집계)
-
-modules/
-├── jpa/          # JPA 공통 설정, BaseEntity
-└── redis/        # Redis, Redisson 분산 락
-
-supports/
-├── logging/      # 구조화 로깅, 민감정보 마스킹
-├── monitoring/   # Micrometer 메트릭, 헬스체크
-└── email/        # JavaMail 기반 이메일 발송 (이슈 #27)
-```
+모듈 구조는 `AGENTS.md`의 `## Module Structure`가 정본이다. 여기에 옮겨 적지 않는다 — 옮겨 적으면 두 곳이 갈린다.
 
 ## Quick Commands
 
