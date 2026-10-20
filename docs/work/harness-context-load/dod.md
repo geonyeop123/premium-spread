@@ -176,6 +176,19 @@ cat CLAUDE.md .ai/rules/architecture.md .ai/rules/testing.md .ai/rules/naming.md
 
 > 구현 중 append only. 실행 위치는 worktree `.worktrees/chore-harness-context-load` (branch `chore/harness-context-load`).
 
+### 2026-10-20 ⑩ (qa-agent 실행 SHA f312fcd · 개정 AC6·AC7 재판정 SHA d4f1042)
+
+- 이 환경 셸의 `grep` 은 ugrep 래퍼 함수(CRLF 흡수)라 모든 grep 판정은 `/usr/bin/grep`(GNU 3.11)으로 실행했다. 래퍼 함수로 돌린 이전 AC4 확인은 거짓 green 이었다(⑨ blocker, `f312fcd` 로 해소).
+- AC1: `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` exit 0, `하네스 검사 통과: 파일 22개`, C1·C2·C3 `ok`, `== 모든 케이스 통과 ==`. `/usr/bin/grep -c '^run_case ' docs/test-check-harness.sh` → `27`.
+- AC2: `0` / `3` / `4` / `| 2026-10-20 | 세션 자동 로드 문서 정리 — …`.
+- AC3: `CLAUDE.md:3` · `orchestrator/SKILL.md:3` · `tech-docs.md:1` · `tech-docs-sync/SKILL.md:1`, 금지 문구 grep 출력 없음(exit 1).
+- AC4: `^@` 0/0, 안내문 제목 1/1, `paths` 원본 일치.
+- AC5: `0` / `1` / `1`, tech-docs 2개 파일 `:0`.
+- AC6(개정, T2): `probe-rule-load.sh none` → `none instructions=['testing'] nested_memory=[]`. 대조(분기점 `df15e79`, `/tmp` detached worktree) → `none instructions=['batch', 'http', 'testing'] nested_memory=[]`. 개정 전 자기보고 3회도 5줄 모두 기대값(보조 증거).
+- AC7(개정, T2): `probe-rule-load.sh batch` → `nested_memory=['batch']`, `probe-rule-load.sh http` → `nested_memory=['http']`. 개정 전 자기보고는 batch 3/3·http 1/3(기본), batch 2/3·http 2/3(`/tmp`) — 미인용 회차도 "Read 결과에 안내문이 붙어 있었다"고 보고(보조 증거).
+- AC8: `LC_ALL=C.UTF-8 wc -m` before=15687 · after=9752 (−5,935자, −38%).
+- 회귀 방어선: `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)`; 무조건 로드 래퍼 4종 `@import` 유지; 변경 파일은 9개 + slug 산출물; 커밋 본문 `Co-Authored-By` 0.
+
 ## 사람 확인 (T4)
 
 | # | 확인 사항 | 확인자 | 날짜 | 앵커 |
@@ -191,4 +204,15 @@ cat CLAUDE.md .ai/rules/architecture.md .ai/rules/testing.md .ai/rules/naming.md
 
 ## 최종 판정
 
-> ⑩에서 기록한다.
+| AC | 판정 | 티어 |
+|---|---|---|
+| AC1 | PASS | T1 |
+| AC2 | PASS | T2 |
+| AC3 | PASS | T2 |
+| AC4 | PASS | T2 |
+| AC5 | PASS | T2 |
+| AC6 | PASS | T2 (개정) |
+| AC7 | PASS | T2 (개정) |
+| AC8 | PASS | T2 |
+
+**판정: PASS (8/8)** · `AWAITING_HUMAN` 없음 · 기준 SHA `d4f1042` — 이후 커밋으로 SHA 가 바뀌면 AC1 은 CI 결과로 재확인한다.
