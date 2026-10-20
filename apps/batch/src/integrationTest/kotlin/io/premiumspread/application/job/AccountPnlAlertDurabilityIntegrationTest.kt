@@ -36,6 +36,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -119,6 +120,9 @@ class AccountPnlAlertDurabilityIntegrationTest : BatchIntegrationTestBase() {
     fun `두 인스턴스가 같은 시각에 동시에 돌아도 메일 row 와 발송은 한 번이다`() {
         korea.bid = BID_1_20
         val jobs = listOf(newJob(), newJob())
+        // 두 Job 이 모두 load() 를 마치고(version 0) 관측에 들어온 뒤에야 save 로 넘어가게 한다
+        val barrier = CyclicBarrier(2)
+        korea.onRead = { barrier.await(30, TimeUnit.SECONDS) }
         val pool = Executors.newFixedThreadPool(2)
         try {
             val start = CountDownLatch(1)
@@ -131,12 +135,15 @@ class AccountPnlAlertDurabilityIntegrationTest : BatchIntegrationTestBase() {
             start.countDown()
             val results = futures.map { it.get(60, TimeUnit.SECONDS) }
 
-            assertThat(results).noneMatch { it is JobResult.Failure }
-            assertThat(results).allMatch { it == JobResult.Success || it is JobResult.Skipped }
+            assertThat(results).containsExactlyInAnyOrder(
+                JobResult.Success,
+                JobResult.Skipped("state-version-conflict"),
+            )
             assertThat(mailCount()).isEqualTo(1)
             assertThat(sender.sent).hasSize(1)
             assertThat(statuses()).containsExactly("SENT")
         } finally {
+            korea.onRead = {}
             pool.shutdownNow()
             assertThat(pool.awaitTermination(10, TimeUnit.SECONDS)).isTrue()
         }
@@ -194,7 +201,15 @@ class AccountPnlAlertDurabilityIntegrationTest : BatchIntegrationTestBase() {
     class FakeKorea(private val clock: Clock) : KoreaSpotAccountReadPort {
         @Volatile var bid: BigDecimal = BigDecimal("102000000")
 
-        override fun read() = KoreaSpotAccountSnapshot(
+        /** `load()` 뒤에 불리는 조회 지점이다. 동시 실행 테스트가 두 Job 이 같은 version 을 쥐도록 겹침을 강제한다. */
+        @Volatile var onRead: () -> Unit = {}
+
+        override fun read(): KoreaSpotAccountSnapshot {
+            onRead()
+            return snapshot()
+        }
+
+        private fun snapshot() = KoreaSpotAccountSnapshot(
             quantity = BigDecimal("0.01"),
             averageBuyPrice = BigDecimal("100000000"),
             averageBuyPriceModified = false,
