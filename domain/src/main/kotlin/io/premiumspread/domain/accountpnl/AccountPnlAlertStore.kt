@@ -37,7 +37,10 @@ interface AccountPnlAlertStore {
     /** 시도 횟수 +1. [MAX_ATTEMPTS] 에 도달하면 `FAILED`, 아니면 `PENDING`. token 불일치면 false. */
     fun markAttemptFailed(id: Long, claimToken: String, now: Instant): Boolean
 
-    /** `locked_at < now − staleAfter` 인 `PROCESSING` 을 `PENDING` 으로 되돌리고 token 을 지운다. 복구 건수. */
+    /**
+     * `locked_at < now − staleAfter` 인 `PROCESSING` 의 token 을 지우고 한 번의 시도로 센다(attempt+1).
+     * [MAX_ATTEMPTS] 에 도달하면 `FAILED`, 아니면 `PENDING`. 반환값은 전이한 행 수(두 경우 모두 포함).
+     */
     fun recoverStale(now: Instant, staleAfter: Duration): Int
 
     companion object {

@@ -125,7 +125,7 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
     }
 
     @Test
-    fun `동시에 두 claim 해도 한 행은 한쪽만 잡는다`() {
+    fun `두 claim 이 같은 행을 중복으로 잡지 않는다`() {
         store.save(0, STATE, listOf(mail("only")))
         val barrier = CyclicBarrier(2)
         val executor = Executors.newFixedThreadPool(2)
@@ -303,7 +303,7 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
             "SELECT status, attempt_count, claim_token, locked_by, locked_at FROM account_pnl_mail",
         )
         assertThat(recovered["status"]).isEqualTo("PENDING")
-        assertThat(recovered["attempt_count"]).isEqualTo(0)
+        assertThat(recovered["attempt_count"]).isEqualTo(1)
         assertThat(recovered["claim_token"]).isNull()
         assertThat(recovered["locked_by"]).isNull()
         assertThat(recovered["locked_at"]).isNull()
@@ -314,6 +314,43 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
         assertThat(store.markSent(stale.id, stale.claimToken, NOW.plusSeconds(401))).isFalse()
         assertThat(store.markAttemptFailed(stale.id, stale.claimToken, NOW.plusSeconds(401))).isFalse()
         assertThat(store.markSent(current.id, current.claimToken, NOW.plusSeconds(402))).isTrue()
+    }
+
+    @Test
+    fun `5번째 시도가 stale 로 끝나면 FAILED 이고 다시 claim 되지 않는다`() {
+        store.save(0, STATE, listOf(mail("stale-last")))
+        repeat(AccountPnlAlertStore.MAX_ATTEMPTS - 1) {
+            val claimed = store.claim("worker", 10, NOW).single()
+            assertThat(store.markAttemptFailed(claimed.id, claimed.claimToken, NOW)).isTrue()
+        }
+        assertThat(attemptCountOf("stale-last")).isEqualTo(4)
+        val last = store.claim("crashed-worker", 10, NOW).single()
+        assertThat(last.attemptCount).isEqualTo(4)
+
+        assertThat(store.recoverStale(NOW.plus(STALE_AFTER).plusSeconds(1), STALE_AFTER)).isEqualTo(1)
+
+        val failed = jdbcTemplate.queryForMap(
+            "SELECT status, attempt_count, claim_token, locked_by, locked_at FROM account_pnl_mail",
+        )
+        assertThat(failed["status"]).isEqualTo("FAILED")
+        assertThat(failed["attempt_count"]).isEqualTo(5)
+        assertThat(failed["claim_token"]).isNull()
+        assertThat(failed["locked_by"]).isNull()
+        assertThat(failed["locked_at"]).isNull()
+        assertThat(store.claim("worker", 10, NOW.plusSeconds(400))).isEmpty()
+        assertThat(store.markSent(last.id, last.claimToken, NOW.plusSeconds(401))).isFalse()
+        assertThat(statusOf("stale-last")).isEqualTo("FAILED")
+    }
+
+    @Test
+    fun `body 가 TEXT 한도를 넘으면 저장하지 않는다`() {
+        val oversized = AccountPnlMail("too-big", "subject", "가".repeat(65_535 / 3 + 1))
+
+        assertThatThrownBy { store.save(0, STATE, listOf(oversized)) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThat(store.load().version).isZero()
+        assertThat(mailRows()).isEmpty()
+        assertThat(store.save(0, STATE, listOf(AccountPnlMail("fits", "subject", "가".repeat(65_535 / 3))))).isTrue()
     }
 
     private fun mail(eventKey: String) = AccountPnlMail(eventKey, "subject $eventKey", "body $eventKey")

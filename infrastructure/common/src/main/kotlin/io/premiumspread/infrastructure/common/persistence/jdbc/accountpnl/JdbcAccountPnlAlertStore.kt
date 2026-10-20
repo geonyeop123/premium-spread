@@ -122,18 +122,22 @@ class JdbcAccountPnlAlertStore(
             claimToken,
         ) == 1
 
+    /** stale claim 도 한 번의 시도로 센다 — 발송 중 반복 crash 가 무한 재시도가 되지 않도록 (design §4.4). */
     override fun recoverStale(now: Instant, staleAfter: Duration): Int {
         require(!staleAfter.isNegative) { "staleAfter must not be negative." }
+        // markAttemptFailed 와 같이 status 를 attempt_count 증가보다 먼저 계산한다.
         return jdbcTemplate.update(
             """
             UPDATE account_pnl_mail
-            SET status = 'PENDING',
+            SET status = CASE WHEN attempt_count + 1 >= ? THEN 'FAILED' ELSE 'PENDING' END,
+                attempt_count = attempt_count + 1,
                 claim_token = NULL,
                 locked_by = NULL,
                 locked_at = NULL
             WHERE status = 'PROCESSING'
               AND locked_at < ?
             """.trimIndent(),
+            AccountPnlAlertStore.MAX_ATTEMPTS,
             now.minus(staleAfter).toSqlTimestamp(),
         )
     }
@@ -204,6 +208,9 @@ class JdbcAccountPnlAlertStore(
             "eventKey must be at most $MAX_EVENT_KEY_LENGTH characters."
         }
         require(mail.subject.length <= MAX_SUBJECT_LENGTH) { "subject must be at most $MAX_SUBJECT_LENGTH characters." }
+        require(mail.body.toByteArray(Charsets.UTF_8).size <= MAX_BODY_BYTES) {
+            "body must be at most $MAX_BODY_BYTES bytes in UTF-8."
+        }
     }
 
     private fun PendingMail.claimBy(owner: String, now: Instant): ClaimedAccountPnlMail {
@@ -262,5 +269,6 @@ class JdbcAccountPnlAlertStore(
         const val MAX_OWNER_LENGTH = 64
         const val MAX_EVENT_KEY_LENGTH = 128
         const val MAX_SUBJECT_LENGTH = 255
+        const val MAX_BODY_BYTES = 65_535 // MySQL TEXT
     }
 }
