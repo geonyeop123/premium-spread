@@ -323,6 +323,13 @@ GREEN $ 같은 명령 (구현 후)
 - 전체 `./gradlew architectureTest --offline --no-daemon` BUILD SUCCESSFUL (R1).
 - 주의: dod AC10 명령의 루트 `architectureTest` 는 `--tests` 옵션이 없다 — `:architecture-tests:architectureTest` 로 실행해야 한다.
 
+### Task 14 — 회귀 (R1·R4·R7)
+
+- `./gradlew test architectureTest --offline --no-daemon` -> exit 0 (R1·R4).
+- `./gradlew harnessCheck --offline --no-daemon` -> exit 0 (R7).
+- `bash docs/check-documentation.sh` -> exit 0 (`documentation check passed (20 files, 15 required paths)`).
+- runbook `docs/runbooks/account-pnl-alert.md` 추가. AC13 은 owner 가 체크리스트대로 검산하고 PR 코멘트로 남긴다.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
