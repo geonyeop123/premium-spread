@@ -21,6 +21,7 @@ import io.premiumspread.domain.accountpnl.MonitoringOutagePolicy
 import io.premiumspread.domain.accountpnl.OutageNotice
 import io.premiumspread.domain.accountpnl.PnlAlertPolicy
 import io.premiumspread.domain.accountpnl.PnlObservation
+import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
@@ -31,6 +32,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -83,6 +85,12 @@ class AccountPnlMonitorJob(
         val mails = buildMails(observed.observation, alert.send, outage.notice, now)
         val next = AccountPnlMonitorState(alert.next, outage.next, loaded.version)
 
+        // JobExecutor 가 timeout·lock 상실로 취소했으면 이 회차의 관측을 쓰지 않는다
+        if (Thread.currentThread().isInterrupted) {
+            log.warn("Account PnL monitor was cancelled before saving state")
+            return JobResult.Skipped(CANCELLED)
+        }
+
         val saved = try {
             store.save(loaded.version, next, mails)
         } catch (exception: Exception) {
@@ -93,7 +101,7 @@ class AccountPnlMonitorJob(
             return JobResult.Skipped(VERSION_CONFLICT)
         }
 
-        return deliver(now)
+        return deliver()
     }
 
     // ---- 관측 ----
@@ -114,12 +122,15 @@ class AccountPnlMonitorJob(
             val pnl = AccountNetPnl.calculate(position, fxSnapshot.rate, fxSnapshot.observedAt, now)
             Observed(PnlObservation.Computed(pnl), null)
         }
-    } catch (exception: AccountReadException) {
-        log.warn("Account PnL observation failed: category={}", exception.category, exception)
-        Observed(PnlObservation.Failed, exception.category)
     } catch (exception: Exception) {
-        log.warn("Account PnL observation failed: category={}", AccountReadFailureCategory.UNEXPECTED, exception)
-        Observed(PnlObservation.Failed, AccountReadFailureCategory.UNEXPECTED)
+        if (exception.isCancellation()) {
+            // 취소를 실패 범주로 삼키면 취소된 회차가 저장·발송까지 진행한다 (adapter 가 감싼 경우 포함)
+            Thread.currentThread().interrupt()
+            throw exception
+        }
+        val category = (exception as? AccountReadException)?.category ?: AccountReadFailureCategory.UNEXPECTED
+        log.warn("Account PnL observation failed: category={}", category, exception)
+        Observed(PnlObservation.Failed, category)
     }
 
     private fun checkMarketFreshness(
@@ -146,7 +157,7 @@ class AccountPnlMonitorJob(
     }
 
     /** 값의 나이가 아니라 수집이 마지막으로 성공한 시각으로 판정한다 (주말엔 원천 값이 바뀌지 않는다). */
-    private fun checkFxFreshness(now: Instant) = run {
+    private fun checkFxFreshness(now: Instant): ExchangeRateSnapshot {
         val reference = lastSuccess.findLastSuccess(JobId.FX_INGESTION) ?: checkNotNull(firstRunAt.get())
         if (Duration.between(reference, now) > MAX_FX_INGESTION_GAP) {
             throw AccountReadException(
@@ -154,7 +165,7 @@ class AccountPnlMonitorJob(
                 "fx ingestion has not succeeded since $reference",
             )
         }
-        fx.findLatest(Currency.USD, Currency.KRW)
+        return fx.findLatest(Currency.USD, Currency.KRW)
             ?: throw AccountReadException(AccountReadFailureCategory.STALE_FX, "no USD/KRW rate is available")
     }
 
@@ -185,9 +196,9 @@ class AccountPnlMonitorJob(
         }
     }
 
-    private fun deliver(now: Instant): JobResult {
+    private fun deliver(): JobResult {
         val claimed = try {
-            store.claim(owner, CLAIM_LIMIT, now)
+            store.claim(owner, CLAIM_LIMIT, clock.instant())
         } catch (exception: Exception) {
             return storeFailure("claim", exception)
         }
@@ -231,5 +242,13 @@ class AccountPnlMonitorJob(
         val STALE_CLAIM_AFTER: Duration = Duration.ofMinutes(5)
         const val CLAIM_LIMIT = 10
         const val VERSION_CONFLICT = "state-version-conflict"
+        const val CANCELLED = "cancelled"
     }
 }
+
+private fun Throwable.isCancellation(): Boolean =
+    generateSequence(this) { current -> current.cause?.takeUnless { it === current } }
+        .take(MAX_CAUSE_DEPTH)
+        .any { it is InterruptedException || it is CancellationException }
+
+private const val MAX_CAUSE_DEPTH = 16

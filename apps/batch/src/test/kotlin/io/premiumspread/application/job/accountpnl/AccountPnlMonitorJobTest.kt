@@ -418,6 +418,100 @@ class AccountPnlMonitorJobTest {
         assertThat(job.run()).isEqualTo(JobResult.Success)
     }
 
+    @Test
+    fun `JobId tag 는 다른 작업과 같은 snake_case 다`() {
+        assertThat(JobId.ACCOUNT_PNL_MONITOR.tag).isEqualTo("account_pnl_monitor")
+    }
+
+    @Test
+    fun `claim 은 발송 직전 시각으로 한다`() {
+        korea.onRead = { clock.advance(Duration.ofSeconds(3)) }
+
+        job.run()
+
+        assertThat(store.claimTimes).containsExactly(t0.plusSeconds(3))
+    }
+
+    // ---- 재시작·취소 ----
+
+    @Test
+    fun `재시작한 Job 의 첫 실패 회차가 저장된 마지막 성공 기준으로 즉시 중단 메일을 만든다`() {
+        store.state = AccountPnlMonitorState(
+            PnlAlertState.INITIAL,
+            OutageState(t0.minus(Duration.ofHours(3)), t0.minus(Duration.ofDays(1)), false),
+            42,
+        )
+        korea.failure = AccountReadException(AccountReadFailureCategory.NETWORK, "timeout")
+        val restarted = newJob()
+
+        assertThat(restarted.run()).isEqualTo(JobResult.Success)
+
+        assertOutageMail("네트워크")
+        assertThat(store.rows.single().mail.body).contains("마지막 성공: 2026-10-20 09:00:00")
+        assertThat(sender.sent).hasSize(1)
+        assertThat(store.state.outage.outageNotified).isTrue()
+    }
+
+    @Test
+    fun `관측 중 인터럽트 예외는 실패 범주로 삼키지 않고 저장 없이 다시 던진다`() {
+        korea.failure = IllegalStateException("wrapped", InterruptedException("cancelled by executor"))
+
+        try {
+            val thrown = runCatching { job.run() }.exceptionOrNull()
+
+            assertThat(thrown).isInstanceOf(IllegalStateException::class.java)
+            assertThat(Thread.currentThread().isInterrupted).describedAs("interrupt flag 복원").isTrue()
+            assertThat(store.calls).doesNotContain("save", "claim")
+            assertThat(sender.sent).isEmpty()
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
+    fun `adapter 가 인터럽트를 AccountReadException 으로 감싸도 다시 던진다`() {
+        korea.failure = AccountReadException(
+            AccountReadFailureCategory.NETWORK,
+            "request interrupted",
+            InterruptedException("cancelled by executor"),
+        )
+
+        try {
+            assertThat(runCatching { job.run() }.exceptionOrNull()).isInstanceOf(AccountReadException::class.java)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+            assertThat(store.calls).doesNotContain("save", "claim")
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
+    fun `관측 중 CancellationException 도 다시 던진다`() {
+        foreign.failure = java.util.concurrent.CancellationException("lock lost")
+
+        try {
+            assertThat(runCatching { job.run() }.exceptionOrNull())
+                .isInstanceOf(java.util.concurrent.CancellationException::class.java)
+            assertThat(store.calls).doesNotContain("save", "claim")
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
+    fun `저장 전에 인터럽트됐으면 상태와 메일을 쓰지 않는다`() {
+        korea.onRead = { Thread.currentThread().interrupt() }
+
+        try {
+            assertThat(job.run()).isEqualTo(JobResult.Skipped("cancelled"))
+            assertThat(store.calls).doesNotContain("save", "claim")
+            assertThat(store.state).isEqualTo(AccountPnlMonitorState.INITIAL)
+            assertThat(sender.sent).isEmpty()
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
     // ---- helpers ----
 
     private fun givenLastCalculationSucceededLongAgo() {
@@ -464,8 +558,10 @@ class AccountPnlMonitorJobTest {
         var bidDepth = BigDecimal("1")
         var age: Duration = Duration.ZERO
         var failure: Exception? = null
+        var onRead: () -> Unit = {}
 
         override fun read(): KoreaSpotAccountSnapshot {
+            onRead()
             failure?.let { throw it }
             return KoreaSpotAccountSnapshot(
                 quantity = quantity,
@@ -548,6 +644,7 @@ class AccountPnlMonitorJobTest {
         val calls = mutableListOf<String>()
         val owners = mutableListOf<String>()
         val claimLimits = mutableListOf<Int>()
+        val claimTimes = mutableListOf<Instant>()
         var failOn: String? = null
         var concurrentWriteBeforeSave = false
         var fenceMarks = false
@@ -576,6 +673,7 @@ class AccountPnlMonitorJobTest {
             enter("claim")
             owners += owner
             claimLimits += limit
+            claimTimes += now
             return rows.filter { it.status == Status.PENDING }.sortedBy { it.id }.take(limit).map { row ->
                 row.status = Status.PROCESSING
                 row.token = UUID.randomUUID().toString()
