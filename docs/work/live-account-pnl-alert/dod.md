@@ -198,6 +198,23 @@ $ ./gradlew :domain:test --offline --no-daemon
 BUILD SUCCESSFUL
 ```
 
+### AC4 — Task 5 (2026-10-20, 커밋 전)
+
+```
+$ ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.MonitoringOutagePolicyTest' --offline --no-daemon   # RED (decide 가 TODO stub)
+MonitoringOutagePolicyTest > 실패 5분 정각에는 알리지 않는다() FAILED
+MonitoringOutagePolicyTest > 5분 1초에 원인 범주와 함께 1회 알린다() FAILED
+MonitoringOutagePolicyTest > 복구 첫 회차에 1회 복구 알림() FAILED
+MonitoringOutagePolicyTest > 첫 실행부터 실패면 첫 실행 시각 기준으로 잰다() FAILED
+9 tests completed, 9 failed
+BUILD FAILED
+
+$ (같은 명령, 상태기계 구현 후)   # GREEN
+BUILD SUCCESSFUL
+$ ./gradlew :domain:test --offline --no-daemon
+BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
