@@ -128,6 +128,18 @@ $ ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountNetP
 BUILD FAILED  exit=1   (테스트 부재 — RED 아님. RED 는 구현 태스크에서 기록)
 ```
 
+### ⑧ 착수 (2026-10-20, `e97fd01` origin/dev merge 후)
+
+```
+$ ./gradlew compileKotlin compileTestKotlin --offline --no-daemon -q
+> No cached version of com.squareup.okhttp3:mockwebserver:4.12.0 available for offline mode.
+BUILD FAILED   (worktree Gradle cache 부재)
+$ ./gradlew compileKotlin compileTestKotlin compileIntegrationTestKotlin compileArchitectureTestKotlin --no-daemon -q
+exit=0   (온라인 1회 실행으로 cache 채움 — 이후 전부 --offline)
+$ ./gradlew compileKotlin compileTestKotlin --offline --no-daemon -q
+exit=0
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
