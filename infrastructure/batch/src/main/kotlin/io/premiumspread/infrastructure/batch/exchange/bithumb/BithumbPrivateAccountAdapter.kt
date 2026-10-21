@@ -149,7 +149,12 @@ class BithumbPrivateAccountAdapter(
             val executed = it.dec("executed_volume")
             val paid = it.dec("paid_fee")
             if (executed.signum() < 0 || paid.signum() < 0) unexpected("order value is negative")
-            OrderRow(it.path("uuid").asText().ifEmpty { unexpected("order id is missing") }, it.path("side").asText(), executed, paid)
+            OrderRow(
+                it.path("uuid").asText().ifEmpty { unexpected("order id is missing") },
+                it.path("side").asText(),
+                executed,
+                paid,
+            )
         }
     }
 
@@ -165,7 +170,11 @@ class BithumbPrivateAccountAdapter(
                 .headers { headers ->
                     if (signed) {
                         val jwt = BithumbJwtSigner.sign(
-                            accessKey, secretKey, wireQuery, UUID.randomUUID().toString(), clock.millis(),
+                            accessKey,
+                            secretKey,
+                            wireQuery,
+                            UUID.randomUUID().toString(),
+                            clock.millis(),
                         )
                         headers.setBearerAuth(jwt)
                     }

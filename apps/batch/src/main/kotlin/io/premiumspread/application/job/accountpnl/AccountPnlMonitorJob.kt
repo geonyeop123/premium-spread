@@ -233,10 +233,12 @@ class AccountPnlMonitorJob(
         }
         return when {
             mail == null -> JobResult.Success
+
             !send(mail) -> {
                 failed += mail
                 null
             }
+
             else -> markSent(mail)
         }
     }

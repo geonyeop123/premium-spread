@@ -128,8 +128,12 @@ class AccountPnlMonitorWiringTest {
     @Test
     fun `메일 설정이 없고 EmailSender 도 없으면 Job·Scheduler 0개`() {
         ApplicationContextRunner()
-            .withUserConfiguration(AccountPnlMonitorAdapterConfiguration::class.java, ClockOnly::class.java,
-                AccountPnlMonitorConfiguration::class.java, AccountPnlMonitorScheduler::class.java)
+            .withUserConfiguration(
+                AccountPnlMonitorAdapterConfiguration::class.java,
+                ClockOnly::class.java,
+                AccountPnlMonitorConfiguration::class.java,
+                AccountPnlMonitorScheduler::class.java,
+            )
             .withPropertyValues(*enabledProps.filterNot { it.startsWith("notification.") }.toTypedArray())
             .run { ctx ->
                 assertThat(ctx).hasNotFailed()
@@ -162,8 +166,11 @@ class AccountPnlMonitorWiringTest {
         runner.withPropertyValues(*enabledProps).run { ctx ->
             val text = ctx.getBean(AccountPnlMonitorProperties::class.java).toString()
             assertThat(text).doesNotContain(
-                "BITHUMB-ACCESS-SECRET-VALUE", "BITHUMB-SECRET-SECRET-VALUE",
-                "BINANCE-API-SECRET-VALUE", "BINANCE-SECRET-SECRET-VALUE", "owner@example.test",
+                "BITHUMB-ACCESS-SECRET-VALUE",
+                "BITHUMB-SECRET-SECRET-VALUE",
+                "BINANCE-API-SECRET-VALUE",
+                "BINANCE-SECRET-SECRET-VALUE",
+                "owner@example.test",
             )
             assertThat(text).contains("***")
             assertThat(AccountPnlMonitorProperties().toString()).contains("<empty>")
@@ -174,8 +181,10 @@ class AccountPnlMonitorWiringTest {
     fun `startup 로그에 secret 값이 없다`(output: CapturedOutput) {
         runner.withPropertyValues(*enabledProps).run { ctx -> assertThat(ctx).hasNotFailed() }
         assertThat(output.all).doesNotContain(
-            "BITHUMB-ACCESS-SECRET-VALUE", "BITHUMB-SECRET-SECRET-VALUE",
-            "BINANCE-API-SECRET-VALUE", "BINANCE-SECRET-SECRET-VALUE",
+            "BITHUMB-ACCESS-SECRET-VALUE",
+            "BITHUMB-SECRET-SECRET-VALUE",
+            "BINANCE-API-SECRET-VALUE",
+            "BINANCE-SECRET-SECRET-VALUE",
         )
     }
 
@@ -189,12 +198,19 @@ class AccountPnlMonitorWiringTest {
     @EnableConfigurationProperties(BatchJobProperties::class)
     class Stubs {
         @Bean fun clock(): Clock = Clock.fixed(Instant.parse("2026-10-20T00:00:00Z"), ZoneOffset.UTC)
+
         @Bean fun emailSender(): EmailSender = mockk(relaxed = true)
+
         @Bean fun fxRateReadPort(): FxRateReadPort = mockk(relaxed = true)
+
         @Bean fun accountPnlAlertStore(): AccountPnlAlertStore = mockk(relaxed = true)
+
         @Bean fun jobExecutor(): JobExecutor = mockk(relaxed = true)
+
         @Bean fun stringRedisTemplate(): StringRedisTemplate = mockk(relaxed = true)
+
         @Bean fun meterRegistry(): SimpleMeterRegistry = SimpleMeterRegistry()
+
         @Bean fun alertService(): AlertService = mockk(relaxed = true)
     }
 }

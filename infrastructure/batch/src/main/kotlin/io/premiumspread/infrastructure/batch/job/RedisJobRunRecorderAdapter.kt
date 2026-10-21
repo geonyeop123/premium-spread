@@ -20,7 +20,8 @@ class RedisJobRunRecorderAdapter(
     private val redisTemplate: StringRedisTemplate,
     private val meterRegistry: MeterRegistry,
     private val clock: Clock = Clock.systemUTC(),
-) : JobRunRecorder, JobLastSuccessReadPort {
+) : JobRunRecorder,
+    JobLastSuccessReadPort {
     private val log = LoggerFactory.getLogger(javaClass)
     private val startedAt = ConcurrentHashMap<String, Instant>()
     private val lastSuccessAt = ConcurrentHashMap<String, AtomicLong>()

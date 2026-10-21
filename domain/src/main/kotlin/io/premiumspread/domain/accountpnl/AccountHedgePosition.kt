@@ -2,10 +2,7 @@ package io.premiumspread.domain.accountpnl
 
 import java.math.BigDecimal
 
-data class AccountHedgePosition(
-    val korea: KoreaSpotAccountSnapshot,
-    val foreign: ForeignPerpAccountSnapshot,
-) {
+data class AccountHedgePosition(val korea: KoreaSpotAccountSnapshot, val foreign: ForeignPerpAccountSnapshot) {
     val koreaQuantity: BigDecimal get() = korea.quantity
     val foreignQuantity: BigDecimal get() = foreign.signedQuantity.abs()
     val fingerprint: String

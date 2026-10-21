@@ -4,11 +4,7 @@ import java.time.Duration
 import java.time.Instant
 
 /** 모니터링 중단 알림 상태 (design §4.2). */
-data class OutageState(
-    val lastSuccessAt: Instant?,
-    val monitoringSince: Instant?,
-    val outageNotified: Boolean,
-) {
+data class OutageState(val lastSuccessAt: Instant?, val monitoringSince: Instant?, val outageNotified: Boolean) {
     companion object {
         val INITIAL = OutageState(null, null, false)
     }

@@ -45,14 +45,24 @@ class BinanceFuturesPrivateAccountAdapterTest {
                 responses[path]?.let { return it() }
                 return when (path) {
                     "/fapi/v1/time" -> json("""{"serverTime":${now + serverTimeOffset}}""")
+
                     "/fapi/v3/positionRisk" -> json(positionBody)
+
                     "/fapi/v1/userTrades" -> json(userTrades(url))
+
                     "/fapi/v1/income" -> json(income(url))
+
                     "/fapi/v1/commissionRate" -> json(fixture("commission-rate.json"))
+
                     "/fapi/v1/depth" -> json(fixture("depth.json"))
+
                     "/fapi/v2/ticker/price" ->
-                        if (url.queryParameter("symbol") == "BNBUSDT") json("""{"symbol":"BNBUSDT","price":"$bnbPrice","time":1}""")
-                        else json(fixture("ticker-price.json"))
+                        if (url.queryParameter("symbol") == "BNBUSDT") {
+                            json("""{"symbol":"BNBUSDT","price":"$bnbPrice","time":1}""")
+                        } else {
+                            json(fixture("ticker-price.json"))
+                        }
+
                     else -> MockResponse().setResponseCode(404)
                 }
             }
@@ -83,7 +93,7 @@ class BinanceFuturesPrivateAccountAdapterTest {
         assertThat(request.method).isEqualTo("GET")
         assertThat(request.getHeader("X-MBX-APIKEY")).isEqualTo("test-api-key")
         val query = request.requestUrl!!.encodedQuery!!
-        assertThat(query).contains("recvWindow=10000", "timestamp=${now}")
+        assertThat(query).contains("recvWindow=10000", "timestamp=$now")
         val signed = query.substringBefore("&signature=")
         assertThat(query.substringAfter("&signature=")).isEqualTo(BinanceRequestSigner.sign("test-secret-key", signed))
         assertThat(query).endsWith(query.substringAfterLast("&signature="))
@@ -107,8 +117,12 @@ class BinanceFuturesPrivateAccountAdapterTest {
     fun `-1021 이면 오프셋을 다시 재서 한 번 재시도하고 계속 거부되면 NETWORK`() {
         var rejected = 1
         responses["/fapi/v3/positionRisk"] = {
-            if (rejected-- > 0) MockResponse().setResponseCode(400).setBody("""{"code":-1021,"msg":"Timestamp for this request is outside of the recvWindow."}""")
-            else json(positionBody)
+            if (rejected-- > 0) {
+                MockResponse().setResponseCode(400)
+                    .setBody("""{"code":-1021,"msg":"Timestamp for this request is outside of the recvWindow."}""")
+            } else {
+                json(positionBody)
+            }
         }
         trades += T(1, now - day, "SELL", "0.002")
         adapter().read()

@@ -5,11 +5,7 @@ import java.time.Duration
 import java.time.Instant
 
 /** 수익 알림 에피소드 상태 (design §4.1). 에피소드 밖에서는 [positionFingerprint] 와 [lastSentAt] 이 null 이다. */
-data class PnlAlertState(
-    val inEpisode: Boolean,
-    val positionFingerprint: String?,
-    val lastSentAt: Instant?,
-) {
+data class PnlAlertState(val inEpisode: Boolean, val positionFingerprint: String?, val lastSentAt: Instant?) {
     companion object {
         val INITIAL = PnlAlertState(false, null, null)
     }

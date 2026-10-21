@@ -108,12 +108,7 @@ data class AccountNetPnl(
         }
     }
 
-    private data class Leg(
-        val gross: BigDecimal,
-        val exitFee: BigDecimal,
-        val net: BigDecimal,
-        val netPercent: BigDecimal,
-    ) {
+    private data class Leg(val gross: BigDecimal, val exitFee: BigDecimal, val net: BigDecimal, val netPercent: BigDecimal) {
         companion object {
             fun of(
                 position: AccountHedgePosition,

@@ -23,7 +23,9 @@ class MonitoringOutagePolicyTest {
     @Test
     fun `5분 1초에 원인 범주와 함께 1회 알린다`() {
         val d = MonitoringOutagePolicy.decide(
-            afterSuccess(), AccountReadFailureCategory.STALE_FX, t0.plusSeconds(301),
+            afterSuccess(),
+            AccountReadFailureCategory.STALE_FX,
+            t0.plusSeconds(301),
         )
 
         assertThat(d.notice).isEqualTo(OutageNotice.Outage(AccountReadFailureCategory.STALE_FX, t0))

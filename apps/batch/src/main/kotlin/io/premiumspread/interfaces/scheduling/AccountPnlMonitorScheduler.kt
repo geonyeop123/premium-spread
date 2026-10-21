@@ -10,9 +10,7 @@ import org.springframework.stereotype.Component
 @Component
 @ConditionalOnBatchScheduling
 @Conditional(AccountPnlMonitorEnabledCondition::class)
-class AccountPnlMonitorScheduler(
-    private val job: AccountPnlMonitorJob,
-) {
+class AccountPnlMonitorScheduler(private val job: AccountPnlMonitorJob) {
     @Scheduled(fixedRateString = "\${batch.scheduling.account-pnl-monitor.fixed-rate:60000}")
     fun monitor() {
         job.run()

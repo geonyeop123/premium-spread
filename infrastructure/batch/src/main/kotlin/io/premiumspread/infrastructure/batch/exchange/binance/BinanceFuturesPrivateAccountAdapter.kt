@@ -93,7 +93,10 @@ class BinanceFuturesPrivateAccountAdapter(
         val rows = signedGet("/fapi/v3/positionRisk", "symbol=$SYMBOL")
         if (!rows.isArray) unexpected("positionRisk response is not an array")
         val row = rows.filter { it.path("symbol").asText() == SYMBOL }
-            .let { list -> list.firstOrNull { it.path("positionSide").asText() == "SHORT" } ?: list.firstOrNull { it.path("positionSide").asText() == "BOTH" } }
+            .let { list ->
+                list.firstOrNull { it.path("positionSide").asText() == "SHORT" }
+                    ?: list.firstOrNull { it.path("positionSide").asText() == "BOTH" }
+            }
             ?: return Position(BigDecimal.ZERO, BigDecimal.ZERO, "BOTH")
         val amount = row.dec("positionAmt")
         val entry = row.dec("entryPrice")
@@ -103,7 +106,9 @@ class BinanceFuturesPrivateAccountAdapter(
     }
 
     private fun resolveHistory(position: Position): History? {
-        val cached = cache?.takeIf { it.amount.compareTo(position.amount) == 0 && it.entryPrice.compareTo(position.entryPrice) == 0 }
+        val cached = cache?.takeIf {
+            it.amount.compareTo(position.amount) == 0 && it.entryPrice.compareTo(position.entryPrice) == 0
+        }
         if (cached != null && !hasNewTrades(cached)) {
             val refreshed = cached.history?.let { it.copy(funding = readFunding(it.funding)) }
             cache = cached.copy(history = refreshed)
@@ -189,7 +194,14 @@ class BinanceFuturesPrivateAccountAdapter(
             }
             val id = it.get("id")?.takeIf { n -> n.isIntegralNumber }?.asLong() ?: unexpected("trade id is missing")
             val time = it.get("time")?.takeIf { n -> n.isIntegralNumber }?.asLong() ?: unexpected("trade time is missing")
-            Trade(id, time, if (sign > 0) qty else qty.negate(), commission, it.path("commissionAsset").asText(), it.path("positionSide").asText())
+            Trade(
+                id,
+                time,
+                if (sign > 0) qty else qty.negate(),
+                commission,
+                it.path("commissionAsset").asText(),
+                it.path("positionSide").asText(),
+            )
         }
     }
 
@@ -274,7 +286,8 @@ class BinanceFuturesPrivateAccountAdapter(
     private fun send(path: String, params: String, signed: Boolean): JsonNode {
         val query = if (signed) {
             val offset = serverOffsetMillis ?: measureOffset()
-            val base = (if (params.isEmpty()) "" else "$params&") + "recvWindow=$recvWindowMillis&timestamp=${clock.millis() + offset}"
+            val prefix = if (params.isEmpty()) "" else "$params&"
+            val base = prefix + "recvWindow=$recvWindowMillis&timestamp=${clock.millis() + offset}"
             "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}"
         } else {
             params

@@ -37,13 +37,18 @@ class BithumbPrivateAccountAdapterTest {
                 responses[path]?.let { return it() }
                 return when (path) {
                     "/v1/accounts" -> json(accountsBody)
+
                     "/v1/orderbook" -> json(fixture("orderbook.json"))
+
                     "/v1/ticker" -> json(fixture("ticker.json"))
+
                     "/v1/orders/chance" -> json(fixture("orders-chance.json"))
+
                     "/v1/orders" -> {
                         val page = request.requestUrl!!.queryParameter("page")!!.toInt()
                         json(orderPages[page] ?: "[]")
                     }
+
                     else -> MockResponse().setResponseCode(404)
                 }
             }
