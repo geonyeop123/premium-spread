@@ -456,8 +456,8 @@ class BinanceFuturesPrivateAccountAdapterTest {
         var thrown: Throwable? = null
         try {
             adapter.read()
-        } catch (e: Throwable) {
-            thrown = e
+        } catch (expected: Throwable) {
+            thrown = expected
         }
         assertThat(thrown).isInstanceOf(AccountReadException::class.java)
         return thrown as AccountReadException

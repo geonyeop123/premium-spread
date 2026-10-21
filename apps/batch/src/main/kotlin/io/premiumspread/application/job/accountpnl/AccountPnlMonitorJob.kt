@@ -70,6 +70,7 @@ class AccountPnlMonitorJob(
 
     fun run(): JobResult = executor.execute(jobConfigs.get(JobId.ACCOUNT_PNL_MONITOR)) { monitor() }
 
+    @Suppress("ReturnCount")
     private fun monitor(): JobResult {
         val now = clock.instant()
         firstRunAt.compareAndSet(null, now)

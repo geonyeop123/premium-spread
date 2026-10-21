@@ -283,6 +283,8 @@ class BinanceFuturesPrivateAccountAdapter(
         }
     }
 
+    // adapter 경계: 모든 실패를 AccountReadException 으로 정규화한다.
+    @Suppress("TooGenericExceptionCaught")
     private fun send(path: String, params: String, signed: Boolean): JsonNode {
         val query = if (signed) {
             val offset = serverOffsetMillis ?: measureOffset()

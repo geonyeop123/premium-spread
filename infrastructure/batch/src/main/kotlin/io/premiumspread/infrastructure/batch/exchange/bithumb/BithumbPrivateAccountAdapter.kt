@@ -158,6 +158,8 @@ class BithumbPrivateAccountAdapter(
         }
     }
 
+    // adapter 경계: 모든 실패를 AccountReadException 으로 정규화한다.
+    @Suppress("TooGenericExceptionCaught")
     private fun getJson(path: String, query: String?, signed: Boolean): JsonNode {
         val body = try {
             var wireQuery: String? = null
