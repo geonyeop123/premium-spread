@@ -1,6 +1,6 @@
 # 개발자 이해문서 — feat: 실계정 순손익 알림 (빗썸·바이낸스 read-only 조회 + 1% 메일)
 
-- PR: (생성 후 기록)
+- PR: [#83](https://github.com/geonyeop123/premium-spread/pull/83)
 - 브랜치: `feat/live-account-pnl-alert` ← `dev`
 - 작성: 2026-10-21 · 문맥: warm (구현 세션에서 직접 작성)
 - 산출물: [design](design.md) · [plan](plan.md) · [dod](dod.md) · [runbook](../../runbooks/account-pnl-alert.md)
