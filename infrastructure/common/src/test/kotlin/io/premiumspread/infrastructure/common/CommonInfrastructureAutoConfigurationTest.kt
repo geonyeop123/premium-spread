@@ -2,6 +2,7 @@ package io.premiumspread.infrastructure.common
 
 import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheReader
 import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheWriter
+import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jdbc.notification.JdbcNotificationDeliveryRepository
 import io.premiumspread.config.jpa.JpaAuditingAutoConfiguration
@@ -17,6 +18,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.transaction.PlatformTransactionManager
 import java.time.Clock
 import javax.sql.DataSource
 
@@ -85,8 +87,10 @@ class CommonInfrastructureAutoConfigurationTest {
         contextRunner
             .withBean(JdbcTemplate::class.java, { mock(JdbcTemplate::class.java) })
             .withBean(Clock::class.java, { Clock.systemUTC() })
+            .withBean(PlatformTransactionManager::class.java, { mock(PlatformTransactionManager::class.java) })
             .run { context ->
                 assertThat(context).hasSingleBean(CommonJdbcConfiguration::class.java)
+                assertThat(context).hasSingleBean(JdbcAccountPnlAlertStore::class.java)
                 assertThat(context).hasSingleBean(JdbcExchangeRateRepositoryAdapter::class.java)
                 assertThat(context).hasSingleBean(JdbcNotificationDeliveryRepository::class.java)
                 assertThat(context).doesNotHaveBean(CommonJpaConfiguration::class.java)

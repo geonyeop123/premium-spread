@@ -13,7 +13,7 @@ class LogMaskingFilter : Filter<ILoggingEvent>() {
 
     companion object {
         private const val SENSITIVE_KEY_PATTERN =
-            "api[_-]?key|secret[_-]?key|password|authorization|" +
+            "api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|secret|password|authorization|" +
                 "(?:access|refresh)?[_-]?token|set[_-]?cookie|cookie|email"
         private const val SENSITIVE_VALUE_PATTERN = """(["'\s:=]+["'\s]?)([^"'\s,}]+)"""
 

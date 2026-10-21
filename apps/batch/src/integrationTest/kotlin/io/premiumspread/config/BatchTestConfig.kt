@@ -28,6 +28,7 @@ class BatchTestConfig {
             "exchange_rate",
             "ticker_minute", "ticker_hour", "ticker_day",
             "premium_minute", "premium_hour", "premium_day",
+            "account_pnl_mail", "account_pnl_monitor_state",
         )
     }
 

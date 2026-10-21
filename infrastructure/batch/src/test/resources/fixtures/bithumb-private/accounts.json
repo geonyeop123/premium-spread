@@ -1,0 +1,26 @@
+[
+  {
+    "currency": "KRW",
+    "balance": "10981650.10635",
+    "locked": "98246",
+    "avg_buy_price": "0",
+    "avg_buy_price_modified": false,
+    "unit_currency": "KRW"
+  },
+  {
+    "currency": "BTC",
+    "balance": "124.45272908",
+    "locked": "0",
+    "avg_buy_price": "36340973",
+    "avg_buy_price_modified": false,
+    "unit_currency": "KRW"
+  },
+  {
+    "currency": "ETH",
+    "balance": "106993.5839313",
+    "locked": "0",
+    "avg_buy_price": "23993",
+    "avg_buy_price_modified": false,
+    "unit_currency": "KRW"
+  }
+]

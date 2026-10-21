@@ -3,6 +3,7 @@ package io.premiumspread.infrastructure.batch.job
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.premiumspread.domain.job.JobId
+import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.job.JobRunOutcome
 import io.premiumspread.domain.job.JobRunRecorder
 import io.premiumspread.redis.RedisKeyGenerator
@@ -19,10 +20,18 @@ class RedisJobRunRecorderAdapter(
     private val redisTemplate: StringRedisTemplate,
     private val meterRegistry: MeterRegistry,
     private val clock: Clock = Clock.systemUTC(),
-) : JobRunRecorder {
+) : JobRunRecorder,
+    JobLastSuccessReadPort {
     private val log = LoggerFactory.getLogger(javaClass)
     private val startedAt = ConcurrentHashMap<String, Instant>()
     private val lastSuccessAt = ConcurrentHashMap<String, AtomicLong>()
+
+    /**
+     * 이 프로세스가 기록한 마지막 성공 시각. `batch:last_run:*` Redis 키는 TTL 이 짧아(BATCH_HEALTH)
+     * 30분 주기 작업을 덮지 못하므로 읽지 않는다. 프로세스 시작 후 성공이 없으면 null.
+     */
+    override fun findLastSuccess(jobId: JobId): Instant? =
+        lastSuccessAt[jobId.tag]?.let { Instant.ofEpochMilli(it.get()) }
 
     override fun started(jobId: JobId, runId: String, at: Instant) {
         startedAt[runId] = at

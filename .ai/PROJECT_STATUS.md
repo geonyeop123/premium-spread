@@ -10,7 +10,7 @@
 | `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
 | `apps:web` | Active | Next.js 대시보드, 인증, position UI |
 | `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
-| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V14 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V18 |
 | `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
 | `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
 | `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
@@ -70,6 +70,9 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - Redis pair-aware v2 key와 default-pair legacy read cutover
 - DB/Redis/ingestion readiness, Prometheus, correlation ID/masking
 - commit SHA image 배포와 API migration/readiness 선행, 이전 SHA rollback
+- 실계정 순손익 알림(구현 완료, 기본 꺼짐, owner 로컬 실행 전용): 빗썸/바이낸스 read-only REST 조회, 순수익률 알림과
+  모니터링 중단·복구 메일, 전용 outbox(`account_pnl_mail`, V18). owner 실 key 검산(AC13)은 미완료이며
+  [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다
 
 ## Migration 상태와 소유권
 
@@ -79,6 +82,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 | V12 | `position`을 한국 Long + 해외 Short pair로 재구성 | `TRUNCATE` 포함 immutable 예외; preflight/승인 없이 실행 금지 |
 | V13 | premium snapshot/집계에 MarketPair 컬럼/index/unique 추가 | 기본 BITHUMB/BINANCE backfill, pair-aware 저장 정본 |
 | V14 | 구독 pair/revision/optimistic lock + `notification_delivery` | durable delivery queue 정본 |
+| V18 | `account_pnl_monitor_state`, `account_pnl_mail` | 실계정 손익 알림 전용 상태·outbox |
 
 - migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
 - Batch Flyway는 항상 비활성이다.

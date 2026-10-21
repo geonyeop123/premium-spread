@@ -1,0 +1,70 @@
+[
+  {
+    "market": "KRW-BTC",
+    "timestamp": 1529910247984,
+    "total_ask_size": 8.83621228,
+    "total_bid_size": 2.43976741,
+    "orderbook_units": [
+      {
+        "ask_price": 6956000,
+        "bid_price": 6954000,
+        "ask_size": 0.24078656,
+        "bid_size": 0.00718341
+      },
+      {
+        "ask_price": 6958000,
+        "bid_price": 6953000,
+        "ask_size": 1.12919,
+        "bid_size": 0.11500074
+      },
+      {
+        "ask_price": 6960000,
+        "bid_price": 6952000,
+        "ask_size": 0.08614137,
+        "bid_size": 0.19019028
+      },
+      {
+        "ask_price": 6962000,
+        "bid_price": 6950000,
+        "ask_size": 0.0837203,
+        "bid_size": 0.28201649
+      },
+      {
+        "ask_price": 6964000,
+        "bid_price": 6949000,
+        "ask_size": 0.501885,
+        "bid_size": 0.01822085
+      },
+      {
+        "ask_price": 6965000,
+        "bid_price": 6946000,
+        "ask_size": 1.12517189,
+        "bid_size": 0.0002
+      },
+      {
+        "ask_price": 6968000,
+        "bid_price": 6945000,
+        "ask_size": 2.89900477,
+        "bid_size": 0.03597913
+      },
+      {
+        "ask_price": 6970000,
+        "bid_price": 6944000,
+        "ask_size": 0.2044231,
+        "bid_size": 0.39291445
+      },
+      {
+        "ask_price": 6972000,
+        "bid_price": 6939000,
+        "ask_size": 2.55280097,
+        "bid_size": 0.12963816
+      },
+      {
+        "ask_price": 6974000,
+        "bid_price": 6937000,
+        "ask_size": 0.01308832,
+        "bid_size": 1.2684239
+      }
+    ]
+  }
+]

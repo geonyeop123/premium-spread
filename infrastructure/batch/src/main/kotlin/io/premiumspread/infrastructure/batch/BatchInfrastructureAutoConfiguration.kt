@@ -19,6 +19,7 @@ import io.premiumspread.email.EmailSender
 import io.premiumspread.email.SmtpConnectionProperties
 import io.premiumspread.infrastructure.batch.alert.BoundedOperatorAlertAdapter
 import io.premiumspread.infrastructure.batch.alert.OperatorAlertExecutorProperties
+import io.premiumspread.infrastructure.batch.accountpnl.AccountPnlMonitorAdapterConfiguration
 import io.premiumspread.infrastructure.batch.cache.FxCacheService
 import io.premiumspread.infrastructure.batch.cache.FxRateReadAdapter
 import io.premiumspread.infrastructure.batch.cache.PremiumAggregateAdapter
@@ -86,6 +87,7 @@ import org.springframework.validation.annotation.Validated
     AggregationZoneMetricProperties::class,
 )
 @Import(
+    AccountPnlMonitorAdapterConfiguration::class,
     BatchCacheAdapterConfiguration::class,
     BatchExchangeAdapterConfiguration::class,
     BatchJobSupportConfiguration::class,

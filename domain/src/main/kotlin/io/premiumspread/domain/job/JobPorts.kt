@@ -30,6 +30,15 @@ enum class JobId(val tag: String) {
     BITHUMB_TICKER_FLUSH("bithumb_ticker_flush"),
     TRADE_PREPARATION_EVALUATION("trade_preparation_evaluation"),
     TRADE_PREPARATION_RECONCILE("trade_preparation_reconcile"),
+    ACCOUNT_PNL_MONITOR("account_pnl_monitor"),
+}
+
+/**
+ * 배치 작업이 마지막으로 성공한 시각. 기록이 없으면(프로세스 시작 후 성공한 적 없음 등) null.
+ * 값의 나이가 아니라 "수집이 계속 성공하고 있는가"를 판정하는 용도다.
+ */
+fun interface JobLastSuccessReadPort {
+    fun findLastSuccess(jobId: JobId): Instant?
 }
 
 enum class JobRunOutcome {

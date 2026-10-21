@@ -24,7 +24,7 @@
             <jsonGeneratorDecorator class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator">
                 <defaultMask>***MASKED***</defaultMask>
                 <value>(?i)(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|bearer\s+\S+)</value>
-                <value>(?i)(?:(?:api[_-]?key|secret[_-]?key|password|authorization|(?:access|refresh)?[_-]?token|set[_-]?cookie|cookie|email)\s*[:=]\s*)\S+</value>
+                <value>(?i)(?:(?:api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|secret|password|authorization|(?:access|refresh)?[_-]?token|set[_-]?cookie|cookie|email)\s*[:=]\s*)\S+</value>
                 <path>email</path>
                 <path>token</path>
                 <path>access_token</path>
@@ -34,6 +34,9 @@
                 <path>authorization</path>
                 <path>api_key</path>
                 <path>secret_key</path>
+                <path>access_key</path>
+                <path>api_secret</path>
+                <path>secret</path>
             </jsonGeneratorDecorator>
             <customFields>{"app":"${APP_NAME}","env":"${SPRING_PROFILES_ACTIVE:-local}"}</customFields>
             <includeContext>false</includeContext>
@@ -63,7 +66,7 @@
             <jsonGeneratorDecorator class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator">
                 <defaultMask>***MASKED***</defaultMask>
                 <value>(?i)(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|bearer\s+\S+)</value>
-                <value>(?i)(?:(?:api[_-]?key|secret[_-]?key|password|authorization|(?:access|refresh)?[_-]?token|set[_-]?cookie|cookie|email)\s*[:=]\s*)\S+</value>
+                <value>(?i)(?:(?:api[_-]?key|api[_-]?secret|secret[_-]?key|access[_-]?key|secret|password|authorization|(?:access|refresh)?[_-]?token|set[_-]?cookie|cookie|email)\s*[:=]\s*)\S+</value>
                 <path>email</path>
                 <path>token</path>
                 <path>access_token</path>
@@ -73,6 +76,9 @@
                 <path>authorization</path>
                 <path>api_key</path>
                 <path>secret_key</path>
+                <path>access_key</path>
+                <path>api_secret</path>
+                <path>secret</path>
             </jsonGeneratorDecorator>
             <customFields>{"app":"${APP_NAME}","env":"${SPRING_PROFILES_ACTIVE:-local}"}</customFields>
             <includeContext>false</includeContext>
