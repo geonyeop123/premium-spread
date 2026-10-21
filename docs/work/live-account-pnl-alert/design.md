@@ -137,6 +137,9 @@ netPercent     = net ÷ (빗썸 청산가 × 빗썸 수량) × 100              
   신선도를 보지 않는다.
 - **환율 신선도 (내 판단)**: 환율 값 자체의 나이가 아니라 **환율 수집이 마지막으로 성공한 지 2시간이 넘으면** 계산
   실패다. 주말·공휴일엔 원천 값이 바뀌지 않으므로 값의 나이로 판정하면 주말 내내 중단 메일이 나간다.
+  "마지막 성공" 원천은 `RedisJobRunRecorderAdapter` 가 구현한 `JobLastSuccessReadPort` 로, 같은 batch 프로세스 안의
+  성공 기록(메모리)이다. Redis `batch:last_run` 키는 TTL 이 5분이라 30분 주기 FX 를 덮지 못해 쓰지 않는다.
+  값이 null(프로세스 시작 후 FX 성공 없음)이면 Job 첫 실행 시각을 기준으로 한다. *(구현 반영 2026-10-21)*
 - **USDT ≈ USD 가정**: 바이낸스 손익·수수료·펀딩은 USDT 이고 환율은 USD/KRW 다. 기존 `grossPnl` 도 같은 가정을
   쓴다. 이 단위도 따른다.
 - 금액 계산은 `BigDecimal`. 반올림은 표시 시점에만 (`netPercent` 는 소수 둘째 자리, 금액은 원 단위).
@@ -221,6 +224,9 @@ netPercent     = net ÷ (빗썸 청산가 × 빗썸 수량) × 100              
   (`FOR UPDATE SKIP LOCKED`), 행마다 owner·UUID claim token 을 저장해 모든 상태 전이(`SENT`·재시도·실패)에 token
   fencing 을 건다. 일정 시간 넘게 `PROCESSING` 인 행은 `PENDING` 으로 복구한다. 최대 시도 횟수를 넘으면 `FAILED` 로 끝내고
   redrive 하지 않는다 — 시간이 지난 수익 알림은 다시 보낼 가치가 없다.
+  구현에서는 claim 을 1건씩 반복해(회차당 최대 10건) 실행 가능한 concurrency 1 을 지키고, SMTP 실패분은 회차 끝에
+  `markAttemptFailed` 한다. stale 복구도 시도 횟수에 포함해 5회째에 `FAILED` 가 된다. eventKey 는
+  `account-pnl-{profit|outage|recovered}-<epochMilli>` 이다. *(구현 반영 2026-10-21)*
 - **상태 갱신은 버전 조건부다**: 두 실행이 겹쳐도 늦은 쪽이 상태를 덮어쓰지 못하게 한다(낙관적 버전).
 - migration 은 append-only, owner 는 `infrastructure:common`.
 
@@ -230,6 +236,8 @@ netPercent     = net ÷ (빗썸 청산가 × 빗썸 수량) × 100              
   `SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun`.
 - 기능 on/off 플래그 기본값 **꺼짐**. 꺼져 있거나 key 가 없으면 Job·adapter bean 이 뜨지 않는다.
   `batch.scheduling.enabled=false` 이면 함께 꺼진다.
+  scheduling 이 꺼지면 Job 과 두 adapter 구성도 만들지 않는다. 메일이 비활성이면 모니터를 기동하지 않고 WARN 을
+  남긴다. *(구현 반영 2026-10-21)*
 - **credential**: 환경변수로 주입한다 (빗썸 access/secret, 바이낸스 api/secret). source·`application*.yml` 기본값·DB·
   로그·metric tag·메일 본문·예외 메시지에 남기지 않는다. 로깅 마스킹(`supports:logging`) 대상에 추가한다.
 - **key 권한 (owner 가 발급 시 설정)**: 빗썸 — 조회 권한만, 허용 IP = 현재 집 공인 IP. 바이낸스 — Enable Reading

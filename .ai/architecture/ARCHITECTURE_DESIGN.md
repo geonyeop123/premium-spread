@@ -104,6 +104,19 @@ API Controller → Facade → Domain Service/Port
 - coverage가 불완전한 cache와 DB를 합칠 때 `observedAt`을 기준으로 병합하며 같은 bucket은 DB가 정본이다.
 - DB write와 cache write가 함께 필요한 경로는 DB-first 또는 transaction after-commit을 사용한다.
 
+### 실계정 순손익 알림 (옵션, 기본 꺼짐)
+
+```text
+AccountPnlMonitorScheduler (1분) → AccountPnlMonitorJob (JobExecutor)
+  → Domain 계정/호가 조회 port ← 빗썸·바이낸스 read-only REST adapter
+  → Domain AccountNetPnl / PnlAlertPolicy / MonitoringOutagePolicy
+  → account_pnl_monitor_state(낙관적 version) + account_pnl_mail 전용 outbox
+  → claim 후 SMTP (at-least-once)
+```
+
+`notification_delivery`를 재사용하지 않는 전용 outbox다. 조회 전용 경계는 `PrivateAccountReadOnlyArchitectureTest`가
+강제하며 운영 절차는 [`docs/runbooks/account-pnl-alert.md`](../../docs/runbooks/account-pnl-alert.md)를 따른다.
+
 ### 알림 구독과 전달
 
 ```text
