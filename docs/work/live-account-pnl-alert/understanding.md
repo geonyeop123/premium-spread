@@ -1,4 +1,117 @@
-# 실계정 순손익 알림 — 이해 기록
+# 개발자 이해문서 — feat: 실계정 순손익 알림 (빗썸·바이낸스 read-only 조회 + 1% 메일)
+
+- PR: (생성 후 기록)
+- 브랜치: `feat/live-account-pnl-alert` ← `dev`
+- 작성: 2026-10-21 · 문맥: warm (구현 세션에서 직접 작성)
+- 산출물: [design](design.md) · [plan](plan.md) · [dod](dod.md) · [runbook](../../runbooks/account-pnl-alert.md)
+
+## 1. TL;DR
+
+- owner 의 김프 포지션(빗썸 BTC 현물 + 바이낸스 BTCUSDT 선물 숏)을 **계정에서 직접 읽어** 1분마다 "지금 전량 청산하면 남는" 순수익률(수수료·펀딩·예상 청산 수수료 반영, 호가 깊이 VWAP)을 계산한다.
+- 순수익률이 1% 이상이면 메일을 보내고(60분 재발송, 0.9% 재무장), 5분 넘게 계산이 안 되면 중단·복구 메일을 보낸다. 상태와 메일은 전용 DB outbox(V18)로 at-least-once.
+- **조회 전용**(GET 만, 주문·출금 경로는 아키텍처 테스트로 금지), 기본 꺼짐, credential 은 환경변수로만. 실계정 검산(AC13)은 owner 가 로컬에서 한다.
+
+## 2. 왜
+
+- owner 는 지금 개인 사이트에 수량·평단을 손으로 넣고 화면을 지켜본다. 사이트와 기존 Domain `Tracking.grossPnl()` 은 **gross** 만 계산한다 — 수수료·펀딩비가 빠져 있어 "1% 났다"가 실제로는 0.6% 일 수 있다.
+- 목표: 입력 자동화(계정에서 읽기) + gross→net + 메일 알림. 주문은 하지 않는다.
+- 제약
+  - PRIVATE LIVE master spec(`LIVE-1`, `ACT-1→ACT-2`)과 의도적으로 어긋난다 — read-only credential 을 batch 모니터가 읽는다. owner 가 "구현 결과를 근거로 master spec 을 나중에 고친다"고 결정했다(design §0.1). 이 문서와 AC13 결과가 그 근거가 된다.
+  - 거래 준비 단위의 잔고 포트(`BalanceSnapshotReadPort` 등)는 구현하지 않는다 — 구현하면 그 단위의 `ARMED` 의미가 바뀐다(R2 회귀 테스트가 지킨다).
+  - 로컬 PC(WSL) 실행. 잠자기·IP 변경·시계 오차가 일상적이다.
+
+## 3. 무엇을 바꿨나
+
+| 계층 | 핵심 파일 | 역할 |
+|---|---|---|
+| domain | `domain/.../accountpnl/AccountSnapshots.kt` | 계정·호가 Snapshot, 실패 범주 7종, 조회 port 2개 |
+| domain | `AccountHedgePosition.kt` · `AccountNetPnl.kt` | 포지션 판정(dust·롱 제외, fingerprint) · 순손익 순수함수(VWAP, BigDecimal, 판정값만 scale 2) |
+| domain | `PnlAlertPolicy.kt` · `MonitoringOutagePolicy.kt` · `AccountPnlMailContent.kt` | 수익 알림 상태기계 · 중단/복구 상태기계 · 메일 제목/본문(leg 별 수수료 표기) |
+| domain | `AccountPnlAlertStore.kt`, `job/JobPorts.kt` | 상태·outbox port, `JobId.ACCOUNT_PNL_MONITOR`, `JobLastSuccessReadPort` |
+| common | `db/migration/V18__create_account_pnl_alert.sql`, `persistence/jdbc/accountpnl/JdbcAccountPnlAlertStore.kt` | 단일행 상태(낙관적 version) + 전용 메일 outbox(SKIP LOCKED claim, UUID token fencing, stale 복구, 5회 후 FAILED) |
+| infra:batch | `exchange/bithumb/BithumbPrivateAccountAdapter.kt` (+`BithumbJwtSigner`) | 빗썸 v1 JWT, 잔고(balance+locked)·평단·주문 이력 수수료 역추적·orderbook·ticker·ask_fee |
+| infra:batch | `exchange/binance/BinanceFuturesPrivateAccountAdapter.kt` (+`BinanceRequestSigner`) | HMAC 서명, positionRisk·userTrades 7일 창 역추적·BNB 환산·income 펀딩 증분·depth·서버 시각 보정 |
+| infra:batch | `accountpnl/AccountPnlMonitor*`, `notification/AccountPnlEmailSenderAdapter.kt`, `job/RedisJobRunRecorderAdapter.kt` | 조건부 배선·Properties(toString 마스킹)·메일 adapter·FX 마지막 성공 조회 |
+| apps:batch | `application/job/accountpnl/AccountPnlMonitorJob.kt`, `config/AccountPnlMonitorConfiguration.kt`, `interfaces/scheduling/AccountPnlMonitorScheduler.kt` | 조합 Job, 활성 조건, 1분 Scheduler |
+| supports | `logging/LogMaskingFilter.kt`, `logback-spring.xml` | `access_key`·`secret` 마스킹 확장 |
+| arch-test | `PrivateAccountReadOnlyArchitectureTest.kt` | adapter 소스의 비-GET 호출·주문/출금/이체 경로 문자열 금지(규칙 20개, 자기검증) |
+| docs | `docs/runbooks/account-pnl-alert.md` | key 발급·환경변수·로컬 실행·범주별 조치·AC13 체크리스트 |
+
+## 4. 설계
+
+한 회차(1분)의 흐름. 모든 실패는 범주로 정규화되어 중단 정책으로만 들어가고, Job 실패는 저장소 예외뿐이다.
+
+```mermaid
+sequenceDiagram
+    participant S as Scheduler (1분)
+    participant J as AccountPnlMonitorJob
+    participant St as JdbcAccountPnlAlertStore
+    participant K as 빗썸 adapter
+    participant F as 바이낸스 adapter
+    participant M as AccountPnlMailSender
+    S->>J: run() (JobExecutor lock 50s / timeout 40s)
+    J->>St: recoverStale(now, 5분) · load() → state, version
+    J->>K: read() — 계정·이력(캐시) 먼저, 호가 마지막
+    J->>F: read() — 포지션·이력(캐시)·펀딩 증분, 호가 마지막
+    Note over J: 신선도(조회 완료 시각 기준 10s / skew 5s / FX 2h) → 포지션 판정 → 순손익<br/>실패는 범주(UNEXPECTED 포함)로만 정책에 입력
+    J->>J: PnlAlertPolicy · MonitoringOutagePolicy → 메일 0~2통
+    J->>St: save(version, state, mails) — 한 트랜잭션, version 불일치면 Skipped
+    loop 최대 10회
+        J->>St: claim(owner, 1) — PROCESSING commit (REQUIRES_NEW, SKIP LOCKED)
+        J->>M: send(eventKey = account-pnl-profit-<epochMilli>)
+        J->>St: markSent(token) / 실패분은 회차 끝에 markAttemptFailed(token)
+    end
+```
+
+수익 알림 상태기계(판정값 = 메일에 표시되는 scale 2 순수익률):
+
+```mermaid
+stateDiagram-v2
+    [*] --> DISARMED
+    DISARMED --> ARMED: ≥ 1.00% (즉시 발송)
+    ARMED --> ARMED: ≥ 1.00% 이고 마지막 발송 후 ≥ 60분 (재발송)
+    ARMED --> ARMED: 0.90% ~ 1.00% (유지, 발송 없음)
+    ARMED --> DISARMED: < 0.90% 또는 포지션 없음
+    ARMED --> DISARMED: fingerprint(양 leg 수량·평단/진입가) 변경 → 같은 회차를 다시 판정
+    note right of ARMED: 계산 실패 회차는 상태 불변
+```
+
+## 5. 주요 결정과 버린 대안
+
+| 결정 | 이유 | 버린 대안 · trade-off |
+|---|---|---|
+| 기존 `notification_delivery`(V14) 대신 **전용 outbox V18** | V14 는 `subscription_id NOT NULL + FK` 와 premium 전용 event key 에 묶여 있다 | outbox 일반화 — 기존 premium 알림(R6)을 건드려야 해서 버림. 대신 같은 claim·fencing 계약을 복제했다 |
+| FX "마지막 수집 성공" 원천 = **batch 프로세스 메모리**(`RedisJobRunRecorderAdapter` 가 port 구현) | plan 이 가정한 Redis `batch:last_run:*` 키는 TTL 5분이라 30분 주기 FX 를 덮지 못해 정상 상태에서도 상시 `STALE_FX` 가 된다(구현 전 사전 점검에서 발견) | DB `exchange_rate.created_at` — `observed_at` UNIQUE 라 값이 안 바뀌면 갱신되지 않아 못 씀 · 새 Redis 키 — Redis 계약 변경이 커서 버림. **대가:** 재시작 직후 최대 2시간 FX 실패를 못 잡고, PC 잠자기 후 깨어나면 "환율 수집 지연" 중단/복구 메일이 한 쌍 올 수 있다(runbook 에 알려진 동작) |
+| 판정은 **scale 2 HALF_UP 순수익률**로 | 메일에 찍힌 숫자와 판정이 같아야 owner 가 헷갈리지 않는다 | 비반올림 값 판정 — 최대 0.005%p 차이. "1.00% 인데 왜 안 왔지"를 막는 쪽을 택함 |
+| eventKey `account-pnl-{profit\|outage\|recovered}-<epochMilli>` | 실제 `JavaMailEmailSender` 가 deliveryId 를 `[A-Za-z0-9._-]{1,128}` 로 검증한다. plan 의 `profit|<Instant>` 은 **메일이 한 통도 안 나가는** 결함이었다(⑨ 리뷰에서 발견, 모든 테스트가 가짜 sender 라 통과하던 상태) | — 이후 실제 sender 를 거치는 adapter 테스트를 추가했다 |
+| 빗썸 `query_hash` = **실제 전송 raw query** 의 SHA-512 | 문서 규칙. WebClient 템플릿이 `states[]` 를 `%5B%5D` 로 인코딩해, 디코딩 문자열을 해시하면 401 이 난다(태스크 리뷰에서 발견) | URI 를 한 번 만들어 그 raw query 로 서명·전송 |
+| 진입 수수료·펀딩 이력을 못 찾으면 **0 + `미반영` 표시 후 그대로 알림** | owner 결정 — 이미 열린 포지션이 이력 한도 밖일 수 있다 | 알림 보류 — owner 가 원치 않음 |
+| 빗썸 평단은 **수수료 미포함으로 가정**, 빗썸 진입 수수료(`paid_fee` 합)를 따로 차감하고 메일에 별도 줄로 표기 | 공식 문서에 포함 여부가 없다(Task 0). owner 승인 | 포함 가정 — AC13 검산으로 확정해 틀리면 변경 요청 |
+| stale 복구도 시도 1회로 셈, claim 은 1건씩 | design §4.4 "최대 시도 후 FAILED" 와 `.ai/rules/batch.md` "실행 가능한 concurrency 만큼 claim" | 원 plan(복구 시 미계산) — 발송 중 프로세스가 계속 죽으면 무한 재시도 |
+| 각 adapter 가 **호가를 마지막에** 읽고 이력 "미발견"도 캐시 | 이력 탐색(최대 13창·10페이지) 뒤에 호가를 읽으면 두 거래소 호가 시각 차가 5초를 넘어 `STALE_MARKET_DATA` 가 난다 | Domain port 를 계정/호가로 분리 — 범위가 커서 보류 |
+
+## 6. 동작 확인 방법
+
+```bash
+# 단위·아키텍처 (clean 재실행 기준 unit 768 · arch 33 실패 0)
+./gradlew test architectureTest --offline --no-daemon
+# 통합 (Docker 필요) — AC6 재시작 내구성·동시 실행·stale fencing, V18 store
+./gradlew :infrastructure:common:integrationTest :apps:batch:integrationTest --offline --no-daemon
+./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
+# AC 별 명령은 dod.md 수용기준 표의 '검증 명령' 칸 (AC10 은 :architecture-tests:architectureTest)
+```
+
+- 핵심 테스트: `AccountNetPnlTest`(기대값을 design §3 로 손 전개, `Tracking.grossPnl` 동치), `PnlAlertPolicyTest`·`MonitoringOutagePolicyTest`(경계값), `BithumbPrivateAccountAdapterTest`·`BinanceFuturesPrivateAccountAdapterTest`(MockWebServer, 문서 예제 HMAC 벡터, 서명 = 전송 문자열), `AccountPnlMonitorJobTest`, `AccountPnlAlertDurabilityIntegrationTest`(CyclicBarrier 로 두 인스턴스 겹침 강제), `AccountPnlMonitorWiringTest`(기본 꺼짐·scheduling off·메일 off·secret 비노출).
+- 실계정: [runbook](../../runbooks/account-pnl-alert.md) 의 "로컬 실행 순서" → "AC13 owner 검산 체크리스트". 결과는 PR 코멘트로 남긴다.
+
+## 7. 후속·리스크·함정
+
+- **AC13 미완(AWAITING_HUMAN).** 실 API 에서 확정해야 할 것: 빗썸 평단의 수수료 포함 여부, 바이낸스가 보존기간(3개월) 밖 가장 오래된 창에 `[]` 대신 4xx 로 답하는지(그러면 `UNEXPECTED` 중단 메일), `endTime` 없는 income 조회가 전체 범위를 주는지, 체결 id 없을 때 7일 시각 범위 감지.
+- **함정 — 테스트가 초록이어도 운영 경로가 다를 수 있다.** 이번에 실제로 두 번 겪었다(eventKey 형식, query_hash 인코딩). 외부 계약(SMTP sender 검증, 거래소 서명)은 가짜가 아니라 실제 구현을 한 번은 통과시키는 테스트를 둔다.
+- **함정 — Spring 조건 평가 순서.** app `@Configuration` 은 auto-configuration 보다 먼저 평가되므로 app 쪽에서 `@ConditionalOnBean(infra bean)` 은 운영에서 영영 매치되지 않는다(단위 테스트에선 통과). 그래서 app 조건은 같은 환경 키를 읽는 `AccountPnlMonitorEnabledCondition` 이고 키 목록이 infra 조건과 중복된다 — 둘 중 하나만 바꾸면 갈린다(wiring 테스트가 지킨다).
+- **함정 — batch 통합 테스트 스키마는 손으로 관리하는 fixture**(`batch-schema.sql`). V18 을 바꾸면 fixture 도 바꿔야 한다 — `AccountPnlFixtureSchemaIntegrationTest` 가 컬럼 단위로 잡는다(기본값·인덱스는 안 본다).
+- 리스크: cold start(재기동·포지션 변경 직후) 이력 탐색이 길면 그 회차가 `STALE_MARKET_DATA` 또는 40s timeout 이 될 수 있다. 5분 미만이면 중단 메일은 없다.
+- 후속(별도 작업으로 등록할 것): master spec 개정(design §0.1, 이 문서·AC13 결과 근거), `.ai/rules/batch.md` 의 event identity 규칙이 구독 없는 전용 outbox 를 어떻게 다룰지 보완, 계정/호가 port 분리.
 
 ## 외부 API 조사 (design §7, TP-OPEN-1)
 

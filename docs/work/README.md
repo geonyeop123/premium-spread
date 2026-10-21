@@ -5,3 +5,4 @@
 - [거래 준비 (Trade Preparation)](private-live-autotrader-trade-preparation/README.md)
 - [하네스 aic-api 정합 재구성](harness-aic-api-alignment/README.md)
 - [세션 자동 로드 문서 정리](harness-context-load/README.md)
+- [실계정 순손익 알림](live-account-pnl-alert/README.md)
