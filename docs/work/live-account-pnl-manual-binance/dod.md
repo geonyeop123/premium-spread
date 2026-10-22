@@ -1,8 +1,8 @@
 ---
 feature: 실계정 순손익 알림 — 바이낸스 수동 입력 모드 (Live Account PnL Manual Binance)
 slug: live-account-pnl-manual-binance
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-22T09:38:21+09:00
 verdict_commit:
 source: docs/work/live-account-pnl-manual-binance/design.md (DRAFT)
 ---
