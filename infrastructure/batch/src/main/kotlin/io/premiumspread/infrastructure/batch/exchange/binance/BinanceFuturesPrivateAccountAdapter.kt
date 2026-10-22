@@ -1,33 +1,25 @@
 package io.premiumspread.infrastructure.batch.exchange.binance
 
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
-import io.premiumspread.domain.accountpnl.PriceLevel
 import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.WebClientRequestException
-import org.springframework.web.reactive.function.client.WebClientResponseException
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Duration
-import java.time.Instant
-import java.util.concurrent.TimeoutException
 
 /** 바이낸스 USDⓈ-M 선물 read-only 계정 조회. 모든 호출은 GET 이며 실패는 [AccountReadException] 으로만 던진다. */
 class BinanceFuturesPrivateAccountAdapter(
-    private val webClient: WebClient,
+    webClient: WebClient,
     private val apiKey: String,
     private val secretKey: String,
     private val clock: Clock,
     private val recvWindowMillis: Long = 10_000,
-    private val timeout: Duration = Duration.ofSeconds(5),
+    timeout: Duration = Duration.ofSeconds(5),
 ) : ForeignPerpAccountReadPort {
-    private val mapper = ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+    private val client = BinanceFuturesReadClient(webClient, timeout)
 
     @Volatile
     private var serverOffsetMillis: Long? = null
@@ -44,17 +36,17 @@ class BinanceFuturesPrivateAccountAdapter(
         val history = if (position.amount.signum() != 0) resolveHistory(position) else null
         val fee = readTakerFeeRate()
         val entryCommission = history?.let { commissionUsdt(it) }
-        val lastPrice = readPrice(SYMBOL)
-        val depth = readDepth()
+        val lastPrice = client.price(SYMBOL)
+        val depth = client.askDepth(SYMBOL)
         return ForeignPerpAccountSnapshot(
             signedQuantity = position.amount,
             entryPrice = position.entryPrice,
             entryCommissionUsdt = entryCommission,
             fundingUsdt = history?.funding?.sum,
             takerFeeRate = fee,
-            askLevels = depth.first,
+            askLevels = depth.levels,
             lastPrice = lastPrice,
-            askObservedAt = depth.second,
+            askObservedAt = depth.observedAt,
         )
     }
 
@@ -91,17 +83,17 @@ class BinanceFuturesPrivateAccountAdapter(
 
     private fun readPosition(): Position {
         val rows = signedGet("/fapi/v3/positionRisk", "symbol=$SYMBOL")
-        if (!rows.isArray) unexpected("positionRisk response is not an array")
+        if (!rows.isArray) binanceUnexpected("positionRisk response is not an array")
         val row = rows.filter { it.path("symbol").asText() == SYMBOL }
             .let { list ->
                 list.firstOrNull { it.path("positionSide").asText() == "SHORT" }
                     ?: list.firstOrNull { it.path("positionSide").asText() == "BOTH" }
             }
             ?: return Position(BigDecimal.ZERO, BigDecimal.ZERO, "BOTH")
-        val amount = row.dec("positionAmt")
-        val entry = row.dec("entryPrice")
+        val amount = row.requireDecimal("positionAmt")
+        val entry = row.requireDecimal("entryPrice")
         if (amount.signum() == 0) return Position(BigDecimal.ZERO, BigDecimal.ZERO, row.path("positionSide").asText())
-        if (entry.signum() <= 0) unexpected("entry price is not positive for an open position")
+        if (entry.signum() <= 0) binanceUnexpected("entry price is not positive for an open position")
         return Position(amount, entry, row.path("positionSide").asText())
     }
 
@@ -126,7 +118,7 @@ class BinanceFuturesPrivateAccountAdapter(
 
     private fun commissionUsdt(history: History): BigDecimal {
         if (history.bnb.signum() == 0) return history.usdt
-        return history.usdt.add(history.bnb.multiply(readPrice("BNBUSDT")))
+        return history.usdt.add(history.bnb.multiply(client.price("BNBUSDT")))
     }
 
     private fun hasNewTrades(cached: EntryCache): Boolean {
@@ -140,7 +132,7 @@ class BinanceFuturesPrivateAccountAdapter(
             "symbol=$SYMBOL&startTime=${cached.walkedAtMillis + 1}&endTime=$now&limit=1"
         }
         val rows = signedGet("/fapi/v1/userTrades", params)
-        if (!rows.isArray) unexpected("userTrades response is not an array")
+        if (!rows.isArray) binanceUnexpected("userTrades response is not an array")
         return rows.size() > 0
     }
 
@@ -168,7 +160,7 @@ class BinanceFuturesPrivateAccountAdapter(
                 when (trade.asset) {
                     "USDT" -> usdt = usdt.add(trade.commission)
                     "BNB" -> bnb = bnb.add(trade.commission)
-                    else -> unexpected("unsupported commission asset")
+                    else -> binanceUnexpected("unsupported commission asset")
                 }
                 if (cumulative.compareTo(position.amount) == 0) {
                     return WalkResult(newestId, Walked(trade.time, usdt, bnb))
@@ -181,19 +173,21 @@ class BinanceFuturesPrivateAccountAdapter(
 
     private fun readTrades(start: Long, end: Long): List<Trade> {
         val rows = signedGet("/fapi/v1/userTrades", "symbol=$SYMBOL&startTime=$start&endTime=$end&limit=$TRADE_LIMIT")
-        if (!rows.isArray) unexpected("userTrades response is not an array")
+        if (!rows.isArray) binanceUnexpected("userTrades response is not an array")
         return rows.map {
-            val qty = it.dec("qty")
-            val price = it.dec("price")
-            val commission = it.dec("commission")
-            if (qty.signum() <= 0 || price.signum() <= 0 || commission.signum() < 0) unexpected("trade value is out of range")
+            val qty = it.requireDecimal("qty")
+            val price = it.requireDecimal("price")
+            val commission = it.requireDecimal("commission")
+            if (qty.signum() <= 0 || price.signum() <= 0 || commission.signum() < 0) {
+                binanceUnexpected("trade value is out of range")
+            }
             val sign = when (it.path("side").asText()) {
                 "BUY" -> 1
                 "SELL" -> -1
-                else -> unexpected("trade side is unknown")
+                else -> binanceUnexpected("trade side is unknown")
             }
-            val id = it.get("id")?.takeIf { n -> n.isIntegralNumber }?.asLong() ?: unexpected("trade id is missing")
-            val time = it.get("time")?.takeIf { n -> n.isIntegralNumber }?.asLong() ?: unexpected("trade time is missing")
+            val id = it.get("id")?.takeIf { n -> n.isIntegralNumber }?.asLong() ?: binanceUnexpected("trade id is missing")
+            val time = it.get("time")?.takeIf { n -> n.isIntegralNumber }?.asLong() ?: binanceUnexpected("trade time is missing")
             Trade(
                 id,
                 time,
@@ -212,14 +206,15 @@ class BinanceFuturesPrivateAccountAdapter(
         var start = initial.lastTime
         while (true) {
             val rows = signedGet("/fapi/v1/income", "incomeType=FUNDING_FEE&symbol=$SYMBOL&limit=$INCOME_LIMIT&startTime=$start")
-            if (!rows.isArray) unexpected("income response is not an array")
+            if (!rows.isArray) binanceUnexpected("income response is not an array")
             var added = 0
             for (row in rows.sortedBy { it.path("time").asLong() }) {
-                val tranId = row.get("tranId")?.takeIf { it.isIntegralNumber }?.asLong() ?: unexpected("tranId is missing")
-                val time = row.get("time")?.takeIf { it.isIntegralNumber }?.asLong() ?: unexpected("income time is missing")
-                if (row.path("asset").asText() != "USDT") unexpected("unsupported funding asset")
+                val tranId = row.get("tranId")?.takeIf { it.isIntegralNumber }?.asLong() ?: binanceUnexpected("tranId is missing")
+                val time = row.get("time")?.takeIf { it.isIntegralNumber }?.asLong()
+                    ?: binanceUnexpected("income time is missing")
+                if (row.path("asset").asText() != "USDT") binanceUnexpected("unsupported funding asset")
                 if (time == last && tranId in seen) continue
-                sum = sum.add(row.dec("income"))
+                sum = sum.add(row.requireDecimal("income"))
                 added++
                 if (time > last) {
                     last = time
@@ -234,124 +229,38 @@ class BinanceFuturesPrivateAccountAdapter(
     }
 
     private fun readTakerFeeRate(): BigDecimal {
-        val rate = signedGet("/fapi/v1/commissionRate", "symbol=$SYMBOL").dec("takerCommissionRate")
-        if (rate.signum() < 0) unexpected("taker commission rate is negative")
+        val rate = signedGet("/fapi/v1/commissionRate", "symbol=$SYMBOL").requireDecimal("takerCommissionRate")
+        if (rate.signum() < 0) binanceUnexpected("taker commission rate is negative")
         return rate
-    }
-
-    private fun readDepth(): Pair<List<PriceLevel>, Instant> {
-        val root = send("/fapi/v1/depth", "symbol=$SYMBOL&limit=20", signed = false)
-        val asks = root.get("asks")?.takeIf { it.isArray } ?: unexpected("depth asks are missing")
-        val levels = asks.map {
-            if (!it.isArray || it.size() < 2) unexpected("depth level is malformed")
-            val price = it.get(0).decimal("depth price")
-            val qty = it.get(1).decimal("depth quantity")
-            if (price.signum() <= 0 || qty.signum() <= 0) unexpected("depth level is not positive")
-            PriceLevel(price, qty)
-        }.sortedBy { it.price }
-        if (levels.isEmpty()) unexpected("depth has no ask levels")
-        val time = root.get("T")?.takeIf { it.isIntegralNumber }?.asLong() ?: unexpected("depth time is missing")
-        return levels to Instant.ofEpochMilli(time)
-    }
-
-    private fun readPrice(symbol: String): BigDecimal {
-        val price = send("/fapi/v2/ticker/price", "symbol=$symbol", signed = false).dec("price")
-        if (price.signum() <= 0) unexpected("price is not positive")
-        return price
     }
 
     private fun nowMillis() = clock.millis() + (serverOffsetMillis ?: 0L)
 
     private fun measureOffset(): Long {
-        val server = send("/fapi/v1/time", "", signed = false).get("serverTime")?.takeIf { it.isIntegralNumber }?.asLong()
-            ?: unexpected("serverTime is missing")
+        val server = client.get("/fapi/v1/time", "").get("serverTime")?.takeIf { it.isIntegralNumber }?.asLong()
+            ?: binanceUnexpected("serverTime is missing")
         return (server - clock.millis()).also { serverOffsetMillis = it }
     }
 
-    private class TimestampRejected : RuntimeException()
-
     private fun signedGet(path: String, params: String): JsonNode {
         try {
-            return send(path, params, signed = true)
-        } catch (_: TimestampRejected) {
+            return send(path, params)
+        } catch (_: BinanceTimestampRejectedException) {
             measureOffset()
         }
         try {
-            return send(path, params, signed = true)
-        } catch (e: TimestampRejected) {
+            return send(path, params)
+        } catch (e: BinanceTimestampRejectedException) {
             throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance $path timestamp rejected after re-sync", e)
         }
     }
 
-    // adapter 경계: 모든 실패를 AccountReadException 으로 정규화한다.
-    @Suppress("TooGenericExceptionCaught")
-    private fun send(path: String, params: String, signed: Boolean): JsonNode {
-        val query = if (signed) {
-            val offset = serverOffsetMillis ?: measureOffset()
-            val prefix = if (params.isEmpty()) "" else "$params&"
-            val base = prefix + "recvWindow=$recvWindowMillis&timestamp=${clock.millis() + offset}"
-            "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}"
-        } else {
-            params
-        }
-        val body = try {
-            webClient.get()
-                .uri { builder ->
-                    builder.path(path).also { if (query.isNotEmpty()) it.replaceQuery(query) }.build()
-                }
-                .headers { if (signed) it.set("X-MBX-APIKEY", apiKey) }
-                .retrieve()
-                .bodyToMono(String::class.java)
-                .timeout(timeout)
-                .block()
-        } catch (e: WebClientResponseException) {
-            throw mapHttpError(path, e)
-        } catch (e: WebClientRequestException) {
-            throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance $path request failed", e)
-        } catch (e: AccountReadException) {
-            throw e
-        } catch (e: RuntimeException) {
-            val timedOut = generateSequence<Throwable>(e) { it.cause }.any { it is TimeoutException }
-            val category = if (timedOut) AccountReadFailureCategory.NETWORK else AccountReadFailureCategory.UNEXPECTED
-            throw AccountReadException(category, "Binance $path call failed", e)
-        } ?: unexpected("Binance $path returned an empty body")
-        return try {
-            mapper.readTree(body) ?: unexpected("Binance $path returned an empty body")
-        } catch (e: JsonProcessingException) {
-            throw AccountReadException(AccountReadFailureCategory.UNEXPECTED, "Binance $path returned malformed JSON", e)
-        }
+    private fun send(path: String, params: String): JsonNode {
+        val offset = serverOffsetMillis ?: measureOffset()
+        val prefix = if (params.isEmpty()) "" else "$params&"
+        val base = prefix + "recvWindow=$recvWindowMillis&timestamp=${clock.millis() + offset}"
+        return client.get(path, "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}", apiKey)
     }
-
-    private fun mapHttpError(path: String, e: WebClientResponseException): RuntimeException {
-        val status = e.statusCode.value()
-        val code = try {
-            mapper.readTree(e.responseBodyAsString)?.get("code")?.takeIf { it.isIntegralNumber }?.asInt()
-        } catch (_: JsonProcessingException) {
-            null
-        }
-        if (code == CODE_INVALID_TIMESTAMP) return TimestampRejected()
-        val category = when {
-            status == 401 || code in AUTH_CODES -> AccountReadFailureCategory.BINANCE_AUTH
-            status == 429 || status == 418 || status >= 500 -> AccountReadFailureCategory.NETWORK
-            else -> AccountReadFailureCategory.UNEXPECTED
-        }
-        return AccountReadException(category, "Binance $path responded $status", e)
-    }
-
-    private fun JsonNode.dec(field: String): BigDecimal = (get(field) ?: unexpected("field $field is missing")).decimal(field)
-
-    private fun JsonNode.decimal(name: String): BigDecimal = try {
-        when {
-            isNumber -> decimalValue()
-            isTextual -> BigDecimal(asText())
-            else -> unexpected("field $name is not a number")
-        }
-    } catch (e: NumberFormatException) {
-        throw AccountReadException(AccountReadFailureCategory.UNEXPECTED, "field $name is not a number", e)
-    }
-
-    private fun unexpected(message: String): Nothing =
-        throw AccountReadException(AccountReadFailureCategory.UNEXPECTED, message)
 
     private companion object {
         const val SYMBOL = "BTCUSDT"
@@ -359,7 +268,5 @@ class BinanceFuturesPrivateAccountAdapter(
         const val INCOME_LIMIT = 1000
         const val MAX_WINDOWS = 13
         const val WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000
-        const val CODE_INVALID_TIMESTAMP = -1021
-        val AUTH_CODES = setOf(-2014, -2015, -1022)
     }
 }

@@ -127,6 +127,16 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
   → `출처 인자 없이 만든 바이낸스 Snapshot 은 EXCHANGE_API 다() FAILED`, `9 tests completed, 1 failed`, BUILD FAILED. fingerprint 특성화 테스트는 처음부터 초록(공식 무변경).
 - GREEN(기본값 `EXCHANGE_API`): 같은 명령 → BUILD SUCCESSFUL (9 tests, 0 failed). `./gradlew :domain:test --offline --no-daemon` → BUILD SUCCESSFUL (Task 1 golden 포함).
 
+### Task 3 — AC4 공개 조회 공유 클래스 추출 (날짜 2026-10-22)
+
+- RED: `test "$(grep -rl -e '/fapi/v1/depth' -e '/fapi/v2/ticker/price' infrastructure/batch/src/main/kotlin)" = ".../exchange/binance/BinanceFuturesReadClient.kt"; echo exit=$?`
+  → `exit=1` (grep 결과에 `BinanceFuturesPrivateAccountAdapter.kt` 포함).
+- GREEN(AC4 명령을 샌드박스 제약으로 세 부분으로 나눠 실행):
+  - 셸 검사 → `exit=0` (grep 결과 `BinanceFuturesReadClient.kt` 한 줄).
+  - `git diff --exit-code 0a04546 -- infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/exchange/binance/BinanceFuturesPrivateAccountAdapterTest.kt` → 빈 출력, exit 0 (테스트 무수정).
+  - `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest' --offline --no-daemon` → BUILD SUCCESSFUL (27 tests, 0 failed).
+- 모듈 전체: `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL (129 tests, 0 failed, 0 skipped).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
