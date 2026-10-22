@@ -100,6 +100,19 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
 
+### Task 0 — Gate 1 기준선 (2026-10-22, HEAD `cd85a43`, gradle `--offline --no-daemon`, cache 정상 — 온라인 실행 없음)
+
+| 항목 | 명령 | 결과 |
+|---|---|---|
+| R1 | `./gradlew architectureTest` | exit 0 (BUILD SUCCESSFUL 24s) |
+| R2 | `./gradlew :apps:api:test --tests '*TradePreparationWiring*'` | exit 0 |
+| R3·R4·R8b | `./gradlew test` | exit 0 (BUILD SUCCESSFUL 1m 46s) |
+| R8d | `./gradlew :architecture-tests:architectureTest --tests '...PrivateAccountReadOnlyArchitectureTest'` | exit 0 |
+| [ASSUMPTION] 2 | `grep -rl -e '/fapi/v1/depth' -e '/fapi/v2/ticker/price' infrastructure/batch/src/main/kotlin` | 1줄 — `.../exchange/binance/BinanceFuturesPrivateAccountAdapter.kt` (성립) |
+| [ASSUMPTION] 3 | `find infrastructure/batch/src/main/kotlin -path '*/exchange/*' \( -name '*AccountAdapter.kt' -o -name '*ReadClient.kt' \)` | 2줄 — `BinanceFuturesPrivateAccountAdapter.kt`, `BithumbPrivateAccountAdapter.kt` (성립) |
+| 기존 대상 | `find . -path '*/src/main/kotlin/*' -name '*PrivateAccountAdapter.kt' -not -path '*/build/*'` | 2줄 — 위 두 파일 |
+| [ASSUMPTION] 1 | 커밋하지 않은 임시 probe(`ApplicationContextRunner` + nested `data class` init 의 `require` 실패) | `hasFailed()` 성립. 원인 체인 `ConfigurationPropertiesBindException ← BindException ← BeanInstantiationException ← IllegalArgumentException("probe.nested.v must be ok")` — 체인 메시지에 입력 값 없음. probe 파일은 삭제(커밋 없음) |
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
