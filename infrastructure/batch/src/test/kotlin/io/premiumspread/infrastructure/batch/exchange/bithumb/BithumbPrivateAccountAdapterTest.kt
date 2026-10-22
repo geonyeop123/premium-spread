@@ -77,7 +77,7 @@ class BithumbPrivateAccountAdapterTest {
         assertThat(body).contains("\"access_key\":\"test-access-key\"", "\"timestamp\":${clock.millis()}", "\"nonce\":\"", "\"query_hash_alg\":\"SHA512\"")
         val query = request.requestUrl!!.encodedQuery!!
         assertThat(URLDecoder.decode(query, Charsets.UTF_8)).contains("states[]=done&states[]=cancel")
-        assertThat(body).contains("\"query_hash\":\"${BithumbJwtSigner.sha512Hex(query)}\"")
+        assertThat(body).contains("\"query_hash\":\"${BithumbJwtSigner.sha512Hex(URLDecoder.decode(query, Charsets.UTF_8))}\"")
     }
 
     @Test
@@ -150,12 +150,53 @@ class BithumbPrivateAccountAdapterTest {
     }
 
     @Test
-    fun `0 이하 호가 가격이나 수량은 UNEXPECTED`() {
+    fun `bid_size 가 0 인 단계는 건너뛰고 나머지를 가격 내림차순으로 낸다`() {
         responses["/v1/orderbook"] = {
-            json("""[{"market":"KRW-BTC","timestamp":1,"orderbook_units":[{"ask_price":1,"bid_price":100,"ask_size":1,"bid_size":0}]}]""")
+            json(book(unit("100", "1.5"), unit("400", "0"), unit("300", "0.25"), unit("500", "0"), unit("200", "2")))
         }
 
-        assertCategory(AccountReadFailureCategory.UNEXPECTED)
+        assertThat(adapter().read().bidLevels.map { it.price.toInt() }).containsExactly(300, 200, 100)
+    }
+
+    @Test
+    fun `0 수량은 표기와 무관하게 건너뛴다`() {
+        responses["/v1/orderbook"] = {
+            json(book(unit("100", "1"), unit("400", "\"0.00000000\""), unit("500", "0.0"), unit("200", "2")))
+        }
+
+        assertThat(adapter().read().bidLevels.map { it.price.toInt() }).containsExactly(200, 100)
+    }
+
+    @Test
+    fun `0 수량 단계는 bid_price 가 없어도 건너뛴다`() {
+        responses["/v1/orderbook"] = {
+            json(book("""{"ask_price":1,"ask_size":1,"bid_size":0}""", unit("100", "1")))
+        }
+
+        assertThat(adapter().read().bidLevels.map { it.price.toInt() }).containsExactly(100)
+    }
+
+    @Test
+    fun `모든 bid_size 가 0 이면 no bid levels 로 UNEXPECTED`() {
+        responses["/v1/orderbook"] = { json(book(unit("100", "0"), unit("200", "0"))) }
+
+        assertUnexpectedMessage("orderbook has no bid levels")
+    }
+
+    @Test
+    fun `수량이 양수여도 bid_price 가 0 이하이면 UNEXPECTED`() {
+        listOf("0", "-1").forEach { price ->
+            responses["/v1/orderbook"] = { json(book(unit("100", "1"), unit(price, "1"))) }
+
+            assertUnexpectedMessage("orderbook level is not positive")
+        }
+    }
+
+    @Test
+    fun `음수 bid_size 는 UNEXPECTED`() {
+        responses["/v1/orderbook"] = { json(book(unit("100", "1"), unit("200", "-1"))) }
+
+        assertUnexpectedMessage("orderbook level is not positive")
     }
 
     @Test
@@ -346,6 +387,18 @@ class BithumbPrivateAccountAdapterTest {
     private fun assertCategory(category: AccountReadFailureCategory, adapter: BithumbPrivateAccountAdapter = adapter()) {
         assertThat(catchRead(adapter).category).isEqualTo(category)
     }
+
+    private fun assertUnexpectedMessage(message: String) {
+        val e = catchRead()
+        assertThat(e.category).isEqualTo(AccountReadFailureCategory.UNEXPECTED)
+        assertThat(e.message).contains(message)
+    }
+
+    private fun unit(bidPrice: String, bidSize: String) =
+        """{"ask_price":1,"bid_price":$bidPrice,"ask_size":1,"bid_size":$bidSize}"""
+
+    private fun book(vararg units: String) =
+        """[{"market":"KRW-BTC","timestamp":1,"orderbook_units":[${units.joinToString(",")}]}]"""
 
     private fun recorded(): List<RecordedRequest> =
         generateSequence { server.takeRequest(10, java.util.concurrent.TimeUnit.MILLISECONDS) }.toList()

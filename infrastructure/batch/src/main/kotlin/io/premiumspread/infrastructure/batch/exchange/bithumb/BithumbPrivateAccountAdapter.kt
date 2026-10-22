@@ -12,6 +12,8 @@ import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientRequestException
 import org.springframework.web.reactive.function.client.WebClientResponseException
 import java.math.BigDecimal
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -80,10 +82,12 @@ class BithumbPrivateAccountAdapter(
         val root = getJson("/v1/orderbook", "markets=KRW-BTC", signed = false)
         val book = root.requireArray("orderbook").firstOrNull() ?: unexpected("orderbook is empty")
         val units = (book.get("orderbook_units") ?: unexpected("orderbook_units is missing")).requireArray("orderbook_units")
-        val levels = units.map {
-            val price = it.dec("bid_price")
+        // bid_size 가 정확히 0 인 단계는 ask 만 있는 한쪽 행이므로 bid 레벨이 아니다.
+        val levels = units.mapNotNull {
             val size = it.dec("bid_size")
-            if (price.signum() <= 0 || size.signum() <= 0) unexpected("orderbook level is not positive")
+            if (size.signum() == 0) return@mapNotNull null
+            val price = it.dec("bid_price")
+            if (price.signum() <= 0 || size.signum() < 0) unexpected("orderbook level is not positive")
             PriceLevel(price, size)
         }.sortedByDescending { it.price }
         if (levels.isEmpty()) unexpected("orderbook has no bid levels")
@@ -174,7 +178,8 @@ class BithumbPrivateAccountAdapter(
                         val jwt = BithumbJwtSigner.sign(
                             accessKey,
                             secretKey,
-                            wireQuery,
+                            // query_hash 는 wire 의 인코딩 query 가 아니라 디코딩된 query(states[]=done...) 기준이다.
+                            wireQuery?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) },
                             UUID.randomUUID().toString(),
                             clock.millis(),
                         )
