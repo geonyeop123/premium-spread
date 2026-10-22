@@ -113,6 +113,12 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
 | 기존 대상 | `find . -path '*/src/main/kotlin/*' -name '*PrivateAccountAdapter.kt' -not -path '*/build/*'` | 2줄 — 위 두 파일 |
 | [ASSUMPTION] 1 | 커밋하지 않은 임시 probe(`ApplicationContextRunner` + nested `data class` init 의 `require` 실패) | `hasFailed()` 성립. 원인 체인 `ConfigurationPropertiesBindException ← BindException ← BeanInstantiationException ← IllegalArgumentException("probe.nested.v must be ok")` — 체인 메시지에 입력 값 없음. probe 파일은 삭제(커밋 없음) |
 
+### Task 2 — AC1 Snapshot 출처 (날짜 2026-10-22)
+
+- RED(stub 기본값 `MANUAL_ENV`): `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountHedgePositionTest' --offline --no-daemon`
+  → `출처 인자 없이 만든 바이낸스 Snapshot 은 EXCHANGE_API 다() FAILED`, `9 tests completed, 1 failed`, BUILD FAILED. fingerprint 특성화 테스트는 처음부터 초록(공식 무변경).
+- GREEN(기본값 `EXCHANGE_API`): 같은 명령 → BUILD SUCCESSFUL (9 tests, 0 failed). `./gradlew :domain:test --offline --no-daemon` → BUILD SUCCESSFUL (Task 1 golden 포함).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
