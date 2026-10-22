@@ -84,9 +84,9 @@ class BithumbPrivateAccountAdapter(
         val units = (book.get("orderbook_units") ?: unexpected("orderbook_units is missing")).requireArray("orderbook_units")
         // bid_size 가 정확히 0 인 단계는 ask 만 있는 한쪽 행이므로 bid 레벨이 아니다.
         val levels = units.mapNotNull {
-            val price = it.dec("bid_price")
             val size = it.dec("bid_size")
             if (size.signum() == 0) return@mapNotNull null
+            val price = it.dec("bid_price")
             if (price.signum() <= 0 || size.signum() < 0) unexpected("orderbook level is not positive")
             PriceLevel(price, size)
         }.sortedByDescending { it.price }
