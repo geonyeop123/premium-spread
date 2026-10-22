@@ -230,4 +230,96 @@ class AccountPnlMailContentTest {
             }
         }
     }
+
+    // api 출처 수익 메일 기준 golden. Task 1 시점(base 코드) 실제 출력이며 이후 태스크에서 고치지 않는다.
+    private val apiGoldenFullEventKey = "account-pnl-profit-1792454405000"
+    private val apiGoldenFullSubject = "[김프 알림] 순수익률 +1.23% · +456,789원"
+    private val apiGoldenFullBody = listOf(
+        "순수익률: +1.23%",
+        "순수익금: +456,789원",
+        "체결가 기준 순수익률(대조용): +1.20% / 순수익금 +455,000원",
+        "",
+        "gross: +500,001원",
+        "진입 수수료: -23,824원",
+        "  - 빗썸: -12,000원",
+        "  - 바이낸스: -8.9 USDT (-11,824원)",
+        "누적 펀딩비: +4,251원 (+3.2 USDT)",
+        "예상 청산 수수료: -15,000원",
+        "",
+        "[빗썸 현물]",
+        "수량: 0.266",
+        "평단: 113,016,278원",
+        "청산가(호가 VWAP): 109,500,000.00원",
+        "최근 체결가: 109,575,000원",
+        "",
+        "[바이낸스 선물 숏]",
+        "수량: 0.266",
+        "진입가: 83549.4 USDT",
+        "청산가(호가 VWAP): 81580.0000 USDT",
+        "최근 체결가: 81577 USDT",
+        "",
+        "환율: 1328.5 KRW/USDT",
+        "빗썸 호가 관측: 2026-10-20 09:00:00 (2026-10-20T00:00:00Z)",
+        "바이낸스 호가 관측: 2026-10-20 09:00:01 (2026-10-20T00:00:01Z)",
+        "환율 관측: 2026-10-20 08:30:00 (2026-10-19T23:30:00Z)",
+        "계산 시각: 2026-10-20 09:00:05 (2026-10-20T00:00:05Z)",
+        "",
+        "※ 금액은 표시 시 원 단위 반올림(계산은 전체 정밀도)",
+    ).joinToString("\n")
+
+    private val apiGoldenUnrecoveredEventKey = "account-pnl-profit-1792454405000"
+    private val apiGoldenUnrecoveredSubject = "[김프 알림] 순수익률 +1.23% · +456,789원"
+    private val apiGoldenUnrecoveredBody = listOf(
+        "순수익률: +1.23%",
+        "순수익금: +456,789원",
+        "체결가 기준 순수익률(대조용): +1.20% / 순수익금 +455,000원",
+        "",
+        "gross: +500,001원",
+        "진입 수수료: -23,824원",
+        "  - 빗썸: 진입 수수료(빗썸) 미반영(이력 없음)",
+        "  - 바이낸스: 진입 수수료(바이낸스) 미반영(이력 없음)",
+        "누적 펀딩비: +4,251원  펀딩비 미반영(이력 없음)",
+        "예상 청산 수수료: -15,000원",
+        "",
+        "[빗썸 현물]",
+        "수량: 0.266",
+        "평단: 113,016,278원",
+        "청산가(호가 VWAP): 109,500,000.00원",
+        "최근 체결가: 109,575,000원",
+        "",
+        "[바이낸스 선물 숏]",
+        "수량: 0.266",
+        "진입가: 83549.4 USDT",
+        "청산가(호가 VWAP): 81580.0000 USDT",
+        "최근 체결가: 81577 USDT",
+        "",
+        "환율: 1328.5 KRW/USDT",
+        "빗썸 호가 관측: 2026-10-20 09:00:00 (2026-10-20T00:00:00Z)",
+        "바이낸스 호가 관측: 2026-10-20 09:00:01 (2026-10-20T00:00:01Z)",
+        "환율 관측: 2026-10-20 08:30:00 (2026-10-19T23:30:00Z)",
+        "계산 시각: 2026-10-20 09:00:05 (2026-10-20T00:00:05Z)",
+        "",
+        "※ 금액은 표시 시 원 단위 반올림(계산은 전체 정밀도)",
+    ).joinToString("\n")
+
+    @Test
+    fun `api 출처 수익 메일은 기준 golden 과 같다 - 모든 항목 확보`() {
+        val mail = AccountPnlMailContent.profit(pnl(), zone)
+
+        assertThat(mail.eventKey).isEqualTo(apiGoldenFullEventKey)
+        assertThat(mail.subject).isEqualTo(apiGoldenFullSubject)
+        assertThat(mail.body).isEqualTo(apiGoldenFullBody)
+    }
+
+    @Test
+    fun `api 출처 수익 메일은 기준 golden 과 같다 - 진입 수수료와 펀딩 미확보`() {
+        val mail = AccountPnlMailContent.profit(
+            pnl(koreaFeeUnrecovered = true, foreignFeeUnrecovered = true, fundingUnrecovered = true),
+            zone,
+        )
+
+        assertThat(mail.eventKey).isEqualTo(apiGoldenUnrecoveredEventKey)
+        assertThat(mail.subject).isEqualTo(apiGoldenUnrecoveredSubject)
+        assertThat(mail.body).isEqualTo(apiGoldenUnrecoveredBody)
+    }
 }

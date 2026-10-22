@@ -131,3 +131,11 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
 ## 최종 판정
 
 (⑩ 에서 작성)
+
+### Task 1 — AC2-a api 수익 메일 golden 특성화 (날짜 2026-10-22)
+
+- RED(변이): `AccountPnlMailContent.profit` 의 `[바이낸스 선물 숏]` 다음에 임시 `add("x")` 삽입 후
+  `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon`
+  → `api 출처 수익 메일은 기준 golden 과 같다 - 진입 수수료와 펀딩 미확보() FAILED`, `... - 모든 항목 확보() FAILED`, `14 tests completed, 2 failed`, BUILD FAILED.
+- 되돌림: `git checkout -- domain/src/main` 후 `git diff --stat -- domain/src/main` 빈 출력.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (14 tests, 0 failed; 기존 12 + golden 2).
