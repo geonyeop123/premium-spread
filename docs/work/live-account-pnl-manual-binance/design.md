@@ -515,3 +515,15 @@ class BinanceFuturesManualAccountAdapter(
 | 라운드 | 변경 |
 |---|---|
 | ⑥ R1 (4 Important · 7 Minor, ACCEPT 11) | §3.1·§3.2·§3.4 `String?` 바인딩과 직접 해석(옵션 (b)), 검증 시점 조건 명시·잔여 노출 기록 / §8.1 `ObjectMapper` 이동·timeout 전달·`-1021` 의도된 변경 / §8.2 대상 합집합 / §1.2·§7 펀딩 미갱신 과대평가와 후속 과제 / §3.3 `AccountPnlMonitorRequirements` 에 `MODE_KEY`·`enabled()` (오케스트레이터 `e85a03b`) |
+
+## 구현 중 변경
+
+승인된 절은 다시 쓰지 않고 구현 중 달라진 사항만 기록한다.
+
+- (a) `BinanceLegMode` 에 internal `parse`·`INVALID_MODE_MESSAGE` companion 을 두어 Properties 와 infra 조건이
+  한 규칙을 공유한다. 앱 조건은 infra import 가 금지라 자체 사본을 두며, 28조합 행렬 테스트가 둘의 일치를 고정한다.
+- (b) manual adapter 테스트의 `Binance ` 메시지 접두 단언은 HTTP 경로 실패에만 적용한다. 파싱 검증 실패는 api 모드와
+  같은 기존 문구를 유지한다(dod AC3(d) 는 query 비노출만 요구).
+- (c) `BinanceTimestampRejectedException` 은 HTTP 오류를 cause 로 운반한다(시그니처대로, 401/5xx 와 같은 수준).
+- (d) 후속 과제: manual 값의 지수 표기·과대 scale 거부, private adapter timeout 전달 회귀 테스트(신규 테스트 클래스),
+  공개 fundingRate 기반 펀딩 추정(§1.2).

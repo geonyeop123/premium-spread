@@ -68,7 +68,7 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, `ApplicationContextRunner` + `OutputCap
 
 **Files:** 없음 (dod `## 증거 로그` 에 append)
 
-- [ ] **Step 1:** 기준선 실행·기록.
+- [x] **Step 1:** 기준선 실행·기록.
   ```bash
   ./gradlew architectureTest --offline --no-daemon                                         # R1
   ./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon       # R2
@@ -78,11 +78,11 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, `ApplicationContextRunner` + `OutputCap
   find infrastructure/batch/src/main/kotlin -path '*/exchange/*' \( -name '*AccountAdapter.kt' -o -name '*ReadClient.kt' \)
   find . -path '*/src/main/kotlin/*' -name '*PrivateAccountAdapter.kt' -not -path '*/build/*'
   ```
-- [ ] **Step 2: 예상 결과.** gradle 4건 exit 0. `grep` 출력은 `.../exchange/binance/BinanceFuturesPrivateAccountAdapter.kt` 한 줄.
+- [x] **Step 2: 예상 결과.** gradle 4건 exit 0. `grep` 출력은 `.../exchange/binance/BinanceFuturesPrivateAccountAdapter.kt` 한 줄.
   두 `find` 출력은 각각 `BithumbPrivateAccountAdapter.kt`·`BinanceFuturesPrivateAccountAdapter.kt` 두 줄. **다르면 멈추고 보고한다**
   (design `[ASSUMPTION]` 2·3 이 깨진 것이다 — AC4 명령·AC7 대상 규칙을 조정해야 한다). `--offline` 이 cache 부재로 실패하면 온라인 1회
   실행으로 cache 를 채우고 그 사실을 기록한다.
-- [ ] **Step 3: Commit** — `docs: 바이낸스 수동 모드 Gate 1 기준선 기록` (dod 증거 로그만)
+- [x] **Step 3: Commit** — `docs: 바이낸스 수동 모드 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: api 수익 메일 golden 특성화 (AC2-a)
 
@@ -98,12 +98,12 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, `ApplicationContextRunner` + `OutputCap
   로 같은 방식. golden 안에 `진입 수수료(빗썸) 미반영(이력 없음)`·`진입 수수료(바이낸스) 미반영(이력 없음)`·`펀딩비 미반영(이력 없음)` 이 있다.
 - golden 상수는 이후 태스크에서 **고치지 않는다.** 고쳐야 할 상황이면 api 메일이 바뀐 것이므로 멈추고 보고한다.
 
-- [ ] **Step 1:** 두 테스트 작성 (golden 은 base 출력에서 복사).
-- [ ] **Step 2: RED 확인 (변이).** 특성화라 첫 실행은 초록이다. RED 는 `AccountPnlMailContent.profit` 의 `[바이낸스 선물 숏]` 다음에 임시 줄
+- [x] **Step 1:** 두 테스트 작성 (golden 은 base 출력에서 복사).
+- [x] **Step 2: RED 확인 (변이).** 특성화라 첫 실행은 초록이다. RED 는 `AccountPnlMailContent.profit` 의 `[바이낸스 선물 숏]` 다음에 임시 줄
   `add("x")` 를 넣고 `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon`
   → 두 golden 테스트 FAILED 확인 후 `git checkout -- domain/src/main` 으로 되돌리고 `git diff --stat -- domain/src/main` 이 빈 출력임을 기록.
-- [ ] **Step 3:** 같은 명령 → BUILD SUCCESSFUL. 증거 로그 AC2-a.
-- [ ] **Step 4: Commit** — `test: 실계정 수익 메일 api 본문 golden 특성화 테스트`
+- [x] **Step 3:** 같은 명령 → BUILD SUCCESSFUL. 증거 로그 AC2-a.
+- [x] **Step 4: Commit** — `test: 실계정 수익 메일 api 본문 golden 특성화 테스트`
 
 ### Task 2: Snapshot 출처 (AC1)
 
@@ -138,11 +138,11 @@ data class ForeignPerpAccountSnapshot(
 - `출처만 다른 두 포지션의 fingerprint 는 같다` — 빗썸 0.266/113016278, 바이낸스 -0.266/83549.4 로 `EXCHANGE_API`·`MANUAL_ENV` 각 1개 →
   `fingerprint` 동일, 둘 다 `resolve` 결과 non-null.
 
-- [ ] **Step 1:** enum 과 필드를 추가하되 **기본값을 `MANUAL_ENV` 로 둔 stub** 상태에서 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountHedgePositionTest' --offline --no-daemon` →
+- [x] **Step 1:** enum 과 필드를 추가하되 **기본값을 `MANUAL_ENV` 로 둔 stub** 상태에서 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountHedgePositionTest' --offline --no-daemon` →
   `출처 인자 없이 ...` FAILED (RED). fingerprint 테스트는 공식 무변경의 특성화라 처음부터 초록일 수 있다 — 그대로 기록.
-- [ ] **Step 3:** 기본값을 `EXCHANGE_API` 로. 같은 명령 → PASS. `./gradlew :domain:test --offline --no-daemon` → PASS (Task 1 golden 포함). 증거 로그 AC1.
-- [ ] **Step 4: Commit** — `feat: 바이낸스 Snapshot 에 포지션 출처 추가`
+- [x] **Step 3:** 기본값을 `EXCHANGE_API` 로. 같은 명령 → PASS. `./gradlew :domain:test --offline --no-daemon` → PASS (Task 1 golden 포함). 증거 로그 AC1.
+- [x] **Step 4: Commit** — `feat: 바이낸스 Snapshot 에 포지션 출처 추가`
 
 ### Task 3: 바이낸스 공개 조회 공유 클래스 추출 (AC4)
 
@@ -195,12 +195,12 @@ internal fun binanceUnexpected(message: String): Nothing
 서명 벡터·`-1021`·오류 매핑·depth 순서 포함)가 **무수정으로** 지킨다. 공유 클래스 고유 동작(연결 거부·타임아웃·빈 본문·number 정밀도)은
 Task 4 테스트가 manual adapter 경유로 잰다. AC4 의 셸 검사가 중복 제거를 잰다.
 
-- [ ] **Step 1: RED (AC4 셸 검사).**
+- [x] **Step 1: RED (AC4 셸 검사).**
   `test "$(grep -rl -e '/fapi/v1/depth' -e '/fapi/v2/ticker/price' infrastructure/batch/src/main/kotlin)" = "infrastructure/batch/src/main/kotlin/io/premiumspread/infrastructure/batch/exchange/binance/BinanceFuturesReadClient.kt"; echo exit=$?`
   → `exit=1` (현재는 private adapter 경로가 나온다).
-- [ ] **Step 2:** 추출 구현.
-- [ ] **Step 3:** dod AC4 검증 명령 전체 → exit 0. 이어서 `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL. 증거 로그 AC4.
-- [ ] **Step 4: Commit** — `refactor: 바이낸스 공개 호가·체결가 조회를 공유 클래스로 추출`
+- [x] **Step 2:** 추출 구현.
+- [x] **Step 3:** dod AC4 검증 명령 전체 → exit 0. 이어서 `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL. 증거 로그 AC4.
+- [x] **Step 4: Commit** — `refactor: 바이낸스 공개 호가·체결가 조회를 공유 클래스로 추출`
 
 ### Task 4: manual adapter (AC3)
 
@@ -247,10 +247,10 @@ class BinanceFuturesManualAccountAdapter(
 - `200 빈 본문은 UNEXPECTED` — `MockResponse().setResponseCode(200)` 본문 없음 → `UNEXPECTED`
 - 모든 실패 케이스에서 예외 메시지는 `Binance ` 로 시작하고 query 문자열을 담지 않는다
 
-- [ ] **Step 1:** `read()` 가 `UnsupportedOperationException` 을 던지는 stub + 테스트 작성.
-- [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapterTest' --offline --no-daemon` → RED (assertion/예상 예외 불일치). 증거 로그 AC3.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew :infrastructure:batch:test --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 바이낸스 수동 입력 모드 조회 adapter 추가`
+- [x] **Step 1:** `read()` 가 `UnsupportedOperationException` 을 던지는 stub + 테스트 작성.
+- [x] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapterTest' --offline --no-daemon` → RED (assertion/예상 예외 불일치). 증거 로그 AC3.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew :infrastructure:batch:test --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 바이낸스 수동 입력 모드 조회 adapter 추가`
 
 ### Task 5: 설정·조건·배선 (AC5, AC6)
 
@@ -445,16 +445,16 @@ manualProps = notification.email.enabled=true, account-pnl-monitor.enabled=true,
   `ManualPosition().toString()` 에 `<empty>`·`takerFeeRate=default` 포함 (AC6)
 - `manual 기동 로그에 모드 INFO 가 있고 입력 값이 없다` — 출력에 `binance leg: mode=manual` 포함, 위 값 문자열 미포함 (AC6)
 
-- [ ] **Step 1:** 테스트가 **컴파일되도록** production 에 시그니처만 먼저 넣는다: `BinanceCredentials.mode: String?`·`manual: ManualPosition`,
+- [x] **Step 1:** 테스트가 **컴파일되도록** production 에 시그니처만 먼저 넣는다: `BinanceCredentials.mode: String?`·`manual: ManualPosition`,
   `BinanceLegMode`, `ManualPosition` 다섯 `String?` 필드, 그리고 stub 메서드 `resolvedMode() = BinanceLegMode.API`,
   `resolvedShortQuantity()`·`resolvedEntryPrice()`·`resolvedEntryFeeUsdt()`·`resolvedFundingUsdt()` = `null`, `resolvedTakerFeeRate() = BigDecimal.ZERO`.
   검증·toString override·조건·bean·WARN·yml 은 아직 바꾸지 않는다. `BinanceFuturesManualAccountAdapter` 는 Task 4 에서 이미 있다. 그다음 테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → RED
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → RED
   (manual 케이스·WARN·검증 실패·빈 값 해석·toString assertion 실패). 기존 케이스는 초록이어야 한다. 증거 로그 AC5·AC6.
-- [ ] **Step 3:** 구현 (Properties 해석·검증·toString → infra 조건·bean → app 조건·WARN → yml).
-- [ ] **Step 4:** 같은 명령 → PASS. R2 `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` → PASS.
+- [x] **Step 3:** 구현 (Properties 해석·검증·toString → infra 조건·bean → app 조건·WARN → yml).
+- [x] **Step 4:** 같은 명령 → PASS. R2 `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` → PASS.
   `./gradlew :apps:batch:test :infrastructure:batch:test --offline --no-daemon` → PASS.
-- [ ] **Step 5: Commit** — `feat: 바이낸스 leg 모드 선택과 수동 입력 설정 배선`
+- [x] **Step 5: Commit** — `feat: 바이낸스 leg 모드 선택과 수동 입력 설정 배선`
 
 ### Task 6: 메일 출처 표기 (AC2-b, AC2-c)
 
@@ -487,10 +487,10 @@ manualProps = notification.email.enabled=true, account-pnl-monitor.enabled=true,
 - `수동 출처여도 빗썸 미반영 문구는 이력 없음 그대로` — `pnl(koreaFeeUnrecovered = true)` 의 manual 변형
 - `수동 출처여도 제목은 같다` — 같은 `pnl()` 의 원본·manual 변형 subject `isEqualTo`
 
-- [ ] **Step 1:** 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` → 새 테스트 RED, golden 초록.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS(golden 포함). `./gradlew :domain:test --offline --no-daemon` → PASS. 증거 로그 AC2.
-- [ ] **Step 4: Commit** — `feat: 실계정 수익 메일에 바이낸스 수동 입력 출처 표기`
+- [x] **Step 1:** 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` → 새 테스트 RED, golden 초록.
+- [x] **Step 3:** 구현. 같은 명령 → PASS(golden 포함). `./gradlew :domain:test --offline --no-daemon` → PASS. 증거 로그 AC2.
+- [x] **Step 4: Commit** — `feat: 실계정 수익 메일에 바이낸스 수동 입력 출처 표기`
 
 ### Task 7: 조회 전용 아키텍처 테스트 확장 (AC7)
 
@@ -519,12 +519,12 @@ manualProps = notification.email.enabled=true, account-pnl-monitor.enabled=true,
   - `수동 모드 금지 패턴은 각각 위반 표본에 매치한다` — 7개 전부 매치, 이름 중복 없음, 개수 `>= 7`
 - 기존 테스트 메서드 이름·`FORBIDDEN` 검사 로직 유지. 클래스 KDoc 의 대상 설명을 새 합집합 규칙으로 갱신(dod R9 허용 예외).
 
-- [ ] **Step 1:** 대상 판정을 바꾸기 **전에** `REQUIRED_TARGETS` 단언과 신규 두 테스트를 먼저 넣는다.
-- [ ] **Step 2:** `./gradlew :architecture-tests:architectureTest --tests 'io.premiumspread.architecture.PrivateAccountReadOnlyArchitectureTest' --offline --no-daemon` →
+- [x] **Step 1:** 대상 판정을 바꾸기 **전에** `REQUIRED_TARGETS` 단언과 신규 두 테스트를 먼저 넣는다.
+- [x] **Step 2:** `./gradlew :architecture-tests:architectureTest --tests 'io.premiumspread.architecture.PrivateAccountReadOnlyArchitectureTest' --offline --no-daemon` →
   RED (대상에 `BinanceFuturesManualAccountAdapter.kt`·`BinanceFuturesReadClient.kt` 없음, 수동 대상 0개). 증거 로그 AC7.
-- [ ] **Step 3:** 대상 판정을 합집합으로 교체. 같은 명령 → PASS. 위반이 나오면 production 소스(주석 포함)를 고친다 — 규칙을 완화하지 않는다.
-- [ ] **Step 4:** `./gradlew architectureTest --offline --no-daemon` → PASS (R1).
-- [ ] **Step 5: Commit** — `test: 조회 전용 아키텍처 테스트에 수동 모드 adapter 와 공유 클라이언트 포함`
+- [x] **Step 3:** 대상 판정을 합집합으로 교체. 같은 명령 → PASS. 위반이 나오면 production 소스(주석 포함)를 고친다 — 규칙을 완화하지 않는다.
+- [x] **Step 4:** `./gradlew architectureTest --offline --no-daemon` → PASS (R1).
+- [x] **Step 5: Commit** — `test: 조회 전용 아키텍처 테스트에 수동 모드 adapter 와 공유 클라이언트 포함`
 
 ### Task 8: runbook 과 회귀 (AC8, R1~R9)
 
@@ -552,8 +552,8 @@ manualProps = notification.email.enabled=true, account-pnl-monitor.enabled=true,
 - `## 끄는 법과 데이터 정리` 에 모드 전환(api↔manual)은 env 수정 + 재시작, 수량·진입가 같으면 에피소드 유지 한 줄.
 - 실제 값 금지(placeholder 만).
 
-- [ ] **Step 1:** runbook 갱신.
-- [ ] **Step 2:** 회귀 일괄 (dod 회귀 방어선 표 그대로):
+- [x] **Step 1:** runbook 갱신.
+- [x] **Step 2:** 회귀 일괄 (dod 회귀 방어선 표 그대로):
   ```bash
   ./gradlew test architectureTest --offline --no-daemon                                             # R1·R3·R4
   ./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon               # R2
@@ -564,10 +564,10 @@ manualProps = notification.email.enabled=true, account-pnl-monitor.enabled=true,
   bash docs/check-documentation.sh                                                                  # AC8
   ```
   예상: 전부 exit 0. Docker 부재로 R6 를 못 돌리면 green 으로 기록하지 않고 미실행으로 남긴다.
-- [ ] **Step 3:** dod AC1~AC7 검증 명령 각각 재실행 → exit 0. 증거 로그 Task 8.
-- [ ] **Step 4:** R9 — `git diff 0a04546 -- domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountHedgePositionTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountPnlMailContentTest.kt apps/batch/src/test/kotlin/io/premiumspread/config/AccountPnlMonitorWiringTest.kt architecture-tests/src/architectureTest/kotlin/io/premiumspread/architecture/PrivateAccountReadOnlyArchitectureTest.kt | grep '^-[^-]'`
+- [x] **Step 3:** dod AC1~AC7 검증 명령 각각 재실행 → exit 0. 증거 로그 Task 8.
+- [x] **Step 4:** R9 — `git diff 0a04546 -- domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountHedgePositionTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountPnlMailContentTest.kt apps/batch/src/test/kotlin/io/premiumspread/config/AccountPnlMonitorWiringTest.kt architecture-tests/src/architectureTest/kotlin/io/premiumspread/architecture/PrivateAccountReadOnlyArchitectureTest.kt | grep '^-[^-]'`
   출력을 증거 로그에 붙인다(⑨ 판정용). 허용 예외(dod R9) 외 삭제가 있으면 멈추고 보고.
-- [ ] **Step 5: Commit** — `docs: 실계정 알림 runbook 에 바이낸스 수동 입력 모드 추가`
+- [x] **Step 5: Commit** — `docs: 실계정 알림 runbook 에 바이낸스 수동 입력 모드 추가`
 - [ ] **Step 6 (owner, AC9):** runbook 의 manual 체크리스트대로 로컬 실행 → 기동 로그 확인 → 첫 수익 메일 대조 → PR 코멘트.
 
 ## 태스크 의존

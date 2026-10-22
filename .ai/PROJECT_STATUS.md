@@ -71,7 +71,9 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - DB/Redis/ingestion readiness, Prometheus, correlation ID/masking
 - commit SHA image 배포와 API migration/readiness 선행, 이전 SHA rollback
 - 실계정 순손익 알림(구현 완료, 기본 꺼짐, owner 로컬 실행 전용): 빗썸/바이낸스 read-only REST 조회, 순수익률 알림과
-  모니터링 중단·복구 메일, 전용 outbox(`account_pnl_mail`, V18). owner 실 key 검산(AC13)은 미완료이며
+  모니터링 중단·복구 메일, 전용 outbox(`account_pnl_mail`, V18). 바이낸스 leg 는 `BINANCE_MODE=api|manual`
+  로 선택(manual = env 입력 포지션 + 공개 호가, 메일에 출처 표기). owner 실 key 검산(AC13)과 manual 모드
+  로컬 실행 검산(AC9)은 미완료이며
   [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다
 
 ## Migration 상태와 소유권

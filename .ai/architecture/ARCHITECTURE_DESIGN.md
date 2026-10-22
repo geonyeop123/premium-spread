@@ -109,6 +109,7 @@ API Controller → Facade → Domain Service/Port
 ```text
 AccountPnlMonitorScheduler (1분) → AccountPnlMonitorJob (JobExecutor)
   → Domain 계정/호가 조회 port ← 빗썸·바이낸스 read-only REST adapter
+      (바이낸스 leg: BINANCE_MODE=api 계정 조회 | manual env 포지션 + 공개 호가/체결가)
   → Domain AccountNetPnl / PnlAlertPolicy / MonitoringOutagePolicy
   → account_pnl_monitor_state(낙관적 version) + account_pnl_mail 전용 outbox
   → claim 후 SMTP (at-least-once)
