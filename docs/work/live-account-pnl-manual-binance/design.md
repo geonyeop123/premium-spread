@@ -6,7 +6,7 @@
 | slug | `live-account-pnl-manual-binance` |
 | base | `origin/dev` `0a04546` (직전 단위 `live-account-pnl-alert` PR #83 merge) |
 | branch | `feat/live-account-pnl-manual-binance` |
-| 상태 | `DRAFT` — ⑥ R1 반영 (§12) |
+| 상태 | `APPROVED` — ⑥ R2 approve · ⑦ owner 승인 2026-10-22, DoD 동결 b46bab8 |
 | 선행 단위 | `docs/work/live-account-pnl-alert/` (design `APPROVED`, dod `FROZEN`) — 이 단위는 그 위에 새 slug 로 얹는다. 동결된 계약은 고치지 않는다 |
 
 ## 0. 이 단위의 성격

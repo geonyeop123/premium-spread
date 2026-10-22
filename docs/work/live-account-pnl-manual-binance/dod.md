@@ -4,7 +4,7 @@ slug: live-account-pnl-manual-binance
 status: FROZEN
 frozen_at: 2026-10-22T09:38:21+09:00
 verdict_commit:
-source: docs/work/live-account-pnl-manual-binance/design.md (DRAFT)
+source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22)
 ---
 
 ## 범위
