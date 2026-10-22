@@ -1,10 +1,13 @@
 package io.premiumspread.infrastructure.batch.exchange.bithumb
 
+import io.premiumspread.domain.accountpnl.AccountReadException
+import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,6 +23,7 @@ import java.util.concurrent.TimeUnit
 class BithumbOrderQueryHashTest {
     private lateinit var server: MockWebServer
     private val clock = Clock.fixed(Instant.parse("2026-10-20T00:00:00Z"), ZoneOffset.UTC)
+    private var orderbookBody: String? = null
 
     @BeforeEach
     fun setUp() {
@@ -32,7 +36,7 @@ class BithumbOrderQueryHashTest {
                             """"avg_buy_price_modified":false,"unit_currency":"KRW"}]""",
                     )
 
-                    "/v1/orderbook" -> json(fixture("orderbook.json"))
+                    "/v1/orderbook" -> json(orderbookBody ?: fixture("orderbook.json"))
 
                     "/v1/ticker" -> json(fixture("ticker.json"))
 
@@ -81,6 +85,41 @@ class BithumbOrderQueryHashTest {
 
         assertThat(queryHash(requestOf("/v1/orders/chance"))).isEqualTo(BithumbJwtSigner.sha512Hex("market=KRW-BTC"))
     }
+
+    @Test
+    fun `bid_size 가 0 인 단계는 건너뛰고 나머지를 가격 내림차순으로 낸다`() {
+        orderbookBody = book(unit(100, "1.5"), unit(400, "0"), unit(300, "0.25"), unit(500, "0"), unit(200, "2"))
+
+        val levels = adapter().read().bidLevels
+
+        assertThat(levels.map { it.price.toInt() }).containsExactly(300, 200, 100)
+    }
+
+    @Test
+    fun `모든 bid_size 가 0 이면 UNEXPECTED`() {
+        orderbookBody = book(unit(100, "0"), unit(200, "0"))
+
+        assertUnexpected("orderbook has no bid levels")
+    }
+
+    @Test
+    fun `음수 bid_size 는 UNEXPECTED`() {
+        orderbookBody = book(unit(100, "1"), unit(200, "-1"))
+
+        assertUnexpected("orderbook level is not positive")
+    }
+
+    private fun assertUnexpected(message: String) {
+        val e = assertThatThrownBy { adapter().read() }.isInstanceOf(AccountReadException::class.java)
+        e.hasMessageContaining(message)
+        e.matches { (it as AccountReadException).category == AccountReadFailureCategory.UNEXPECTED }
+    }
+
+    private fun unit(bidPrice: Int, bidSize: String) =
+        """{"ask_price":1,"bid_price":$bidPrice,"ask_size":1,"bid_size":$bidSize}"""
+
+    private fun book(vararg units: String) =
+        """[{"market":"KRW-BTC","timestamp":1,"orderbook_units":[${units.joinToString(",")}]}]"""
 
     private fun queryHash(request: RecordedRequest): String {
         val payload = request.getHeader("Authorization")!!.removePrefix("Bearer ").split(".")[1]
