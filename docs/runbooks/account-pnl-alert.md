@@ -137,6 +137,17 @@
   ```text
   account-pnl-monitor binance leg: mode=manual, entryFeeUsdt=set, fundingUsdt=unset, takerFeeRate=default
   ```
+- 순손익이 계산된 회차마다(매분) 다음 INFO 한 줄이 남는다. 숫자는 예시다.
+  KRW 금액은 원 단위 반올림이고, `unrecovered` 는 미확보로 0 계산된 항목(`koreaEntryFee`·`foreignEntryFee`·`funding`)이다.
+  본인 계정 금액이 들어 있으므로 로컬 로그에만 남기고 공유할 때 주의한다. 최신 값은 nohup 으로 띄운 로그에서 읽는다.
+
+  ```text
+  Account PnL observed: netPercent=0.42%, netKrw=4200, netPercentAtLast=0.40%, netKrwAtLast=4000, grossKrw=5000, entryFeeKrw=300, fundingKrw=-100, exitFeeEstimateKrw=400, koreaQty=0.01, koreaExit=102000000, foreignQty=0.01, foreignExit=70000, fxRate=1400, source=MANUAL_ENV, unrecovered=[], calculatedAt=2026-10-20T03:00:00Z
+  ```
+
+  ```bash
+  grep 'Account PnL observed' ~/logs/account-pnl-batch.log | tail -1
+  ```
 - 포지션이 없으면 매분 `No account hedge position: ...` INFO 가 남는다(정상).
 - 실패 시 `Account PnL observation failed: category=...` WARN 이 남는다.
 - Job 메트릭 tag `job=account_pnl_monitor` 의 outcome·last-success age 로 최근 성공을 본다.
