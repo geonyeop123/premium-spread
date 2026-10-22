@@ -315,7 +315,15 @@ class AccountPnlMonitorWiringTest {
             assertThat(output.all.substring(start)).`as`(key)
                 .contains("account-pnl-monitor enabled but required settings missing; monitor not started")
                 .contains("binanceMode=manual, missing=[$envName]")
-                .doesNotContain("BITHUMB-ACCESS-SECRET-VALUE", "owner@example.test", "0.2661", "83549.47")
+                .doesNotContain(
+                    "BITHUMB-ACCESS-SECRET-VALUE",
+                    "BITHUMB-SECRET-SECRET-VALUE",
+                    "owner@example.test",
+                    "0.2661",
+                    "83549.47",
+                    "8.91",
+                    "-3.21",
+                )
         }
     }
 
@@ -326,6 +334,48 @@ class AccountPnlMonitorWiringTest {
             .contains("required settings missing")
             .contains("binanceMode=api, missing=[BINANCE_API_KEY]")
             .doesNotContain(*settingValues)
+    }
+
+    @Test
+    fun `api 모드 필수값이 하나씩 비면 0개이고 WARN 에 해당 env 이름만 있다`(output: CapturedOutput) {
+        listOf(
+            "recipient" to "ACCOUNT_PNL_ALERT_RECIPIENT",
+            "bithumb.access-key" to "BITHUMB_ACCESS_KEY",
+            "bithumb.secret-key" to "BITHUMB_SECRET_KEY",
+            "binance.api-key" to "BINANCE_API_KEY",
+            "binance.secret-key" to "BINANCE_SECRET_KEY",
+        ).forEach { (key, envName) ->
+            val start = output.all.length
+            runner.withPropertyValues(*enabledProps, "account-pnl-monitor.$key=").assertNoBeans()
+            assertThat(output.all.substring(start)).`as`(key)
+                .contains("required settings missing")
+                .contains("binanceMode=api, missing=[$envName]")
+                .doesNotContain(*settingValues)
+        }
+    }
+
+    @Test
+    fun `공백만 있는 manual 필수값은 비어 있는 것으로 보아 0개이고 WARN 에 env 이름이 있다`(output: CapturedOutput) {
+        val start = output.all.length
+        runner.withPropertyValues(*manualProps, "account-pnl-monitor.binance.manual.entry-price=   ").assertNoBeans()
+        assertThat(output.all.substring(start))
+            .contains("required settings missing")
+            .contains("binanceMode=manual, missing=[BINANCE_MANUAL_ENTRY_PRICE]")
+            .doesNotContain(*settingValues)
+    }
+
+    @Test
+    fun `앞뒤 공백이 있는 mode 값도 manual 로 해석해 Job 과 manual adapter 가 각 1개다`() {
+        val withoutMode = manualProps.filterNot { it.contains("binance.mode=") }.toTypedArray()
+        runner.withPropertyValues(*withoutMode, "account-pnl-monitor.binance.mode= manual ").run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            val jobs = ctx.getBeansOfType(AccountPnlMonitorJob::class.java).size
+            val ports = ctx.getBeansOfType(ForeignPerpAccountReadPort::class.java).size
+            assertThat(jobs).isEqualTo(1)
+            assertThat(ports).isEqualTo(1)
+            assertThat(ctx).hasSingleBean(BinanceFuturesManualAccountAdapter::class.java)
+            assertThat(ctx).doesNotHaveBean(BinanceFuturesPrivateAccountAdapter::class.java)
+        }
     }
 
     @Test

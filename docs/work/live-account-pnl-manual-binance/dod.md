@@ -224,6 +224,21 @@ R9 — `git diff 0a04546 -- <네 파일> | grep '^-[^-]'` 삭제 줄 전체 (`Ac
 
 허용 예외(dod R9) 밖의 삭제 없음.
 
+### ⑨ 재작업 1 — runbook AC8(c)·AC5(c) 보강 (날짜 2026-10-22)
+
+신규 테스트는 기존 동작의 특성화라 추가 직후 처음부터 GREEN 이었다(RED 단계 없음 — 구현 변경이 없다). 기존 메서드 삭제·약화 없음
+(기존 manual 필수값 루프의 `doesNotContain` 에 `BITHUMB-SECRET-SECRET-VALUE`·`8.91`·`-3.21` 만 추가해 강화).
+
+- runbook: 잔여 노출 문구를 `### 한계` 로 이동(굵은 펀딩 경고는 첫 항목 유지), `BINANCE_MODE` 기동 실패 조건(`ACCOUNT_PNL_MONITOR_ENABLED`), 바이낸스 key 는 api 모드에서만, 메일 표기를 메일 순서 기준 api/manual 표로 교체, 동작 요약에 `미반영(수동 미입력)`, 중복 문장은 체크리스트 `- [ ] (c)` 로 변경.
+- 테스트 추가(`AccountPnlMonitorWiringTest`): api 모드 필수값 5종 하나씩 비움(WARN 에 env 이름·값 부재), 공백만 있는 `entry-price`, 패딩된 `" manual "` mode.
+
+| 명령 | 종료 코드 | 결과 |
+|---|---|---|
+| `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` | 0 | BUILD SUCCESSFUL, 30 tests, 0 failed (기존 27 + 신규 3) |
+| `./gradlew :apps:batch:test --offline --no-daemon` | 0 | BUILD SUCCESSFUL, 140 tests, 0 failed |
+| `bash docs/check-documentation.sh` | 0 | documentation check passed (20 files, 15 required paths) |
+| `./gradlew harnessCheck --offline --no-daemon` | 0 | BUILD SUCCESSFUL |
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
