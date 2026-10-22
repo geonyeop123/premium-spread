@@ -322,4 +322,60 @@ class AccountPnlMailContentTest {
         assertThat(mail.subject).isEqualTo(apiGoldenUnrecoveredSubject)
         assertThat(mail.body).isEqualTo(apiGoldenUnrecoveredBody)
     }
+
+    private fun manual(pnl: AccountNetPnl): AccountNetPnl = pnl.copy(
+        position = pnl.position.copy(
+            foreign = pnl.position.foreign.copy(positionSource = ForeignPerpPositionSource.MANUAL_ENV),
+        ),
+    )
+
+    @Test
+    fun `수동 출처면 바이낸스 선물 숏 다음 줄에 수동 입력 표기`() {
+        val lines = AccountPnlMailContent.profit(manual(pnl()), zone).body.split("\n")
+
+        val index = lines.indexOf("[바이낸스 선물 숏]")
+        assertThat(index).isGreaterThanOrEqualTo(0)
+        assertThat(lines[index + 1]).isEqualTo("바이낸스 포지션: 수동 입력(env)")
+    }
+
+    @Test
+    fun `수동 출처 진입 수수료와 펀딩 입력값에 수동 입력 표기`() {
+        val lines = AccountPnlMailContent.profit(manual(pnl()), zone).body.split("\n")
+
+        assertThat(lines).contains(
+            "  - 바이낸스: -8.9 USDT (-11,824원) 수동 입력",
+            "누적 펀딩비: +4,251원 (+3.2 USDT) 수동 입력",
+        )
+    }
+
+    @Test
+    fun `수동 출처 미입력은 수동 미입력으로 표기하고 이력 없음을 쓰지 않는다`() {
+        val lines = AccountPnlMailContent.profit(
+            manual(pnl(foreignFeeUnrecovered = true, fundingUnrecovered = true)),
+            zone,
+        ).body.split("\n")
+
+        val binance = "  - 바이낸스: 진입 수수료(바이낸스) 미반영(수동 미입력)"
+        val funding = "누적 펀딩비: +4,251원  펀딩비 미반영(수동 미입력)"
+        assertThat(lines).contains(binance, funding)
+        assertThat(binance).doesNotContain("이력 없음")
+        assertThat(funding).doesNotContain("이력 없음")
+        assertThat(lines.filter { it.contains("바이낸스: ") || it.startsWith("누적 펀딩비") })
+            .noneMatch { it.contains("이력 없음") }
+    }
+
+    @Test
+    fun `수동 출처여도 빗썸 미반영 문구는 이력 없음 그대로`() {
+        val lines = AccountPnlMailContent.profit(manual(pnl(koreaFeeUnrecovered = true)), zone).body.split("\n")
+
+        assertThat(lines).contains("  - 빗썸: 진입 수수료(빗썸) 미반영(이력 없음)")
+    }
+
+    @Test
+    fun `수동 출처여도 제목은 같다`() {
+        val original = pnl()
+
+        assertThat(AccountPnlMailContent.profit(manual(original), zone).subject)
+            .isEqualTo(AccountPnlMailContent.profit(original, zone).subject)
+    }
 }

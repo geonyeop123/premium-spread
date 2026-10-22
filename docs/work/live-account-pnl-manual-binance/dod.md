@@ -163,6 +163,12 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
 - 관측: 알 수 없는 mode 는 `ApplicationContextRunner` 의 user configuration 등록 단계(조건 평가)에서 실패해 refresh WARN 이 찍히지 않는다.
   manual 값 오류 6건은 `Exception encountered during context initialization` WARN 이 찍히며 그 출력에 입력 값이 없음을 테스트가 확인한다.
 
+### Task 6 — AC2 (b)(c) (날짜 2026-10-22)
+- RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon`
+  → `19 tests completed, 3 failed`, BUILD FAILED. 실패 3건 = 신규 중 표기 추가가 필요한 것(수동 입력 줄·수동 미입력·`[바이낸스 선물 숏]` 다음 줄). api golden 2건 포함 기존 테스트는 초록, 신규 중 "빗썸 문구 그대로"·"제목 같음" 2건은 기존 동작 보존 단언이라 초록.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (19 tests, 0 failed, 0 skipped; golden 2건 무수정 통과).
+  - `./gradlew :domain:test --offline --no-daemon` → BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

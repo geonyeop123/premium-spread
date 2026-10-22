@@ -20,6 +20,7 @@ object AccountPnlMailContent {
         val subject = "[김프 알림] 순수익률 ${percent(pnl.netPercent)} · ${krw(pnl.netKrw)}"
         val korea = pnl.position.korea
         val foreign = pnl.position.foreign
+        val manual = foreign.positionSource == ForeignPerpPositionSource.MANUAL_ENV
         val lines = buildList {
             add("순수익률: ${percent(pnl.netPercent)}")
             add("순수익금: ${krw(pnl.netKrw)}")
@@ -34,15 +35,15 @@ object AccountPnlMailContent {
             }
             val commission = foreign.entryCommissionUsdt
             if (commission == null) {
-                add("  - 바이낸스: 진입 수수료(바이낸스) 미반영(이력 없음)")
+                add("  - 바이낸스: 진입 수수료(바이낸스) 미반영(${if (manual) "수동 미입력" else "이력 없음"})")
             } else {
-                add("  - 바이낸스: ${costUsdt(commission)} (${cost(commission.multiply(pnl.fxRate))})")
+                add("  - 바이낸스: ${costUsdt(commission)} (${cost(commission.multiply(pnl.fxRate))})${if (manual) " 수동 입력" else ""}")
             }
             val funding = foreign.fundingUsdt
             if (funding == null) {
-                add("누적 펀딩비: ${krwOrZero(pnl.fundingKrw)}  펀딩비 미반영(이력 없음)")
+                add("누적 펀딩비: ${krwOrZero(pnl.fundingKrw)}  펀딩비 미반영(${if (manual) "수동 미입력" else "이력 없음"})")
             } else {
-                add("누적 펀딩비: ${krwOrZero(pnl.fundingKrw)} (${signedUsdt(funding)})")
+                add("누적 펀딩비: ${krwOrZero(pnl.fundingKrw)} (${signedUsdt(funding)})${if (manual) " 수동 입력" else ""}")
             }
             add("예상 청산 수수료: ${cost(pnl.exitFeeEstimateKrw)}")
             if (korea.averageBuyPriceModified) add("빗썸 평단 사용자 수정됨")
@@ -54,6 +55,7 @@ object AccountPnlMailContent {
             add("최근 체결가: ${plainKrw(korea.lastPrice)}원")
             add("")
             add("[바이낸스 선물 숏]")
+            if (manual) add("바이낸스 포지션: 수동 입력(env)")
             add("수량: ${plain(foreign.signedQuantity.abs())}")
             add("진입가: ${plain(foreign.entryPrice)} USDT")
             add("청산가(호가 VWAP): ${pnl.foreignExitPrice.setScale(FOREIGN_PRICE_SCALE, RoundingMode.HALF_UP).toPlainString()} USDT")
