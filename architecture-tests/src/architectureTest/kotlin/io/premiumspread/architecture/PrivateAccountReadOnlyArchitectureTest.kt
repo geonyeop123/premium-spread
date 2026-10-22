@@ -7,7 +7,13 @@ import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.test.assertTrue
 
 /**
- * `AC10` — private 계정 adapter(`*PrivateAccountAdapter.kt`)는 조회 전용이다 (`LIVE-3`·`LIVE-4`).
+ * `AC10`·`AC7` — private 계정 adapter 는 조회 전용이다 (`LIVE-3`·`LIVE-4`).
+ *
+ * 대상은 두 규칙의 합집합이다. (1) 모든 모듈 `/src/main/kotlin/` 의 `*PrivateAccountAdapter.kt`,
+ * (2) `infrastructure/batch` production `exchange` 아래 `*AccountAdapter.kt`·`*ReadClient.kt`
+ * (수동 모드 adapter 와 공유 조회 클라이언트). `/build/` 는 제외한다. 필수 대상 4개가 모두 잡히는지
+ * 자기검증한다. 수동 모드 adapter(`*ManualAccountAdapter.kt`)에는 추가로 서명·API key·서버 시각
+ * 금지 규칙을 적용한다.
  *
  * GET 외 HTTP method 호출과 주문·취소·출금·이체 경로 문자열이 소스에 있으면 실패한다. 주석까지
  * 포함해 원문을 그대로 본다 — adapter 는 주석에서도 이 문자열을 피하도록 쓰였고, 산문에 금지
@@ -22,10 +28,11 @@ class PrivateAccountReadOnlyArchitectureTest {
     @Test
     fun `private 계정 adapter 는 GET 외 HTTP 호출과 주문 출금 이체 경로를 갖지 않는다`() {
         val targets = targetSources()
+        val targetNames = targets.map { it.fileName.toString() }.toSet()
         assertTrue(
-            targets.size >= MINIMUM_TARGETS,
-            "*PrivateAccountAdapter.kt 를 ${targets.size}개만 찾았다(최소 $MINIMUM_TARGETS) — " +
-                "스캐너가 대상을 못 보거나 adapter 가 이름을 바꿨다. root=${root()}",
+            targetNames.containsAll(REQUIRED_TARGETS),
+            "필수 대상 $REQUIRED_TARGETS 중 ${REQUIRED_TARGETS - targetNames} 를 못 찾았다. " +
+                "찾은 목록=${targetNames.sorted()} — 스캐너가 대상을 못 보거나 파일이 이름을 바꿨다. root=${root()}",
         )
 
         val violations = targets.flatMap { path ->
@@ -42,6 +49,36 @@ class PrivateAccountReadOnlyArchitectureTest {
             violations.isEmpty(),
             "private 계정 adapter 는 조회 전용이다 — AC10/LIVE-3·LIVE-4.\n" + violations.joinToString("\n"),
         )
+    }
+
+    @Test
+    fun `수동 모드 adapter 는 서명 API key 서버 시각을 쓰지 않는다`() {
+        val targets = targetSources().filter { it.fileName.toString().endsWith("ManualAccountAdapter.kt") }
+        assertTrue(targets.isNotEmpty(), "*ManualAccountAdapter.kt 대상을 찾지 못했다. root=${root()}")
+
+        val violations = targets.flatMap { path ->
+            val text = Files.readString(path)
+            MANUAL_FORBIDDEN.flatMap { rule ->
+                rule.regex.findAll(text).map { match ->
+                    val line = text.take(match.range.first).count { it == '\n' } + 1
+                    "${relative(path)}:L$line  [${rule.name}] ${match.value}"
+                }.toList()
+            }
+        }
+
+        assertTrue(
+            violations.isEmpty(),
+            "수동 모드 adapter 는 서명·API key·서버 시각을 쓰지 않는다 — AC7.\n" + violations.joinToString("\n"),
+        )
+    }
+
+    @Test
+    fun `수동 모드 금지 패턴은 각각 위반 표본에 매치한다`() {
+        assertTrue(MANUAL_FORBIDDEN.size >= 7, "수동 모드 금지 규칙이 ${MANUAL_FORBIDDEN.size}개뿐이다 — 규칙이 지워졌다.")
+        val misses = MANUAL_FORBIDDEN.filterNot { rule -> rule.regex.containsMatchIn(rule.violatingSample) }
+        assertTrue(misses.isEmpty(), "위반 표본에 매치하지 않는 수동 모드 규칙: ${misses.map { it.name }}")
+        val names = MANUAL_FORBIDDEN.map { it.name }
+        assertTrue(names.size == names.toSet().size, "수동 모드 규칙 이름이 중복된다: $names")
     }
 
     @Test
@@ -64,10 +101,15 @@ class PrivateAccountReadOnlyArchitectureTest {
     private fun targetSources(): List<Path> = Files.walk(root()).use { paths ->
         paths.filter { path ->
             val normalized = path.toString().replace('\\', '/')
+            val name = path.fileName.toString()
+            val legacyTarget = normalized.contains("/src/main/kotlin/") &&
+                name.endsWith("PrivateAccountAdapter.kt")
+            val exchangeTarget = normalized.contains("/infrastructure/batch/src/main/kotlin/") &&
+                normalized.contains("/exchange/") &&
+                (name.endsWith("AccountAdapter.kt") || name.endsWith("ReadClient.kt"))
             Files.isRegularFile(path) &&
-                path.fileName.toString().endsWith("PrivateAccountAdapter.kt") &&
-                normalized.contains("/src/main/kotlin/") &&
-                !normalized.contains("/build/")
+                !normalized.contains("/build/") &&
+                (legacyTarget || exchangeTarget)
         }.toList()
     }
 
@@ -81,7 +123,12 @@ class PrivateAccountReadOnlyArchitectureTest {
     }
 
     private companion object {
-        const val MINIMUM_TARGETS = 2
+        val REQUIRED_TARGETS = setOf(
+            "BithumbPrivateAccountAdapter.kt",
+            "BinanceFuturesPrivateAccountAdapter.kt",
+            "BinanceFuturesManualAccountAdapter.kt",
+            "BinanceFuturesReadClient.kt",
+        )
         const val MINIMUM_RULES = 19
 
         val FORBIDDEN: List<Rule> = listOf(
@@ -105,6 +152,16 @@ class PrivateAccountReadOnlyArchitectureTest {
             Rule("withdraw", """(?i)withdraw""", "/withdraw"),
             Rule("deposit", """(?i)deposit""", "/deposit"),
             Rule("transfer", """(?i)transfer""", "/transfer"),
+        )
+
+        val MANUAL_FORBIDDEN: List<Rule> = listOf(
+            Rule("BinanceRequestSigner", """BinanceRequestSigner""", "BinanceRequestSigner.sign(s, q)"),
+            Rule("X-MBX-APIKEY", """X-MBX-APIKEY""", "set(\"X-MBX-APIKEY\", k)"),
+            Rule("signature", """(?i)signature""", "&signature="),
+            Rule("/fapi/v1/time", """/fapi/v1/time""", "\"/fapi/v1/time\""),
+            Rule("apiKey", """(?i)api[_-]?key""", "apiKey = k"),
+            Rule("secretKey", """(?i)secret[_-]?key""", "secretKey = s"),
+            Rule("recvWindow", """recvWindow""", "recvWindow=10000"),
         )
 
         val ALLOWED_SAMPLES = listOf(

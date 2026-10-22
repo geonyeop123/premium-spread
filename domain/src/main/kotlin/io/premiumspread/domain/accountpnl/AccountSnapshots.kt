@@ -29,6 +29,12 @@ data class KoreaSpotAccountSnapshot(
     val bidObservedAt: Instant,
 )
 
+/** 바이낸스 leg 의 포지션·수수료·펀딩·taker 율이 어디서 왔는가. 호가·최근 체결가는 두 경우 모두 거래소 공개 API 다. */
+enum class ForeignPerpPositionSource {
+    EXCHANGE_API,
+    MANUAL_ENV,
+}
+
 data class ForeignPerpAccountSnapshot(
     val signedQuantity: BigDecimal,
     val entryPrice: BigDecimal,
@@ -38,6 +44,7 @@ data class ForeignPerpAccountSnapshot(
     val askLevels: List<PriceLevel>,
     val lastPrice: BigDecimal,
     val askObservedAt: Instant,
+    val positionSource: ForeignPerpPositionSource = ForeignPerpPositionSource.EXCHANGE_API,
 )
 
 fun interface KoreaSpotAccountReadPort {

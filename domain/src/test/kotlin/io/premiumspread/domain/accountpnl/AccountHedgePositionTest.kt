@@ -78,4 +78,25 @@ class AccountHedgePositionTest {
         assertThat(foreignQtyChanged.fingerprint).isNotEqualTo(base.fingerprint)
         assertThat(foreignEntryChanged.fingerprint).isNotEqualTo(base.fingerprint)
     }
+
+    @Test
+    fun `출처 인자 없이 만든 바이낸스 Snapshot 은 EXCHANGE_API 다`() {
+        assertThat(foreign("-0.265").positionSource).isEqualTo(ForeignPerpPositionSource.EXCHANGE_API)
+    }
+
+    @Test
+    fun `출처만 다른 두 포지션의 fingerprint 는 같다`() {
+        val api = AccountHedgePosition.resolve(
+            korea("0.266", "113016278"),
+            foreign("-0.266", "83549.4").copy(positionSource = ForeignPerpPositionSource.EXCHANGE_API),
+        )
+        val manual = AccountHedgePosition.resolve(
+            korea("0.266", "113016278"),
+            foreign("-0.266", "83549.4").copy(positionSource = ForeignPerpPositionSource.MANUAL_ENV),
+        )
+
+        assertThat(api).isNotNull()
+        assertThat(manual).isNotNull()
+        assertThat(manual!!.fingerprint).isEqualTo(api!!.fingerprint)
+    }
 }
