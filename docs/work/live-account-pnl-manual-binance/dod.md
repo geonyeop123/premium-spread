@@ -137,6 +137,12 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
   - `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest' --offline --no-daemon` → BUILD SUCCESSFUL (27 tests, 0 failed).
 - 모듈 전체: `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL (129 tests, 0 failed, 0 skipped).
 
+### Task 4 — AC3 수동 입력 adapter (날짜 2026-10-22)
+
+- RED(stub `read()` = UnsupportedOperationException): `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapterTest' --offline --no-daemon`
+  → `16 tests completed, 16 failed` (UnsupportedOperationException / AssertionError), BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (16 tests, 0 failed). `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
