@@ -41,6 +41,7 @@
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | 예 | SMTP 계정 | `<smtp-user>` / `<smtp-password>` |
 | `ALERT_EMAIL_FROM` | 예 | 발신 주소 | `alert@example.com` |
 | `BATCH_SCHEDULING_ENABLED` | 아니오 | 기본 `true`. `false` 면 Scheduler 가 함께 꺼진다 | `true` |
+| `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고 메일. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 
 - 플래그가 `true` 여도 모드별 필수 env 중 하나라도 비면 Job 은 뜨지 않는다.
@@ -129,6 +130,21 @@
    SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun
    ```
 
+   백그라운드로 띄우고 로그 파일에 남기려면(env 파일 경로는 예시) 다음처럼 한다. `~/logs/account-pnl-batch.log` 는
+   "동작 확인"의 `grep 'Account PnL observed'` 가 읽는 파일이다.
+
+   ```bash
+   mkdir -p ~/logs
+   ( set -a; . ~/.config/premium-spread/account-pnl.env; set +a
+     SPRING_PROFILES_ACTIVE=local nohup ./gradlew :apps:batch:bootRun > ~/logs/account-pnl-batch.log 2>&1 & )
+   ```
+
+   중지:
+
+   ```bash
+   kill $(ss -ltnp | grep ':8081 ' | grep -o 'pid=[0-9]*' | cut -d= -f2)
+   ```
+
 ### 동작 확인
 
 - 기동 로그에 위 `monitor not started` WARN 이 **없어야** 한다.
@@ -170,6 +186,7 @@
 |---|---|
 | 실행 주기 | 1분 (lock 50s lease / 40s timeout) |
 | 수익 알림 | 순수익률 **1% 이상**이 되면 즉시 1통 |
+| 정시 보고 | 매 정시(`Asia/Seoul`) 이후 첫 계산 성공 회차에 1통. 1% 알림과 무관. 실패·포지션 없음이면 생략, 재시작해도 같은 시간대 중복 없음(eventKey `account-pnl-hourly-{정시 epoch ms}`) |
 | 재발송 | 에피소드 중·보유 중이고 마지막 발송 후 **60분**, 그 회차 순수익률이 1% 이상일 때만 |
 | 재무장 | 순수익률이 **0.9% 미만**으로 내려가면 에피소드 종료. 이후 1% 이상이 되면 즉시 발송 |
 | 중단 알림 | 계산 성공이 **5분** 넘게 없으면 1통(원인 범주 포함), 이후 성공하면 복구 1통 |
