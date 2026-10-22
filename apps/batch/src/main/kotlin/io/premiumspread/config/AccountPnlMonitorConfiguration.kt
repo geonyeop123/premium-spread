@@ -11,6 +11,7 @@ import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
 import io.premiumspread.interfaces.scheduling.ConditionalOnBatchScheduling
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Condition
@@ -105,6 +106,17 @@ class AccountPnlMonitorConfiguration {
         executor: JobExecutor,
         clock: Clock,
         jobConfigs: JobConfigProvider,
-    ): AccountPnlMonitorJob =
-        AccountPnlMonitorJob(korea, foreign, fx, lastSuccess, store, mailSender, executor, clock, jobConfigs = jobConfigs)
+        @Value("\${account-pnl-monitor.hourly-report.enabled:true}") hourlyReportEnabled: Boolean,
+    ): AccountPnlMonitorJob = AccountPnlMonitorJob(
+        korea,
+        foreign,
+        fx,
+        lastSuccess,
+        store,
+        mailSender,
+        executor,
+        clock,
+        jobConfigs = jobConfigs,
+        hourlyReportEnabled = hourlyReportEnabled,
+    )
 }

@@ -28,6 +28,8 @@ import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
 import io.premiumspread.domain.ticker.Currency
 import org.slf4j.LoggerFactory
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -61,6 +63,8 @@ class AccountPnlMonitorJob(
     private val clock: Clock,
     private val zone: ZoneId = ZoneId.of("Asia/Seoul"),
     private val jobConfigs: JobConfigProvider = DefaultJobConfigProvider,
+    /** 정시 보고 메일. 기본 꺼짐 — 운영 설정(`account-pnl-monitor.hourly-report.enabled`)이 켠다. */
+    private val hourlyReportEnabled: Boolean = false,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val owner = "account-pnl-monitor:" + UUID.randomUUID()
@@ -126,6 +130,7 @@ class AccountPnlMonitorJob(
             Observed(PnlObservation.NoPosition, null)
         } else {
             val pnl = AccountNetPnl.calculate(position, fxSnapshot.rate, fxSnapshot.observedAt, completedAt)
+            logObserved(pnl)
             Observed(PnlObservation.Computed(pnl), null)
         }
     } catch (exception: Exception) {
@@ -138,6 +143,41 @@ class AccountPnlMonitorJob(
         log.warn("Account PnL observation failed: category={}", category, exception)
         Observed(PnlObservation.Failed, category)
     }
+
+    /** 회차마다 계산된 순손익 한 줄. 스냅샷에서 계산된 숫자만 남기고 credential·수신자·env 원문은 싣지 않는다. */
+    private fun logObserved(pnl: AccountNetPnl) {
+        log.info(
+            "Account PnL observed: netPercent={}%, netKrw={}, netPercentAtLast={}%, netKrwAtLast={}, grossKrw={}, " +
+                "entryFeeKrw={}, fundingKrw={}, exitFeeEstimateKrw={}, koreaQty={}, koreaExit={}, foreignQty={}, " +
+                "foreignExit={}, fxRate={}, source={}, unrecovered={}, calculatedAt={}",
+            pnl.netPercent.toPlainString(),
+            pnl.netKrw.krw(),
+            pnl.netPercentAtLast.toPlainString(),
+            pnl.netKrwAtLast.krw(),
+            pnl.grossKrw.krw(),
+            pnl.entryFeeKrw.krw(),
+            pnl.fundingKrw.krw(),
+            pnl.exitFeeEstimateKrw.krw(),
+            pnl.position.koreaQuantity.plain(),
+            pnl.koreaExitPrice.plain(),
+            pnl.position.foreignQuantity.plain(),
+            pnl.foreignExitPrice.plain(),
+            pnl.fxRate.plain(),
+            pnl.position.foreign.positionSource,
+            unrecoveredItems(pnl),
+            pnl.calculatedAt,
+        )
+    }
+
+    private fun unrecoveredItems(pnl: AccountNetPnl): List<String> = buildList {
+        if (pnl.koreaEntryFeeUnrecovered) add("koreaEntryFee")
+        if (pnl.foreignEntryFeeUnrecovered) add("foreignEntryFee")
+        if (pnl.fundingUnrecovered) add("funding")
+    }
+
+    private fun BigDecimal.krw(): String = setScale(0, RoundingMode.HALF_UP).toPlainString()
+
+    private fun BigDecimal.plain(): String = stripTrailingZeros().toPlainString()
 
     private fun checkMarketFreshness(
         koreaSnapshot: KoreaSpotAccountSnapshot,
@@ -195,6 +235,10 @@ class AccountPnlMonitorJob(
         now: Instant,
     ): List<AccountPnlMail> = buildList {
         if (sendProfit && observation is PnlObservation.Computed) add(AccountPnlMailContent.profit(observation.pnl, zone))
+        // 같은 정시 버킷의 eventKey 는 outbox 가 무시하므로 회차마다 넣어도 시간당 한 통이다
+        if (hourlyReportEnabled && observation is PnlObservation.Computed) {
+            add(AccountPnlMailContent.hourly(observation.pnl, zone))
+        }
         when (notice) {
             is OutageNotice.Outage -> add(AccountPnlMailContent.outage(notice, now, zone))
             OutageNotice.Recovered -> add(AccountPnlMailContent.recovered(now, zone))

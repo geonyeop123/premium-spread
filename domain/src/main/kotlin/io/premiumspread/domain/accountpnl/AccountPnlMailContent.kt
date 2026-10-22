@@ -6,6 +6,7 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.time.Instant
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -14,14 +15,31 @@ data class AccountPnlMail(val eventKey: String, val subject: String, val body: S
 /** 실계정 순손익 알림 메일의 제목·본문 (design §4.3). 숫자·시각 표기는 locale 과 무관하다. */
 object AccountPnlMailContent {
     private const val RUNBOOK = "docs/runbooks/account-pnl-alert.md"
+    private const val HOURLY_HEADER = "정시 보고 — 1% 알림 기준과 무관하게 매시간 발송된다."
+    private val HOUR_FORMAT = DateTimeFormatter.ofPattern("HH")
     private val TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
     fun profit(pnl: AccountNetPnl, zone: ZoneId): AccountPnlMail {
         val subject = "[김프 알림] 순수익률 ${percent(pnl.netPercent)} · ${krw(pnl.netKrw)}"
+        return AccountPnlMail(eventKey("profit", pnl.calculatedAt), subject, profitLines(pnl, zone).joinToString("\n"))
+    }
+
+    /**
+     * 정시 보고. 1% 알림 기준과 무관하게 시간대 버킷(`zone` 의 정시)당 한 통이며, 버킷 시작 시각이 eventKey 라
+     * outbox 의 event_key UNIQUE 가 재시작·회차 반복에서도 중복을 막는다.
+     */
+    fun hourly(pnl: AccountNetPnl, zone: ZoneId): AccountPnlMail {
+        val bucket = pnl.calculatedAt.atZone(zone).truncatedTo(ChronoUnit.HOURS)
+        val subject = "[김프 알림] 정시 보고 ${HOUR_FORMAT.format(bucket)}:00 · 순수익률 ${percent(pnl.netPercent)} · ${krw(pnl.netKrw)}"
+        val body = listOf(HOURLY_HEADER, "") + profitLines(pnl, zone)
+        return AccountPnlMail(eventKey("hourly", bucket.toInstant()), subject, body.joinToString("\n"))
+    }
+
+    private fun profitLines(pnl: AccountNetPnl, zone: ZoneId): List<String> {
         val korea = pnl.position.korea
         val foreign = pnl.position.foreign
         val manual = foreign.positionSource == ForeignPerpPositionSource.MANUAL_ENV
-        val lines = buildList {
+        return buildList {
             add("순수익률: ${percent(pnl.netPercent)}")
             add("순수익금: ${krw(pnl.netKrw)}")
             add("체결가 기준 순수익률(대조용): ${percent(pnl.netPercentAtLast)} / 순수익금 ${krw(pnl.netKrwAtLast)}")
@@ -69,7 +87,6 @@ object AccountPnlMailContent {
             add("")
             add("※ 금액은 표시 시 원 단위 반올림(계산은 전체 정밀도)")
         }
-        return AccountPnlMail(eventKey("profit", pnl.calculatedAt), subject, lines.joinToString("\n"))
     }
 
     fun outage(notice: OutageNotice.Outage, now: Instant, zone: ZoneId): AccountPnlMail {
