@@ -28,6 +28,8 @@ import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
 import io.premiumspread.domain.ticker.Currency
 import org.slf4j.LoggerFactory
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -126,6 +128,7 @@ class AccountPnlMonitorJob(
             Observed(PnlObservation.NoPosition, null)
         } else {
             val pnl = AccountNetPnl.calculate(position, fxSnapshot.rate, fxSnapshot.observedAt, completedAt)
+            logObserved(pnl)
             Observed(PnlObservation.Computed(pnl), null)
         }
     } catch (exception: Exception) {
@@ -138,6 +141,41 @@ class AccountPnlMonitorJob(
         log.warn("Account PnL observation failed: category={}", category, exception)
         Observed(PnlObservation.Failed, category)
     }
+
+    /** 회차마다 계산된 순손익 한 줄. 스냅샷에서 계산된 숫자만 남기고 credential·수신자·env 원문은 싣지 않는다. */
+    private fun logObserved(pnl: AccountNetPnl) {
+        log.info(
+            "Account PnL observed: netPercent={}%, netKrw={}, netPercentAtLast={}%, netKrwAtLast={}, grossKrw={}, " +
+                "entryFeeKrw={}, fundingKrw={}, exitFeeEstimateKrw={}, koreaQty={}, koreaExit={}, foreignQty={}, " +
+                "foreignExit={}, fxRate={}, source={}, unrecovered={}, calculatedAt={}",
+            pnl.netPercent.toPlainString(),
+            pnl.netKrw.krw(),
+            pnl.netPercentAtLast.toPlainString(),
+            pnl.netKrwAtLast.krw(),
+            pnl.grossKrw.krw(),
+            pnl.entryFeeKrw.krw(),
+            pnl.fundingKrw.krw(),
+            pnl.exitFeeEstimateKrw.krw(),
+            pnl.position.koreaQuantity.plain(),
+            pnl.koreaExitPrice.plain(),
+            pnl.position.foreignQuantity.plain(),
+            pnl.foreignExitPrice.plain(),
+            pnl.fxRate.plain(),
+            pnl.position.foreign.positionSource,
+            unrecoveredItems(pnl),
+            pnl.calculatedAt,
+        )
+    }
+
+    private fun unrecoveredItems(pnl: AccountNetPnl): List<String> = buildList {
+        if (pnl.koreaEntryFeeUnrecovered) add("koreaEntryFee")
+        if (pnl.foreignEntryFeeUnrecovered) add("foreignEntryFee")
+        if (pnl.fundingUnrecovered) add("funding")
+    }
+
+    private fun BigDecimal.krw(): String = setScale(0, RoundingMode.HALF_UP).toPlainString()
+
+    private fun BigDecimal.plain(): String = stripTrailingZeros().toPlainString()
 
     private fun checkMarketFreshness(
         koreaSnapshot: KoreaSpotAccountSnapshot,
