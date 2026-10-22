@@ -169,6 +169,13 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (19 tests, 0 failed, 0 skipped; golden 2건 무수정 통과).
   - `./gradlew :domain:test --offline --no-daemon` → BUILD SUCCESSFUL.
 
+### Task 7 — AC7 (날짜 2026-10-22)
+- RED: `./gradlew :architecture-tests:architectureTest --tests 'io.premiumspread.architecture.PrivateAccountReadOnlyArchitectureTest' --offline --no-daemon`
+  (대상 판정 변경 전, `REQUIRED_TARGETS` 단언·신규 2테스트 선행) → `5 tests completed, 2 failed`, BUILD FAILED.
+  실패 = 필수 대상 단언(`BinanceFuturesManualAccountAdapter.kt`·`BinanceFuturesReadClient.kt` 미포착)과 수동 모드 adapter 테스트(`*ManualAccountAdapter.kt` 대상 0개).
+- GREEN: 대상 판정을 합집합으로 교체 후 같은 명령 → BUILD SUCCESSFUL (5 tests, 0 failed). 기존 FORBIDDEN 20개 위반 0건, MANUAL_FORBIDDEN 7개 위반 0건 (ReadClient 포함 규칙 완화 없음).
+  - `./gradlew architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
