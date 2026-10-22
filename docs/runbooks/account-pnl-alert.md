@@ -142,8 +142,11 @@
    중지:
 
    ```bash
-   kill $(ss -ltnp | grep ':8081 ' | grep -o 'pid=[0-9]*' | cut -d= -f2)
+   kill $(ss -ltnp | grep ':8081 ' | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u)
    ```
+
+   `ss` 는 IPv4/IPv6 로 같은 pid 를 두 번 출력할 수 있어 `sort -u` 로 줄인다. kill 대상은 8081 을 listen 하는 앱 JVM 이며
+   Gradle daemon 은 건드리지 않는다(daemon 까지 내리려면 `./gradlew --stop`).
 
 ### 동작 확인
 
