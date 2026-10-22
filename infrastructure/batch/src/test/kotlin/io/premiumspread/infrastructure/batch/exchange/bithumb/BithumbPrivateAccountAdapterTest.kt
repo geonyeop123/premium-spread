@@ -77,7 +77,7 @@ class BithumbPrivateAccountAdapterTest {
         assertThat(body).contains("\"access_key\":\"test-access-key\"", "\"timestamp\":${clock.millis()}", "\"nonce\":\"", "\"query_hash_alg\":\"SHA512\"")
         val query = request.requestUrl!!.encodedQuery!!
         assertThat(URLDecoder.decode(query, Charsets.UTF_8)).contains("states[]=done&states[]=cancel")
-        assertThat(body).contains("\"query_hash\":\"${BithumbJwtSigner.sha512Hex(query)}\"")
+        assertThat(body).contains("\"query_hash\":\"${BithumbJwtSigner.sha512Hex(URLDecoder.decode(query, Charsets.UTF_8))}\"")
     }
 
     @Test

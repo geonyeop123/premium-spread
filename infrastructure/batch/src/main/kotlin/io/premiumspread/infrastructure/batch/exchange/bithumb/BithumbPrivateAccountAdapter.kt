@@ -12,6 +12,8 @@ import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientRequestException
 import org.springframework.web.reactive.function.client.WebClientResponseException
 import java.math.BigDecimal
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -174,7 +176,8 @@ class BithumbPrivateAccountAdapter(
                         val jwt = BithumbJwtSigner.sign(
                             accessKey,
                             secretKey,
-                            wireQuery,
+                            // query_hash 는 wire 의 인코딩 query 가 아니라 디코딩된 query(states[]=done...) 기준이다.
+                            wireQuery?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) },
                             UUID.randomUUID().toString(),
                             clock.millis(),
                         )
