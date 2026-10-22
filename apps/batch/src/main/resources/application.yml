@@ -69,6 +69,8 @@ batch:
 account-pnl-monitor:
   enabled: ${ACCOUNT_PNL_MONITOR_ENABLED:false}
   recipient: ${ACCOUNT_PNL_ALERT_RECIPIENT:}
+  hourly-report:
+    enabled: ${ACCOUNT_PNL_HOURLY_REPORT_ENABLED:true}
   bithumb:
     access-key: ${BITHUMB_ACCESS_KEY:}
     secret-key: ${BITHUMB_SECRET_KEY:}

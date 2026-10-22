@@ -30,6 +30,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.test.util.ReflectionTestUtils
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -189,6 +190,18 @@ class AccountPnlMonitorWiringTest {
             "BINANCE-API-SECRET-VALUE",
             "BINANCE-SECRET-SECRET-VALUE",
         )
+    }
+
+    @Test
+    fun `정시 보고 플래그는 기본 켜짐이고 false 로 끈다`() {
+        runner.withPropertyValues(*enabledProps).run { ctx ->
+            assertThat(ReflectionTestUtils.getField(ctx.getBean(AccountPnlMonitorJob::class.java), "hourlyReportEnabled"))
+                .isEqualTo(true)
+        }
+        runner.withPropertyValues(*enabledProps, "account-pnl-monitor.hourly-report.enabled=false").run { ctx ->
+            assertThat(ReflectionTestUtils.getField(ctx.getBean(AccountPnlMonitorJob::class.java), "hourlyReportEnabled"))
+                .isEqualTo(false)
+        }
     }
 
     // ---- 바이낸스 leg 모드 (live-account-pnl-manual-binance AC5·AC6) ----

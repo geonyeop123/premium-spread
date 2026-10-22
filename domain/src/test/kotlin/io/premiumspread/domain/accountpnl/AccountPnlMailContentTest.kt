@@ -378,4 +378,41 @@ class AccountPnlMailContentTest {
         assertThat(AccountPnlMailContent.profit(manual(original), zone).subject)
             .isEqualTo(AccountPnlMailContent.profit(original, zone).subject)
     }
+
+    @Test
+    fun `정시 보고 제목은 버킷 시각과 순수익률 순수익금을 쓴다`() {
+        val mail = AccountPnlMailContent.hourly(pnl(), zone)
+
+        assertThat(mail.subject).isEqualTo("[김프 알림] 정시 보고 09:00 · 순수익률 +1.23% · +456,789원")
+    }
+
+    @Test
+    fun `정시 보고 제목의 시각은 지정한 zone 의 정시다`() {
+        val utc = AccountPnlMailContent.hourly(pnl(), ZoneId.of("UTC"))
+
+        assertThat(utc.subject).startsWith("[김프 알림] 정시 보고 00:00 · ")
+    }
+
+    @Test
+    fun `정시 보고 본문은 안내 한 줄과 빈 줄 뒤에 수익 메일 본문이 그대로 온다`() {
+        val hourly = AccountPnlMailContent.hourly(pnl(), zone).body
+        val profit = AccountPnlMailContent.profit(pnl(), zone).body
+
+        assertThat(hourly.lines().first()).isEqualTo("정시 보고 — 1% 알림 기준과 무관하게 매시간 발송된다.")
+        assertThat(hourly.lines()[1]).isEmpty()
+        assertThat(hourly.lines().drop(2).joinToString("\n")).isEqualTo(profit)
+    }
+
+    @Test
+    fun `정시 보고 eventKey 는 같은 시간대면 같고 버킷 시작 시각이다`() {
+        val first = AccountPnlMailContent.hourly(pnl(), zone)
+        val sameHour = pnl().copy(calculatedAt = Instant.parse("2026-10-20T00:59:59Z"))
+            .let { AccountPnlMailContent.hourly(it, zone) }
+        val nextHour = pnl().copy(calculatedAt = Instant.parse("2026-10-20T01:00:00Z"))
+            .let { AccountPnlMailContent.hourly(it, zone) }
+
+        assertThat(first.eventKey).isEqualTo("account-pnl-hourly-1792454400000")
+        assertThat(sameHour.eventKey).isEqualTo(first.eventKey)
+        assertThat(nextHour.eventKey).isEqualTo("account-pnl-hourly-1792458000000")
+    }
 }
