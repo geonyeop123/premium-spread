@@ -176,6 +176,54 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
 - GREEN: 대상 판정을 합집합으로 교체 후 같은 명령 → BUILD SUCCESSFUL (5 tests, 0 failed). 기존 FORBIDDEN 20개 위반 0건, MANUAL_FORBIDDEN 7개 위반 0건 (ReadClient 포함 규칙 완화 없음).
   - `./gradlew architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
 
+### Task 8 — 회귀·AC 재검증 (날짜 2026-10-22)
+
+runbook(`docs/runbooks/account-pnl-alert.md`) 갱신 후 실행. 모든 gradle 은 `--offline --no-daemon`. 복합 명령은 샌드박스 제약으로 부분별 실행.
+
+| 항목 | 명령 | 결과 |
+|---|---|---|
+| R1·R3·R4 | `./gradlew test architectureTest` | exit 0, BUILD SUCCESSFUL 1m 36s |
+| R2 | `./gradlew :apps:api:test --tests '*TradePreparationWiring*'` | exit 0, BUILD SUCCESSFUL 8s |
+| R5 | `git diff --exit-code 0a04546 -- infrastructure/common/src/main/resources/db/migration` | 빈 출력, exit 0 |
+| R5 | `./gradlew :infrastructure:common:verifyMigrations` | exit 0, BUILD SUCCESSFUL 5s |
+| R6 | `./gradlew :apps:batch:integrationTest` (Docker) | exit 0, BUILD SUCCESSFUL 4m 29s |
+| R7 | `./gradlew harnessCheck` | exit 0, `하네스 검사 통과: 파일 22개` |
+| R8a | `git diff --exit-code 0a04546 -- <6개 테스트 파일>` | 빈 출력, exit 0 |
+| R8b | `:domain:test --tests 'io.premiumspread.domain.accountpnl.*'` / `:infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.*'` / `:apps:batch:test --tests '...AccountPnlMonitorJobTest' --tests '...AccountPnlMonitorWiringTest'` (세 부분) | 각각 exit 0 (BUILD SUCCESSFUL 9s / 39s / 13s) |
+| R8c | `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest'` | exit 0, 5 tests, 0 failed, BUILD SUCCESSFUL 44s |
+| R8d | `./gradlew :architecture-tests:architectureTest --tests '...PrivateAccountReadOnlyArchitectureTest'` | exit 0, 5 tests, 0 failed |
+| AC8 | `bash docs/check-documentation.sh` | exit 0, `documentation check passed (20 files, 15 required paths)` |
+
+AC1~AC7 재실행 (각각 exit 0):
+
+| AC | 명령 | 결과 |
+|---|---|---|
+| AC1 | `:domain:test --tests '...AccountHedgePositionTest'` | BUILD SUCCESSFUL, 9 tests, 0 failed |
+| AC2 | `:domain:test --tests '...AccountPnlMailContentTest'` | BUILD SUCCESSFUL, 19 tests, 0 failed |
+| AC3 | `:infrastructure:batch:test --tests '...BinanceFuturesManualAccountAdapterTest'` | BUILD SUCCESSFUL, 16 tests, 0 failed |
+| AC4 | (1) `grep -rl -e '/fapi/v1/depth' -e '/fapi/v2/ticker/price' infrastructure/batch/src/main/kotlin` → `.../binance/BinanceFuturesReadClient.kt` 한 줄 (2) `git diff --exit-code 0a04546 -- .../BinanceFuturesPrivateAccountAdapterTest.kt` → exit 0 (3) `:infrastructure:batch:test --tests '...BinanceFuturesPrivateAccountAdapterTest'` | BUILD SUCCESSFUL, 27 tests, 0 failed |
+| AC5·AC6 | `:apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest'` | BUILD SUCCESSFUL, 27 tests, 0 failed |
+| AC7 | `:architecture-tests:architectureTest --tests '...PrivateAccountReadOnlyArchitectureTest'` | BUILD SUCCESSFUL, 5 tests, 0 failed |
+
+AC8 (a)~(e): runbook 에 `BINANCE_MODE`·모드별 필수 env(a), manual env 5종 표(b), `### 한계`(펀딩 과대평가 굵게 포함, 잔여 노출 포함)(c),
+누락 WARN 전문(d), `## manual 모드 검산 체크리스트 (manual-binance AC9)`(e) 추가 — 사람 사후 검토 대상. AC9 는 owner 확인(미실행).
+
+R9 — `git diff 0a04546 -- <네 파일> | grep '^-[^-]'` 삭제 줄 전체 (`AccountHedgePositionTest`·`AccountPnlMailContentTest`·`AccountPnlMonitorWiringTest` 는 삭제 0줄):
+
+```text
+(PrivateAccountReadOnlyArchitectureTest.kt)
+- * `AC10` — private 계정 adapter(`*PrivateAccountAdapter.kt`)는 조회 전용이다 (`LIVE-3`·`LIVE-4`).      # 클래스 KDoc 갱신 (허용 예외)
+-            targets.size >= MINIMUM_TARGETS,                                                          # 최소 개수 단언 교체 (허용 예외)
+-            "*PrivateAccountAdapter.kt 를 ${targets.size}개만 찾았다(최소 $MINIMUM_TARGETS) — " +
+-                "스캐너가 대상을 못 보거나 adapter 가 이름을 바꿨다. root=${root()}",
+-                path.fileName.toString().endsWith("PrivateAccountAdapter.kt") &&                      # 대상 판정 교체 (허용 예외)
+-                normalized.contains("/src/main/kotlin/") &&
+-                !normalized.contains("/build/")
+-        const val MINIMUM_TARGETS = 2                                                                # REQUIRED_TARGETS 로 대체
+```
+
+허용 예외(dod R9) 밖의 삭제 없음.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
