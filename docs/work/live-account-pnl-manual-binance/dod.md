@@ -93,7 +93,8 @@ source: docs/work/live-account-pnl-manual-binance/design.md (DRAFT)
 
 | 라운드 | 지적 | 처리 | 반영 커밋 |
 |---|---|---|---|
-| R1 | 4 Important · 7 Minor — 빈 값 바인딩 가정 미검증, 공유 클라이언트 실패 경로 커버리지(연결 거부·timeout·빈 본문·timeout 전달), 바인딩 실패의 값 노출(→ 오케스트레이터 결정 (b) `String?` 바인딩·직접 해석), R9 허용 예외·fixture 무수정 / 비서명 `-1021` 의도된 변경 명시, `ObjectMapper` 이동·number 정밀도, 아키텍처 대상 합집합, api 모드 manual 검증의 전제 조건, Step 1 stub 컴파일, 행렬 `hasNotFailed` 선행, runbook 절 이름 + 리뷰어 의견(펀딩 미갱신 과대평가 경고·fundingRate 추정 후속) | ACCEPT 11 (+ 리뷰어 의견 문서 반영), 결정 (b) | design §3.3 `e85a03b` (오케스트레이터), 나머지 미커밋 |
+| R1 | 4 Important · 7 Minor — 빈 값 바인딩 가정 미검증, 공유 클라이언트 실패 경로 커버리지(연결 거부·timeout·빈 본문·timeout 전달), 바인딩 실패의 값 노출(→ 오케스트레이터 결정 (b) `String?` 바인딩·직접 해석), R9 허용 예외·fixture 무수정 / 비서명 `-1021` 의도된 변경 명시, `ObjectMapper` 이동·number 정밀도, 아키텍처 대상 합집합, api 모드 manual 검증의 전제 조건, Step 1 stub 컴파일, 행렬 `hasNotFailed` 선행, runbook 절 이름 + 리뷰어 의견(펀딩 미갱신 과대평가 경고·fundingRate 추정 후속) | ACCEPT 11 (+ 리뷰어 의견 문서 반영), 결정 (b) | design §3.3 `e85a03b` (오케스트레이터), 나머지 `3e11a1c` |
+| R2 | Minor 3 — Global Constraints 문구에 잔여 노출 예외 명시, 라운드 기록 커밋 갱신, Review Focus 1 의 검증 주체(timeout 전달은 ⑨ 에서 눈으로 확인) | ACCEPT 2 · 1 건은 ⑨ 확인 항목 · verdict APPROVE | 이 커밋 |
 
 ## 증거 로그
 

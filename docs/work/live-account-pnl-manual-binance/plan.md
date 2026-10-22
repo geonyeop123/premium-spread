@@ -24,7 +24,7 @@ JUnit5 + AssertJ, okhttp3 MockWebServer, `ApplicationContextRunner` + `OutputCap
 - manual adapter 는 GET 만, 서명·`X-MBX-APIKEY`·`/fapi/v1/time`·`recvWindow` 없음. 주문·출금·이체 경로 없음.
 - 설정 값(key·secret·수신 주소·manual 수량·가격·수수료·펀딩·taker 율·mode 원문)을 로그·예외 메시지·예외 원인 체인·`toString()` 에 남기지
   않는다. 신규 설정은 **`String?` 으로 바인딩해 직접 해석**하고(design §3.1 옵션 (b)), 해석 실패 예외는 property key 와 규칙만 담으며
-  `cause` 를 연결하지 않는다. 누락 WARN 은 env 이름만.
+  `cause` 를 연결하지 않는다. 누락 WARN 은 env 이름만. (예외: 바인딩 실패 시 Spring Boot 기동 실패 리포트(`BindFailureAnalyzer`)가 찍는 property 값 한 줄은 우리 코드 밖 잔여 노출로 수용 — design §3.1)
 - Flyway·Redis·Job·`JobConfig`·`PublicEndpointPolicy` 무변경.
 - Domain 에 Spring/HTTP/Jackson 의존 추가 금지. 앱(`apps:batch`)은 infrastructure 타입을 import 하지 않는다.
 - 테스트는 실 거래소·실 SMTP·실 credential 금지. MockWebServer·fixture·고정 `Clock`.
@@ -417,7 +417,7 @@ manualProps = notification.email.enabled=true, account-pnl-monitor.enabled=true,
 | 진입가 0 | `manual.entry-price` | `0.000000` | `> 0` |
 | 음수 수수료 | `manual.entry-fee-usdt` | `-1.234567` | `>= 0` |
 | taker 상한 | `manual.taker-fee-rate` | `1.000007` | `< 1` |
-| api 모드 manual 검증 | `manual.short-quantity` | `-1.98765` | `>= 0` (dod AC5-f 의 "`-1`" 케이스를 구별 값으로) |
+| api 모드 manual 검증 | `manual.short-quantity` | `-1.98765` | `>= 0` |
 | 알 수 없는 mode | `mode` | `fooModeX7` | api/manual 아님 |
 
 - `assertNoBeans` 헬퍼에 `doesNotHaveBean(BinanceFuturesManualAccountAdapter::class.java)` 추가 (기존 케이스 전부 이 단언도 받는다)
