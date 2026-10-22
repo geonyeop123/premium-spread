@@ -256,4 +256,19 @@ R9 — `git diff 0a04546 -- <네 파일> | grep '^-[^-]'` 삭제 줄 전체 (`Ac
 
 ## 최종 판정
 
-(⑩ 에서 작성)
+- 판정 대상 코드 SHA: `b41acb6` (base `0a04546`). 이 판정을 담은 커밋은 dod.md 만 바꾼다
+- 판정일: 2026-10-22 · 검증: qa-agent 직접 실행 (`--offline --no-daemon`, Docker 사용)
+- 판정: **AWAITING_HUMAN** — 자동 검증 전부 PASS, 사람 확인 3건 남음. 완료 아님
+
+| 항목 | 판정 | 비고 |
+|---|---|---|
+| AC1~AC7 (T1) | PASS | 각 검증 명령 exit 0 — AC1 9건, AC2 19건, AC3 16건, AC4 27건(+grep 1파일·테스트 무수정), AC5·AC6 30건, AC7 5건, 실패 0 |
+| AC8 (T3) | AWAITING_HUMAN | `check-documentation.sh` exit 0. runbook (a) 35·48~49행, (b) 68~72행, (c) `### 한계` 94~107행(굵은 과대평가 경고 첫 줄·펀딩 재시작·포지션 변경·BNB 환산·taker 0.0005·api 모드 형식 검증 101행·잔여 노출 106행), (d) 53행, (e) 212행~ 존재 확인. 한계 설명의 충분성은 사람 사후 검토 |
+| AC9 (T4) | AWAITING_HUMAN | owner 로컬 manual 실행·메일 수신·바이낸스 값 대조, PR 코멘트 기록 |
+| R1~R8d | PASS | architectureTest 35건, `test` 726건, integrationTest common 32·api 174·batch 100건, 모두 실패 0. R8c 5건. migration·http 무변경, verifyMigrations·harnessCheck 통과. R8a 6개 파일 무수정 |
+| R9 | AWAITING_HUMAN | 삭제 줄은 `PrivateAccountReadOnlyArchitectureTest` 의 허용 예외 7줄(KDoc 1, 최소 개수 단언·상수 4, 대상 판정 3)뿐, 나머지 3개 파일은 추가만. ⑨ 리뷰(spec·code)·재리뷰가 허용 예외만 확인 — 사람 판정 대기 |
+| 커버리지 | 로컬 verification exit 0 | 최종 증거는 `b41acb6` CI `2. Unit + coverage` pass |
+| CI (PR #84, `b41acb6`) | 6/7 pass | `5. ktlint + detekt` pass(지적 0). `6. Dependency + security scan` fail — base `0a04546` dev 실행에서도 fail 인 기존 상태 |
+
+- 미실행: 없음. 환경 문제: 없음. 재실행으로 지운 실패: 없음
+- 브랜치 최종 코드 SHA 가 `b41acb6` 와 달라지면 이 판정은 만료다
