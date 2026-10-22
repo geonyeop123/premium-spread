@@ -73,8 +73,15 @@ account-pnl-monitor:
     access-key: ${BITHUMB_ACCESS_KEY:}
     secret-key: ${BITHUMB_SECRET_KEY:}
   binance:
+    mode: ${BINANCE_MODE:api}
     api-key: ${BINANCE_API_KEY:}
     secret-key: ${BINANCE_SECRET_KEY:}
+    manual:
+      short-quantity: ${BINANCE_MANUAL_SHORT_QUANTITY:}
+      entry-price: ${BINANCE_MANUAL_ENTRY_PRICE:}
+      entry-fee-usdt: ${BINANCE_MANUAL_ENTRY_FEE_USDT:}
+      funding-usdt: ${BINANCE_MANUAL_FUNDING_USDT:}
+      taker-fee-rate: ${BINANCE_MANUAL_TAKER_FEE_RATE:}
 
 # 거래 준비 조건 평가 (design.md D14) — 값의 근거는 수집 계약의 10초 중단 규칙이다.
 trade-preparation:

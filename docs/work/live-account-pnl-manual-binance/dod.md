@@ -143,6 +143,26 @@ source: docs/work/live-account-pnl-manual-binance/design.md (APPROVED 2026-10-22
   → `16 tests completed, 16 failed` (UnsupportedOperationException / AssertionError), BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (16 tests, 0 failed). `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL.
 
+### Task 5 — AC5·AC6 설정·조건·배선 (날짜 2026-10-22)
+
+- RED(시그니처 stub: `resolvedMode()=API`, `resolved*()=null`, `resolvedTakerFeeRate()=0`, 검증·toString·조건·bean·WARN·yml 미변경):
+  `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon`
+  → `27 tests completed, 12 failed`, BUILD FAILED. 기존 15개는 초록(`assertNoBeans` 의 manual adapter 단언 포함). 실패 12개 = 신규 전부:
+  - AC5(a) manual 2건: `to have a single bean of type BinanceFuturesManualAccountAdapter` 실패
+  - AC5(c) WARN 2건: `Expecting actual: "" to contain: "account-pnl-monitor enabled but required settings missing; monitor not started"`
+  - AC5(d) 행렬: `[mode=manual, all required] expected: 1 but was: 0`
+  - AC5(e)(f) 실패 기대 3건: `[fooModeX7] Expecting: <Started application ...> to have failed` (`qtyBADx9`·`-1.98765` 동일)
+  - AC5(f) 허용 1건·AC5(g) 1건: manual adapter 없음 / `NoSuchBeanDefinitionException: AccountPnlMonitorProperties` (stub 조건이 manual 모드 바인딩 안 함)
+  - AC6 2건: toString 에 `mode=MANUAL` 없음, 출력 `""` 에 `binance leg: mode=manual` 없음
+  - AC5(b) 2건(`mode 미설정·빈 값·api·API`, `api 모드 manual 키 빈 값`)은 stub 에서도 초록 — 기존 동작 보존 단언이라 의도된 결과.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (27 tests, 0 failed, 0 skipped).
+  - `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` (R2) → BUILD SUCCESSFUL (3 tests, 0 failed).
+  - `./gradlew :apps:batch:test --offline --no-daemon` → BUILD SUCCESSFUL (137 tests, 0 failed).
+  - `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL (145 tests, 0 failed).
+  - `./gradlew architectureTest --offline --no-daemon --rerun-tasks` → BUILD SUCCESSFUL.
+- 관측: 알 수 없는 mode 는 `ApplicationContextRunner` 의 user configuration 등록 단계(조건 평가)에서 실패해 refresh WARN 이 찍히지 않는다.
+  manual 값 오류 6건은 `Exception encountered during context initialization` WARN 이 찍히며 그 출력에 입력 값이 없음을 테스트가 확인한다.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
