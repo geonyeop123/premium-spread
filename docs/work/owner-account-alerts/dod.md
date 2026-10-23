@@ -51,7 +51,7 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 | 확장만 허용 테스트 | 있다 — `JdbcAccountPnlAlertStoreIntegrationTest`, `AccountPnlMonitorWiringTest` | AC9·AC11 이 메서드 추가로 확장 (R6) |
 | batch fixture 스키마 고정 | 있다 — `AccountPnlFixtureSchemaIntegrationTest` (`account_pnl_monitor_state` = V18 9열) | V20 으로 바뀌므로 허용 예외 R8 |
 | migration 경로 테스트 패턴 | 있다 — `V19OwnerAlertChannelMigrationIntegrationTest` | AC8 이 같은 패턴 |
-| API Flyway 전체 적용 | 있다 — `apps/api` `FlywayOwnershipIntegrationTest` | 회귀 방어선 R13 (V20 포함 전체 적용) |
+| API Flyway 전체 적용 | 있다 — `apps/api` `FlywayOwnershipIntegrationTest` | 회귀 방어선 R13 (API 컨텍스트 기동 시 V20 까지 적용 — 테스트 단언은 V13) |
 | owner 알림 테스트 fake | 있다 — `OwnerAlertTestFakes.kt`(`FakeOwnerAlertStore`·`FakeMailSender`·`FakeDiscordSender`·`MutableClock`) | AC10 이 **무수정 재사용** |
 
 **결론.** T1 수용기준은 모두 `신규테스트` 또는 `기존`(확장)으로 덮는다. 새 스크립트 파일은 만들지 않는다.
@@ -105,7 +105,7 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 | R10 | batch 통합 — 실계정 알림 재시작 내구성·#88 owner 알림 E2E·premium durable delivery·fixture 스키마 | `./gradlew :apps:batch:integrationTest --offline --no-daemon` |
 | R11 | 거래 준비 AC20 (production 잔고 포트) — batch 배선 변경의 간접 회귀 | `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` |
 | R12 | 정본 문서·하네스 정합성 | `./gradlew harnessCheck --offline --no-daemon && bash docs/check-documentation.sh` |
-| R13 | API 의 Flyway 전체 적용(`FlywayOwnershipIntegrationTest` — V20 포함 모든 migration) 과 api 통합 테스트 | `./gradlew :apps:api:integrationTest --offline --no-daemon` (Docker 필요) |
+| R13 | API 의 Flyway 전체 적용(`FlywayOwnershipIntegrationTest` — 컨텍스트 기동 시 V20 까지 적용, 단언은 V13) 과 api 통합 테스트 | `./gradlew :apps:api:integrationTest --offline --no-daemon` (Docker 필요) |
 
 ## 스펙 리뷰 라운드 기록 (⑥)
 

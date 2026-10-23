@@ -67,7 +67,7 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 | #88 `OwnerAlertYamlContractTest` | yml `routes` key 집합 = `OwnerAlertKind.entries` | yml 3블록 추가로 무수정 통과 |
 | `AccountPnlFixtureSchemaIntegrationTest` | `account_pnl_monitor_state` 열 목록 = V18 | 클래스 KDoc 이 "새 migration 이 바꾸면 함께 고친다" — **허용 예외**(기대 목록 끝에 12열, KDoc 에 V20) |
 | `JdbcAccountPnlAlertStoreIntegrationTest` (확장만) | `load()` 결과 동등성 | 새 열이 NULL/FALSE 면 `AccountAlertState.INITIAL` 로 읽혀 기존 단언 그대로 성립 |
-| api `FlywayOwnershipIntegrationTest` | API 가 모든 migration 을 적용 | V20 추가로 함께 검증된다 — dod 회귀 방어선에 `:apps:api:integrationTest` |
+| api `FlywayOwnershipIntegrationTest` | API 가 모든 migration 을 적용 | 컨텍스트 기동이 V20 까지 적용하므로 실패 시 기동이 깨진다(단언은 V13) — dod 회귀 방어선에 `:apps:api:integrationTest` |
 
 ## 3. Domain 모델과 정책 (`io.premiumspread.domain.accountpnl`)
 
@@ -580,6 +580,6 @@ DB 만. 상태(기존 열 + V20 열) 갱신과 outbox 행 삽입이 한 트랜�
 | ⑥ R1 | §5.1 — 계정 알림의 관측 완료 시각 규칙과 클래스 KDoc 보강 | R1 #2 |
 | ⑥ R1 | §11 — `.ai/PROJECT_STATUS.md:13` `V1~V19` → `V1~V20` | R1 #3 |
 | ⑥ R1 | §6.2 — 설정은 별도 bean `accountAlertSettings` 로(plan Task 11 과 일치) | R1 #4 |
-| ⑥ R1 | §2·§10 — API `FlywayOwnershipIntegrationTest` 가 V20 을 함께 검증(dod 회귀 방어선) | R1 #5 |
+| ⑥ R1 | §2·§10 — API `FlywayOwnershipIntegrationTest` 기동 시 V20 적용으로 회귀 방어(dod R13, 단언은 V13) | R1 #5 |
 | ⑦ | §0·§3.4 — 리마인더를 "설정 시각 이후 성공 회차마다 판정, 항목이 처음 해당하는 회차에 발송, 보냈을 때만 소비"로 변경(R4 = 미소비), `lastDayStart` 의미를 "보낸 날"로, §7.2 안내 문구 | 사용자 확정 D1 (초안 A3 변경) |
 | ⑦ | §12 — A6·A7 을 사용자 확정 D3·D2 로, `ACCOUNT_PNL_REMINDER_HOUR` 를 오케스트레이터 판정 O1 로 기록 | 사용자 확정 D2·D3, 오케스트레이터 판정 |
