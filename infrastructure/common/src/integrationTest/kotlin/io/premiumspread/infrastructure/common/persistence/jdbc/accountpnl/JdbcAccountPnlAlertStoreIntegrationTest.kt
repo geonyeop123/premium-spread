@@ -1,9 +1,16 @@
 package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 
+import io.premiumspread.domain.accountpnl.AccountAlertState
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
+import io.premiumspread.domain.accountpnl.ForeignLeg
+import io.premiumspread.domain.accountpnl.KoreaLeg
 import io.premiumspread.domain.accountpnl.OutageState
+import io.premiumspread.domain.accountpnl.PositionLegs
+import io.premiumspread.domain.accountpnl.PositionWatchState
+import io.premiumspread.domain.accountpnl.ReminderState
+import io.premiumspread.domain.accountpnl.SwingState
 import io.premiumspread.domain.accountpnl.PnlAlertState
 import io.premiumspread.domain.owneralert.DiscordPush
 import io.premiumspread.domain.owneralert.DiscordRoute
@@ -23,6 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.MySQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Clock
 import java.time.Duration
@@ -460,6 +468,104 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
         assertThat(attemptCountOf("pending")).isZero()
     }
 
+    @Test
+    fun `계정 알림 상태 전체가 저장 후 그대로 읽힌다`() {
+        val state = AccountPnlMonitorState(PnlAlertState.INITIAL, OutageState.INITIAL, 0, FULL_ACCOUNT)
+
+        assertThat(store.save(0, state, emptyList())).isTrue()
+
+        assertThat(store.load().account).isEqualTo(FULL_ACCOUNT)
+        assertThat(store.save(1, state.copy(account = AccountAlertState.INITIAL), emptyList())).isTrue()
+        assertThat(store.load().account).isEqualTo(AccountAlertState.INITIAL)
+    }
+
+    @Test
+    fun `계정 알림 상태 INITIAL 은 빈 열이고 INITIAL 로 읽힌다`() {
+        assertThat(store.save(0, STATE, emptyList())).isTrue()
+
+        val row = jdbcTemplate.queryForMap("SELECT * FROM account_pnl_monitor_state WHERE id = 1")
+        listOf(
+            "korea_quantity", "korea_average_buy_price", "foreign_signed_quantity", "foreign_entry_price",
+            "swing_bucket_start", "swing_baseline_percent", "reminder_day_start",
+            "manual_funding_usdt", "manual_funding_changed_at",
+        ).forEach { column -> assertThat(row[column]).describedAs(column).isNull() }
+        listOf("hedge_mismatch_warned", "swing_up_sent", "swing_down_sent").forEach { column ->
+            assertThat(row[column]).describedAs(column).isIn(false, 0)
+        }
+        assertThat(store.load().account).isEqualTo(AccountAlertState.INITIAL)
+    }
+
+    @Test
+    fun `leg 와 펀딩의 소수 자릿수가 손실 없이 왕복한다`() {
+        val account = AccountAlertState(
+            position = PositionWatchState(
+                PositionLegs(
+                    KoreaLeg.of(BigDecimal("0.00012345"), BigDecimal("123456789.123456789")),
+                    ForeignLeg.of(BigDecimal("-0.00012345"), BigDecimal("100000000")),
+                ),
+                hedgeMismatchWarned = false,
+            ),
+            swing = SwingState.INITIAL,
+            reminder = ReminderState(null, BigDecimal("-0.000001"), Instant.parse("2026-07-14T15:00:00Z")),
+        )
+
+        assertThat(store.save(0, AccountPnlMonitorState(PnlAlertState.INITIAL, OutageState.INITIAL, 0, account), emptyList()))
+            .isTrue()
+
+        assertThat(store.load().account).isEqualTo(account)
+        val row = jdbcTemplate.queryForMap("SELECT * FROM account_pnl_monitor_state WHERE id = 1")
+        assertThat(row["korea_quantity"]).isEqualTo("0.00012345")
+        assertThat(row["korea_average_buy_price"]).isEqualTo("123456789.123456789")
+        assertThat(row["foreign_entry_price"]).isEqualTo("100000000")
+        assertThat(row["manual_funding_usdt"]).isEqualTo("-0.000001")
+    }
+
+    @Test
+    fun `version 이 다르면 계정 알림 열도 바뀌지 않는다`() {
+        assertThat(store.save(0, STATE, emptyList())).isTrue()
+        val stale = AccountPnlMonitorState(PnlAlertState.INITIAL, OutageState.INITIAL, 0, FULL_ACCOUNT)
+
+        assertThat(store.save(7, stale, emptyList())).isFalse()
+        assertThat(store.save(0, stale, emptyList())).isFalse()
+
+        assertThat(store.load().account).isEqualTo(AccountAlertState.INITIAL)
+        assertThat(store.load().version).isEqualTo(1)
+    }
+
+    @Test
+    fun `범위를 넘는 값은 값 없이 거부되고 아무것도 쓰지 않는다`() {
+        val longPrice = BigDecimal("1." + "2".repeat(63)) // plain 길이 65
+        check(longPrice.toPlainString().length == 65)
+        val tooLongLeg = AccountAlertState.INITIAL.copy(
+            position = PositionWatchState(
+                PositionLegs(KoreaLeg(BigDecimal("0.5"), longPrice), ForeignLeg(BigDecimal("-0.5"), BigDecimal("70000"))),
+                false,
+            ),
+        )
+        val tooLongFunding = AccountAlertState.INITIAL.copy(
+            reminder = ReminderState(null, longPrice, Instant.parse("2026-07-14T15:00:00Z")),
+        )
+        val hugeBaseline = AccountAlertState.INITIAL.copy(
+            swing = SwingState(Instant.parse("2026-07-14T15:00:00Z"), BigDecimal("10000000000.00"), false, false),
+        )
+
+        listOf(tooLongLeg, tooLongFunding, hugeBaseline).forEach { account ->
+            assertThatThrownBy {
+                store.save(
+                    0,
+                    AccountPnlMonitorState(PnlAlertState.INITIAL, OutageState.INITIAL, 0, account),
+                    listOf(mail("rejected")),
+                )
+            }.isInstanceOf(IllegalArgumentException::class.java)
+                .message().satisfies({ message ->
+                    assertThat(message).doesNotContain("1.2222").doesNotContain("10000000000")
+                })
+        }
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM account_pnl_monitor_state", Int::class.java)).isZero()
+        assertThat(mailRows()).isEmpty()
+    }
+
     private fun mail(eventKey: String) = AccountPnlMail(eventKey, "subject $eventKey", "body $eventKey")
 
     private fun discordRow(eventKey: String) = AccountPnlMail(
@@ -520,6 +626,21 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
     companion object {
         private val NOW = Instant.parse("2026-07-15T01:00:00.123456Z")
         private val STALE_AFTER = Duration.ofMinutes(5)
+        private val FULL_ACCOUNT = AccountAlertState(
+            position = PositionWatchState(
+                PositionLegs(
+                    KoreaLeg.of(BigDecimal("0.5"), BigDecimal("100000000")),
+                    ForeignLeg.of(BigDecimal("-0.5"), BigDecimal("70000")),
+                ),
+                hedgeMismatchWarned = true,
+            ),
+            swing = SwingState(Instant.parse("2026-07-14T23:00:00Z"), BigDecimal("-0.37"), upSent = true, downSent = false),
+            reminder = ReminderState(
+                lastDayStart = Instant.parse("2026-07-14T15:00:00Z"),
+                manualFundingUsdt = BigDecimal("-3.2"),
+                manualFundingChangedAt = Instant.parse("2026-07-13T01:02:03.456789Z"),
+            ),
+        )
         private val STATE = AccountPnlMonitorState(
             alert = PnlAlertState(
                 inEpisode = true,

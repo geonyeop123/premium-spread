@@ -117,6 +117,8 @@ AccountPnlMonitorScheduler (1분) → AccountPnlMonitorJob (JobExecutor)
 
 outbox 행은 채널(EMAIL·DISCORD)별로 만들고, Discord 는 `infrastructure:batch` 의 webhook adapter 가 보낸다. 채널 라우팅은 Domain `OwnerAlertRouting` 이 정한다.
 
+같은 회차가 계정 알림 3종(포지션 변경·순수익률 급변·미반영 리마인더)도 Domain 정책으로 판정하고, 상태는 `account_pnl_monitor_state`(V20 열)에 같은 트랜잭션·version 으로 저장한다.
+
 `notification_delivery`를 재사용하지 않는 전용 outbox다. 조회 전용 경계는 `PrivateAccountReadOnlyArchitectureTest`가
 강제하며 운영 절차는 [`docs/runbooks/account-pnl-alert.md`](../../docs/runbooks/account-pnl-alert.md)를 따른다.
 

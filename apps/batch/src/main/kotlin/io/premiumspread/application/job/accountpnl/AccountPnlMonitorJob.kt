@@ -5,6 +5,12 @@ import io.premiumspread.application.common.JobConfigProvider
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
 import io.premiumspread.application.notification.owneralert.OwnerAlertDispatcher
+import io.premiumspread.domain.accountpnl.AccountAlert
+import io.premiumspread.domain.accountpnl.AccountAlertContent
+import io.premiumspread.domain.accountpnl.AccountAlertDecision
+import io.premiumspread.domain.accountpnl.AccountAlertPolicy
+import io.premiumspread.domain.accountpnl.AccountAlertSettings
+import io.premiumspread.domain.accountpnl.AccountAlertState
 import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
@@ -15,6 +21,7 @@ import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
+import io.premiumspread.domain.accountpnl.AccountRound
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
@@ -24,6 +31,7 @@ import io.premiumspread.domain.accountpnl.OutageNotice
 import io.premiumspread.domain.accountpnl.OwnerAlertRows
 import io.premiumspread.domain.accountpnl.PnlAlertPolicy
 import io.premiumspread.domain.accountpnl.PnlObservation
+import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.job.JobLastSuccessReadPort
@@ -56,6 +64,8 @@ import java.util.concurrent.atomic.AtomicReference
  * - 재발송 타이머(`lastSentAt`)는 발송 결정과 함께 저장되므로 SMTP 성공·실패가 바꾸지 않는다.
  * - 시각: 관측 판정(호가 나이·환율 수집 공백·`calculatedAt`)은 두 계정 조회를 마친 뒤의 `clock.instant()` 를,
  *   상태 전이(stale 복구·수익·중단 정책·메일 시각)는 회차 시작 시각 `now` 를 쓴다. claim·mark 는 그 순간의 시각이다.
+ * - 예외: owner 계정 알림(포지션 변경·순수익률 급변·미반영 리마인더)은 관측 완료 시각(`completedAt` = 포지션이 있으면 `pnl.calculatedAt`)을 쓴다.
+ *   급변 버킷이 정시 보고와 같은 버킷(`calculatedAt` 의 zone 정시)이어야 하기 때문이다 (owner-account-alerts design §5.1).
  */
 @Suppress("LongParameterList", "TooManyFunctions")
 class AccountPnlMonitorJob(
@@ -75,6 +85,8 @@ class AccountPnlMonitorJob(
     private val routing: OwnerAlertRouting = OwnerAlertRouting.EMAIL_ONLY,
     /** Discord 채널 sender. [routing] 이 Discord 채널을 쓰면 필수다. */
     private val discordSender: OwnerAlertDiscordSender? = null,
+    /** owner 계정 알림 설정(#89). null 이면 판정하지 않고 account 상태를 그대로 저장한다. production 배선은 항상 넘긴다. */
+    private val accountAlerts: AccountAlertSettings? = null,
 ) {
     init {
         require(!routing.channels.discord || discordSender != null) {
@@ -108,7 +120,11 @@ class AccountPnlMonitorJob(
         val alert = PnlAlertPolicy.decide(loaded.alert, observed.observation, now)
         val outage = MonitoringOutagePolicy.decide(loaded.outage, observed.failure, now)
         val mails = buildMails(observed.observation, alert.send, outage.notice, now)
-        val next = AccountPnlMonitorState(alert.next, outage.next, loaded.version)
+        val account = accountAlerts?.let { AccountAlertPolicy.decide(loaded.account, observed.round, it, zone) }
+            ?: AccountAlertDecision(loaded.account, emptyList())
+        val rows = mails + account.alerts.flatMap { accountAlertRows(it) }
+        val next = AccountPnlMonitorState(alert.next, outage.next, loaded.version, account.next)
+        logAccountDecision(loaded.account, account)
 
         // JobExecutor 가 timeout·lock 상실로 취소했으면 이 회차의 관측을 쓰지 않는다
         if (Thread.currentThread().isInterrupted) {
@@ -117,7 +133,7 @@ class AccountPnlMonitorJob(
         }
 
         val saved = try {
-            store.save(loaded.version, next, mails)
+            store.save(loaded.version, next, rows)
         } catch (exception: Exception) {
             return storeFailure("save", exception)
         }
@@ -131,7 +147,12 @@ class AccountPnlMonitorJob(
 
     // ---- 관측 ----
 
-    private data class Observed(val observation: PnlObservation, val failure: AccountReadFailureCategory?)
+    private data class Observed(
+        val observation: PnlObservation,
+        val failure: AccountReadFailureCategory?,
+        /** 성공 회차(Computed·NoPosition)만. 실패면 null. */
+        val round: AccountRound?,
+    )
 
     private fun observe(): Observed = try {
         val koreaSnapshot = korea.read()
@@ -144,11 +165,11 @@ class AccountPnlMonitorJob(
         val position = AccountHedgePosition.resolve(koreaSnapshot, foreignSnapshot)
         if (position == null) {
             log.info("No account hedge position: {}", noPositionReason(koreaSnapshot, foreignSnapshot))
-            Observed(PnlObservation.NoPosition, null)
+            Observed(PnlObservation.NoPosition, null, round(koreaSnapshot, foreignSnapshot, null, completedAt))
         } else {
             val pnl = AccountNetPnl.calculate(position, fxSnapshot.rate, fxSnapshot.observedAt, completedAt)
             logObserved(pnl)
-            Observed(PnlObservation.Computed(pnl), null)
+            Observed(PnlObservation.Computed(pnl), null, round(koreaSnapshot, foreignSnapshot, pnl, completedAt))
         }
     } catch (exception: Exception) {
         if (exception.isCancellation()) {
@@ -158,8 +179,21 @@ class AccountPnlMonitorJob(
         }
         val category = (exception as? AccountReadException)?.category ?: AccountReadFailureCategory.UNEXPECTED
         log.warn("Account PnL observation failed: category={}", category, exception)
-        Observed(PnlObservation.Failed, category)
+        Observed(PnlObservation.Failed, category, null)
     }
+
+    private fun round(
+        koreaSnapshot: KoreaSpotAccountSnapshot,
+        foreignSnapshot: ForeignPerpAccountSnapshot,
+        pnl: AccountNetPnl?,
+        completedAt: Instant,
+    ) = AccountRound(
+        PositionLegs.of(koreaSnapshot, foreignSnapshot),
+        foreignSnapshot.positionSource,
+        foreignSnapshot.fundingUsdt,
+        pnl,
+        completedAt,
+    )
 
     /** 회차마다 계산된 순손익 한 줄. 스냅샷에서 계산된 숫자만 남기고 credential·수신자·env 원문은 싣지 않는다. */
     private fun logObserved(pnl: AccountNetPnl) {
@@ -288,6 +322,31 @@ class AccountPnlMonitorJob(
     /** 알림 하나를 종류별 경로로 0~2행(메일 먼저)으로 펼친다 (design §3.4). Discord 렌더링은 Discord 행을 만들 때만 한다. */
     private fun route(kind: OwnerAlertKind, mail: AccountPnlMail, discord: () -> DiscordMessage): List<AccountPnlMail> =
         OwnerAlertRows.expand(mail, routing.resolve(kind), discord)
+
+    private fun accountAlertRows(alert: AccountAlert): List<AccountPnlMail> =
+        route(alert.kind, AccountAlertContent.mail(alert, zone)) { AccountAlertContent.discord(alert, zone) }
+
+    /** 행을 만든 뒤·저장 전에 남기는 "decided" 로그다 (발송 로그가 아니다). 수량·가격·펀딩·객체 toString 은 싣지 않는다. */
+    private fun logAccountDecision(before: AccountAlertState, decision: AccountAlertDecision) {
+        decision.alerts.forEach { alert ->
+            log.info(
+                "Owner account alert decided: kind={}, eventKey={}",
+                alert.kind.name,
+                AccountAlertContent.eventKey(alert),
+            )
+            if (alert is AccountAlert.PositionChanged) {
+                log.info(
+                    "Account position changed: korea={}, foreign={}, hedgeMismatchWarning={}",
+                    alert.koreaChanged,
+                    alert.foreignChanged,
+                    alert.hedgeMismatchWarning,
+                )
+            }
+        }
+        if (before.position.legs == null && decision.next.position.legs != null) {
+            log.info("Account position legs recorded; first observation sends no change alert")
+        }
+    }
 
     /** 전달은 [OwnerAlertDispatcher] 가 소유한다 (design §5.2). 같은 회차 안에서 즉시 전달한다. */
     private fun deliver(): JobResult = dispatcher.dispatch()

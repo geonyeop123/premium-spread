@@ -13,6 +13,7 @@ import java.util.Locale
 internal object AccountPnlFormat {
     const val RUNBOOK = "docs/runbooks/account-pnl-alert.md"
     private val TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    private val DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT)
     private val SHORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z", Locale.ROOT)
 
     fun label(category: AccountReadFailureCategory): String = when (category) {
@@ -65,4 +66,10 @@ internal object AccountPnlFormat {
 
     fun signedUsdt(value: BigDecimal): String =
         if (value.signum() == 0) "0 USDT" else "${sign(value)}${plain(value.abs())} USDT"
+
+    /** 부호 + 0.00 + `%p`. */
+    fun percentPoint(value: BigDecimal): String = sign(value) + format("0.00", value.abs()) + "%p"
+
+    /** zone 날짜 `yyyy-MM-dd`. */
+    fun date(instant: Instant, zone: ZoneId): String = DATE_FORMAT.format(instant.atZone(zone))
 }

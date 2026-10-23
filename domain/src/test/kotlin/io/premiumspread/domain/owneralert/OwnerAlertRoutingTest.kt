@@ -20,9 +20,9 @@ class OwnerAlertRoutingTest {
     private val emailOnly = OwnerAlertChannels(email = true, discord = false)
 
     @Test
-    fun `종류는 네 개이고 기본 경로는 설계 표와 같다`() {
+    fun `종류 목록과 기본 경로는 설계 표와 같다`() {
         assertThat(OwnerAlertKind.entries.map { it.name })
-            .containsExactly("PROFIT", "HOURLY_REPORT", "MONITORING_OUTAGE", "MONITORING_RECOVERED")
+            .containsExactly("PROFIT", "HOURLY_REPORT", "MONITORING_OUTAGE", "MONITORING_RECOVERED", "POSITION_CHANGED", "NET_PERCENT_SWING", "UNRECOVERED_REMINDER")
         assertThat(PROFIT.defaultRoute).isEqualTo(OwnerAlertRoute(true, DiscordRoute(PNL, HERE)))
         assertThat(HOURLY_REPORT.defaultRoute).isEqualTo(OwnerAlertRoute(false, DiscordRoute(PNL, SILENT)))
         assertThat(MONITORING_OUTAGE.defaultRoute).isEqualTo(OwnerAlertRoute(true, DiscordRoute(OPS, SOUND)))
@@ -32,14 +32,14 @@ class OwnerAlertRoutingTest {
     @Test
     fun `key 는 소문자 kebab 이고 fromKey 로 되돌아온다`() {
         assertThat(OwnerAlertKind.entries.map { it.key })
-            .containsExactly("profit", "hourly-report", "monitoring-outage", "monitoring-recovered")
+            .containsExactly("profit", "hourly-report", "monitoring-outage", "monitoring-recovered", "position-changed", "net-percent-swing", "unrecovered-reminder")
         OwnerAlertKind.entries.forEach { assertThat(OwnerAlertKind.fromKey(it.key)).isEqualTo(it) }
         assertThat(OwnerAlertKind.fromKey(" Hourly-Report ")).isEqualTo(HOURLY_REPORT)
         assertThat(OwnerAlertKind.fromKey("nope")).isNull()
     }
 
     @Test
-    fun `EMAIL_ONLY 는 네 종류 모두 메일만`() {
+    fun `EMAIL_ONLY 는 모든 종류가 메일만`() {
         OwnerAlertKind.entries.forEach {
             assertThat(OwnerAlertRouting.EMAIL_ONLY.resolve(it)).isEqualTo(OwnerAlertRoute(true, null))
         }

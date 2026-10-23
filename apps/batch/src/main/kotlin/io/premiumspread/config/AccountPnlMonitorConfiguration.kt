@@ -4,6 +4,7 @@ import io.premiumspread.application.common.JobConfigProvider
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJob
 import io.premiumspread.application.notification.owneralert.OwnerAlertDispatcher
+import io.premiumspread.domain.accountpnl.AccountAlertSettings
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
@@ -25,7 +26,9 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.Environment
 import org.springframework.core.type.AnnotatedTypeMetadata
 import org.springframework.core.type.ClassMetadata
+import java.math.BigDecimal
 import java.time.Clock
+import java.time.Duration
 
 /**
  * 실계정 순손익 기능이 명시적으로 켜졌고 수신자(메일 채널이 쓰일 때만)·빗썸 credential·바이낸스 모드별 필수값이 모두 있으며
@@ -157,6 +160,14 @@ class AccountPnlMonitorEnabledCondition : Condition {
 @Conditional(AccountPnlMonitorEnabledCondition::class)
 class AccountPnlMonitorConfiguration {
     @Bean
+    fun accountAlertSettings(
+        // fallback 0.50 은 도메인 기본값 AccountAlertSettings() 와 equals 가 일치하도록 scale 2 를 유지한다(yml 은 0.5, 판정은 compareTo 라 동작은 같다).
+        @Value("\${account-pnl-monitor.account-alerts.swing-threshold-percent:0.50}") swingThreshold: BigDecimal,
+        @Value("\${account-pnl-monitor.account-alerts.reminder-hour:9}") reminderHour: Int,
+        @Value("\${account-pnl-monitor.account-alerts.manual-funding-stale-days:3}") manualFundingStaleDays: Long,
+    ): AccountAlertSettings = AccountAlertSettings(swingThreshold, reminderHour, Duration.ofDays(manualFundingStaleDays))
+
+    @Bean
     @Suppress("LongParameterList")
     fun accountPnlMonitorJob(
         korea: KoreaSpotAccountReadPort,
@@ -171,6 +182,7 @@ class AccountPnlMonitorConfiguration {
         @Value("\${account-pnl-monitor.hourly-report.enabled:true}") hourlyReportEnabled: Boolean,
         routing: OwnerAlertRouting,
         discordSender: ObjectProvider<OwnerAlertDiscordSender>,
+        accountAlerts: AccountAlertSettings,
     ): AccountPnlMonitorJob = AccountPnlMonitorJob(
         korea,
         foreign,
@@ -184,5 +196,6 @@ class AccountPnlMonitorConfiguration {
         hourlyReportEnabled = hourlyReportEnabled,
         routing = routing,
         discordSender = discordSender.ifAvailable,
+        accountAlerts = accountAlerts,
     )
 }
