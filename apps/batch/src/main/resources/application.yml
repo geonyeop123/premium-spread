@@ -71,6 +71,11 @@ account-pnl-monitor:
   recipient: ${ACCOUNT_PNL_ALERT_RECIPIENT:}
   hourly-report:
     enabled: ${ACCOUNT_PNL_HOURLY_REPORT_ENABLED:true}
+  # owner 계정 알림(포지션 변경·순수익률 급변·미반영 리마인더). 경로는 owner-alert.routes 가 정한다.
+  account-alerts:
+    swing-threshold-percent: ${ACCOUNT_PNL_SWING_THRESHOLD_PERCENT:0.5}
+    reminder-hour: ${ACCOUNT_PNL_REMINDER_HOUR:9}
+    manual-funding-stale-days: ${ACCOUNT_PNL_MANUAL_FUNDING_STALE_DAYS:3}
   bithumb:
     access-key: ${BITHUMB_ACCESS_KEY:}
     secret-key: ${BITHUMB_SECRET_KEY:}
