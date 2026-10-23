@@ -104,7 +104,9 @@ class UnrecoveredReminderPolicyTest {
     fun `설정 시각 경계와 하루 한 번 소비를 검증한다`() {
         val s0 = ReminderState.INITIAL
 
-        assertThat(decide(s0, round("2026-10-19T23:59:59Z", koreaFee = true)).alert).isNull()
+        val before = decide(s0, round("2026-10-19T23:59:59Z", koreaFee = true))
+        assertThat(before.alert).isNull()
+        assertThat(before.next.lastDayStart).isEqualTo(s0.lastDayStart)
 
         val sent = decide(s0, round("2026-10-20T00:00:00Z", koreaFee = true))
         assertThat(sent.alert).isNotNull()

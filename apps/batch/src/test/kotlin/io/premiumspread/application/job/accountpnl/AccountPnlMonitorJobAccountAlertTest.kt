@@ -249,7 +249,9 @@ class AccountPnlMonitorJobAccountAlertTest {
 
         clock.advance(Duration.ofMinutes(1))
         job(alertStore = conflicting).run()
-        assertThat(rows("account-pnl-position-")).isNotEmpty()
+        val retried = rows("account-pnl-position-")
+        assertThat(retried.map { it.mail.channel }).containsExactly(OwnerAlertChannel.EMAIL, OwnerAlertChannel.DISCORD)
+        assertThat(retried[1].mail.discordColor).isEqualTo(AccountAlertContent.COLOR_HEDGE_MISMATCH)
     }
 
     // ---- fakes ----

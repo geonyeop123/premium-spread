@@ -101,7 +101,7 @@ class OwnerAccountAlertIntegrationTest : BatchIntegrationTestBase() {
         assertThat(stateText("reminder_day_start")).isNull()
 
         // 2. 빗썸만 변경 — EMAIL·DISCORD 각 1행 SENT, 헤지 불일치 경고 (AC12-b)
-        korea.quantity = BigDecimal("0.6")
+        korea.quantity = BigDecimal("0.60000000")
         runAt("2026-10-19T23:31:00Z")
         val positionKey = eventKeys("account-pnl-position-%").single()
         assertThat(rowsOf(positionKey).associate { it["channel"] to it["status"] }).containsExactlyInAnyOrderEntriesOf(
@@ -111,8 +111,8 @@ class OwnerAccountAlertIntegrationTest : BatchIntegrationTestBase() {
         assertThat(discordSender.sent.single().second.title).contains("헤지 불일치")
 
         // 3. 재시작 + 바이낸스·펀딩 변경 — 경고 없는 변경 1건, 경고 해소, 펀딩 변경 시각 갱신 (AC12-c·f)
-        foreign.signedQuantity = BigDecimal("-0.6")
-        foreign.fundingUsdt = BigDecimal("4.0")
+        foreign.signedQuantity = BigDecimal("-0.60000000")
+        foreign.fundingUsdt = BigDecimal("4.00")
         runAt("2026-10-19T23:32:00Z", newJob())
         assertThat(eventKeys("account-pnl-position-%")).hasSize(2)
         assertThat(discordSender.sent).hasSize(2)
@@ -183,13 +183,13 @@ class OwnerAccountAlertIntegrationTest : BatchIntegrationTestBase() {
 
     /** 빗썸 0.5 BTC · 평단 1억, 진입 수수료 미확인(null) — 리마인더 항목 1개. 순수익률은 매수호가로 정해진다. */
     class FakeKorea(private val clock: Clock) : KoreaSpotAccountReadPort {
-        @Volatile var quantity: BigDecimal = BigDecimal("0.5")
+        @Volatile var quantity: BigDecimal = BigDecimal("0.50000000")
 
         @Volatile var bid: BigDecimal = BID_BASE
 
         override fun read() = KoreaSpotAccountSnapshot(
             quantity = quantity,
-            averageBuyPrice = BigDecimal("100000000"),
+            averageBuyPrice = BigDecimal("100000000.00"),
             averageBuyPriceModified = false,
             entryFeeKrw = null,
             sellFeeRate = BigDecimal.ZERO,
@@ -201,13 +201,13 @@ class OwnerAccountAlertIntegrationTest : BatchIntegrationTestBase() {
 
     /** 바이낸스는 수동 입력(env) 출처: -0.5 BTC · 진입가 70000, 펀딩 3.2. */
     class FakeForeign(private val clock: Clock) : ForeignPerpAccountReadPort {
-        @Volatile var signedQuantity: BigDecimal = BigDecimal("-0.5")
+        @Volatile var signedQuantity: BigDecimal = BigDecimal("-0.50000000")
 
-        @Volatile var fundingUsdt: BigDecimal = BigDecimal("3.2")
+        @Volatile var fundingUsdt: BigDecimal = BigDecimal("3.20")
 
         override fun read() = ForeignPerpAccountSnapshot(
             signedQuantity = signedQuantity,
-            entryPrice = BigDecimal("70000"),
+            entryPrice = BigDecimal("70000.00"),
             entryCommissionUsdt = BigDecimal.ZERO,
             fundingUsdt = fundingUsdt,
             takerFeeRate = BigDecimal.ZERO,
