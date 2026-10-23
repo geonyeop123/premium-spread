@@ -73,7 +73,7 @@
 
 **Files:** 없음 (dod `## 증거 로그` 에 append)
 
-- [ ] **Step 1:** 기준선 실행·기록.
+- [x] **Step 1:** 기준선 실행·기록.
   ```bash
   git rev-parse --short HEAD && git merge-base HEAD origin/dev | cut -c1-7                   # base 033d513 확인
   ./gradlew architectureTest --offline --no-daemon                                          # R1
@@ -87,12 +87,12 @@
   grep -rn "AccountPnlMonitorState(" --include=*.kt .                                       # 상태 생성처 (3인자 유지 확인)
   grep -rn "OwnerAlertKind.entries\|known: profit" --include=*.kt .                         # enum 개수 고정 단언 (R7)
   ```
-- [ ] **Step 2: 예상 결과.** merge-base `033d513`. gradle 6건 exit 0. `ls` 마지막 줄 `V19__add_owner_alert_channel.sql`. 생성자 호출처는 `AccountPnlMonitorConfiguration` +
+- [x] **Step 2: 예상 결과.** merge-base `033d513`. gradle 6건 exit 0. `ls` 마지막 줄 `V19__add_owner_alert_channel.sql`. 생성자 호출처는 `AccountPnlMonitorConfiguration` +
   테스트(`AccountPnlMonitorJobTest`·`...HourlyReportTest`·`...ObservationLogTest`·`AccountPnlMonitorJobOwnerAlertTest`) + 통합(`AccountPnlAlertDurabilityIntegrationTest`·
   `OwnerAlertDeliveryIntegrationTest`)이고 모두 13개 인자 이내. 상태 생성처는 모두 3인자. enum 개수를 `containsExactly` 로 고정한 곳은 `OwnerAlertRoutingTest`(:24-25, :34-35)뿐이고
   `OwnerAlertPropertiesTest`(:111-113)는 `contains` 부분 문자열이다(그 밖 `entries` 사용처는 `forEach`/집합 비교). **다르면 멈추고 보고한다** — V19 가 아니면 V20 번호,
   base 가 다르면 dod R3·R5 의 base 를 Gate 1 에서 다시 정한다. Docker 부재면 R9·R10·R13 "미실행"(green 금지).
-- [ ] **Step 3: Commit** — `docs: owner 계정 알림 Gate 1 기준선 기록` (dod 증거 로그만)
+- [x] **Step 3: Commit** — `docs: owner 계정 알림 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: `OwnerAlertKind` 3종과 yml routes (AC1, AC11-f)
 
@@ -122,10 +122,10 @@ yml: design §6.2 의 routes 3블록(`position-changed`·`net-percent-swing`·`u
 - `계정 알림 key 는 kebab 이고 fromKey 로 되돌아온다` — 3 key, `fromKey(" Net-Percent-Swing ")` (AC1-a)
 - `메일과 Discord 를 모두 쓰면 기본 경로` / `Discord 가 꺼져 있으면 세 종류 모두 메일만` — `OwnerAlertRouting(both)`·`EMAIL_ONLY` (AC1-c, 사용자 확정 D2)
 
-- [ ] **Step 1:** enum 값 3개를 **stub 경로** `OwnerAlertRoute(email = true, discord = null)` 로 추가, 허용 예외 수정, yml routes 3블록, 새 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → RED(기본 경로·both 해석 단언 실패, `EMAIL_ONLY`·key 는 초록일 수 있다). 증거 로그 AC1.
-- [ ] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS(`OwnerAlertPropertiesTest` 무수정 통과 포함). `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → PASS(#88 테스트 무수정, routes INFO 는 `contains` 라 새 값이 뒤에 붙어도 성립).
-- [ ] **Step 4: Commit** — `feat: owner 계정 알림 종류 세 개와 기본 경로`
+- [x] **Step 1:** enum 값 3개를 **stub 경로** `OwnerAlertRoute(email = true, discord = null)` 로 추가, 허용 예외 수정, yml routes 3블록, 새 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → RED(기본 경로·both 해석 단언 실패, `EMAIL_ONLY`·key 는 초록일 수 있다). 증거 로그 AC1.
+- [x] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS(`OwnerAlertPropertiesTest` 무수정 통과 포함). `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → PASS(#88 테스트 무수정, routes INFO 는 `contains` 라 새 값이 뒤에 붙어도 성립).
+- [x] **Step 4: Commit** — `feat: owner 계정 알림 종류 세 개와 기본 경로`
 
 ### Task 2: leg·상태·설정·알림 타입 (AC2)
 
@@ -327,11 +327,11 @@ data class AccountPnlMonitorState(
 **테스트가 재는 것** (`AccountAlertStateTest`): dod AC2 (a)~(e) 그대로 — dust 경계 `0.00009999`/`0.0001`, `0.50`↔`0.5` 의 `==`·`samePosition`, 평단 `100000000.00`↔`1E+8`, 바이낸스 `0` 수량 + 진입가 `70000` → `FLAT`,
 상태 불변식 3건, 설정 기본값·거부 5건(메시지 일치), 3인자 상태의 `account == INITIAL`.
 
-- [ ] **Step 1:** 타입 전부 + **stub** `KoreaLeg.of`/`ForeignLeg.of` = 정규화 없이 그대로 생성, `samePosition` = `==`. 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertStateTest' --offline --no-daemon` → RED(dust·scale·FLAT 케이스). 동결 컴파일 확인:
+- [x] **Step 1:** 타입 전부 + **stub** `KoreaLeg.of`/`ForeignLeg.of` = 정규화 없이 그대로 생성, `samePosition` = `==`. 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertStateTest' --offline --no-daemon` → RED(dust·scale·FLAT 케이스). 동결 컴파일 확인:
   `./gradlew :domain:test :apps:batch:compileTestKotlin :infrastructure:common:compileIntegrationTestKotlin :apps:batch:compileIntegrationTestKotlin --offline --no-daemon` 의 컴파일 성공(domain 기존 테스트 초록). 증거 로그 AC2.
-- [ ] **Step 3:** 구현. Step 2 첫 명령 → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 계정 알림 상태·leg·설정 Domain 모델`
+- [x] **Step 3:** 구현. Step 2 첫 명령 → PASS.
+- [x] **Step 4: Commit** — `feat: owner 계정 알림 상태·leg·설정 Domain 모델`
 
 ### Task 3: `PositionChangePolicy` (AC3)
 
@@ -367,10 +367,10 @@ object PositionChangePolicy {
 - 청산 — 빗썸 `EMPTY` → 변경, 바이낸스 `FLAT` → 변경
 - 알림 불변식 — `PositionChanged(before, before, …)`·API 출처 경고 true 거부 (AC3)
 
-- [ ] **Step 1:** 시그니처 + **stub** `decide = PositionChangeDecision(state.copy(legs = legs), null)` + 테스트.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.PositionChangePolicyTest' --offline --no-daemon` → RED. 증거 로그 AC3.
-- [ ] **Step 3:** 구현 → PASS.
-- [ ] **Step 4: Commit** — `feat: 실계정 포지션 leg 변경 감지 정책`
+- [x] **Step 1:** 시그니처 + **stub** `decide = PositionChangeDecision(state.copy(legs = legs), null)` + 테스트.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.PositionChangePolicyTest' --offline --no-daemon` → RED. 증거 로그 AC3.
+- [x] **Step 3:** 구현 → PASS.
+- [x] **Step 4: Commit** — `feat: 실계정 포지션 leg 변경 감지 정책`
 
 ### Task 4: `NetPercentSwingPolicy` (AC4)
 
@@ -407,10 +407,10 @@ object NetPercentSwingPolicy {
 - S1 — `positionChanged = true`, 같은 버킷·기준선 있음 → `(bucket, null, F, F)`; 이어 `+3.00` → 없음(S3); 다음 버킷 → 기준선 재설정 (AC4-e)
 - 알림 필드 `direction`·`bucketStart`·`baselinePercent`·`threshold`·`pnl` (AC4-f)
 
-- [ ] **Step 1:** 시그니처 + **stub** `decide = SwingDecision(state, null)`, `bucketStart` 는 실제 구현(단순 식) + 테스트.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.NetPercentSwingPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC4.
-- [ ] **Step 3:** 구현 → PASS.
-- [ ] **Step 4: Commit** — `feat: 순수익률 정시 기준선 급변 정책`
+- [x] **Step 1:** 시그니처 + **stub** `decide = SwingDecision(state, null)`, `bucketStart` 는 실제 구현(단순 식) + 테스트.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.NetPercentSwingPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC4.
+- [x] **Step 3:** 구현 → PASS.
+- [x] **Step 4: Commit** — `feat: 순수익률 정시 기준선 급변 정책`
 
 ### Task 5: `UnrecoveredReminderPolicy` (AC5)
 
@@ -448,10 +448,10 @@ object UnrecoveredReminderPolicy {
 - `포지션 없음 회차는 판정하지도 소비하지도 않는다` — `01:00Z` NoPosition(항목 조건과 무관) → 펀딩 추적만·`lastDayStart` 그대로·알림 null, 이어 `01:01Z` Computed 항목 있음 → 리마인더 (AC5-f)
 - `reminderHour = 0` — `2026-10-20T15:00:00Z` 판정 (AC5-g)
 
-- [ ] **Step 1:** 시그니처 + **stub** `decide = ReminderDecision(state, null)`, `dayStart` 실제 구현 + 테스트.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.UnrecoveredReminderPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC5.
-- [ ] **Step 3:** 구현 → PASS.
-- [ ] **Step 4: Commit** — `feat: 미반영 항목 하루 1회 리마인더 정책`
+- [x] **Step 1:** 시그니처 + **stub** `decide = ReminderDecision(state, null)`, `dayStart` 실제 구현 + 테스트.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.UnrecoveredReminderPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC5.
+- [x] **Step 3:** 구현 → PASS.
+- [x] **Step 4: Commit** — `feat: 미반영 항목 하루 1회 리마인더 정책`
 
 ### Task 6: 조합기 `AccountAlertPolicy` (AC6)
 
@@ -476,10 +476,10 @@ object AccountAlertPolicy {
 빗썸 변경 manual → `[PositionChanged(경고)]`·`swing == (00:00Z, null, F, F)`, 겹침 순서 2건(`[NetPercentSwing, UnrecoveredReminder]`, 변경 겹침 시 `[PositionChanged, UnrecoveredReminder]`),
 NoPosition 회차의 `reminder.lastDayStart` 불변.
 
-- [ ] **Step 1:** 시그니처 + **stub** `decide = AccountAlertDecision(state, emptyList())` + 테스트.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertPolicyTest' --offline --no-daemon` → RED((a) 는 stub 에서도 초록). 증거 로그 AC6.
-- [ ] **Step 3:** 구현 → PASS. `./gradlew :domain:test --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 계정 알림 판정 조합`
+- [x] **Step 1:** 시그니처 + **stub** `decide = AccountAlertDecision(state, emptyList())` + 테스트.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertPolicyTest' --offline --no-daemon` → RED((a) 는 stub 에서도 초록). 증거 로그 AC6.
+- [x] **Step 3:** 구현 → PASS. `./gradlew :domain:test --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 계정 알림 판정 조합`
 
 ### Task 7: 렌더링 (AC7)
 
@@ -523,10 +523,10 @@ Discord 는 `DiscordMessage.of`. 메일 행은 EMAIL 행(`AccountPnlMail(eventKe
 - 금지 문자열 없음 (AC7-d)
 - `percentPoint(BigDecimal("0.5")) == "+0.50%p"`, `percentPoint(BigDecimal("-0.5")) == "-0.50%p"`, `date(2026-10-19T15:00:00Z, Asia/Seoul) == "2026-10-20"`
 
-- [ ] **Step 1:** 함수·객체 시그니처 + **stub**(`mail` = `AccountPnlMail(eventKey(alert), "x", "")`, `discord` = `DiscordMessage.of("x", "", 0)`, `eventKey`·`percentPoint`·`date` 는 실제 구현) + 테스트.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertContentTest' --offline --no-daemon` → RED(golden). 증거 로그 AC7.
-- [ ] **Step 3:** 구현. dod AC7 명령(기존 golden 포함) → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 계정 알림 메일·Discord 렌더링`
+- [x] **Step 1:** 함수·객체 시그니처 + **stub**(`mail` = `AccountPnlMail(eventKey(alert), "x", "")`, `discord` = `DiscordMessage.of("x", "", 0)`, `eventKey`·`percentPoint`·`date` 는 실제 구현) + 테스트.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertContentTest' --offline --no-daemon` → RED(golden). 증거 로그 AC7.
+- [x] **Step 3:** 구현. dod AC7 명령(기존 golden 포함) → PASS.
+- [x] **Step 4: Commit** — `feat: owner 계정 알림 메일·Discord 렌더링`
 
 ### Task 8: V20 migration (AC8)
 
@@ -570,11 +570,11 @@ WHERE id = 1
 - `구 binary 의 상태 INSERT 와 UPDATE 는 V20 에서 동작하고 새 열을 보존한다` — `OLD_INSERT_STATE` 성공 → 새 열 직접 UPDATE(`korea_quantity='0.5'` 등 4열, `swing_bucket_start`, `hedge_mismatch_warned=1`) → `OLD_UPDATE_STATE`(version 1) 영향 1행 → 새 열 값 그대로 (AC8-c)
 - `CHECK 는 불완전한 leg 와 버킷 없는 플래그와 시각 없는 펀딩을 거부한다` — 3건 각각 `SQLException`(errorCode 3819) (AC8-d)
 
-- [ ] **Step 1:** 테스트 작성(V20 없음).
-- [ ] **Step 2:** `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V20OwnerAccountAlertStateMigrationIntegrationTest' --offline --no-daemon` → RED(버전·열 부재. (c)(d) 는 열 부재로 선행 조건 실패 — RED 근거는 (a)(b)). 증거 로그 AC8.
-- [ ] **Step 3:** V20 작성 → PASS. CHECK 생성 오류면 `[ASSUMPTION]` A1 이 깨진 것 — 멈추고 보고.
-- [ ] **Step 4:** `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS. `./gradlew :apps:api:integrationTest --offline --no-daemon` → PASS(R13, Flyway 전체 적용).
-- [ ] **Step 5: Commit** — `feat: owner 계정 알림 상태 열 V20 migration`
+- [x] **Step 1:** 테스트 작성(V20 없음).
+- [x] **Step 2:** `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V20OwnerAccountAlertStateMigrationIntegrationTest' --offline --no-daemon` → RED(버전·열 부재. (c)(d) 는 열 부재로 선행 조건 실패 — RED 근거는 (a)(b)). 증거 로그 AC8.
+- [x] **Step 3:** V20 작성 → PASS. CHECK 생성 오류면 `[ASSUMPTION]` A1 이 깨진 것 — 멈추고 보고.
+- [x] **Step 4:** `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS. `./gradlew :apps:api:integrationTest --offline --no-daemon` → PASS(R13, Flyway 전체 적용).
+- [x] **Step 5: Commit** — `feat: owner 계정 알림 상태 열 V20 migration`
 
 ### Task 9: JDBC store 상태 열·batch fixture (AC9, AC12 일부)
 
@@ -646,11 +646,11 @@ CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
 - `version 이 다르면 계정 알림 열도 바뀌지 않는다` (AC9-d)
 - `범위를 넘는 값은 값 없이 거부되고 아무것도 쓰지 않는다` — 65자 leg, 기준선 `10000000000.00` → `IllegalArgumentException`, 메시지에 입력 숫자 없음, 상태 행·outbox 무변경 (AC9-e)
 
-- [ ] **Step 1:** 테스트 추가 + fixture SQL·fixture 테스트 수정. store 무변경.
-- [ ] **Step 2:** `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest' --offline --no-daemon` → RED((a)(c) `load().account == INITIAL`, (e) 예외 없음). 증거 로그 AC9.
-- [ ] **Step 3:** store 구현 → PASS(기존 메서드 포함).
-- [ ] **Step 4:** `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.config.AccountPnlFixtureSchemaIntegrationTest' --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' --offline --no-daemon` → PASS.
-- [ ] **Step 5: Commit** — `feat: 실계정 알림 상태 행에 owner 계정 알림 상태 저장`
+- [x] **Step 1:** 테스트 추가 + fixture SQL·fixture 테스트 수정. store 무변경.
+- [x] **Step 2:** `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest' --offline --no-daemon` → RED((a)(c) `load().account == INITIAL`, (e) 예외 없음). 증거 로그 AC9.
+- [x] **Step 3:** store 구현 → PASS(기존 메서드 포함).
+- [x] **Step 4:** `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.config.AccountPnlFixtureSchemaIntegrationTest' --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' --offline --no-daemon` → PASS.
+- [x] **Step 5: Commit** — `feat: 실계정 알림 상태 행에 owner 계정 알림 상태 저장`
 
 ### Task 10: Job 판정·라우팅 (AC10)
 
@@ -721,10 +721,10 @@ routing `OwnerAlertRouting(OwnerAlertChannels(true, true))`, `hourlyReportEnable
 - `메일만 쓰면 세 종류 모두 메일 한 통씩` — `EMAIL_ONLY` (AC10-g)
 - `version 충돌이면 저장하지 않고 다음 회차가 다시 판정한다` — save 직전 version 을 올리는 store 래퍼(이 클래스 안, `FakeOwnerAlertStore` 위임) → `Skipped("state-version-conflict")`·행 0 → 다음 회차 변경 행 생성 (AC10-h)
 
-- [ ] **Step 1:** 생성자 인자·`Observed.round` 추가, **stub**: `monitor()` 가 `accountAlerts` 를 무시하고 `account = loaded.account` 로 저장 + 테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobAccountAlertTest' --offline --no-daemon` → RED((a)(f) 는 초록일 수 있다). 증거 로그 AC10.
-- [ ] **Step 3:** 구현 + 클래스 KDoc 보강(위 전문). dod AC10 명령 → PASS(동결 Job 테스트 3개·#88 Job·디스패처 테스트 포함). `./gradlew architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 실계정 모니터 회차에서 owner 계정 알림 판정·발송`
+- [x] **Step 1:** 생성자 인자·`Observed.round` 추가, **stub**: `monitor()` 가 `accountAlerts` 를 무시하고 `account = loaded.account` 로 저장 + 테스트 작성.
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobAccountAlertTest' --offline --no-daemon` → RED((a)(f) 는 초록일 수 있다). 증거 로그 AC10.
+- [x] **Step 3:** 구현 + 클래스 KDoc 보강(위 전문). dod AC10 명령 → PASS(동결 Job 테스트 3개·#88 Job·디스패처 테스트 포함). `./gradlew architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 실계정 모니터 회차에서 owner 계정 알림 판정·발송`
 
 ### Task 11: 설정·배선 (AC11)
 
@@ -758,10 +758,10 @@ yml (전문): design §6.2 의 `account-alerts` 블록을 `account-pnl-monitor.h
 - `기동 INFO 경로 요약에 계정 알림 세 종류가 있다` — 메일+Discord·메일만 두 구성 (AC11-d)
 - `계정 알림 종류별 override 가 라우팅 bean 에 반영된다` (AC11-e)
 
-- [ ] **Step 1:** **stub** — `accountAlertSettings` bean 이 `@Value` 를 무시하고 `AccountAlertSettings()` 반환, Job 에 넘기지 않음, yml 미변경 + 테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → RED((b)(c)). 기존 wiring 메서드는 초록. 증거 로그 AC11.
-- [ ] **Step 3:** 구현 + yml. dod AC11 명령 → PASS. `./gradlew test --offline --no-daemon` → PASS(R2). `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` → PASS(R11).
-- [ ] **Step 4: Commit** — `feat: owner 계정 알림 설정 env 와 배선`
+- [x] **Step 1:** **stub** — `accountAlertSettings` bean 이 `@Value` 를 무시하고 `AccountAlertSettings()` 반환, Job 에 넘기지 않음, yml 미변경 + 테스트 작성.
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → RED((b)(c)). 기존 wiring 메서드는 초록. 증거 로그 AC11.
+- [x] **Step 3:** 구현 + yml. dod AC11 명령 → PASS. `./gradlew test --offline --no-daemon` → PASS(R2). `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` → PASS(R11).
+- [x] **Step 4: Commit** — `feat: owner 계정 알림 설정 env 와 배선`
 
 ### Task 12: 계정 알림 E2E 통합 (AC12)
 
@@ -778,11 +778,11 @@ yml (전문): design §6.2 의 `account-alerts` 블록을 `account-pnl-monitor.h
 5. `00:01Z` 빗썸 호가를 올려 `netPercent` 를 기준선 +0.50 이상으로 → `account-pnl-swing-up-{00:00Z ms}` DISCORD 1행 (AC12-d)
 6. `00:02Z` → 리마인더·급변 행 수 증가 없음 (AC12-e)
 
-- [ ] **Step 1:** 테스트 작성.
-- [ ] **Step 2: RED (변이).** 앞 태스크가 구현을 끝냈으므로 첫 실행은 초록일 수 있다. Job 에서 `account.next` 대신 `loaded.account` 를 저장하도록 임시 변경 →
+- [x] **Step 1:** 테스트 작성.
+- [x] **Step 2: RED (변이).** 앞 태스크가 구현을 끝냈으므로 첫 실행은 초록일 수 있다. Job 에서 `account.next` 대신 `loaded.account` 를 저장하도록 임시 변경 →
   `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAccountAlertIntegrationTest' --offline --no-daemon` → 2~5단계 FAILED 확인 → 되돌리고 `git diff --stat -- apps/batch/src/main` 빈 출력. 증거 로그 AC12.
-- [ ] **Step 3:** dod AC12 명령 → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon` → PASS(R10).
-- [ ] **Step 4: Commit** — `test: owner 계정 알림 재시작 지속 통합 테스트`
+- [x] **Step 3:** dod AC12 명령 → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon` → PASS(R10).
+- [x] **Step 4: Commit** — `test: owner 계정 알림 재시작 지속 통합 테스트`
 
 ### Task 13: 문서 (AC13)
 
@@ -793,15 +793,15 @@ AC14 체크리스트 절 제목 `## 계정 알림 Discord 체크리스트 (owner
 `### 배포와 롤백` 에 "V20 은 additive — 구 binary 와 호환, 롤백 SQL 없음, 신 batch 는 API(V20) 배포 뒤 기동" 추가. `account_pnl_monitor_state` 설명에 "에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각".
 `.ai/PROJECT_STATUS.md`: `:13` 모듈 표 `Flyway V1~V19` → `Flyway V1~V20`, migration 표의 V19 행(`:92`) 뒤에 `| V20 | account_pnl_monitor_state 에 owner 계정 알림 상태 12열 | 포지션 변경·순수익률 급변·미반영 리마인더 상태 |` 행.
 
-- [ ] **Step 1:** 문서 작성.
-- [ ] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck --offline --no-daemon` → PASS. `grep -n "V1~V20" .ai/PROJECT_STATUS.md` 1줄.
-- [ ] **Step 3: Commit** — `docs: owner 계정 알림 runbook 과 아키텍처 문서`
+- [x] **Step 1:** 문서 작성.
+- [x] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck --offline --no-daemon` → PASS. `grep -n "V1~V20" .ai/PROJECT_STATUS.md` 1줄.
+- [x] **Step 3: Commit** — `docs: owner 계정 알림 runbook 과 아키텍처 문서`
 
 ### Task 14: 최종 gate
 
-- [ ] **Step 1:** dod 회귀 방어선 R1~R13 전부 실행, R6·R7·R8 diff 출력을 증거 로그에 첨부.
-- [ ] **Step 2:** dod AC1~AC12 검증 명령 전부 실행·기록. AC13 사람 사후 검토 요청, AC14 owner 확인 요청(PR 코멘트).
-- [ ] **Step 3: Commit** — `docs: owner 계정 알림 최종 검증 기록`
+- [x] **Step 1:** dod 회귀 방어선 R1~R13 전부 실행, R6·R7·R8 diff 출력을 증거 로그에 첨부.
+- [x] **Step 2:** dod AC1~AC12 검증 명령 전부 실행·기록. AC13 사람 사후 검토 요청, AC14 owner 확인 요청(PR 코멘트).
+- [x] **Step 3: Commit** — `docs: owner 계정 알림 최종 검증 기록`
 
 ## 변경 이력
 
@@ -815,3 +815,4 @@ AC14 체크리스트 절 제목 `## 계정 알림 Discord 체크리스트 (owner
 | ⑥ R1 | Task 0·8·14 — `:apps:api:integrationTest`(R13) | R1 #5 |
 | ⑦ | Task 5·6·10·12·13 — 리마인더 "항목이 처음 생긴 회차에 하루 1회, 보냈을 때만 소비" 반영(테스트 경계 15:00 발송·같은 날 두 번째 항목 미발송·종일 없음·NoPosition 미소비) | 사용자 확정 D1 |
 | ⑦ | Task 1·3 — D2·D3 확정 표기, P3 해소 아님 테스트 | 사용자 확정 D2·D3 |
+| 구현 | 아래 구현 중 변경 반영 | ⑧~⑩ |

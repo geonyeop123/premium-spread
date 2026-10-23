@@ -79,6 +79,11 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   라우팅(Domain `OwnerAlertKind`), `OwnerAlertDispatcher`(apps:batch)·`DiscordWebhookSenderAdapter`(infrastructure:batch),
   outbox `account_pnl_mail` 에 `channel`·Discord 컬럼과 `UNIQUE(event_key, channel)`(V19). owner Discord 수신 확인(AC13)은
   미완료이며 후속은 이슈 #89~#91이다
+- owner 계정 알림 3종(#89, 구현·검증 완료, Draft PR, AC14 실 Discord owner 확인 대기): 실계정 포지션 변경,
+  순수익률 급변(정시 기준선), 미반영 항목 하루 1회 리마인더. 상태는 `account_pnl_monitor_state` 12열(V20)에
+  저장하고 [runbook](../docs/runbooks/account-pnl-alert.md)에 체크리스트가 있다. 머지 후 후속 후보:
+  - 계정 알림이 켜진 상태의 Job save 예외·interrupt 분기 테스트
+  - 평단 1원 미만 변경 시 알림 본문에서 before와 after가 같게 보이는 표시 개선
 
 ## Migration 상태와 소유권
 

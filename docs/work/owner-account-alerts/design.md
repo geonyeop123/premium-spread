@@ -3,7 +3,7 @@
 - slug: `owner-account-alerts` · base `033d513`(#88 머지, Task 0 이 `git merge-base HEAD origin/dev` 로 확인) · branch `feat/issue-89-owner-account-alerts`
 - 입력: ③ 합의(오케스트레이터 전달 범위), `docs/work/owner-alert-channel/{design,dod,plan}.md`(#88, FROZEN), `.ai/rules/{architecture,batch,testing,naming}.md`,
   `docs/runbooks/account-pnl-alert.md`
-- 상태: DRAFT — ⑥ R1 REQUEST_CHANGES 반영 + ⑦ 사용자 결정(D1~D3) 반영(§12, §13), 재리뷰 대기
+- 상태: IMPLEMENTED — dod FROZEN(958e2b5), ⑩ PASS (판정 SHA 403e016). 구현 중 변경은 §13 참조
 
 ## 0. 요약
 
@@ -583,3 +583,7 @@ DB 만. 상태(기존 열 + V20 열) 갱신과 outbox 행 삽입이 한 트랜�
 | ⑥ R1 | §2·§10 — API `FlywayOwnershipIntegrationTest` 기동 시 V20 적용으로 회귀 방어(dod R13, 단언은 V13) | R1 #5 |
 | ⑦ | §0·§3.4 — 리마인더를 "설정 시각 이후 성공 회차마다 판정, 항목이 처음 해당하는 회차에 발송, 보냈을 때만 소비"로 변경(R4 = 미소비), `lastDayStart` 의미를 "보낸 날"로, §7.2 안내 문구 | 사용자 확정 D1 (초안 A3 변경) |
 | ⑦ | §12 — A6·A7 을 사용자 확정 D3·D2 로, `ACCOUNT_PNL_REMINDER_HOUR` 를 오케스트레이터 판정 O1 로 기록 | 사용자 확정 D2·D3, 오케스트레이터 판정 |
+| 구현 | `@Value` fallback 기본값을 `0.5` 에서 `0.50` 으로 변경(`AccountPnlMonitorConfiguration.kt:164` 주석). yml 은 `0.5` 그대로이고 판정은 compareTo 라 동작 동일 | `AccountAlertSettings` data class equals 가 scale 을 따진다 |
+| 구현 | store 는 leg·펀딩을 `toPlainString()` 으로 저장 | `stripTrailingZeros` 가 `1E+8` 같은 지수 표기를 만들 수 있다 |
+| 구현 | 리마인더 FUNDING 사유 문구를 FOREIGN_ENTRY_FEE 와 같은 출처 기준으로 확정: MANUAL_ENV 이면 `수동 미입력`, 그 외는 `이력 없음` | §7.2 가 이 경우를 명시하지 않아 구현 중 판정 |
+| 구현 | 확인만 기록: netPercent 는 계산 단계에서 이미 scale 2 HALF_UP 이라 `swing_baseline_percent` DECIMAL(12,2) 왕복에 손실이 없다 | 설계 의미 변경 없음 |
