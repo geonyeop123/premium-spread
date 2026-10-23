@@ -161,6 +161,7 @@ class AccountPnlMonitorEnabledCondition : Condition {
 class AccountPnlMonitorConfiguration {
     @Bean
     fun accountAlertSettings(
+        // fallback 0.50 은 도메인 기본값 AccountAlertSettings() 와 equals 가 일치하도록 scale 2 를 유지한다(yml 은 0.5, 판정은 compareTo 라 동작은 같다).
         @Value("\${account-pnl-monitor.account-alerts.swing-threshold-percent:0.50}") swingThreshold: BigDecimal,
         @Value("\${account-pnl-monitor.account-alerts.reminder-hour:9}") reminderHour: Int,
         @Value("\${account-pnl-monitor.account-alerts.manual-funding-stale-days:3}") manualFundingStaleDays: Long,

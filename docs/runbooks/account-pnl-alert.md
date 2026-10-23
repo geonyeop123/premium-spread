@@ -156,7 +156,7 @@ gross +1,500,000원 · 예상 청산 수수료 -20,000원
 - 채널을 끄면 그 채널로 쌓여 있던 행은 다음 회차에 1회 시도 후 `FAILED` 가 된다(보낼 수단이 없다).
 - 발송은 at-least-once 다. 드물게(성공 직후 프로세스 종료 등) 같은 알림이 두 번 올 수 있다.
 - 기동 INFO(Discord 가 켜졌을 때): `owner-alert discord webhooks: pnl=set, market=fallback(PNL), ops=set` — URL 이 아니라 `set` 또는 `fallback(대상)` 만 나온다.
-- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
+- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND), position-changed=email+discord(PNL,HERE), net-percent-swing=discord(PNL,SOUND), unrecovered-reminder=discord(PNL,SILENT)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
 - **Discord 를 꺼 둔 상태여도 webhook env 에 잘못된 값(`http://` 또는 URL 이 아닌 값)이 있으면 모니터 기동이 실패한다.** 비우거나 https URL 로 고친다.
   오류 메시지에는 `owner-alert.discord.webhook.pnl must be an https URL` 처럼 key 만 찍히고 값은 찍히지 않는다.
 
@@ -491,7 +491,7 @@ PC 가 잠자기 상태였다면 깨어난 뒤 지난 시간을 감지해 메일
 ## 끄는 법과 데이터 정리
 
 - 끄기: `ACCOUNT_PNL_MONITOR_ENABLED=false`(또는 미설정) 후 batch 재시작. `BATCH_SCHEDULING_ENABLED=false` 면 전체 스케줄러가 꺼진다.
-- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 4종은 모두 메일로 온다.
+- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 7종(계정 알림 3종 포함)은 모두 메일로 온다.
 - 모드 전환(`api` ↔ `manual`)은 env 수정 + batch 재시작이다. 수량·진입가가 같으면 에피소드가 유지된다.
 - 상태·outbox 테이블:
   - `account_pnl_monitor_state` — 단일 행(`id=1`). 에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각.
