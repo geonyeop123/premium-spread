@@ -181,19 +181,44 @@ CREATE TABLE IF NOT EXISTS premium_day (
     INDEX idx_day_at (day_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- V18 (실계정 순손익 알림)과 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.
+-- V18 + V20 (owner 계정 알림 상태)과 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.
 -- 실계정 순손익 알림의 단일 상태 행. 두 실행이 겹쳐도 늦은 쪽이 덮어쓰지 못하도록 version 조건부로 갱신한다.
 CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
-    id                   TINYINT      NOT NULL PRIMARY KEY,
-    in_episode           BOOLEAN      NOT NULL,
-    position_fingerprint VARCHAR(255) NULL,
-    last_sent_at         DATETIME(6)  NULL,
-    last_success_at      DATETIME(6)  NULL,
-    monitoring_since     DATETIME(6)  NULL,
-    outage_notified      BOOLEAN      NOT NULL,
-    version              BIGINT       NOT NULL,
-    updated_at           DATETIME(6)  NOT NULL,
-    CONSTRAINT ck_account_pnl_monitor_state_singleton CHECK (id = 1)
+    id                        TINYINT       NOT NULL PRIMARY KEY,
+    in_episode                BOOLEAN       NOT NULL,
+    position_fingerprint      VARCHAR(255)  NULL,
+    last_sent_at              DATETIME(6)   NULL,
+    last_success_at           DATETIME(6)   NULL,
+    monitoring_since          DATETIME(6)   NULL,
+    outage_notified           BOOLEAN       NOT NULL,
+    version                   BIGINT        NOT NULL,
+    updated_at                DATETIME(6)   NOT NULL,
+    korea_quantity            VARCHAR(64)   NULL,
+    korea_average_buy_price   VARCHAR(64)   NULL,
+    foreign_signed_quantity   VARCHAR(64)   NULL,
+    foreign_entry_price       VARCHAR(64)   NULL,
+    hedge_mismatch_warned     BOOLEAN       NOT NULL DEFAULT FALSE,
+    swing_bucket_start        DATETIME(6)   NULL,
+    swing_baseline_percent    DECIMAL(12,2) NULL,
+    swing_up_sent             BOOLEAN       NOT NULL DEFAULT FALSE,
+    swing_down_sent           BOOLEAN       NOT NULL DEFAULT FALSE,
+    reminder_day_start        DATETIME(6)   NULL,
+    manual_funding_usdt       VARCHAR(64)   NULL,
+    manual_funding_changed_at DATETIME(6)   NULL,
+    CONSTRAINT ck_account_pnl_monitor_state_singleton CHECK (id = 1),
+    CONSTRAINT ck_account_pnl_monitor_state_legs CHECK (
+        (korea_quantity IS NULL AND korea_average_buy_price IS NULL
+            AND foreign_signed_quantity IS NULL AND foreign_entry_price IS NULL)
+        OR (korea_quantity IS NOT NULL AND korea_average_buy_price IS NOT NULL
+            AND foreign_signed_quantity IS NOT NULL AND foreign_entry_price IS NOT NULL)
+    ),
+    CONSTRAINT ck_account_pnl_monitor_state_swing CHECK (
+        swing_bucket_start IS NOT NULL
+        OR (swing_baseline_percent IS NULL AND swing_up_sent = FALSE AND swing_down_sent = FALSE)
+    ),
+    CONSTRAINT ck_account_pnl_monitor_state_funding CHECK (
+        manual_funding_changed_at IS NOT NULL OR manual_funding_usdt IS NULL
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- V18 + V19 (owner 알림 채널)과 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.
