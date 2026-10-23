@@ -117,3 +117,14 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 ## 증거 로그
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+- 2026-10-23 Task 0 · `git rev-parse --short HEAD` / `git merge-base HEAD origin/dev` → HEAD 958e2b5, merge-base 033d513 (base 일치)
+- 2026-10-23 Task 0 · `./gradlew architectureTest --offline --no-daemon` (R1) → exit 0, 35 tests / 실패 0
+- 2026-10-23 Task 0 · `./gradlew test --offline --no-daemon` (R2·R4) → exit 0, 945 tests / 실패 0 / skipped 0
+- 2026-10-23 Task 0 · `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` (R5) → exit 0
+- 2026-10-23 Task 0 · `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` (R9, Docker 28.3.2) → exit 0, 42 tests / 실패 0
+- 2026-10-23 Task 0 · `./gradlew :apps:batch:integrationTest --offline --no-daemon` (R10, Docker) → exit 0, 104 tests / 실패 0
+- 2026-10-23 Task 0 · `./gradlew :apps:api:integrationTest --offline --no-daemon` (R13, Docker) → exit 0, 174 tests / 실패 0
+- 2026-10-23 Task 0 · `ls infrastructure/common/src/main/resources/db/migration | sort -V | tail -1` → V19__add_owner_alert_channel.sql (신규는 V20)
+- 2026-10-23 Task 0 · `grep -rn "AccountPnlMonitorJob(" apps` → 호출처 Configuration + 테스트 4 + 통합 2, 생성자 파라미터 13개(기존 순서), 모든 호출처 13개 이내
+- 2026-10-23 Task 0 · `grep -rn "AccountPnlMonitorState(" .` → 전 생성처 3인자(alert, outage, version)
+- 2026-10-23 Task 0 · `grep -rn "OwnerAlertKind.entries|known: profit"` → enum 개수 고정은 OwnerAlertRoutingTest(:24,:34)뿐, OwnerAlertPropertiesTest:113은 contains 부분 문자열, 그 외 forEach/집합 비교
