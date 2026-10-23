@@ -19,14 +19,12 @@ object UnrecoveredReminderPolicy {
         val pnl = round.pnl
         val observedAt = round.observedAt
         val dayStart = dayStart(observedAt, zone)
+        // 분기 순서 = R1 포지션 없음, R2 설정 시각 전, R3 오늘 이미 보냄, 그 밖 R4·R5
         return when {
-            pnl == null -> ReminderDecision(tracked, null) // R1
-
-            observedAt.atZone(zone).hour < settings.reminderHour -> ReminderDecision(tracked, null) // R2
-
-            tracked.lastDayStart == dayStart -> ReminderDecision(tracked, null) // R3
-
-            else -> remind(tracked, round, pnl, settings, dayStart) // R4, R5
+            pnl == null -> ReminderDecision(tracked, null)
+            observedAt.atZone(zone).hour < settings.reminderHour -> ReminderDecision(tracked, null)
+            tracked.lastDayStart == dayStart -> ReminderDecision(tracked, null)
+            else -> remind(tracked, round, pnl, settings, dayStart)
         }
     }
 
