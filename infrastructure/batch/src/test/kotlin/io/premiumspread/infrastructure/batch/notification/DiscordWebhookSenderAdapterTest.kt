@@ -118,6 +118,7 @@ class DiscordWebhookSenderAdapterTest {
     @Test
     fun `하나만 설정하면 모든 대상이 그리로 간다`() {
         assertThat(pathsFor(DiscordWebhooks(null, null, opsUri)).values).containsOnly("/api/webhooks/1/TOKENopsQ7")
+        assertThat(pathsFor(DiscordWebhooks(null, marketUri, null)).values).containsOnly("/api/webhooks/1/TOKENmktQ7")
     }
 
     @Test
@@ -253,6 +254,7 @@ class DiscordWebhookSenderAdapterTest {
         assertThat(e.message).isEqualTo("Discord webhook PNL interrupted")
         assertThat(e.cause).isNull()
         assertThat(flag).isTrue()
+        assertNoSecret(e)
     }
 
     @Test
