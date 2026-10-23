@@ -139,3 +139,6 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 - 2026-10-23 Task 4 · AC4 RED(stub: decide 가 state 그대로·알림 null, bucketStart 는 실제 식) `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.NetPercentSwingPolicyTest' --offline --no-daemon` → BUILD FAILED, 6 tests / 실패 5 (S2 기준선·S4~S6 경계·S1·S2 리셋·알림 필드); bucketStart 경계 1건은 stub 에서도 초록(예상된 범위)
 - 2026-10-23 Task 4 · AC4 GREEN(전문 구현) 같은 domain 명령 → BUILD SUCCESSFUL, 6 tests
 - 2026-10-23 Task 4 · `./gradlew test --offline --no-daemon` → BUILD SUCCESSFUL (커밋 전 전체 unit)
+- 2026-10-23 Task 5 · AC5 RED(stub: decide 가 state 그대로·알림 null, dayStart 는 실제 식) `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.UnrecoveredReminderPolicyTest' --offline --no-daemon` → BUILD FAILED, 9 tests / 실패 7
+- 2026-10-23 Task 5 · AC5 GREEN(전문 구현) 같은 domain 명령 → BUILD SUCCESSFUL, 9 tests
+- 2026-10-23 Task 5 · `./gradlew test --offline --no-daemon` → BUILD SUCCESSFUL (커밋 전 전체 unit)
