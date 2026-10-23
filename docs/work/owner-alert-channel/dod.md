@@ -156,6 +156,11 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest' --offline --no-daemon` → `21 tests completed, 19 failed` (stub `send` 의 `UnsupportedOperationException`, `isCancellation` stub false), BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL, 21 tests 0 failures. `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL.
 
+### Task 8 — AC7 (2026-10-23)
+
+- RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertPropertiesTest' --offline --no-daemon` → `8 tests completed, 5 failed` (stub 은 webhook 검증·route 해석·`toString` 마스킹 없음), BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL, 9 tests 0 failures (빈 webhook `toDiscordWebhooks` 실패 케이스 1건 추가).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
