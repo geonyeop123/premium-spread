@@ -9,3 +9,4 @@
 - [실계정 순손익 알림 — 바이낸스 수동 입력 모드](live-account-pnl-manual-binance/README.md)
 - [빗썸 실계정 조회 실 API 불일치 수정](bithumb-orders-query-hash/README.md)
 - [실계정 순손익 회차별 로그와 정시 보고 메일](account-pnl-round-log/README.md)
+- [owner 알림 채널 기반 — Discord·메일 라우팅](owner-alert-channel/README.md)
