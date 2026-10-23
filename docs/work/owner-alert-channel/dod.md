@@ -151,6 +151,11 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.config.AccountPnlFixtureSchemaIntegrationTest' --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` -> BUILD SUCCESSFUL (3 + 5 tests, 0 failures).
 - 전체: `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` BUILD SUCCESSFUL (42 tests, 0 failures), `./gradlew :apps:batch:integrationTest --offline --no-daemon` BUILD SUCCESSFUL (101 tests, 0 failures), `./gradlew :infrastructure:common:test --offline --no-daemon` BUILD SUCCESSFUL.
 
+### Task 7 — AC6 (2026-10-23)
+
+- RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest' --offline --no-daemon` → `21 tests completed, 19 failed` (stub `send` 의 `UnsupportedOperationException`, `isCancellation` stub false), BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL, 21 tests 0 failures. `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
