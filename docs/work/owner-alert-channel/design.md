@@ -625,3 +625,18 @@ outbox 4메서드를 `OwnerAlertOutbox` 상위 interface 로 올리는 것도 #9
 | ⑥ R1 | §7.3 — webhook 형식 검증은 Discord 꺼짐에도 한다(유지 결정과 이유) | Minor 8 |
 | ⑥ R1 | §8 — 관측 중 interrupt 재전파 분기 추가 | Minor 3 |
 | ⑥ R1 | §10 — zone 출처를 Job 생성자 기본값으로 정정 | Minor 1 |
+
+## 구현 중 변경
+
+승인된 절은 고치지 않고, 구현 중 설계와 달라진 점만 적는다.
+
+- **조건 애노테이션 묶음.** app/infra 클래스의 기동 조건을 `@Conditional(A, B)` 하나로 묶었다. Kotlin 은 같은 애노테이션을 중복 선언할 수
+  없고, `@Conditional` 에 여러 조건을 주면 AND 로 평가되므로 의미는 같다.
+- **SMTP 플래그 비교.** SMTP 플래그는 trim 없이 비교한다. `EmailAutoConfiguration` 의 `@ConditionalOnProperty` 와 같은 규칙이다.
+- **기동 INFO 추가.** 기동 시 `owner-alert routes: …` INFO 한 줄로 종류별 해석 경로를 요약한다(⑨ 리뷰 권고).
+- **복구 SQL 비교 방식.** runbook 복구 SQL 은 컬럼 collation(`utf8mb4_unicode_ci`) 때문에 `BINARY` 비교를 쓴다.
+- **전달 로그 문구.** `Account PnL mail …` 을 `Owner alert …` 로 바꿨다.
+- **Discord 미반영 줄 기준.** Discord 에서 값을 반영하지 못한 줄은 `AccountNetPnl.*Unrecovered` 플래그를 기준으로 판정한다. calculate
+  경로에서 snapshot 이 null 인 경우와 같은 취급이다.
+- **이월.** poison row claim 격리, 회차 시간 예산, HTTP 408 처리, route key 대소문자 중복, KST 의 CLDR 의존은 이번에 다루지 않고 이슈 #90
+  코멘트로 넘겼다.
