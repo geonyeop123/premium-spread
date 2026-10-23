@@ -299,6 +299,10 @@ index 8c2c475..307397e 100644
          SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM information_schema.COLUMNS
 ```
 
+### Task 12 fix round 1 (2026-10-23)
+
+- Task 12 블록의 기본 실행 R1·R8·R9 `tests=0` 행은 gradle `UP-TO-DATE` 였다. 유효한 결과는 `--rerun-tasks` 로 재실행한 R1x·R2x·R8x·R9x 행이다. runbook 수신 주소 필수 조건·메일 env 표기 정정 후 `bash docs/check-documentation.sh` → passed.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

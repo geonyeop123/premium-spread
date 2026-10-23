@@ -42,15 +42,16 @@
 | `OWNER_ALERT_DISCORD_WEBHOOK_PNL` | Discord 를 쓸 때 셋 중 하나 이상 | **비밀**. pnl 채널 webhook URL(https). 아래 "owner 알림 채널" 절 | `<discord-webhook-url-pnl>` |
 | `OWNER_ALERT_DISCORD_WEBHOOK_MARKET` | 〃 | **비밀**. market 채널 webhook URL(https) | `<discord-webhook-url-market>` |
 | `OWNER_ALERT_DISCORD_WEBHOOK_OPS` | 〃 | **비밀**. ops 채널 webhook URL(https) | `<discord-webhook-url-ops>` |
-| `MAIL_HOST` / `MAIL_PORT` | 예 | SMTP 서버 | `smtp.example.com` / `587` |
-| `MAIL_USERNAME` / `MAIL_PASSWORD` | 예 | SMTP 계정 | `<smtp-user>` / `<smtp-password>` |
-| `ALERT_EMAIL_FROM` | 예 | 발신 주소 | `alert@example.com` |
+| `MAIL_HOST` / `MAIL_PORT` | 메일 채널을 쓸 때 | SMTP 서버 | `smtp.example.com` / `587` |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | 메일 채널을 쓸 때 | SMTP 계정 | `<smtp-user>` / `<smtp-password>` |
+| `ALERT_EMAIL_FROM` | 메일 채널을 쓸 때 | 발신 주소 | `alert@example.com` |
 | `BATCH_SCHEDULING_ENABLED` | 아니오 | 기본 `true`. `false` 면 Scheduler 가 함께 꺼진다 | `true` |
-| `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고 메일. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
+| `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고(메일·Discord) 생성 on/off. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 
 - 플래그가 `true` 여도 모드별 필수 env 중 하나라도 비면 Job 은 뜨지 않는다.
-  - 공통: `ACCOUNT_PNL_ALERT_RECIPIENT`, `BITHUMB_ACCESS_KEY`, `BITHUMB_SECRET_KEY`
+  - 공통: `BITHUMB_ACCESS_KEY`, `BITHUMB_SECRET_KEY`
+  - 메일 채널을 쓸 때만: `ACCOUNT_PNL_ALERT_RECIPIENT` (메일 채널을 쓰면 `api`·`manual` 모두 공통 필수에 더해진다)
   - `api` 모드: 공통 + `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`
   - `manual` 모드: 공통 + `BINANCE_MANUAL_SHORT_QUANTITY`, `BINANCE_MANUAL_ENTRY_PRICE` (바이낸스 key 불필요)
 - 누락 시 batch 로그에 다음 WARN 이 한 줄 남고 Job 은 뜨지 않는다. 비어 있는 **env 이름**만 나오며 설정 값은 나오지 않는다.
