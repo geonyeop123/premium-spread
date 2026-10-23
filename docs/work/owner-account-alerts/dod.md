@@ -3,7 +3,7 @@ feature: owner 계정 알림 — 포지션 변경·순수익률 급변·미반�
 slug: owner-account-alerts
 status: FROZEN
 frozen_at: 2026-10-23
-verdict_commit:
+verdict_commit: 403e016
 source: docs/work/owner-account-alerts/design.md (DRAFT)
 ---
 
@@ -161,3 +161,23 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 - 2026-10-23 Task 13 · AC13 문서 `bash docs/check-documentation.sh` → exit 0 (documentation check passed, 20 files), `./gradlew harnessCheck --offline --no-daemon` → 하네스 검사 통과(파일 22개), `grep -n "V1~V20" .ai/PROJECT_STATUS.md` → 1줄(:13). runbook (a) env 3행 (b) 라우팅 3행·Discord 꺼짐 시 메일(굵게)·`{KIND}` 7개 (c) 계정 알림 절·메시지 예 3종 (d) 배포와 롤백 V20 (e) monitor_state 설명 (f) AC14 체크리스트, ARCHITECTURE_DESIGN 1단락, PROJECT_STATUS V20 행 반영
 - 2026-10-23 ⑨ 재작업 · 리뷰 Minor 6건 반영(테스트 보강 4·runbook 2·주석 1줄, production 로직 무변경). `:domain:test --tests '*UnrecoveredReminderPolicyTest'`·`:apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --tests 'io.premiumspread.config.*'` → BUILD SUCCESSFUL
 - 2026-10-23 ⑨ 재작업 · trailing zero fixture 로 `:apps:batch:integrationTest --tests '...OwnerAccountAlertIntegrationTest'` → BUILD SUCCESSFUL(오탐 없음), `bash docs/check-documentation.sh` → passed, `./gradlew test --offline --no-daemon` → 커밋 전 실행
+- 2026-10-23 Task 14 · HEAD 403e016 / base 033d513 대상 최종 검증 (⑩ qa-agent, Docker 사용, 모두 --offline --no-daemon)
+- 2026-10-23 Task 14 · `./gradlew architectureTest` (R1) → exit 0, 35 tests / 실패 0 / skipped 0
+- 2026-10-23 Task 14 · `./gradlew test` (R2) 첫 실행 UP-TO-DATE 라 결과 XML 0건 → `./gradlew cleanTest test` 재실행 → exit 0, 1021 tests / 실패 0 / skipped 0
+- 2026-10-23 Task 14 · R3 `git diff --exit-code --diff-filter=MDR 033d513 -- …` → exit 0 (동결 테스트 무수정)
+- 2026-10-23 Task 14 · R4 `:domain:test`(accountpnl.*·owneralert.*) + `:apps:batch:test`(job.accountpnl.*·notification.owneralert.*·config.*) → exit 0, 309 tests / 실패 0
+- 2026-10-23 Task 14 · R5 migration diff 비어 있음 + `:infrastructure:common:verifyMigrations` → exit 0
+- 2026-10-23 Task 14 · R6 `git diff 033d513 -- JdbcAccountPnlAlertStoreIntegrationTest AccountPnlMonitorWiringTest | grep '^-[^-]'` → 출력 비어 있음 (사람 판정 대상)
+- 2026-10-23 Task 14 · R7 `OwnerAlertRoutingTest` diff → 이름 2개 rename + 기대 목록 2곳 끝에 3개 추가뿐 (8줄, 사람 판정 대상)
+- 2026-10-23 Task 14 · R8 `AccountPnlFixtureSchemaIntegrationTest` diff → 기대 목록 끝 V20 12열 + KDoc 경로 추가뿐 (사람 판정 대상)
+- 2026-10-23 Task 14 · `./gradlew :infrastructure:common:integrationTest` (R9) → exit 0, 51 tests / 실패 0
+- 2026-10-23 Task 14 · `./gradlew :apps:batch:integrationTest` (R10) → exit 0, 105 tests / 실패 0
+- 2026-10-23 Task 14 · `./gradlew :apps:api:test --tests '*TradePreparationWiring*'` (R11) → exit 0, 3 tests / 실패 0
+- 2026-10-23 Task 14 · `./gradlew harnessCheck` + `bash docs/check-documentation.sh` (R12) → exit 0
+- 2026-10-23 Task 14 · `./gradlew :apps:api:integrationTest` (R13) → exit 0, 174 tests / 실패 0
+- 2026-10-23 Task 14 · AC1~AC12 각 검증 명령 개별 실행 → 모두 exit 0 (AC1 33 + OwnerAlertPropertiesTest 통과, AC2 11, AC3 12, AC4 6, AC5 9, AC6 7, AC7 51, AC8 4 + verifyMigrations, AC9 24, AC10 68, AC11 52, AC12 4)
+- 2026-10-23 Task 14 · AC13 `bash docs/check-documentation.sh` → exit 0 (사람 사후 검토 AWAITING_HUMAN), AC14 → AWAITING_HUMAN (T4 owner 확인)
+- 2026-10-23 Task 14 · `./gradlew jacocoTestReport jacocoTestCoverageVerification` → exit 0 (게이트 통과, 최종 증거는 CI artifact)
+- 2026-10-23 Task 14 · 경계면 대조 V20 SQL ↔ batch-schema.sql ↔ fixture 스키마 테스트 ↔ store SQL, yml env ↔ runbook env 표, routes 기본값 ↔ runbook 라우팅 표 → 불일치 없음
+- 2026-10-23 Task 14 · ktlint·detekt → 로컬 실행 불가(네트워크 차단), CI 확인 필요
+- 2026-10-23 ⑩ 판정 · PASS (T1 12/12) · AWAITING_HUMAN: AC13, AC14 · 사람판정 R6/R7/R8 diff 가 dod 범위와 일치 · 판정 코드 SHA 403e016 (이후 커밋은 문서만)
