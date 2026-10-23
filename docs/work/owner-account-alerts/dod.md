@@ -133,3 +133,6 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 - 2026-10-23 Task 1 · `./gradlew test --offline --no-daemon` → BUILD SUCCESSFUL (커밋 전 전체 unit)
 - 2026-10-23 Task 2 · AC2 RED(stub: of() 정규화 없음·samePosition `==`) `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertStateTest' --offline --no-daemon` → BUILD FAILED, 11 tests / 실패 5 (dust 경계·0.50↔0.5·평단 scale·samePosition compareTo·FLAT 단언); 불변식·설정·3인자 account 케이스는 stub 에서도 초록(예상된 범위)
 - 2026-10-23 Task 2 · AC2 GREEN(전문 구현) 같은 domain 명령 → BUILD SUCCESSFUL, 11 tests; 동결 컴파일 `:domain:test :apps:batch:compileTestKotlin :infrastructure:common:compileIntegrationTestKotlin :apps:batch:compileIntegrationTestKotlin` → BUILD SUCCESSFUL; `./gradlew test --offline --no-daemon` → BUILD SUCCESSFUL (커밋 전 전체 unit)
+- 2026-10-23 Task 3 · AC3 RED(stub: decide 가 항상 알림 null, warned 유지) `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.PositionChangePolicyTest' --offline --no-daemon` → BUILD FAILED, 12 tests / 실패 8 (P2·P4~P8·해소 아님·청산); P1·P3·알림 불변식 거부 4건은 stub 에서도 초록(예상된 범위)
+- 2026-10-23 Task 3 · AC3 GREEN(전문 구현) 같은 domain 명령 → BUILD SUCCESSFUL, 12 tests
+- 2026-10-23 Task 3 · `./gradlew test --offline --no-daemon` → BUILD SUCCESSFUL (커밋 전 전체 unit)
