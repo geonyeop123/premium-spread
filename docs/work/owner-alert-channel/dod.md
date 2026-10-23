@@ -134,6 +134,11 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - RED(stub `of`=무절단·`truncate`=입력 그대로·`expand`=emptyList): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordMessageTest' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsTest' --offline --no-daemon` → `16 tests completed, 8 failed` (절단 4건: 제목 256·설명 4097·surrogate·이모지 보존 / 확장 4건: 2행·Discord 1행·메일 1행·DISCORD 행 거부), BUILD FAILED. 동결 테스트 컴파일(`:apps:batch:compileTestKotlin :infrastructure:common:compileIntegrationTestKotlin`) 성공.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (16 tests). `./gradlew :domain:test` BUILD SUCCESSFUL (281 tests, Task 1 golden 포함), `./gradlew :apps:batch:test` BUILD SUCCESSFUL, `:infrastructure:common:compileIntegrationTestKotlin :infrastructure:batch:compileTestKotlin` BUILD SUCCESSFUL.
 
+### Task 4 — AC3-b (2026-10-23)
+
+- RED(stub 4함수 `DiscordMessage.of("x", "", 0)`): `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlDiscordContentTest' --offline --no-daemon` → `10 tests completed, 8 failed` (수익·정시·미반영·수동·평단·빗썸 인증 중단·환율 지연 중단·복구), 색 상수·`미반영 없음` 은 stub 에서도 초록. BUILD FAILED.
+- GREEN: 추출 후 `AccountPnlMailContentTest`(golden 포함) 무수정 BUILD SUCCESSFUL. AC3 명령(`MailContentTest` + `DiscordContentTest`) BUILD SUCCESSFUL (DiscordContentTest 10 tests). `./gradlew :domain:test` BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
