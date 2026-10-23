@@ -16,13 +16,27 @@ object UnrecoveredReminderPolicy {
      */
     fun decide(state: ReminderState, round: AccountRound, settings: AccountAlertSettings, zone: ZoneId): ReminderDecision {
         val tracked = trackFunding(state, round)
-        val pnl = round.pnl // R1
-        if (pnl == null) return ReminderDecision(tracked, null)
+        val pnl = round.pnl
         val observedAt = round.observedAt
-        if (observedAt.atZone(zone).hour < settings.reminderHour) return ReminderDecision(tracked, null) // R2
         val dayStart = dayStart(observedAt, zone)
-        if (tracked.lastDayStart == dayStart) return ReminderDecision(tracked, null) // R3
+        return when {
+            pnl == null -> ReminderDecision(tracked, null) // R1
 
+            observedAt.atZone(zone).hour < settings.reminderHour -> ReminderDecision(tracked, null) // R2
+
+            tracked.lastDayStart == dayStart -> ReminderDecision(tracked, null) // R3
+
+            else -> remind(tracked, round, pnl, settings, dayStart) // R4, R5
+        }
+    }
+
+    private fun remind(
+        tracked: ReminderState,
+        round: AccountRound,
+        pnl: AccountNetPnl,
+        settings: AccountAlertSettings,
+        dayStart: Instant,
+    ): ReminderDecision {
         val staleness = staleness(tracked, round, settings)
         val items = buildList {
             if (pnl.koreaEntryFeeUnrecovered) add(ReminderItem.KOREA_ENTRY_FEE)
@@ -38,7 +52,7 @@ object UnrecoveredReminderPolicy {
             source = round.source,
             manualFunding = staleness,
             reminderHour = settings.reminderHour,
-            detectedAt = observedAt,
+            detectedAt = round.observedAt,
         )
         return ReminderDecision(tracked.copy(lastDayStart = dayStart), alert) // R5
     }
