@@ -139,6 +139,11 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - RED(stub 4함수 `DiscordMessage.of("x", "", 0)`): `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlDiscordContentTest' --offline --no-daemon` → `10 tests completed, 8 failed` (수익·정시·미반영·수동·평단·빗썸 인증 중단·환율 지연 중단·복구), 색 상수·`미반영 없음` 은 stub 에서도 초록. BUILD FAILED.
 - GREEN: 추출 후 `AccountPnlMailContentTest`(golden 포함) 무수정 BUILD SUCCESSFUL. AC3 명령(`MailContentTest` + `DiscordContentTest`) BUILD SUCCESSFUL (DiscordContentTest 10 tests). `./gradlew :domain:test` BUILD SUCCESSFUL.
 
+### Task 5 — AC4 (2026-10-23)
+
+- RED(V19 파일 없음): `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest' --offline --no-daemon` -> `5 tests completed, 5 failed` ((a) 버전 19·채널 컬럼 부재 assertion 실패, (b)~(f) 는 `channel` 컬럼 부재로 선행 조건 실패), BUILD FAILED.
+- GREEN: V19 추가 후 같은 명령 -> BUILD SUCCESSFUL, 5 tests 0 failures. `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
