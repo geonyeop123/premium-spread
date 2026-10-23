@@ -6,8 +6,9 @@ import org.junit.jupiter.api.Test
 
 /**
  * Batch 는 Flyway 를 쓰지 않고 `batch-schema.sql` fixture 로 스키마를 만든다. 아래 기대 목록은
- * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 에서 옮긴 것이다.
- * V18 이 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
+ * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 과
+ * `infrastructure/common/src/main/resources/db/migration/V19__add_owner_alert_channel.sql` 에서 옮긴 것이다.
+ * V18·V19 가 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
  */
 class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
 
@@ -40,7 +41,26 @@ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
             "locked_at:datetime:YES",
             "created_at:datetime:NO",
             "sent_at:datetime:YES",
+            "channel:varchar:NO",
+            "discord_target:varchar:YES",
+            "discord_push:varchar:YES",
+            "discord_color:int:YES",
         )
+    }
+
+    @Test
+    fun `account_pnl_mail fixture 의 UNIQUE 는 event_key 와 channel 이다`() {
+        assertThat(
+            jdbcTemplate.queryForList(
+                """
+                SELECT COLUMN_NAME FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'account_pnl_mail'
+                  AND INDEX_NAME = 'uk_account_pnl_mail_event_key_channel'
+                ORDER BY SEQ_IN_INDEX
+                """.trimIndent(),
+                String::class.java,
+            ),
+        ).containsExactly("event_key", "channel")
     }
 
     private fun columns(table: String): List<String> = jdbcTemplate.query(

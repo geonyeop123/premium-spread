@@ -196,19 +196,27 @@ CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
     CONSTRAINT ck_account_pnl_monitor_state_singleton CHECK (id = 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 이 기능 전용 durable 메일 outbox. 수신자 주소는 저장하지 않는다(adapter 설정이 소유).
+-- V18 + V19 (owner 알림 채널)과 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.
 CREATE TABLE IF NOT EXISTS account_pnl_mail (
-    id            BIGINT       AUTO_INCREMENT PRIMARY KEY,
-    event_key     VARCHAR(128) NOT NULL,
-    subject       VARCHAR(255) NOT NULL,
-    body          TEXT         NOT NULL,
-    status        VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
-    attempt_count INT          NOT NULL DEFAULT 0,
-    locked_by     VARCHAR(64)  NULL,
-    claim_token   CHAR(36)     NULL,
-    locked_at     DATETIME(6)  NULL,
-    created_at    DATETIME(6)  NOT NULL,
-    sent_at       DATETIME(6)  NULL,
-    CONSTRAINT uk_account_pnl_mail_event_key UNIQUE (event_key),
+    id             BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    event_key      VARCHAR(128) NOT NULL,
+    subject        VARCHAR(255) NOT NULL,
+    body           TEXT         NOT NULL,
+    status         VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    attempt_count  INT          NOT NULL DEFAULT 0,
+    locked_by      VARCHAR(64)  NULL,
+    claim_token    CHAR(36)     NULL,
+    locked_at      DATETIME(6)  NULL,
+    created_at     DATETIME(6)  NOT NULL,
+    sent_at        DATETIME(6)  NULL,
+    channel        VARCHAR(16)  NOT NULL DEFAULT 'EMAIL',
+    discord_target VARCHAR(16)  NULL,
+    discord_push   VARCHAR(16)  NULL,
+    discord_color  INT          NULL,
+    CONSTRAINT uk_account_pnl_mail_event_key_channel UNIQUE (event_key, channel),
+    CONSTRAINT ck_account_pnl_mail_channel CHECK (
+        (channel = 'EMAIL' AND discord_target IS NULL AND discord_push IS NULL AND discord_color IS NULL)
+        OR (channel = 'DISCORD' AND discord_target IS NOT NULL AND discord_push IS NOT NULL AND discord_color IS NOT NULL)
+    ),
     INDEX idx_account_pnl_mail_status_id (status, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

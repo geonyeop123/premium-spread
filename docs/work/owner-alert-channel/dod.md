@@ -144,6 +144,13 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - RED(V19 파일 없음): `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest' --offline --no-daemon` -> `5 tests completed, 5 failed` ((a) 버전 19·채널 컬럼 부재 assertion 실패, (b)~(f) 는 `channel` 컬럼 부재로 선행 조건 실패), BUILD FAILED.
 - GREEN: V19 추가 후 같은 명령 -> BUILD SUCCESSFUL, 5 tests 0 failures. `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` BUILD SUCCESSFUL.
 
+### Task 6 — AC5 (2026-10-23)
+
+- RED(store 무변경, 테스트·fixture 만 추가): `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest' --offline --no-daemon` -> `19 tests completed, 3 failed`, BUILD FAILED. (a) `[(k, EMAIL)]` 에 `(k, DISCORD)` 없음(중복 키로 무시), (b) claim 결과 `channel=EMAIL, discordRoute=null, discordColor=null`, (d) `markFailed` 기본 구현으로 `expected "FAILED" but was "PENDING"`.
+- GREEN: store 구현 후 같은 명령 -> BUILD SUCCESSFUL, 19 tests 0 failures (기존 14 메서드 무수정 포함).
+- `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.config.AccountPnlFixtureSchemaIntegrationTest' --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` -> BUILD SUCCESSFUL (3 + 5 tests, 0 failures).
+- 전체: `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` BUILD SUCCESSFUL (42 tests, 0 failures), `./gradlew :apps:batch:integrationTest --offline --no-daemon` BUILD SUCCESSFUL (101 tests, 0 failures), `./gradlew :infrastructure:common:test --offline --no-daemon` BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
