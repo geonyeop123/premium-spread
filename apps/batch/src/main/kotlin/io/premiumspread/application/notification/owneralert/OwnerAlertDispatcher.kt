@@ -61,8 +61,10 @@ class OwnerAlertDispatcher(
         if (row == null) return JobResult.Success
         return when (send(row)) {
             Delivery.SENT -> transition("markSent", row) { store.markSent(row.id, row.claimToken, clock.instant()) }
+
             Delivery.PERMANENT_FAILURE ->
                 transition("markFailed", row) { store.markFailed(row.id, row.claimToken, clock.instant()) }
+
             Delivery.RETRYABLE_FAILURE -> {
                 failed += row
                 null

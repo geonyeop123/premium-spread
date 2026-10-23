@@ -48,9 +48,12 @@ class V19OwnerAlertChannelMigrationIntegrationTest {
             "discord_push:varchar:YES",
             "discord_color:int:YES",
         )
-        assertThat(query("SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() " +
-            "AND TABLE_NAME = 'account_pnl_mail' AND COLUMN_NAME = 'channel'") { it.getString(1) })
-            .containsExactly("EMAIL")
+        assertThat(
+            query(
+                "SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() " +
+                    "AND TABLE_NAME = 'account_pnl_mail' AND COLUMN_NAME = 'channel'",
+            ) { it.getString(1) },
+        ).containsExactly("EMAIL")
         assertThat(indexColumns("uk_account_pnl_mail_event_key_channel")).containsExactly("event_key", "channel")
         assertThat(indexColumns("uk_account_pnl_mail_event_key")).isEmpty()
     }

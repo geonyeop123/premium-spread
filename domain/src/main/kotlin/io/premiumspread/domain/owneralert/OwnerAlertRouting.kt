@@ -59,6 +59,7 @@ class OwnerAlertRouting(
 
         val configuredDiscord = when {
             override.discordDisabled -> null
+
             else -> default.discord?.let { DiscordRoute(override.discordTarget ?: it.target, override.push ?: it.push) }
                 ?: override.discordTarget?.let { DiscordRoute(it, override.push ?: DiscordPush.SOUND) }
         }

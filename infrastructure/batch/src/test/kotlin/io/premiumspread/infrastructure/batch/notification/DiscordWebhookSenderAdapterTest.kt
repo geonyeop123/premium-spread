@@ -296,18 +296,18 @@ class DiscordWebhookSenderAdapterTest {
     }
 
     private fun assertNoSecret(e: Throwable) {
-        generateSequence(e) { it.cause }.take(16).forEach { assertThat(it.message.orEmpty()).doesNotContain(*SECRETS()) }
-        assertThat(e.stackTraceToString()).doesNotContain(*SECRETS())
+        generateSequence(e) { it.cause }.take(16).forEach { assertThat(it.message.orEmpty()).doesNotContain(*secrets()) }
+        assertThat(e.stackTraceToString()).doesNotContain(*secrets())
         assertThat(e.cause).isNull()
     }
 
-    private fun SECRETS() = arrayOf("TOKEN", "/api/webhooks/", server.url("/").toString())
+    private fun secrets() = arrayOf("TOKEN", "/api/webhooks/", server.url("/").toString())
 
     @Test
     fun `어떤 실패에도 URL 과 token 이 없다`(output: CapturedOutput) {
         val failures = mutableListOf<OwnerAlertSendException>()
         listOf(400, 404, 500, 503).forEach {
-            server.enqueue(MockResponse().setResponseCode(it).setBody("""{"url":"${pnlUri}"}"""))
+            server.enqueue(MockResponse().setResponseCode(it).setBody("""{"url":"$pnlUri"}"""))
             failures += failure()
         }
         server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "30"))
@@ -322,7 +322,7 @@ class DiscordWebhookSenderAdapterTest {
         failures += failure(adapter = refused)
 
         failures.forEach(::assertNoSecret)
-        assertThat(output.all).doesNotContain(*SECRETS())
+        assertThat(output.all).doesNotContain(*secrets())
     }
 
     @Test

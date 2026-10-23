@@ -15,7 +15,10 @@ class OwnerAlertRowsTest {
     private val mail = AccountPnlMail("account-pnl-profit-1", "s", "b")
     private val message = DiscordMessage("T", "D", 0x2ECC71)
     private var renderCount = 0
-    private val render: () -> DiscordMessage = { renderCount++; message }
+    private val render: () -> DiscordMessage = {
+        renderCount++
+        message
+    }
 
     @Test
     fun `3-인자 생성은 EMAIL 이고 Discord 필드가 없다`() {
@@ -75,7 +78,12 @@ class OwnerAlertRowsTest {
     @Test
     fun `DISCORD 행을 mail 로 주면 거부한다`() {
         val discordRow = AccountPnlMail(
-            "k", "s", "b", OwnerAlertChannel.DISCORD, DiscordRoute(DiscordTarget.PNL, DiscordPush.SILENT), 1,
+            "k",
+            "s",
+            "b",
+            OwnerAlertChannel.DISCORD,
+            DiscordRoute(DiscordTarget.PNL, DiscordPush.SILENT),
+            1,
         )
         assertThatThrownBy { OwnerAlertRows.expand(discordRow, OwnerAlertRoute(true, null), render) }
             .isInstanceOf(IllegalArgumentException::class.java)
