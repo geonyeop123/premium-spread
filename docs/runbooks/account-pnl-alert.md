@@ -150,6 +150,7 @@ gross +1,500,000원 · 예상 청산 수수료 -20,000원
 - 채널을 끄면 그 채널로 쌓여 있던 행은 다음 회차에 1회 시도 후 `FAILED` 가 된다(보낼 수단이 없다).
 - 발송은 at-least-once 다. 드물게(성공 직후 프로세스 종료 등) 같은 알림이 두 번 올 수 있다.
 - 기동 INFO(Discord 가 켜졌을 때): `owner-alert discord webhooks: pnl=set, market=fallback(PNL), ops=set` — URL 이 아니라 `set` 또는 `fallback(대상)` 만 나온다.
+- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
 - **Discord 를 꺼 둔 상태여도 webhook env 에 잘못된 값(`http://` 또는 URL 이 아닌 값)이 있으면 모니터 기동이 실패한다.** 비우거나 https URL 로 고친다.
   오류 메시지에는 `owner-alert.discord.webhook.pnl must be an https URL` 처럼 key 만 찍히고 값은 찍히지 않는다.
 
