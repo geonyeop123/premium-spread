@@ -1,8 +1,8 @@
 ---
 feature: owner 알림 채널 기반 — Discord·메일 라우팅 (issue #88)
 slug: owner-alert-channel
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-23T10:33:13+09:00
 verdict_commit:
 source: docs/work/owner-alert-channel/design.md (DRAFT, ⑥ R1 반영)
 ---
