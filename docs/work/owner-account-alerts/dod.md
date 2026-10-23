@@ -128,3 +128,6 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 - 2026-10-23 Task 0 · `grep -rn "AccountPnlMonitorJob(" apps` → 호출처 Configuration + 테스트 4 + 통합 2, 생성자 파라미터 13개(기존 순서), 모든 호출처 13개 이내
 - 2026-10-23 Task 0 · `grep -rn "AccountPnlMonitorState(" .` → 전 생성처 3인자(alert, outage, version)
 - 2026-10-23 Task 0 · `grep -rn "OwnerAlertKind.entries|known: profit"` → enum 개수 고정은 OwnerAlertRoutingTest(:24,:34)뿐, OwnerAlertPropertiesTest:113은 contains 부분 문자열, 그 외 forEach/집합 비교
+- 2026-10-23 Task 1 · AC1 RED(stub 경로 `OwnerAlertRoute(email = true, discord = null)`) `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → BUILD FAILED, 24 tests / 실패 1 (`OwnerAccountAlertKindTest > 계정 알림 세 종류의 기본 경로는 설계 표와 같다`, 기본 경로 단언). key·EMAIL_ONLY·both 해석은 stub 에서도 초록(예상된 범위)
+- 2026-10-23 Task 1 · AC1 GREEN(전문 경로) 같은 domain 명령 + `:infrastructure:batch:test --tests '...OwnerAlertPropertiesTest'`(무수정) → BUILD SUCCESSFUL; `:apps:batch:test --tests OwnerAlertYamlContractTest --tests AccountPnlMonitorWiringTest`(무수정) → BUILD SUCCESSFUL
+- 2026-10-23 Task 1 · `./gradlew test --offline --no-daemon` → BUILD SUCCESSFUL (커밋 전 전체 unit)
