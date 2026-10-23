@@ -335,6 +335,21 @@ index 8c2c475..307397e 100644
 
 ## 최종 판정
 
-- 판정 대상 코드 SHA:
-- 판정일:
-- 판정:
+- 판정 대상 코드 SHA: `0a1bda1` (base origin/dev `1bce3dd`). 이후 커밋 `c6bba79`(runbook 한 줄)와 이 판정 커밋은 문서만 바꾼다
+- 판정일: 2026-10-23 · 검증: qa-agent 직접 실행 (`--offline --no-daemon`, 테스트 task 는 `--rerun-tasks`, Docker 사용)
+- 판정: **AWAITING_HUMAN** — 자동 검증 전부 PASS, 사람 확인 항목이 남아 완료 아님
+
+| 항목 | 판정 | 비고 |
+|---|---|---|
+| AC1~AC11 (T1) | PASS | 각 명령 exit 0, 실패 0 — AC1 11, AC2 16, AC3 37, AC4 5(+verifyMigrations), AC5 19, AC6 21, AC7 9, AC8 20, AC9 4+47, AC10 45, AC11 3 |
+| AC12 (T3) | AWAITING_HUMAN | `check-documentation.sh` 통과. (a)~(h) 존재·코드 문구 일치는 qa 대조. 경로 요약 INFO 누락은 `c6bba79` 로 보완 |
+| AC13 (T4) | AWAITING_HUMAN | owner 가 실제 Discord webhook 으로 4종 수신 확인 → `## 사람 확인 (T4)` 와 PR 코멘트 |
+| R1·R2·R3·R4·R5·R8·R9·R10·R11 | PASS | architectureTest 35, `test` 945, 동결 테스트 diff 없음, accountpnl 84+105, migration 변경 = V19 추가만, integration common 42·api 174·batch 104, harnessCheck·check-documentation 통과 |
+| R6 | AWAITING_HUMAN | 세 파일 삭제 줄 0 (추가만 +315/+107/+116) — ⑨ spec-reviewer 통과 의견 |
+| R7 | AWAITING_HUMAN | 삭제는 KDoc 2줄뿐, 기대 목록 끝 4컬럼 추가. plan Task 6 이 요구한 신규 메서드 1개(UNIQUE 검증)는 기존 줄 수정이 아닌 추가 — ⑨ spec-reviewer 의견: 허용(R7 비해당) |
+| 커버리지 | 로컬 verification exit 0 (LINE 77.8%) | 최종 증거는 CI `2. Unit + coverage` (0a1bda1 pass) |
+| CI (PR #92, `0a1bda1`) | 6/7 pass | `5. ktlint + detekt` pass (⑨ 재작업에서 ktlint 25건·detekt 1건 정리). `6. Dependency + security scan` fail — dev 기존 상태 |
+
+- 미실행: 없음. 환경 문제: 없음. 재실행으로 지운 실패: 없음
+- ⑨ 미룬 권고(poison row 격리·회차 시간 예산 등)는 이슈 #90 코멘트로 이관
+- 브랜치 최종 코드 SHA 가 `0a1bda1` 과 달라지면 이 판정은 만료
