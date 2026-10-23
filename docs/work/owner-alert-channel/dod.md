@@ -303,6 +303,16 @@ index 8c2c475..307397e 100644
 
 - Task 12 블록의 기본 실행 R1·R8·R9 `tests=0` 행은 gradle `UP-TO-DATE` 였다. 유효한 결과는 `--rerun-tasks` 로 재실행한 R1x·R2x·R8x·R9x 행이다. runbook 수신 주소 필수 조건·메일 env 표기 정정 후 `bash docs/check-documentation.sh` → passed.
 
+### ⑨ 재작업 1 (2026-10-23)
+
+- ktlint 25건 수동 정정(when 조건 사이 빈 줄·헬퍼 함수명·string template·인자/문장 줄바꿈), runbook 복구 SQL BINARY 비교·drift 정정, 기동 시 경로 요약 INFO, V19 CHECK 위반 판정 3819 + 제약 이름으로 좁힘.
+- `./gradlew :domain:test --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew :infrastructure:batch:test --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew :apps:batch:test --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew architectureTest --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew :infrastructure:common:integrationTest --offline --no-daemon --tests '*V19OwnerAlertChannelMigrationIntegrationTest'` BUILD SUCCESSFUL
+- `bash docs/check-documentation.sh` passed
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

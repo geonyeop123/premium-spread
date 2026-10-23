@@ -184,7 +184,8 @@ class V19OwnerAlertChannelMigrationIntegrationTest {
         isInstanceOf(SQLException::class.java)
         satisfies({ e ->
             val sql = e as SQLException
-            assertThat(sql.errorCode == 3819 || sql.sqlState == "HY000").isTrue()
+            assertThat(sql.errorCode).isEqualTo(3819)
+            assertThat(sql.message).contains("ck_account_pnl_mail_channel")
         })
     }
 
