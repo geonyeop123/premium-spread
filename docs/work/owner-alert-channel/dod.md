@@ -104,6 +104,21 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
 
+### Task 0 — Gate 1 기준선 (2026-10-23, HEAD `2df1f2a`, `--offline --no-daemon`, cache 정상 — 온라인 실행 없음, Docker 사용)
+
+| 항목 | 명령 | 결과 |
+|---|---|---|
+| R1 | `./gradlew architectureTest` | exit 0 (24s) |
+| R2·R4 | `./gradlew test` | exit 0 (1m 56s) |
+| R5 | `./gradlew :infrastructure:common:verifyMigrations` | exit 0 |
+| R8 | `./gradlew :infrastructure:common:integrationTest` | exit 0 (3m 47s) |
+| R9 | `./gradlew :apps:batch:integrationTest` | exit 0 (1m 52s) |
+| V19 번호 | `ls .../db/migration \| sort -V \| tail -1` | `V18__create_account_pnl_alert.sql` (성립) |
+| [ASSUMPTION] A1 | jshell `ZonedDateTime(2026-10-23 09:26, Asia/Seoul)` `yyyy-MM-dd HH:mm z`, `Locale.ROOT` | `2026-10-23 09:26 KST` (성립) |
+| 생성자 호출처 | `grep -rn "AccountPnlMonitorJob(" apps` | `AccountPnlMonitorConfiguration` + `AccountPnlMonitorJobTest`·`AccountPnlMonitorJobHourlyReportTest`·`AccountPnlMonitorJobObservationLogTest` + `AccountPnlAlertDurabilityIntegrationTest` (성립) |
+| store 구현 | `grep ": AccountPnlAlertStore"` 등 | `JdbcAccountPnlAlertStore`, 테스트 `FakeStore`(`AccountPnlMonitorJobTest`), 배선 테스트 relaxed mockk 뿐 (성립) |
+| 수신 주소 소비처 (I-3) | `grep "properties.recipient\|\.recipient\b"` | production 값 소비는 `AccountPnlMonitorAdapterConfiguration` 의 `accountPnlMailSender`(:151) 하나. :33 은 필수 키 목록, app `AccountPnlMonitorConfiguration`:66 은 env 이름 매핑 (성립) |
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
