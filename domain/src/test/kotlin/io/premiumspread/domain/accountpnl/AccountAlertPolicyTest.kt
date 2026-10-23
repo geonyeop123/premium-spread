@@ -123,7 +123,7 @@ class AccountAlertPolicyTest {
 
         assertThat(decision.alerts.map { it.kind })
             .containsExactly(OwnerAlertKind.NET_PERCENT_SWING, OwnerAlertKind.UNRECOVERED_REMINDER)
-        assertThat(decision.next.swing.upSent).isTrue()
+        assertThat(decision.next.swing).isEqualTo(SwingState(bucket, state.swing.baselinePercent, true, false))
         assertThat(decision.next.reminder.lastDayStart).isEqualTo(Instant.parse("2026-10-19T15:00:00Z"))
     }
 
@@ -155,6 +155,26 @@ class AccountAlertPolicyTest {
         val decision = decide(state, round(hasPosition = false))
 
         assertThat(decision.alerts).isEmpty()
+        assertThat(decision.next.reminder.lastDayStart).isEqualTo(sent)
+    }
+
+    @Test
+    fun `포지션 없음 회차도 leg 청산은 포지션 알림으로 판정하고 리마인더 날짜는 유지한다`() {
+        val sent = Instant.parse("2026-10-18T15:00:00Z")
+        val closed = PositionLegs(KoreaLeg.EMPTY, legs.foreign)
+        val state = AccountAlertState(
+            PositionWatchState(legs, false),
+            SwingState.INITIAL,
+            ReminderState(sent, BigDecimal("3.2"), bucket),
+        )
+
+        val decision = decide(state, round(roundLegs = closed, hasPosition = false))
+
+        assertThat(decision.alerts).hasSize(1)
+        val alert = decision.alerts.single() as AccountAlert.PositionChanged
+        assertThat(alert.before).isEqualTo(legs)
+        assertThat(alert.after).isEqualTo(closed)
+        assertThat(decision.next.position.legs).isEqualTo(closed)
         assertThat(decision.next.reminder.lastDayStart).isEqualTo(sent)
     }
 }

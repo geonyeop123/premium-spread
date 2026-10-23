@@ -145,3 +145,4 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 - 2026-10-23 Task 6 · AC6 RED(stub: decide 가 state 그대로·알림 빈 리스트) `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertPolicyTest' --offline --no-daemon` → BUILD FAILED, 6 tests / 실패 4 (첫 기동 채움·빗썸 변경 manual·겹침 2종); 실패 회차·NoPosition 불변 2건은 stub 에서도 초록(예상된 범위)
 - 2026-10-23 Task 6 · AC6 GREEN(전문 구현) 같은 domain 명령 → BUILD SUCCESSFUL, 6 tests
 - 2026-10-23 Task 6 · `./gradlew test --offline --no-daemon` → BUILD SUCCESSFUL (커밋 전 전체 unit)
+- 2026-10-23 Task 6 fix · AC6(e) 보강: pnl==null + 빗썸 leg 청산 회차 케이스 추가. 포지션 판정 skip 변이에서 `AccountAlertPolicyTest` 7 tests / 실패 4(신규 케이스 포함), 복원 후 BUILD SUCCESSFUL
