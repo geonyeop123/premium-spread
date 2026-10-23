@@ -85,6 +85,36 @@ account-pnl-monitor:
       funding-usdt: ${BINANCE_MANUAL_FUNDING_USDT:}
       taker-fee-rate: ${BINANCE_MANUAL_TAKER_FEE_RATE:}
 
+# owner 알림 채널 (메일·Discord). webhook URL 은 비밀값 — 환경변수로만 주입하며 기본값을 두지 않는다.
+# 메일 수신 주소는 account-pnl-monitor.recipient (ACCOUNT_PNL_ALERT_RECIPIENT) — 메일 채널을 쓸 때만 필수.
+owner-alert:
+  email:
+    enabled: ${OWNER_ALERT_EMAIL_ENABLED:true}
+  discord:
+    enabled: ${OWNER_ALERT_DISCORD_ENABLED:false}
+    webhook:
+      pnl: ${OWNER_ALERT_DISCORD_WEBHOOK_PNL:}
+      market: ${OWNER_ALERT_DISCORD_WEBHOOK_MARKET:}
+      ops: ${OWNER_ALERT_DISCORD_WEBHOOK_OPS:}
+  # 알림 종류별 경로 덮어쓰기. 빈 값이면 Domain OwnerAlertKind 기본값. 종류를 추가하면 여기 세 줄과 runbook 을 함께 추가한다.
+  routes:
+    profit:
+      email: ${OWNER_ALERT_PROFIT_EMAIL:}
+      discord: ${OWNER_ALERT_PROFIT_DISCORD:}
+      push: ${OWNER_ALERT_PROFIT_PUSH:}
+    hourly-report:
+      email: ${OWNER_ALERT_HOURLY_REPORT_EMAIL:}
+      discord: ${OWNER_ALERT_HOURLY_REPORT_DISCORD:}
+      push: ${OWNER_ALERT_HOURLY_REPORT_PUSH:}
+    monitoring-outage:
+      email: ${OWNER_ALERT_MONITORING_OUTAGE_EMAIL:}
+      discord: ${OWNER_ALERT_MONITORING_OUTAGE_DISCORD:}
+      push: ${OWNER_ALERT_MONITORING_OUTAGE_PUSH:}
+    monitoring-recovered:
+      email: ${OWNER_ALERT_MONITORING_RECOVERED_EMAIL:}
+      discord: ${OWNER_ALERT_MONITORING_RECOVERED_DISCORD:}
+      push: ${OWNER_ALERT_MONITORING_RECOVERED_PUSH:}
+
 # 거래 준비 조건 평가 (design.md D14) — 값의 근거는 수집 계약의 10초 중단 규칙이다.
 trade-preparation:
   evaluation:

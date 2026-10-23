@@ -1,12 +1,23 @@
 package io.premiumspread.infrastructure.batch.accountpnl
 
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
+import io.premiumspread.domain.owneralert.DiscordTarget
+import io.premiumspread.domain.owneralert.OwnerAlertChannels
+import io.premiumspread.domain.owneralert.OwnerAlertDiscordSender
+import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import io.premiumspread.email.EmailSender
 import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapter
 import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.notification.AccountPnlEmailSenderAdapter
+import io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapter
+import io.premiumspread.infrastructure.batch.owneralert.DiscordWebhookConfiguredCondition
+import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelAvailableCondition
+import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirements
+import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertEmailRequestedCondition
+import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertProperties
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -16,6 +27,7 @@ import org.springframework.context.annotation.Condition
 import org.springframework.context.annotation.ConditionContext
 import org.springframework.context.annotation.Conditional
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
 import org.springframework.core.env.PropertyResolver
 import org.springframework.core.type.AnnotatedTypeMetadata
 import org.springframework.web.reactive.function.client.WebClient
@@ -30,7 +42,6 @@ internal object AccountPnlMonitorRequirements {
     const val MODE_KEY = "account-pnl-monitor.binance.mode"
     private const val ENABLED_KEY = "account-pnl-monitor.enabled"
     private val COMMON = listOf(
-        "account-pnl-monitor.recipient",
         "account-pnl-monitor.bithumb.access-key",
         "account-pnl-monitor.bithumb.secret-key",
     )
@@ -46,21 +57,30 @@ internal object AccountPnlMonitorRequirements {
     fun binanceMode(env: PropertyResolver): AccountPnlMonitorProperties.BinanceLegMode =
         AccountPnlMonitorProperties.BinanceLegMode.parse(env.getProperty(MODE_KEY))
 
-    /** 공통 + 해석된 모드의 필수 키 중 비어 있는 key, 선언 순서. */
+    /**
+     * 채널 필수 키(메일 채널이 쓰일 때만 수신 주소) + 공통 + 해석된 모드의 필수 키 중 비어 있는 key, 선언 순서
+     * (recipient → bithumb → 모드).
+     */
     fun missingKeys(env: PropertyResolver): List<String> {
         val modeKeys = when (binanceMode(env)) {
             AccountPnlMonitorProperties.BinanceLegMode.API -> API
             AccountPnlMonitorProperties.BinanceLegMode.MANUAL -> MANUAL
         }
-        return (COMMON + modeKeys).filter { env.getProperty(it).isNullOrBlank() }
+        return OwnerAlertChannelRequirements.missingKeys(env) + (COMMON + modeKeys).filter { env.getProperty(it).isNullOrBlank() }
     }
 }
 
-/** 기능이 켜졌고 수신자·빗썸 credential·해석된 바이낸스 모드의 필수값이 모두 있을 때만 참이다. 로그는 남기지 않는다. */
+/**
+ * 기능이 켜졌고 필수값(메일 채널이면 수신자·빗썸 credential·해석된 바이낸스 모드)이 모두 있으며 owner 알림 채널이 준비됐을 때만
+ * 참이다 (design §7.2). 로그는 남기지 않는다.
+ */
 class AccountPnlCredentialsPresentCondition : Condition {
     override fun matches(context: ConditionContext, metadata: AnnotatedTypeMetadata): Boolean {
         val env = context.environment
-        return AccountPnlMonitorRequirements.enabled(env) && AccountPnlMonitorRequirements.missingKeys(env).isEmpty()
+        return AccountPnlMonitorRequirements.enabled(env) &&
+            AccountPnlMonitorRequirements.missingKeys(env).isEmpty() &&
+            !OwnerAlertChannelRequirements.discordMisconfigured(env) &&
+            OwnerAlertChannelRequirements.anyChannel(env)
     }
 }
 
@@ -83,8 +103,9 @@ class BinanceManualModeCondition : Condition {
 }
 
 /**
- * 실계정 조회 adapter 와 메일 발송 adapter. 플래그·credential·EmailSender 가 모두 있을 때만 존재한다.
- * 이 설정은 `BatchInfrastructureAutoConfiguration` 이 import 하므로 EmailSender 는 이미 등록돼 있다.
+ * 실계정 조회 adapter 와 owner 알림 채널(메일·Discord) sender·라우팅. 플래그·credential 이 있고 쓸 수 있는 채널이 하나 이상일 때만
+ * 존재한다 — 채널 = [EmailSender bean ∧ 메일 채널 켜짐] ∨ [Discord 켜짐 ∧ webhook 설정] (design §7.2).
+ * 이 설정은 `BatchInfrastructureAutoConfiguration` 이 import 하므로 EmailSender 는 (켜졌다면) 이미 등록돼 있다.
  *
  * scheduling 이 꺼지면 소비자(Job)가 없으므로 adapter 도 만들지 않는다 (dod AC11). 조건식은 apps:batch 의
  * `ConditionalOnBatchScheduling` 과 같은 키·기본값이다 — infrastructure 는 앱 타입을 import 하지 않는다.
@@ -92,9 +113,8 @@ class BinanceManualModeCondition : Condition {
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnExpression("\${batch.scheduling.enabled:true} and \${scheduling.enabled:true}")
 @ConditionalOnProperty(prefix = "account-pnl-monitor", name = ["enabled"], havingValue = "true")
-@Conditional(AccountPnlCredentialsPresentCondition::class)
-@ConditionalOnBean(EmailSender::class)
-@EnableConfigurationProperties(AccountPnlMonitorProperties::class)
+@Conditional(AccountPnlCredentialsPresentCondition::class, OwnerAlertChannelAvailableCondition::class)
+@EnableConfigurationProperties(AccountPnlMonitorProperties::class, OwnerAlertProperties::class)
 class AccountPnlMonitorAdapterConfiguration {
     @Bean
     fun bithumbPrivateAccountAdapter(
@@ -146,9 +166,37 @@ class AccountPnlMonitorAdapterConfiguration {
         return adapter
     }
 
+    /** owner 메일 채널. 수신 주소는 [OwnerAlertChannelRequirements.recipient] 가 읽는다 (design §7.2 I-3). */
     @Bean
-    fun accountPnlMailSender(emailSender: EmailSender, properties: AccountPnlMonitorProperties): AccountPnlMailSender =
-        AccountPnlEmailSenderAdapter(emailSender, properties.recipient)
+    @ConditionalOnBean(EmailSender::class)
+    @Conditional(OwnerAlertEmailRequestedCondition::class)
+    fun accountPnlMailSender(emailSender: EmailSender, environment: Environment): AccountPnlMailSender =
+        AccountPnlEmailSenderAdapter(emailSender, OwnerAlertChannelRequirements.recipient(environment))
+
+    /** owner Discord 채널. 기동 INFO 는 대상별 `set`/`fallback(…)` 만 남기고 URL 은 남기지 않는다. */
+    @Bean
+    @Conditional(DiscordWebhookConfiguredCondition::class)
+    fun ownerAlertDiscordSender(ownerAlert: OwnerAlertProperties): DiscordWebhookSenderAdapter {
+        val webhooks = ownerAlert.discord.webhook.toDiscordWebhooks()
+        log.info(
+            "owner-alert discord webhooks: pnl={}, market={}, ops={}",
+            webhooks.describe(DiscordTarget.PNL),
+            webhooks.describe(DiscordTarget.MARKET),
+            webhooks.describe(DiscordTarget.OPS),
+        )
+        return DiscordWebhookSenderAdapter(webhooks)
+    }
+
+    /** 채널 플래그를 sender bean 존재에서 만든다 — 라우팅과 sender 가 어긋날 수 없다 (design §7.2). */
+    @Bean
+    fun ownerAlertRouting(
+        ownerAlert: OwnerAlertProperties,
+        mailSender: ObjectProvider<AccountPnlMailSender>,
+        discordSender: ObjectProvider<OwnerAlertDiscordSender>,
+    ): OwnerAlertRouting = OwnerAlertRouting(
+        OwnerAlertChannels(email = mailSender.ifAvailable != null, discord = discordSender.ifAvailable != null),
+        ownerAlert.resolvedOverrides(),
+    )
 
     private fun client(baseUrl: String): WebClient = WebClient.builder().baseUrl(baseUrl.removeSuffix("/")).build()
 
