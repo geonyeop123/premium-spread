@@ -2,7 +2,7 @@
 
 - slug: `owner-alert-channel` · base `origin/dev` `1bce3dd` · branch `feat/issue-88-owner-alert-channel`
 - 입력: `docs/work/owner-alert-channel/_brief.md` (③ 합의), `.ai/rules/{architecture,batch,testing,naming}.md`
-- 상태: DRAFT (⑥ 스펙 리뷰 R1 반영, Gate 1 승인 전) — 변경 내역 §14
+- 상태: APPROVED — ⑥ R2 APPROVE · ⑦ owner 승인 2026-10-23, DoD 동결 b2d0878 — 변경 내역 §14
 
 ## 0. 요약
 
@@ -578,7 +578,7 @@ outbox 4메서드를 `OwnerAlertOutbox` 상위 interface 로 올리는 것도 #9
 | D2 | `OWNER_ALERT_EMAIL_ENABLED=true`(기본)인데 SMTP 가 꺼져 있고 Discord 는 정상이면? | **Discord 만으로 모니터 기동 + WARN 1회** (§7.2 6번) |
 | D3 | 알림 종류별 override 를 env 3개씩(`OWNER_ALERT_{KIND}_EMAIL/_DISCORD/_PUSH`)으로 둘까? | **종류별 env 3개씩** (yml 에 명시, 테스트가 enum 과 일치 고정 — §7.1, dod AC9-h) |
 
-### 오케스트레이터 판정 — ⑦ 에서 사용자 확인
+### 오케스트레이터 판정 — ⑦ 사용자 승인으로 확정 (2026-10-23)
 
 | # | 판정 | 반영 위치 |
 |---|---|---|

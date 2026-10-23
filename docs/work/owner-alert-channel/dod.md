@@ -4,7 +4,7 @@ slug: owner-alert-channel
 status: FROZEN
 frozen_at: 2026-10-23T10:33:13+09:00
 verdict_commit:
-source: docs/work/owner-alert-channel/design.md (DRAFT, ⑥ R1 반영)
+source: docs/work/owner-alert-channel/design.md (APPROVED 2026-10-23)
 ---
 
 ## 범위
