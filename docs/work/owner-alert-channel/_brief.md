@@ -1,3 +1,5 @@
+> 주: 이 brief 는 입력 기록이라 원문을 보존한다. 실제 slug 는 `owner-alert-channel`(issue #88), 산출물 경로는 `docs/work/owner-alert-channel/` 이다.
+
 # owner-alerts-discord — architect 입력 자료 (③ 합의 결과)
 
 worktree: `/home/yeop/IdeaProjects/premium-spread/.worktrees/feat-owner-alerts-discord` (branch `feat/owner-alerts-discord`, base origin/dev `1bce3dd`)
