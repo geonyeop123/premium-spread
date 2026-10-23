@@ -185,6 +185,120 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - RED: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' --offline --no-daemon` → 3 tests completed, 3 failed (BUILD FAILED). `git checkout -- apps/batch/src/main` 뒤 `git diff --stat -- apps/batch/src/main` 빈 출력.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (3 tests). 전체 `./gradlew :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL, 104 tests 0 failures.
 
+### Task 12 — 회귀·AC 재검증 (2026-10-23)
+
+- 문서: `docs/runbooks/account-pnl-alert.md`(AC12 a~h)·`.ai/architecture/ARCHITECTURE_DESIGN.md` 갱신. `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)`, `./gradlew harnessCheck --offline --no-daemon` → BUILD SUCCESSFUL.
+- 롤백 SQL 나란히 비교 (runbook `### 배포와 롤백` = Task 5 `V19OwnerAlertChannelMigrationIntegrationTest.ROLLBACK_DISCORD_ROWS`, 공백·줄바꿈 외 같은 문장):
+
+```sql
+-- runbook
+UPDATE account_pnl_mail
+SET status = 'FAILED',
+    claim_token = NULL,
+    locked_by = NULL,
+    locked_at = NULL
+WHERE channel = 'DISCORD'
+  AND status IN ('PENDING', 'PROCESSING');
+-- test 상수
+UPDATE account_pnl_mail
+SET status = 'FAILED',
+    claim_token = NULL,
+    locked_by = NULL,
+    locked_at = NULL
+WHERE channel = 'DISCORD'
+  AND status IN ('PENDING', 'PROCESSING')
+```
+
+- 회귀·AC 명령 각각 실행(모든 gradle 은 `--offline --no-daemon`, Docker 사용). 테스트 수는 그 명령으로 새로 실행된 `build/test-results` XML 합계(UP-TO-DATE 로 건너뛴 task 는 0):
+
+| 항목 | 명령 | exit | 테스트 |
+|---|---|---|---|
+| R1 | ./gradlew architectureTest | exit=0 | tests=0 failures=0 errors=0 |
+| R2 | ./gradlew test | exit=0 | tests=181 failures=0 errors=0 |
+| R3 | git diff --exit-code 1bce3dd -- domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountNetPnlTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/PnlAlertPolicyTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/MonitoringOutagePolicyTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountHedgePositionTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobHourlyReportTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobObservationLogTest.kt apps/batch/src/integrationTest/kotlin/io/premiumspread/application/job/AccountPnlAlertDurabilityIntegrationTest.kt infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/notification/AccountPnlEmailSenderAdapterTest.kt infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/exchange | exit=0 | tests=0 failures=0 errors=0 |
+| R4a | ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' | exit=0 | tests=84 failures=0 errors=0 |
+| R4b | ./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' | exit=0 | tests=104 failures=0 errors=0 |
+| R5a | test -z "$(git diff --name-only --diff-filter=MDR 1bce3dd -- infrastructure/common/src/main/resources/db/migration)" | exit=0 | tests=0 failures=0 errors=0 |
+| R5b | ./gradlew :infrastructure:common:verifyMigrations | exit=0 | tests=0 failures=0 errors=0 |
+| R8 | ./gradlew :infrastructure:common:integrationTest | exit=0 | tests=0 failures=0 errors=0 |
+| R9 | ./gradlew :apps:batch:integrationTest | exit=0 | tests=0 failures=0 errors=0 |
+| R10 | ./gradlew :apps:api:test --tests '*TradePreparationWiring*' | exit=0 | tests=3 failures=0 errors=0 |
+| R11a | ./gradlew harnessCheck | exit=0 | tests=0 failures=0 errors=0 |
+| R11b | bash docs/check-documentation.sh | exit=0 | tests=0 failures=0 errors=0 |
+| AC1 | ./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.OwnerAlertRoutingTest' | exit=0 | tests=11 failures=0 errors=0 |
+| AC2 | ./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordMessageTest' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsTest' | exit=0 | tests=16 failures=0 errors=0 |
+| AC3 | ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --tests 'io.premiumspread.domain.accountpnl.AccountPnlDiscordContentTest' | exit=0 | tests=37 failures=0 errors=0 |
+| AC4a | ./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest' | exit=0 | tests=5 failures=0 errors=0 |
+| AC4b | ./gradlew :infrastructure:common:verifyMigrations | exit=0 | tests=0 failures=0 errors=0 |
+| AC5 | ./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest' | exit=0 | tests=19 failures=0 errors=0 |
+| AC6 | ./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest' | exit=0 | tests=21 failures=0 errors=0 |
+| AC7 | ./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertPropertiesTest' | exit=0 | tests=9 failures=0 errors=0 |
+| AC8 | ./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDispatcherTest' --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobOwnerAlertTest' | exit=0 | tests=20 failures=0 errors=0 |
+| AC9a | ./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirementsTest' | exit=0 | tests=4 failures=0 errors=0 |
+| AC9b | ./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' | exit=0 | tests=46 failures=0 errors=0 |
+| AC10 | ./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' | exit=0 | tests=44 failures=0 errors=0 |
+| AC11 | ./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' | exit=0 | tests=3 failures=0 errors=0 |
+
+- 위 R1·R2·R8·R9 는 gradle 이 `UP-TO-DATE` 로 건너뛰어 테스트 0건이었으므로 `--rerun-tasks` 를 덧붙여 실제로 다시 실행했다:
+
+| 항목 | 명령 | exit | 테스트 |
+|---|---|---|---|
+| R1x | ./gradlew architectureTest --rerun-tasks | exit=0 | tests=35 failures=0 errors=0 |
+| R2x | ./gradlew test --rerun-tasks | exit=0 | tests=944 failures=0 errors=0 |
+| R8x | ./gradlew :infrastructure:common:integrationTest --rerun-tasks | exit=0 | tests=42 failures=0 errors=0 |
+| R9x | ./gradlew :apps:batch:integrationTest --rerun-tasks | exit=0 | tests=104 failures=0 errors=0 |
+
+- R6 — `git diff 1bce3dd -- <세 파일> | grep '^-[^-]'` 출력: **빈 출력**(삭제·약화된 줄 없음).
+- R7 — `git diff 1bce3dd -- apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt` 전문:
+
+```diff
+diff --git a/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt b/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt
+index 8c2c475..307397e 100644
+--- a/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt
++++ b/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt
+@@ -6,8 +6,9 @@ import org.junit.jupiter.api.Test
+ 
+ /**
+  * Batch 는 Flyway 를 쓰지 않고 `batch-schema.sql` fixture 로 스키마를 만든다. 아래 기대 목록은
+- * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 에서 옮긴 것이다.
+- * V18 이 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
++ * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 과
++ * `infrastructure/common/src/main/resources/db/migration/V19__add_owner_alert_channel.sql` 에서 옮긴 것이다.
++ * V18·V19 가 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
+  */
+ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
+ 
+@@ -40,9 +41,28 @@ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
+             "locked_at:datetime:YES",
+             "created_at:datetime:NO",
+             "sent_at:datetime:YES",
++            "channel:varchar:NO",
++            "discord_target:varchar:YES",
++            "discord_push:varchar:YES",
++            "discord_color:int:YES",
+         )
+     }
+ 
++    @Test
++    fun `account_pnl_mail fixture 의 UNIQUE 는 event_key 와 channel 이다`() {
++        assertThat(
++            jdbcTemplate.queryForList(
++                """
++                SELECT COLUMN_NAME FROM information_schema.STATISTICS
++                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'account_pnl_mail'
++                  AND INDEX_NAME = 'uk_account_pnl_mail_event_key_channel'
++                ORDER BY SEQ_IN_INDEX
++                """.trimIndent(),
++                String::class.java,
++            ),
++        ).containsExactly("event_key", "channel")
++    }
++
+     private fun columns(table: String): List<String> = jdbcTemplate.query(
+         """
+         SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM information_schema.COLUMNS
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
