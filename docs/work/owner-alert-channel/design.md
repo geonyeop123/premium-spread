@@ -523,7 +523,7 @@ https URL 로" 를 적고, dod AC10-c 가 Discord 꺼짐 케이스로 고정한�
 | **`markFailed` 예외** | **`Failure`** |
 | 발송 실패(재시도 가능) | 행 → `PENDING`/`FAILED`, `Success` |
 | **발송 실패(재시도 불가·채널 없음)** | **행 → `FAILED`, `Success`** |
-| 발송 중 interrupt (Discord adapter 취소 규칙 §5.3 포함) | 그 행은 재시도 가능 실패(회차 끝 `markAttemptFailed`), 남은 행 `PENDING`, `Success` |
+| 발송 중 interrupt (Discord adapter 취소 규칙 §5.3 포함) | sender 가 실패로 끝났으면 그 행은 재시도 가능 실패(회차 끝 `markAttemptFailed`), sender 가 성공한 뒤 플래그만 섰으면 그 행은 `SENT`(기존 동결 테스트 `발송 중 인터럽트되면 보낸 건은 SENT 로 표시하고 claim 루프를 멈춘다`). 어느 쪽이든 claim 루프를 멈추고 남은 행 `PENDING`, `Success` |
 | 그 밖 | `Success` |
 
 ## 9. #89~#91 연결 경로 (구조 변경 없이 끼우기)
