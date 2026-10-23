@@ -1,8 +1,8 @@
 ---
 feature: owner 계정 알림 — 포지션 변경·순수익률 급변·미반영 리마인더 (issue #89)
 slug: owner-account-alerts
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-23
 verdict_commit:
 source: docs/work/owner-account-alerts/design.md (DRAFT)
 ---
