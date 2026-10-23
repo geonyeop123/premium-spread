@@ -4,28 +4,34 @@ import io.premiumspread.application.common.DefaultJobConfigProvider
 import io.premiumspread.application.common.JobConfigProvider
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.common.JobResult
+import io.premiumspread.application.notification.owneralert.OwnerAlertDispatcher
 import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
+import io.premiumspread.domain.accountpnl.AccountPnlDiscordContent
 import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMailContent
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
-import io.premiumspread.domain.accountpnl.ClaimedAccountPnlMail
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
 import io.premiumspread.domain.accountpnl.MonitoringOutagePolicy
 import io.premiumspread.domain.accountpnl.OutageNotice
+import io.premiumspread.domain.accountpnl.OwnerAlertRows
 import io.premiumspread.domain.accountpnl.PnlAlertPolicy
 import io.premiumspread.domain.accountpnl.PnlObservation
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
+import io.premiumspread.domain.owneralert.DiscordMessage
+import io.premiumspread.domain.owneralert.OwnerAlertDiscordSender
+import io.premiumspread.domain.owneralert.OwnerAlertKind
+import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import io.premiumspread.domain.ticker.Currency
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
@@ -42,7 +48,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 실계정 순손익 모니터링 1회차 (design §3·§4, dod AC5).
  *
  * 순서: stale claim 복구 → 상태 load → 관측(조회 → 신선도 → 포지션 판정 → 순손익 계산) → 수익·중단 정책
- * → 메일 생성 → 상태+메일 버전 조건부 저장 → claim → 발송·전이.
+ * → 알림 생성·종류별 채널 라우팅 → 상태+outbox 행 버전 조건부 저장 → 전달([OwnerAlertDispatcher]: claim → 채널별 발송·전이).
  *
  * - 관측 단계의 모든 예외는 실패 범주로 정규화해 중단 정책에 넣고 Job 은 성공으로 끝낸다
  *   (매분 CRITICAL 운영 알림을 막는다). 분류되지 않은 예외는 [AccountReadFailureCategory.UNEXPECTED].
@@ -65,9 +71,20 @@ class AccountPnlMonitorJob(
     private val jobConfigs: JobConfigProvider = DefaultJobConfigProvider,
     /** 정시 보고 메일. 기본 꺼짐 — 운영 설정(`account-pnl-monitor.hourly-report.enabled`)이 켠다. */
     private val hourlyReportEnabled: Boolean = false,
+    /** 알림 종류별 채널 경로. 기본은 메일만(기존 동작). */
+    private val routing: OwnerAlertRouting = OwnerAlertRouting.EMAIL_ONLY,
+    /** Discord 채널 sender. [routing] 이 Discord 채널을 쓰면 필수다. */
+    private val discordSender: OwnerAlertDiscordSender? = null,
 ) {
+    init {
+        require(!routing.channels.discord || discordSender != null) {
+            "owner-alert discord channel is enabled but no Discord sender was provided"
+        }
+    }
+
     private val log = LoggerFactory.getLogger(javaClass)
     private val owner = "account-pnl-monitor:" + UUID.randomUUID()
+    private val dispatcher = OwnerAlertDispatcher(store, mailSender, discordSender, clock, owner)
 
     /** FX 수집 성공 기록이 없을 때(프로세스 시작 직후) 2시간을 재는 기준. 이 인스턴스의 첫 실행 시각이다. */
     private val firstRunAt = AtomicReference<Instant?>(null)
@@ -234,98 +251,46 @@ class AccountPnlMonitorJob(
         notice: OutageNotice?,
         now: Instant,
     ): List<AccountPnlMail> = buildList {
-        if (sendProfit && observation is PnlObservation.Computed) add(AccountPnlMailContent.profit(observation.pnl, zone))
-        // 같은 정시 버킷의 eventKey 는 outbox 가 무시하므로 회차마다 넣어도 시간당 한 통이다
+        if (sendProfit && observation is PnlObservation.Computed) {
+            val pnl = observation.pnl
+            addAll(
+                route(OwnerAlertKind.PROFIT, AccountPnlMailContent.profit(pnl, zone)) {
+                    AccountPnlDiscordContent.profit(pnl, zone)
+                },
+            )
+        }
+        // 같은 정시 버킷의 eventKey 는 outbox 가 무시하므로 회차마다 넣어도 채널마다 시간당 한 통이다
         if (hourlyReportEnabled && observation is PnlObservation.Computed) {
-            add(AccountPnlMailContent.hourly(observation.pnl, zone))
+            val pnl = observation.pnl
+            addAll(
+                route(OwnerAlertKind.HOURLY_REPORT, AccountPnlMailContent.hourly(pnl, zone)) {
+                    AccountPnlDiscordContent.hourly(pnl, zone)
+                },
+            )
         }
         when (notice) {
-            is OutageNotice.Outage -> add(AccountPnlMailContent.outage(notice, now, zone))
-            OutageNotice.Recovered -> add(AccountPnlMailContent.recovered(now, zone))
+            is OutageNotice.Outage -> addAll(
+                route(OwnerAlertKind.MONITORING_OUTAGE, AccountPnlMailContent.outage(notice, now, zone)) {
+                    AccountPnlDiscordContent.outage(notice, now, zone)
+                },
+            )
+
+            OutageNotice.Recovered -> addAll(
+                route(OwnerAlertKind.MONITORING_RECOVERED, AccountPnlMailContent.recovered(now, zone)) {
+                    AccountPnlDiscordContent.recovered(now, zone)
+                },
+            )
+
             null -> Unit
         }
     }
 
-    /**
-     * 발송은 순차이므로 실행 가능한 concurrency(1)만큼만 claim 한다 (`.ai/rules/batch.md` Durable notification).
-     * 빈 결과·회차 상한([MAX_MAILS_PER_RUN])·취소(interrupt) 중 먼저 오는 것에서 멈춘다.
-     *
-     * SMTP 실패한 메일은 회차 끝에서 시도 실패로 되돌린다. 바로 `PENDING` 으로 돌리면 id 순 claim 이 같은 회차에
-     * 그 메일을 다시 잡아 한 회차에 시도 횟수를 소진한다. 되돌리기 전까지는 이 owner 의 `PROCESSING` 이므로
-     * 프로세스가 죽으면 stale 복구가 한 번의 시도로 센다.
-     */
-    private fun deliver(): JobResult {
-        val failed = mutableListOf<ClaimedAccountPnlMail>()
-        var outcome: JobResult? = null
-        var claims = 0
-        while (outcome == null && claims < MAX_MAILS_PER_RUN) {
-            claims++
-            outcome = deliverNext(failed)
-        }
-        return releaseFailed(failed, outcome ?: JobResult.Success)
-    }
+    /** 알림 하나를 종류별 경로로 0~2행(메일 먼저)으로 펼친다 (design §3.4). Discord 렌더링은 Discord 행을 만들 때만 한다. */
+    private fun route(kind: OwnerAlertKind, mail: AccountPnlMail, discord: () -> DiscordMessage): List<AccountPnlMail> =
+        OwnerAlertRows.expand(mail, routing.resolve(kind), discord)
 
-    /** 한 건을 claim·발송·전이한다. 계속하면 null, 멈추면 이 회차의 결과. SMTP 실패 건은 [failed] 에 모은다. */
-    private fun deliverNext(failed: MutableList<ClaimedAccountPnlMail>): JobResult? {
-        if (Thread.currentThread().isInterrupted) {
-            log.warn("Account PnL mail delivery was cancelled; remaining mails stay pending")
-            return JobResult.Success
-        }
-        val mail = try {
-            store.claim(owner, CLAIM_CONCURRENCY, clock.instant()).firstOrNull()
-        } catch (exception: Exception) {
-            return storeFailure("claim", exception)
-        }
-        return when {
-            mail == null -> JobResult.Success
-
-            !send(mail) -> {
-                failed += mail
-                null
-            }
-
-            else -> markSent(mail)
-        }
-    }
-
-    private fun markSent(mail: ClaimedAccountPnlMail): JobResult? = try {
-        if (!store.markSent(mail.id, mail.claimToken, clock.instant())) {
-            log.warn("Account PnL mail {} transition was fenced (claim no longer owned)", mail.id)
-        }
-        null
-    } catch (exception: Exception) {
-        storeFailure("markSent", exception)
-    }
-
-    private fun send(mail: ClaimedAccountPnlMail): Boolean = try {
-        mailSender.send(mail.mail)
-        true
-    } catch (exception: Exception) {
-        // SMTP 예외 메시지에는 수신 주소가 실릴 수 있어 예외·원인 타입만 남긴다
-        log.warn(
-            "Account PnL mail send failed: id={}, attempt={}, error={}, cause={}",
-            mail.id,
-            mail.attemptCount + 1,
-            exception.javaClass.simpleName,
-            exception.cause?.javaClass?.simpleName ?: "none",
-        )
-        false
-    }
-
-    /** 모은 SMTP 실패 건을 시도 실패로 되돌린다. 저장소 예외가 나도 나머지 건은 계속 되돌린다. */
-    private fun releaseFailed(failed: List<ClaimedAccountPnlMail>, result: JobResult): JobResult {
-        var outcome = result
-        for (mail in failed) {
-            try {
-                if (!store.markAttemptFailed(mail.id, mail.claimToken, clock.instant())) {
-                    log.warn("Account PnL mail {} transition was fenced (claim no longer owned)", mail.id)
-                }
-            } catch (exception: Exception) {
-                if (outcome !is JobResult.Failure) outcome = storeFailure("markAttemptFailed", exception)
-            }
-        }
-        return outcome
-    }
+    /** 전달은 [OwnerAlertDispatcher] 가 소유한다 (design §5.2). 같은 회차 안에서 즉시 전달한다. */
+    private fun deliver(): JobResult = dispatcher.dispatch()
 
     private fun storeFailure(operation: String, exception: Exception): JobResult {
         log.error("Account PnL alert store failed during {}", operation, exception)
@@ -337,8 +302,6 @@ class AccountPnlMonitorJob(
         val MAX_QUOTE_SKEW: Duration = Duration.ofSeconds(5)
         val MAX_FX_INGESTION_GAP: Duration = Duration.ofHours(2)
         val STALE_CLAIM_AFTER: Duration = Duration.ofMinutes(5)
-        const val CLAIM_CONCURRENCY = 1
-        const val MAX_MAILS_PER_RUN = 10
         const val VERSION_CONFLICT = "state-version-conflict"
         const val CANCELLED = "cancelled"
     }

@@ -166,6 +166,12 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - AC6-(b) MARKET 단독 설정 단언 추가, AC6-(g) sleeper interrupt 테스트에 `assertNoSecret` 추가.
 - `DiscordWebhookSenderAdapterTest` → BUILD SUCCESSFUL (21 tests, 0 failures). `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 183 tests, 0 failures.
 
+### Task 9 — AC8 (2026-10-23)
+
+- Step 1 추출(채널 분기 없음) 직후 동결 테스트 무수정: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` → BUILD SUCCESSFUL (`AccountPnlMonitorJobTest` 40·`...HourlyReportTest` 7·`...ObservationLogTest` 4, 0 failures).
+- RED (stub = 디스패처가 모든 행을 메일 sender 로 보냄, Job 은 routing 무시·`init` 검증 없음): `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDispatcherTest' --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobOwnerAlertTest' --offline --no-daemon` → `20 tests completed, 16 failed`, BUILD FAILED. 예: `Expecting actual: ["claim", "markSent:1", "claim", "markSent:2", "claim"] to contain exactly ["claim", "markFailed:1", …]`, `Expecting actual: [EMAIL] to contain exactly [EMAIL, DISCORD]`, `Expecting code to raise a throwable.`
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (`OwnerAlertDispatcherTest` 11·`AccountPnlMonitorJobOwnerAlertTest` 9, 0 failures). Step 1 명령 → BUILD SUCCESSFUL. `./gradlew :apps:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 172 tests, 0 failures. `./gradlew architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (35 tests). `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` → BUILD SUCCESSFUL (5 tests, 0 failures).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
