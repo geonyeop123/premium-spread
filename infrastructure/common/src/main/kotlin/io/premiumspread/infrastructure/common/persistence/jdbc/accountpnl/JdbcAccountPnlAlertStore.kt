@@ -6,6 +6,10 @@ import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.ClaimedAccountPnlMail
 import io.premiumspread.domain.accountpnl.OutageState
 import io.premiumspread.domain.accountpnl.PnlAlertState
+import io.premiumspread.domain.owneralert.DiscordPush
+import io.premiumspread.domain.owneralert.DiscordRoute
+import io.premiumspread.domain.owneralert.DiscordTarget
+import io.premiumspread.domain.owneralert.OwnerAlertChannel
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
@@ -20,7 +24,10 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * 실계정 순손익 알림 상태(단일 행, 낙관적 version)와 전용 메일 outbox.
+ * 실계정 순손익 알림 상태(단일 행, 낙관적 version)와 owner 알림 공용 outbox(메일·Discord).
+ *
+ * 한 알림은 채널마다 한 행이며 중복 제거는 `(event_key, channel)` UNIQUE 가 한다. 이 binary 이전 버전의 claim 은
+ * channel 을 모른다 — 구·신 batch 를 겹쳐 돌리지 않는다(runbook 배포와 롤백).
  *
  * - [save] 는 호출자 트랜잭션에 참여하거나 새로 연다. 상태 행을 먼저 쓰고 실패하면 메일을 쓰기 전에 false 를 돌려주므로
  *   version 불일치 시 아무것도 기록되지 않는다.
@@ -71,7 +78,8 @@ class JdbcAccountPnlAlertStore(
         return claimTransaction.execute {
             jdbcTemplate.query(
                 """
-                SELECT id, event_key, subject, body, attempt_count
+                SELECT id, event_key, subject, body, attempt_count,
+                       channel, discord_target, discord_push, discord_color
                 FROM account_pnl_mail
                 WHERE status = 'PENDING'
                 ORDER BY id
@@ -118,6 +126,27 @@ class JdbcAccountPnlAlertStore(
               AND claim_token = ?
             """.trimIndent(),
             AccountPnlAlertStore.MAX_ATTEMPTS,
+            id,
+            claimToken,
+        ) == 1
+
+    /**
+     * 재시도해도 성공할 수 없는 실패 — 시도 횟수와 무관하게 바로 `FAILED`(attempt+1).
+     * [now] 는 [markAttemptFailed] 와 같은 이유(시도 시각 컬럼 없음)로 기록하지 않는다.
+     */
+    override fun markFailed(id: Long, claimToken: String, now: Instant): Boolean =
+        jdbcTemplate.update(
+            """
+            UPDATE account_pnl_mail
+            SET status = 'FAILED',
+                attempt_count = attempt_count + 1,
+                claim_token = NULL,
+                locked_by = NULL,
+                locked_at = NULL
+            WHERE id = ?
+              AND status = 'PROCESSING'
+              AND claim_token = ?
+            """.trimIndent(),
             id,
             claimToken,
         ) == 1
@@ -187,17 +216,26 @@ class JdbcAccountPnlAlertStore(
             expectedVersion,
         ) == 1
 
-    /** 같은 event_key 는 무시한다. 다른 제약 위반·오류는 그대로 던진다(INSERT IGNORE 를 쓰지 않는 이유). */
+    /**
+     * 같은 (event_key, channel) 은 무시한다. 다른 제약 위반·오류는 그대로 던진다(INSERT IGNORE 를 쓰지 않는 이유).
+     * channel·discord_target·discord_push 는 enum 이름으로 저장한다.
+     */
     private fun insertMail(mail: AccountPnlMail, createdAt: Instant) {
         jdbcTemplate.update(
             """
-            INSERT INTO account_pnl_mail (event_key, subject, body, status, attempt_count, created_at)
-            VALUES (?, ?, ?, 'PENDING', 0, ?)
+            INSERT INTO account_pnl_mail (
+                event_key, channel, subject, body, discord_target, discord_push, discord_color,
+                status, attempt_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?)
             ON DUPLICATE KEY UPDATE id = id
             """.trimIndent(),
             mail.eventKey,
+            mail.channel.name,
             mail.subject,
             mail.body,
+            mail.discordRoute?.target?.name,
+            mail.discordRoute?.push?.name,
+            mail.discordColor,
             createdAt.toSqlTimestamp(),
         )
     }
@@ -248,15 +286,29 @@ class JdbcAccountPnlAlertStore(
         version = getLong("version"),
     )
 
-    private fun ResultSet.toPendingMail(): PendingMail = PendingMail(
-        id = getLong("id"),
-        mail = AccountPnlMail(
-            eventKey = getString("event_key"),
-            subject = getString("subject"),
-            body = getString("body"),
-        ),
-        attemptCount = getInt("attempt_count"),
-    )
+    private fun ResultSet.toPendingMail(): PendingMail {
+        val channel = OwnerAlertChannel.valueOf(getString("channel"))
+        val discord = channel == OwnerAlertChannel.DISCORD
+        return PendingMail(
+            id = getLong("id"),
+            mail = AccountPnlMail(
+                eventKey = getString("event_key"),
+                subject = getString("subject"),
+                body = getString("body"),
+                channel = channel,
+                discordRoute = if (discord) {
+                    DiscordRoute(
+                        target = DiscordTarget.valueOf(getString("discord_target")),
+                        push = DiscordPush.valueOf(getString("discord_push")),
+                    )
+                } else {
+                    null
+                },
+                discordColor = if (discord) getInt("discord_color") else null,
+            ),
+            attemptCount = getInt("attempt_count"),
+        )
+    }
 
     private fun ResultSet.getInstantOrNull(column: String): Instant? = getTimestamp(column)?.toInstant()
 

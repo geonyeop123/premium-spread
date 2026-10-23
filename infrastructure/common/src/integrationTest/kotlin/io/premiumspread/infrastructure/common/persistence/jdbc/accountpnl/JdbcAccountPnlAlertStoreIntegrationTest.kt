@@ -5,6 +5,11 @@ import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.OutageState
 import io.premiumspread.domain.accountpnl.PnlAlertState
+import io.premiumspread.domain.owneralert.DiscordPush
+import io.premiumspread.domain.owneralert.DiscordRoute
+import io.premiumspread.domain.owneralert.DiscordTarget
+import io.premiumspread.domain.owneralert.OwnerAlertChannel
+import io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -18,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.MySQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import java.sql.Timestamp
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -353,7 +359,117 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
         assertThat(store.save(0, STATE, listOf(AccountPnlMail("fits", "subject", "가".repeat(65_535 / 3))))).isTrue()
     }
 
+    @Test
+    fun `같은 eventKey 의 메일과 Discord 행은 각각 한 행이고 다시 저장해도 늘지 않는다`() {
+        val mails = listOf(mail("k"), discordRow("k"))
+
+        assertThat(store.save(0, STATE, mails)).isTrue()
+        assertThat(mailRows().map { it["event_key"] to it["channel"] }).containsExactly(
+            "k" to "EMAIL",
+            "k" to "DISCORD",
+        )
+
+        assertThat(store.save(1, STATE, mails)).isTrue()
+        assertThat(store.load().version).isEqualTo(2)
+        assertThat(mailRows().map { it["event_key"] to it["channel"] }).containsExactly(
+            "k" to "EMAIL",
+            "k" to "DISCORD",
+        )
+    }
+
+    @Test
+    fun `Discord 행은 claim 에서 채널과 Discord 메타를 그대로 돌려준다`() {
+        val discord = AccountPnlMail(
+            "k-d",
+            "📊 정시 보고 12:00",
+            "설명",
+            OwnerAlertChannel.DISCORD,
+            DiscordRoute(DiscordTarget.OPS, DiscordPush.SILENT),
+            0x3498DB,
+        )
+        assertThat(store.save(0, STATE, listOf(discord))).isTrue()
+
+        val claimed = store.claim("worker", 10, NOW).single()
+
+        assertThat(claimed.mail).isEqualTo(discord)
+        val row = jdbcTemplate.queryForMap(
+            "SELECT channel, discord_target, discord_push, discord_color FROM account_pnl_mail WHERE id = ?",
+            claimed.id,
+        )
+        assertThat(row["channel"]).isEqualTo("DISCORD")
+        assertThat(row["discord_target"]).isEqualTo("OPS")
+        assertThat(row["discord_push"]).isEqualTo("SILENT")
+        assertThat(row["discord_color"]).isEqualTo(0x3498DB)
+    }
+
+    @Test
+    fun `channel 없이 넣은 행은 메일 행으로 읽힌다`() {
+        jdbcTemplate.update(
+            V19OwnerAlertChannelMigrationIntegrationTest.OLD_INSERT_MAIL.trimIndent(),
+            "k",
+            "s",
+            "b",
+            Timestamp.from(NOW),
+        )
+
+        val claimed = store.claim("worker", 10, NOW).single()
+
+        assertThat(claimed.mail).isEqualTo(AccountPnlMail("k", "s", "b"))
+    }
+
+    @Test
+    fun `markFailed 는 claim 된 행을 바로 FAILED 로 바꾸고 시도 횟수를 1 늘린다`() {
+        store.save(0, STATE, listOf(discordRow("fail-now")))
+        val claimed = store.claim("worker", 10, NOW).single()
+
+        assertThat(store.markFailed(claimed.id, claimed.claimToken, NOW.plusSeconds(1))).isTrue()
+
+        val failed = jdbcTemplate.queryForMap(
+            "SELECT status, attempt_count, claim_token, locked_by, locked_at FROM account_pnl_mail WHERE id = ?",
+            claimed.id,
+        )
+        assertThat(failed["status"]).isEqualTo("FAILED")
+        assertThat(failed["attempt_count"]).isEqualTo(1)
+        assertThat(failed["claim_token"]).isNull()
+        assertThat(failed["locked_by"]).isNull()
+        assertThat(failed["locked_at"]).isNull()
+        assertThat(store.markFailed(claimed.id, claimed.claimToken, NOW.plusSeconds(2))).isFalse()
+        assertThat(store.claim("worker", 10, NOW.plusSeconds(3))).isEmpty()
+        assertThat(store.recoverStale(NOW.plus(Duration.ofDays(1)), STALE_AFTER)).isZero()
+    }
+
+    @Test
+    fun `markFailed 는 token 이 다르거나 PENDING 이면 false 이고 행을 바꾸지 않는다`() {
+        store.save(0, STATE, listOf(mail("claimed"), mail("pending")))
+        val claimed = store.claim("worker", 1, NOW).single()
+        val pendingId = mailId("pending")
+
+        assertThat(store.markFailed(claimed.id, "00000000-0000-0000-0000-000000000000", NOW)).isFalse()
+        assertThat(store.markFailed(pendingId, claimed.claimToken, NOW)).isFalse()
+
+        val untouched = jdbcTemplate.queryForMap(
+            "SELECT status, attempt_count, claim_token, locked_by FROM account_pnl_mail WHERE id = ?",
+            claimed.id,
+        )
+        assertThat(untouched["status"]).isEqualTo("PROCESSING")
+        assertThat(untouched["attempt_count"]).isEqualTo(0)
+        assertThat(untouched["claim_token"]).isEqualTo(claimed.claimToken)
+        assertThat(untouched["locked_by"]).isEqualTo("worker")
+        assertThat(instantOf("locked_at", claimed.id)).isEqualTo(NOW)
+        assertThat(statusOf("pending")).isEqualTo("PENDING")
+        assertThat(attemptCountOf("pending")).isZero()
+    }
+
     private fun mail(eventKey: String) = AccountPnlMail(eventKey, "subject $eventKey", "body $eventKey")
+
+    private fun discordRow(eventKey: String) = AccountPnlMail(
+        eventKey,
+        "subject $eventKey",
+        "body $eventKey",
+        OwnerAlertChannel.DISCORD,
+        DiscordRoute(DiscordTarget.PNL, DiscordPush.HERE),
+        0x2ECC71,
+    )
 
     private fun mailRows(): List<Map<String, Any?>> =
         jdbcTemplate.queryForList("SELECT * FROM account_pnl_mail ORDER BY id")

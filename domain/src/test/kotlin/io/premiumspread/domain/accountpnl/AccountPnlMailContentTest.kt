@@ -415,4 +415,111 @@ class AccountPnlMailContentTest {
         assertThat(sameHour.eventKey).isEqualTo(first.eventKey)
         assertThat(nextHour.eventKey).isEqualTo("account-pnl-hourly-1792458000000")
     }
+
+    // 정시 보고·중단·복구 메일 기준 golden. Task 1 시점(base 1bce3dd) 실제 출력이며 이후 태스크에서 고치지 않는다.
+    private val goldenHourlyEventKey = "account-pnl-hourly-1792454400000"
+    private val goldenHourlySubject = "[김프 알림] 정시 보고 09:00 · 순수익률 +1.23% · +456,789원"
+    private val goldenHourlyBody = """
+        |정시 보고 — 1% 알림 기준과 무관하게 매시간 발송된다.
+        |
+        |순수익률: +1.23%
+        |순수익금: +456,789원
+        |체결가 기준 순수익률(대조용): +1.20% / 순수익금 +455,000원
+        |
+        |gross: +500,001원
+        |진입 수수료: -23,824원
+        |  - 빗썸: -12,000원
+        |  - 바이낸스: -8.9 USDT (-11,824원)
+        |누적 펀딩비: +4,251원 (+3.2 USDT)
+        |예상 청산 수수료: -15,000원
+        |
+        |[빗썸 현물]
+        |수량: 0.266
+        |평단: 113,016,278원
+        |청산가(호가 VWAP): 109,500,000.00원
+        |최근 체결가: 109,575,000원
+        |
+        |[바이낸스 선물 숏]
+        |수량: 0.266
+        |진입가: 83549.4 USDT
+        |청산가(호가 VWAP): 81580.0000 USDT
+        |최근 체결가: 81577 USDT
+        |
+        |환율: 1328.5 KRW/USDT
+        |빗썸 호가 관측: 2026-10-20 09:00:00 (2026-10-20T00:00:00Z)
+        |바이낸스 호가 관측: 2026-10-20 09:00:01 (2026-10-20T00:00:01Z)
+        |환율 관측: 2026-10-20 08:30:00 (2026-10-19T23:30:00Z)
+        |계산 시각: 2026-10-20 09:00:05 (2026-10-20T00:00:05Z)
+        |
+        |※ 금액은 표시 시 원 단위 반올림(계산은 전체 정밀도)
+    """.trimMargin()
+
+    private val goldenBithumbAuthOutageEventKey = "account-pnl-outage-1792465800000"
+    private val goldenBithumbAuthOutageSubject = "[김프 알림] 모니터링 중단 — 빗썸 인증 실패(허용 IP 확인)"
+    private val goldenBithumbAuthOutageBody = """
+        |실계정 순손익 모니터링이 5분 넘게 중단되었습니다.
+        |원인 범주: 빗썸 인증 실패(허용 IP 확인)
+        |마지막 성공: 없음
+        |알림 시각: 2026-10-20 12:10:00 (2026-10-20T03:10:00Z)
+        |빗썸 Open API key 의 허용 IP 가 현재 공인 IP 와 같은지 확인하세요.
+        |조치 안내: docs/runbooks/account-pnl-alert.md
+    """.trimMargin()
+
+    private val goldenStaleFxOutageEventKey = "account-pnl-outage-1792465800000"
+    private val goldenStaleFxOutageSubject = "[김프 알림] 모니터링 중단 — 환율 수집 지연"
+    private val goldenStaleFxOutageBody = """
+        |실계정 순손익 모니터링이 5분 넘게 중단되었습니다.
+        |원인 범주: 환율 수집 지연
+        |마지막 성공: 2026-10-20 12:00:00 (2026-10-20T03:00:00Z)
+        |알림 시각: 2026-10-20 12:10:00 (2026-10-20T03:10:00Z)
+        |조치 안내: docs/runbooks/account-pnl-alert.md
+    """.trimMargin()
+
+    private val goldenRecoveredEventKey = "account-pnl-recovered-1792466100000"
+    private val goldenRecoveredSubject = "[김프 알림] 모니터링 복구"
+    private val goldenRecoveredBody = """
+        |실계정 순손익 모니터링이 복구되었습니다.
+        |복구 시각: 2026-10-20 12:15:00 (2026-10-20T03:15:00Z)
+    """.trimMargin()
+
+    @Test
+    fun `정시 보고 메일은 기준 golden 과 같다`() {
+        val mail = AccountPnlMailContent.hourly(pnl(), zone)
+
+        assertThat(mail.eventKey).isEqualTo(goldenHourlyEventKey)
+        assertThat(mail.subject).isEqualTo(goldenHourlySubject)
+        assertThat(mail.body).isEqualTo(goldenHourlyBody)
+    }
+
+    @Test
+    fun `빗썸 인증 중단 메일은 기준 golden 과 같다`() {
+        val now = Instant.parse("2026-10-20T03:10:00Z")
+
+        val mail = AccountPnlMailContent.outage(OutageNotice.Outage(AccountReadFailureCategory.BITHUMB_AUTH, null), now, zone)
+
+        assertThat(mail.eventKey).isEqualTo(goldenBithumbAuthOutageEventKey)
+        assertThat(mail.subject).isEqualTo(goldenBithumbAuthOutageSubject)
+        assertThat(mail.body).isEqualTo(goldenBithumbAuthOutageBody)
+    }
+
+    @Test
+    fun `환율 지연 중단 메일은 기준 golden 과 같다`() {
+        val now = Instant.parse("2026-10-20T03:10:00Z")
+        val notice = OutageNotice.Outage(AccountReadFailureCategory.STALE_FX, Instant.parse("2026-10-20T03:00:00Z"))
+
+        val mail = AccountPnlMailContent.outage(notice, now, zone)
+
+        assertThat(mail.eventKey).isEqualTo(goldenStaleFxOutageEventKey)
+        assertThat(mail.subject).isEqualTo(goldenStaleFxOutageSubject)
+        assertThat(mail.body).isEqualTo(goldenStaleFxOutageBody)
+    }
+
+    @Test
+    fun `복구 메일은 기준 golden 과 같다`() {
+        val mail = AccountPnlMailContent.recovered(Instant.parse("2026-10-20T03:15:00Z"), zone)
+
+        assertThat(mail.eventKey).isEqualTo(goldenRecoveredEventKey)
+        assertThat(mail.subject).isEqualTo(goldenRecoveredSubject)
+        assertThat(mail.body).isEqualTo(goldenRecoveredBody)
+    }
 }

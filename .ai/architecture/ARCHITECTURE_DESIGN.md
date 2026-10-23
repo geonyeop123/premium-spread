@@ -115,6 +115,8 @@ AccountPnlMonitorScheduler (1분) → AccountPnlMonitorJob (JobExecutor)
   → claim 후 SMTP (at-least-once)
 ```
 
+outbox 행은 채널(EMAIL·DISCORD)별로 만들고, Discord 는 `infrastructure:batch` 의 webhook adapter 가 보낸다. 채널 라우팅은 Domain `OwnerAlertRouting` 이 정한다.
+
 `notification_delivery`를 재사용하지 않는 전용 outbox다. 조회 전용 경계는 `PrivateAccountReadOnlyArchitectureTest`가
 강제하며 운영 절차는 [`docs/runbooks/account-pnl-alert.md`](../../docs/runbooks/account-pnl-alert.md)를 따른다.
 

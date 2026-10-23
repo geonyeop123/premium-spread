@@ -1,14 +1,29 @@
 package io.premiumspread.config
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.mockk.Runs
+import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.slot
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJob
+import io.premiumspread.application.notification.owneralert.OwnerAlertDispatcher
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
+import io.premiumspread.domain.accountpnl.AccountPnlMail
+import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
+import io.premiumspread.domain.owneralert.DiscordPush
+import io.premiumspread.domain.owneralert.DiscordRoute
+import io.premiumspread.domain.owneralert.DiscordTarget
+import io.premiumspread.domain.owneralert.OwnerAlertChannels
+import io.premiumspread.domain.owneralert.OwnerAlertKind
+import io.premiumspread.domain.owneralert.OwnerAlertRoute
+import io.premiumspread.domain.owneralert.OwnerAlertRouting
+import io.premiumspread.email.EmailMessage
 import io.premiumspread.email.EmailSender
 import io.premiumspread.infrastructure.batch.BatchJobSupportConfiguration
 import io.premiumspread.infrastructure.batch.accountpnl.AccountPnlMonitorAdapterConfiguration
@@ -18,6 +33,8 @@ import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPriv
 import io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.job.RedisJobRunRecorderAdapter
 import io.premiumspread.infrastructure.batch.notification.AccountPnlEmailSenderAdapter
+import io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapter
+import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertProperties
 import io.premiumspread.interfaces.scheduling.AccountPnlMonitorScheduler
 import io.premiumspread.monitoring.AlertService
 import org.assertj.core.api.Assertions.assertThat
@@ -27,6 +44,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
+import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -508,6 +526,303 @@ class AccountPnlMonitorWiringTest {
         assertThat(output.all)
             .contains("account-pnl-monitor binance leg: mode=manual, entryFeeUsdt=set, fundingUsdt=set, takerFeeRate=default")
             .doesNotContain(*settingValues)
+    }
+
+    // ---- owner 알림 채널 (owner-alert-channel AC9·AC10) ----
+
+    private val discordProps = arrayOf(
+        "owner-alert.discord.enabled=true",
+        "owner-alert.discord.webhook.pnl=https://discord.example.test/api/webhooks/101/TOKENpnlQ7",
+    )
+
+    private val allWebhookProps = arrayOf(
+        *discordProps,
+        "owner-alert.discord.webhook.market=https://discord.example.test/api/webhooks/102/TOKENmktQ7",
+        "owner-alert.discord.webhook.ops=https://discord.example.test/api/webhooks/103/TOKENopsQ7",
+    )
+
+    private val webhookValues = arrayOf("TOKENpnlQ7", "TOKENmktQ7", "TOKENopsQ7", "/api/webhooks/", "discord.example.test")
+
+    private val webhookEnvNames = arrayOf(
+        "OWNER_ALERT_DISCORD_WEBHOOK_PNL",
+        "OWNER_ALERT_DISCORD_WEBHOOK_MARKET",
+        "OWNER_ALERT_DISCORD_WEBHOOK_OPS",
+    )
+
+    private fun routingOf(ctx: ApplicationContext): OwnerAlertRouting =
+        ctx.getBean(OwnerAlertRouting::class.java)
+
+    @Test
+    fun `메일과 Discord 를 모두 켜면 두 sender 와 Job 이 뜨고 라우팅이 두 채널이다`() {
+        runner.withPropertyValues(*enabledProps, *discordProps).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).hasSingleBean(AccountPnlMonitorJob::class.java)
+            assertThat(ctx).hasSingleBean(AccountPnlEmailSenderAdapter::class.java)
+            assertThat(ctx).hasSingleBean(DiscordWebhookSenderAdapter::class.java)
+            assertThat(routingOf(ctx).channels).isEqualTo(OwnerAlertChannels(email = true, discord = true))
+            val job = ctx.getBean(AccountPnlMonitorJob::class.java)
+            assertThat(ReflectionTestUtils.getField(job, "routing")).isSameAs(routingOf(ctx))
+            assertThat(ReflectionTestUtils.getField(job, "mailSender")).isSameAs(ctx.getBean(AccountPnlMailSender::class.java))
+            assertThat(ReflectionTestUtils.getField(job, "discordSender"))
+                .isSameAs(ctx.getBean(DiscordWebhookSenderAdapter::class.java))
+        }
+    }
+
+    @Test
+    fun `SMTP 가 꺼져도 Discord 가 있으면 Discord 만으로 뜨고 메일 채널 꺼짐 WARN 을 남긴다`(output: CapturedOutput) {
+        val start = output.all.length
+        runner.withPropertyValues(
+            *enabledProps,
+            "notification.email.enabled=false",
+            "account-pnl-monitor.recipient=",
+            *discordProps,
+        ).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).hasSingleBean(AccountPnlMonitorJob::class.java)
+            assertThat(ctx).doesNotHaveBean(AccountPnlEmailSenderAdapter::class.java)
+            assertThat(ctx).hasSingleBean(DiscordWebhookSenderAdapter::class.java)
+            assertThat(routingOf(ctx).channels).isEqualTo(OwnerAlertChannels(email = false, discord = true))
+            assertThat(ReflectionTestUtils.getField(ctx.getBean(AccountPnlMonitorJob::class.java), "mailSender"))
+                .isSameAs(OwnerAlertDispatcher.UNAVAILABLE_MAIL_SENDER)
+        }
+        assertThat(output.all.substring(start))
+            .contains("owner-alert email enabled but NOTIFICATION_EMAIL_ENABLED is not true; email channel off")
+            .doesNotContain("monitor not started", "ACCOUNT_PNL_ALERT_RECIPIENT")
+            .doesNotContain(*webhookValues)
+    }
+
+    @Test
+    fun `owner 메일을 끄고 Discord 만 켜면 recipient 없이 뜬다`(output: CapturedOutput) {
+        val start = output.all.length
+        runner.withPropertyValues(
+            *enabledProps,
+            "owner-alert.email.enabled=false",
+            "account-pnl-monitor.recipient=",
+            *discordProps,
+        ).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).hasSingleBean(AccountPnlMonitorJob::class.java)
+            assertThat(ctx).doesNotHaveBean(AccountPnlEmailSenderAdapter::class.java)
+            assertThat(ctx).hasSingleBean(DiscordWebhookSenderAdapter::class.java)
+            assertThat(routingOf(ctx).channels).isEqualTo(OwnerAlertChannels(email = false, discord = true))
+        }
+        assertThat(output.all.substring(start))
+            .doesNotContain("email channel off", "monitor not started", "ACCOUNT_PNL_ALERT_RECIPIENT")
+    }
+
+    @Test
+    fun `Discord 를 켰는데 webhook 이 없으면 메일이 있어도 뜨지 않고 env 이름 셋을 WARN 한다`(output: CapturedOutput) {
+        listOf("", "   ").forEach { blank ->
+            val props = arrayOf(
+                *enabledProps,
+                "owner-alert.discord.enabled=true",
+                "owner-alert.discord.webhook.pnl=$blank",
+                "owner-alert.discord.webhook.market=$blank",
+                "owner-alert.discord.webhook.ops=$blank",
+            )
+            val start = output.all.length
+            runner.withPropertyValues(*props).assertNoBeans()
+            runner.withPropertyValues(*props).run { ctx ->
+                assertThat(ctx).hasNotFailed()
+                assertThat(ctx).doesNotHaveBean(DiscordWebhookSenderAdapter::class.java)
+                assertThat(ctx).doesNotHaveBean(OwnerAlertRouting::class.java)
+            }
+            assertThat(output.all.substring(start)).`as`("blank=[$blank]")
+                .contains("owner-alert discord enabled but no webhook configured; monitor not started")
+                .contains(*webhookEnvNames)
+                .doesNotContain(*settingValues)
+        }
+    }
+
+    @Test
+    fun `메일을 끄고 Discord 도 없으면 email disabled WARN 으로 뜨지 않는다`(output: CapturedOutput) {
+        val start = output.all.length
+        runner.withPropertyValues(*enabledProps, "owner-alert.email.enabled=false").assertNoBeans()
+        runner.withPropertyValues(*enabledProps, "owner-alert.email.enabled=false").run { ctx ->
+            assertThat(ctx).doesNotHaveBean(DiscordWebhookSenderAdapter::class.java)
+        }
+        assertThat(output.all.substring(start))
+            .contains("account-pnl-monitor enabled but email disabled; monitor not started")
+            .doesNotContain(*settingValues)
+    }
+
+    /** design §7.2 판정식을 구현과 독립적으로 다시 적은 기대값. recipient 는 emailEffective 일 때만 필수다. */
+    private data class ChannelCase(
+        val emailEnabled: String?,
+        val smtp: String,
+        val discordEnabled: String?,
+        val webhooks: List<String>,
+        val recipient: Boolean,
+    ) {
+        val emailEffective: Boolean get() = (emailEnabled == null || emailEnabled == "true") && smtp == "true"
+        val discordEffective: Boolean get() = discordEnabled == "true" && webhooks.isNotEmpty()
+        val expectedStarted: Boolean
+            get() {
+                val recipientOk = !emailEffective || recipient
+                val discordMisconfigured = discordEnabled == "true" && webhooks.isEmpty()
+                return recipientOk && !discordMisconfigured && (emailEffective || discordEffective)
+            }
+    }
+
+    @Test
+    fun `채널 판정은 app 과 infra 가 같은 답을 낸다`() {
+        val credentialProps = listOf(
+            "account-pnl-monitor.enabled=true",
+            "account-pnl-monitor.bithumb.access-key=BITHUMB-ACCESS-SECRET-VALUE",
+            "account-pnl-monitor.bithumb.secret-key=BITHUMB-SECRET-SECRET-VALUE",
+            *binanceKeyProps,
+        )
+        val webhookSets = listOf(
+            emptyList(),
+            listOf("owner-alert.discord.webhook.pnl=https://discord.example.test/api/webhooks/101/TOKENpnlQ7"),
+            listOf("owner-alert.discord.webhook.market=https://discord.example.test/api/webhooks/102/TOKENmktQ7"),
+            allWebhookProps.filter { it.startsWith("owner-alert.discord.webhook.") },
+        )
+        val cases = buildList {
+            listOf(null, "true", "false").forEach { email ->
+                listOf("true", "false").forEach { smtp ->
+                    listOf(null, "false", "true").forEach { discord ->
+                        webhookSets.forEach { webhooks ->
+                            listOf(true, false).forEach { recipient ->
+                                add(ChannelCase(email, smtp, discord, webhooks, recipient))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assertThat(cases).hasSize(144)
+        cases.forEach { case ->
+            val props = credentialProps + listOfNotNull(
+                "notification.email.enabled=${case.smtp}",
+                case.emailEnabled?.let { "owner-alert.email.enabled=$it" },
+                case.discordEnabled?.let { "owner-alert.discord.enabled=$it" },
+                if (case.recipient) "account-pnl-monitor.recipient=owner@example.test" else "account-pnl-monitor.recipient=",
+            ) + case.webhooks
+            runner.withPropertyValues(*props.toTypedArray()).run { ctx ->
+                val description = case.toString()
+                assertThat(ctx).`as`(description).hasNotFailed()
+                val jobs = ctx.getBeansOfType(AccountPnlMonitorJob::class.java).size
+                val ports = ctx.getBeansOfType(ForeignPerpAccountReadPort::class.java).size
+                assertThat(jobs).`as`(description).isEqualTo(ports).isIn(0, 1).isEqualTo(if (case.expectedStarted) 1 else 0)
+                if (jobs == 1) {
+                    val channels = routingOf(ctx).channels
+                    assertThat(channels.email).`as`(description)
+                        .isEqualTo(ctx.getBeansOfType(AccountPnlEmailSenderAdapter::class.java).size == 1)
+                    assertThat(channels.discord).`as`(description)
+                        .isEqualTo(ctx.getBeansOfType(DiscordWebhookSenderAdapter::class.java).size == 1)
+                    assertThat(channels).`as`(description)
+                        .isEqualTo(OwnerAlertChannels(email = case.emailEffective, discord = case.discordEffective))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `종류별 override 가 라우팅 bean 에 반영된다`() {
+        runner.withPropertyValues(
+            *enabledProps,
+            *discordProps,
+            "owner-alert.routes.hourly-report.email=true",
+            "owner-alert.routes.hourly-report.push=sound",
+        ).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(routingOf(ctx).resolve(OwnerAlertKind.HOURLY_REPORT))
+                .isEqualTo(OwnerAlertRoute(true, DiscordRoute(DiscordTarget.PNL, DiscordPush.SOUND)))
+        }
+    }
+
+    @Test
+    fun `메일 채널을 쓰는데 수신 주소가 비면 env 이름만 WARN 하고 뜨지 않는다`(output: CapturedOutput) {
+        val start = output.all.length
+        runner.withPropertyValues(*enabledProps, "account-pnl-monitor.recipient=").run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).doesNotHaveBean(AccountPnlMonitorJob::class.java)
+        }
+        assertThat(output.all.substring(start))
+            .contains("missing=[ACCOUNT_PNL_ALERT_RECIPIENT]")
+            .doesNotContain(*settingValues)
+    }
+
+    @Test
+    fun `메일 sender 는 account-pnl-monitor recipient 로 보낸다`() {
+        runner.withPropertyValues(*enabledProps).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            val emailSender = ctx.getBean(EmailSender::class.java)
+            val sent = slot<EmailMessage>()
+            every { emailSender.send(capture(sent)) } just Runs
+
+            ctx.getBean(AccountPnlMailSender::class.java).send(AccountPnlMail("k", "s", "b"))
+
+            assertThat(sent.captured.to).isEqualTo("owner@example.test")
+        }
+    }
+
+    @Test
+    fun `Properties 와 webhook 해석 toString 에 webhook 이 없다`() {
+        runner.withPropertyValues(*enabledProps, *allWebhookProps).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            val properties = ctx.getBean(OwnerAlertProperties::class.java)
+            assertThat(properties.toString()).doesNotContain(*webhookValues).contains("pnl=set", "market=set", "ops=set")
+            assertThat(properties.discord.webhook.toDiscordWebhooks().toString()).doesNotContain(*webhookValues)
+            assertThat(ctx.getBean(DiscordWebhookSenderAdapter::class.java).toString()).doesNotContain(*webhookValues)
+            assertThat(routingOf(ctx).toString()).doesNotContain(*webhookValues)
+        }
+    }
+
+    @Test
+    fun `기동 INFO 는 set 과 fallback 만 찍는다`(output: CapturedOutput) {
+        val allStart = output.all.length
+        runner.withPropertyValues(*enabledProps, *allWebhookProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(allStart))
+            .contains("owner-alert discord webhooks: pnl=set, market=set, ops=set")
+            .doesNotContain(*webhookValues)
+
+        val pnlStart = output.all.length
+        runner.withPropertyValues(*enabledProps, *discordProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(pnlStart))
+            .contains("owner-alert discord webhooks: pnl=set, market=fallback(PNL), ops=fallback(PNL)")
+            .doesNotContain(*webhookValues)
+    }
+
+    @Test
+    fun `기동 INFO 에 종류별 해석된 경로 요약이 있고 webhook 값이 없다`(output: CapturedOutput) {
+        val bothStart = output.all.length
+        runner.withPropertyValues(*enabledProps, *allWebhookProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(bothStart))
+            .contains(
+                "owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), " +
+                    "monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND)",
+            ).doesNotContain(*webhookValues)
+            .doesNotContain("owner@example.test")
+
+        val emailStart = output.all.length
+        runner.withPropertyValues(*enabledProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(emailStart))
+            .contains(
+                "owner-alert routes: profit=email, hourly-report=email, monitoring-outage=email, monitoring-recovered=email",
+            )
+    }
+
+    @Test
+    fun `http webhook 은 기동 실패이고 값이 어디에도 없다`(output: CapturedOutput) {
+        val property = "owner-alert.discord.webhook.ops"
+        listOf("true", "false").forEach { discordEnabled ->
+            assertFailsWithoutValue(
+                output,
+                property,
+                "TOKENhttpQ7",
+                *enabledProps,
+                "owner-alert.discord.enabled=$discordEnabled",
+                "$property=http://discord.example.test/api/webhooks/9/TOKENhttpQ7",
+            )
+        }
+    }
+
+    @Test
+    fun `잘못된 push 값은 기동 실패이고 값이 어디에도 없다`(output: CapturedOutput) {
+        val property = "owner-alert.routes.profit.push"
+        assertFailsWithoutValue(output, property, "loudQ9", *enabledProps, "$property=loudQ9")
     }
 
     @Configuration(proxyBeanMethods = false)

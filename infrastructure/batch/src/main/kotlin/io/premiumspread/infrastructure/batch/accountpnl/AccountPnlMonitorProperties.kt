@@ -11,6 +11,7 @@ import java.math.BigDecimal
 @ConfigurationProperties(prefix = "account-pnl-monitor")
 data class AccountPnlMonitorProperties(
     val enabled: Boolean = false,
+    /** owner 메일 수신 주소는 `OwnerAlertChannelRequirements.recipient` 가 읽는다 — 이 필드는 바인딩 호환용. */
     val recipient: String = "",
     val bithumb: BithumbCredentials = BithumbCredentials(),
     val binance: BinanceCredentials = BinanceCredentials(),

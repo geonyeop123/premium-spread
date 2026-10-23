@@ -1,23 +1,48 @@
 package io.premiumspread.domain.accountpnl
 
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.cost
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.costUsdt
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.format
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.krw
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.krwOrZero
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.label
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.percent
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.plain
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.plainKrw
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.signedUsdt
+import io.premiumspread.domain.accountpnl.AccountPnlFormat.time
+import io.premiumspread.domain.owneralert.DiscordRoute
+import io.premiumspread.domain.owneralert.OwnerAlertChannel
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.text.DecimalFormat
-import java.text.DecimalFormatSymbols
 import java.time.Instant
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
-import java.util.Locale
+import java.time.temporal.ChronoUnit
 
-data class AccountPnlMail(val eventKey: String, val subject: String, val body: String)
+/**
+ * owner 알림 공용 outbox 행 (이름은 호환 때문에 유지 — design §4.4).
+ * EMAIL 행: subject/body = 메일 제목/본문. DISCORD 행: subject/body = embed 제목/설명, Discord 필드 필수.
+ */
+data class AccountPnlMail(
+    val eventKey: String,
+    val subject: String,
+    val body: String,
+    val channel: OwnerAlertChannel = OwnerAlertChannel.EMAIL,
+    val discordRoute: DiscordRoute? = null,
+    val discordColor: Int? = null,
+) {
+    init {
+        val discord = channel == OwnerAlertChannel.DISCORD
+        require(discord == (discordRoute != null)) { "discordRoute must be set only for DISCORD rows." }
+        require(discord == (discordColor != null)) { "discordColor must be set only for DISCORD rows." }
+    }
+}
 
 /** 실계정 순손익 알림 메일의 제목·본문 (design §4.3). 숫자·시각 표기는 locale 과 무관하다. */
 object AccountPnlMailContent {
-    private const val RUNBOOK = "docs/runbooks/account-pnl-alert.md"
     private const val HOURLY_HEADER = "정시 보고 — 1% 알림 기준과 무관하게 매시간 발송된다."
     private val HOUR_FORMAT = DateTimeFormatter.ofPattern("HH")
-    private val TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
     fun profit(pnl: AccountNetPnl, zone: ZoneId): AccountPnlMail {
         val subject = "[김프 알림] 순수익률 ${percent(pnl.netPercent)} · ${krw(pnl.netKrw)}"
@@ -99,7 +124,7 @@ object AccountPnlMailContent {
             if (notice.category == AccountReadFailureCategory.BITHUMB_AUTH) {
                 add("빗썸 Open API key 의 허용 IP 가 현재 공인 IP 와 같은지 확인하세요.")
             }
-            add("조치 안내: $RUNBOOK")
+            add("조치 안내: ${AccountPnlFormat.RUNBOOK}")
         }
         return AccountPnlMail(eventKey("outage", now), "[김프 알림] 모니터링 중단 — $label", lines.joinToString("\n"))
     }
@@ -118,51 +143,4 @@ object AccountPnlMailContent {
      * 지켜야 한다 — 어긋나면 발송이 매번 예외로 끝나 5회 뒤 FAILED 가 된다.
      */
     private fun eventKey(kind: String, at: Instant): String = "account-pnl-$kind-${at.toEpochMilli()}"
-
-    private fun label(category: AccountReadFailureCategory): String = when (category) {
-        AccountReadFailureCategory.BITHUMB_AUTH -> "빗썸 인증 실패(허용 IP 확인)"
-        AccountReadFailureCategory.BINANCE_AUTH -> "바이낸스 인증 실패"
-        AccountReadFailureCategory.NETWORK -> "네트워크·요청 한도 오류"
-        AccountReadFailureCategory.STALE_MARKET_DATA -> "시세 지연"
-        AccountReadFailureCategory.STALE_FX -> "환율 수집 지연"
-        AccountReadFailureCategory.INSUFFICIENT_DEPTH -> "호가 깊이 부족"
-        AccountReadFailureCategory.UNEXPECTED -> "기타 오류(로그 확인)"
-    }
-
-    private fun time(instant: Instant, zone: ZoneId): String =
-        "${TIME_FORMAT.format(instant.atZone(zone))} ($instant)"
-
-    private fun plain(value: BigDecimal): String = value.stripTrailingZeros().toPlainString()
-
-    private fun format(pattern: String, value: BigDecimal): String =
-        DecimalFormat(pattern, DecimalFormatSymbols(Locale.ROOT)).apply { roundingMode = RoundingMode.HALF_UP }
-            .format(value)
-
-    private fun sign(value: BigDecimal): String = if (value.signum() < 0) "-" else "+"
-
-    private fun percent(value: BigDecimal): String = sign(value) + format("0.00", value.abs()) + "%"
-
-    /** 부호 포함 원 단위 금액. 반올림 후 0 이면 `+0원`. */
-    private fun krw(value: BigDecimal): String {
-        val rounded = value.setScale(0, RoundingMode.HALF_UP)
-        return sign(rounded) + format("#,##0", rounded.abs()) + "원"
-    }
-
-    /** 부호 없는 원 단위 천 단위 구분 표기. */
-    private fun plainKrw(value: BigDecimal): String = format("#,##0", value.abs().setScale(0, RoundingMode.HALF_UP))
-
-    private fun isZero(value: BigDecimal): Boolean = value.setScale(0, RoundingMode.HALF_UP).signum() == 0
-
-    /** 차감 항목(수수료). 반올림 후 0 이면 부호 없이 `0원`. */
-    private fun cost(value: BigDecimal): String =
-        if (isZero(value)) "0원" else "-${plainKrw(value)}원"
-
-    /** 부호 있는 금액이되 반올림 후 0 이면 `0원`. */
-    private fun krwOrZero(value: BigDecimal): String = if (isZero(value)) "0원" else krw(value)
-
-    private fun costUsdt(value: BigDecimal): String =
-        if (value.signum() == 0) "0 USDT" else "-${plain(value.abs())} USDT"
-
-    private fun signedUsdt(value: BigDecimal): String =
-        if (value.signum() == 0) "0 USDT" else "${sign(value)}${plain(value.abs())} USDT"
 }

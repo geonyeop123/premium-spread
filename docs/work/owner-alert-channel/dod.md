@@ -1,0 +1,355 @@
+---
+feature: owner 알림 채널 기반 — Discord·메일 라우팅 (issue #88)
+slug: owner-alert-channel
+status: FROZEN
+frozen_at: 2026-10-23T10:33:13+09:00
+verdict_commit:
+source: docs/work/owner-alert-channel/design.md (APPROVED 2026-10-23)
+---
+
+## 범위
+
+**포함**
+
+- Domain 라우팅 모델 — `OwnerAlertKind` 4종의 기본 경로, 채널 가용성·override 해석 (design §3)
+- outbox 채널 확장 — V19, 행 모델, JDBC store 채널 컬럼·`markFailed`, batch fixture 스키마, 배포·롤백 SQL (§4)
+- Discord 렌더링 4종과 제한 절단, 메일 바이트 불변 (§6)
+- Discord webhook adapter — payload·재시도 분류·fallback·URL 비노출·취소 전파 (§5.3)
+- 전달 루프 추출(`OwnerAlertDispatcher`)과 채널별 전이 (§5.2)
+- `owner-alert.*` 설정·env·기동 판정·WARN, 수신 주소 필수 판정 한 곳, app·infra 조건 일치 (§7)
+- runbook 갱신 (§13)
+
+**제외** *(scope creep 차단선)*
+
+- 신규 알림 10종(#89·#90·#91) 구현, 시장·운영용 독립 전달 Job·JobId (§1.2, §9)
+- 회원 김프 구독 알림(`notification_delivery`) 변경
+- 테이블·Domain 타입 rename, 수신 주소 property key rename (§4.4, §7.2)
+- Discord 봇·OAuth·메시지 수정, Slack 경로 변경, 메트릭 추가
+- 순손익 공식·수익/중단 정책·정시 보고 생성 규칙 변경, 표시 zone 배선 변경
+- 직전 단위 산출물(`docs/work/live-account-pnl-*` 등) 수정
+
+## 기존 gate 조사
+
+> Gate 1 필수. 작성 시점에는 문서·소스만 읽었다. 실행 기준선은 plan Task 0 이 아래 증거 로그에 남긴다.
+
+| 찾아본 것 | 있었나 | 쓸 수 있나 |
+|---|---|---|
+| architecture test | 있다 — `architecture-tests/` (`ArchitectureBoundaryTest`·`TestIsolationArchitectureTest`·`ObservabilityCardinalityArchitectureTest`·`PrivateAccountReadOnlyArchitectureTest` 등) | 회귀 방어선 R1. 신규 규칙은 만들지 않는다 — 앱 import 금지·테스트 외부 URL 금지(`*.example.test` 만)가 이미 이 단위의 경계를 덮는다 |
+| lint 규칙 | 있다 — ktlint·detekt (CI `quality-gate.yml`). 로컬 gradle task 없음 | CI 회귀로만 |
+| custom gradle task | 있다 — `architectureTest`, `*:integrationTest`, `:infrastructure:common:verifyMigrations`, `harnessCheck` | 그대로 쓴다 |
+| 동결 테스트 | 있다 — `AccountPnlMonitorJobTest`(Job 생성자·회차 내 발송·store fake 6메서드·관측 중 interrupt 재전파), `AccountNetPnlTest`·`PnlAlertPolicyTest`·`MonitoringOutagePolicyTest`, 직전 단위 adapter 테스트 | R3 무수정. design §2 가 이 제약에서 설계를 끌어냈다 |
+| 확장만 허용 테스트 | 있다 — `AccountPnlMailContentTest`(수익 golden 2건), `AccountPnlMonitorWiringTest`(모드×누락 행렬, `account-pnl-monitor.recipient` 키), `JdbcAccountPnlAlertStoreIntegrationTest` | AC3·AC9·AC10·AC5 가 메서드 추가로 확장 (R6) |
+| 메일 바이트 불변 증명 | **부분** — 수익 메일만 golden. 정시 보고·중단·복구는 `contains` 단언 | 서식 함수 추출 **전에** golden 4건 추가(AC3-a) |
+| migration 경로 테스트 패턴 | 있다 — `V17TradePreparationIndexMigrationIntegrationTest`(빈 DB→latest, V16→V17) | AC4 가 같은 패턴 |
+| batch fixture 스키마 고정 | 있다 — `AccountPnlFixtureSchemaIntegrationTest` (V18 컬럼 목록 `containsExactly`) | V19 로 바뀌므로 기대 목록 수정이 필요 — **허용 예외** R7 |
+| 외부 HTTP mock 패턴 | 있다 — MockWebServer (`BinanceFuturesManualAccountAdapterTest`) | AC6·AC11 |
+
+**결론.** T1 수용기준은 모두 `신규테스트` 또는 `기존`(확장)으로 덮는다. 새 스크립트 파일은 만들지 않는다.
+
+## 수용기준
+
+| # | 수용기준 (관찰 가능) | 근거 | 출처 | 티어 | 검증 수단 | 검증 명령 | 통과 조건 |
+|---|---|---|---|---|---|---|---|
+| AC1 | (a) `OwnerAlertKind` 는 정확히 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED` 이고 각 기본 경로가 design §3.2 표와 같으며 key 는 `profit`·`hourly-report`·`monitoring-outage`·`monitoring-recovered` 이다. (b) `OwnerAlertRouting.EMAIL_ONLY` 는 4종 모두 `OwnerAlertRoute(true, null)`. (c) 메일·Discord 둘 다 쓸 수 있으면 수익 `(true, PNL/HERE)`, 정시 보고 `(false, PNL/SILENT)`, 중단 `(true, OPS/SOUND)`, 복구 `(false, OPS/SOUND)`. (d) Discord 만 쓸 수 있으면 4종 모두 `email=false` 이고 Discord 는 기본값. (e) 메일만 쓸 수 있고 정시 보고에 `email=false` override 면 정시 보고는 `(false, null)`, override 가 없으면 `(true, null)`. (f) override `discordTarget=OPS`·`push=SOUND` 는 그 필드만 바꾸고, `discordDisabled=true` 면 Discord 가 null 이며, `discordDisabled=true` 와 `discordTarget` 을 함께 주면 `IllegalArgumentException` | design §3.2, §3.3 | `요구` (라우팅 표 한 곳, 종류별 override) + Discord 꺼짐 4종 메일은 `요구` (사용자 확정 D1) | T1 | `신규테스트` `io.premiumspread.domain.owneralert.OwnerAlertRoutingTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.OwnerAlertRoutingTest' --offline --no-daemon` | exit 0 |
+| AC2 | (a) `DiscordMessage.of` 는 제목 255자는 그대로, 256자는 255자이며 `…` 로 끝나게, 설명 4096자는 그대로, 4097자는 4096자이며 `…` 로 끝나게 만든다. 자르는 지점 바로 앞이 surrogate pair 의 앞 절반이면 pair 를 쪼개지 않는다(결과에 lone surrogate 없음). 기본 생성자는 제목 빈 값·256자·`color` -1·`0x1000000` 을 거부한다. (b) `AccountPnlMail(k, s, b)` 는 `channel == EMAIL`, Discord 필드 null 이고, `DISCORD` 인데 route 또는 color 가 null 이거나 `EMAIL` 인데 route 가 있으면 `IllegalArgumentException`. (c) `OwnerAlertRows.expand` 는 route `(true, PNL/HERE)` 에서 [입력 메일 **동일 객체**, `DISCORD` 행] 순서 2행을 내고 Discord 행 eventKey = 메일 eventKey, subject/body = 제목/설명, color = 메시지 color 이다. `(false, X)` 는 Discord 행 1개, `(true, null)` 은 메일 1개이며 Discord 렌더러를 **호출하지 않는다**, `(false, null)` 은 0행 | design §3.4, §4.3, §6.3 | `요구` (Discord 제한 안전 절단, 채널당 한 행) + surrogate·렌더러 지연은 `추론` | T1 | `신규테스트` `io.premiumspread.domain.owneralert.DiscordMessageTest`, `io.premiumspread.domain.accountpnl.OwnerAlertRowsTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordMessageTest' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsTest' --offline --no-daemon` | exit 0 |
+| AC3 | (a) base `1bce3dd` 코드 출력으로 만든 golden 과 정시 보고(모든 항목 확보, zone `Asia/Seoul`)·중단(`BITHUMB_AUTH`, 마지막 성공 없음)·중단(`STALE_FX`, 마지막 성공 있음)·복구 메일의 eventKey·제목·본문이 **전체 문자열로 같다**. 기존 수익 golden 2건도 무수정 통과. (b) `AccountPnlDiscordContent` 4종이 design §6.2 템플릿과 같다: 수익(api 출처·모든 항목 확보) 제목·설명·색 전체 golden, 정시 보고 제목 `📊 정시 보고 12:00`(`calculatedAt = 2026-10-20T03:00:03Z`, `Asia/Seoul`)과 색 `0x3498DB`, 미반영 줄 `⚠ 미반영: 진입 수수료(빗썸, 이력 없음), 진입 수수료(바이낸스, 이력 없음), 펀딩비(이력 없음)` 과 manual 출처(fixture 기본 `calculatedAt = 2026-10-20T00:00:05Z` = 09:00 KST)의 `진입 수수료(바이낸스, 수동 미입력)`·`펀딩비(수동 미입력)`·마지막 줄 `바이낸스 포지션: 수동 입력(env) · 2026-10-20 09:00 KST`, 미반영 없으면 `⚠` 줄 없음, 중단 `BITHUMB_AUTH` 설명 전체 golden(마지막 성공 `없음`, IP 안내 줄 포함)·`STALE_FX` 는 IP 안내 줄 없음, 복구 설명 전체 golden, 4종 색 상수 | design §6.1, §6.2 | `요구` (메일 바이트 불변, brief §1 Discord 형식) + 메일 golden 확대는 `리뷰` (기존 gate 조사) | T1 | `신규테스트` (기존 클래스 확장) `io.premiumspread.domain.accountpnl.AccountPnlMailContentTest` + `신규테스트` `io.premiumspread.domain.accountpnl.AccountPnlDiscordContentTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --tests 'io.premiumspread.domain.accountpnl.AccountPnlDiscordContentTest' --offline --no-daemon` | exit 0 |
+| AC4 | (a) 빈 DB 에서 latest 까지 적용되면 버전 1~19 가 성공으로 기록되고 `account_pnl_mail` 에 `channel`(varchar, NOT NULL, 기본 `EMAIL`)·`discord_target`·`discord_push`(varchar, NULL)·`discord_color`(int, NULL)가 기존 11컬럼 **뒤에** 있으며, 인덱스 `uk_account_pnl_mail_event_key_channel` 의 컬럼이 순서대로 `event_key`, `channel` 이고 `uk_account_pnl_mail_event_key` 는 없다. (b) V18 에서 `PENDING`·`SENT` 행 2개를 넣은 뒤 latest 를 적용하면 두 행의 `channel` 이 `EMAIL`, Discord 3컬럼 null, 나머지 컬럼 값이 그대로다. (c) V19 스키마에서 base 의 V18 시절 INSERT 문(`INSERT INTO account_pnl_mail (event_key, subject, body, status, attempt_count, created_at) VALUES (…) ON DUPLICATE KEY UPDATE id = id`)을 같은 eventKey 로 두 번 실행하면 1행(`EMAIL`)이다. (d) 같은 eventKey 의 `DISCORD` 행은 들어가고, 같은 `(event_key, DISCORD)` 두 번째는 중복 키 오류, `EMAIL`+`discord_target`·`DISCORD`+`discord_push` null·`channel='SMS'` 은 각각 CHECK 위반이다. (e) `verifyMigrations` 통과. (f) V19 스키마에 EMAIL `PENDING`·DISCORD `PENDING`·DISCORD `PROCESSING`(token 있음)·DISCORD `SENT` 4행을 두고 design §4.5 롤백 SQL(전문 상수)을 실행하면 DISCORD `PENDING`·`PROCESSING` 두 행만 `FAILED`·token/locked_by/locked_at null·`attempt_count` 그대로이고 EMAIL·`SENT` 행은 그대로이며, 이어서 base 의 channel 무관 claim SELECT(`SELECT id, event_key, subject, body, attempt_count FROM account_pnl_mail WHERE status = 'PENDING' ORDER BY id LIMIT 10 FOR UPDATE SKIP LOCKED`)가 EMAIL 행 1개만 돌려준다 | design §4.1, §4.2, §4.5 | `요구` (V19 append-only, 기존 eventKey·행 유지) + INSERT 호환·CHECK 는 `추론` (§4.1) + 롤백 SQL 은 `리뷰` (⑥ R1 Important 1, 판정 I-1) | T1 | `신규테스트` `io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest` + 기존 task | `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest' --offline --no-daemon && ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC5 | 실제 MySQL 에서 `JdbcAccountPnlAlertStore` 가 (a) 같은 eventKey 의 `EMAIL`·`DISCORD` 행을 각각 1행으로 저장하고 같은 목록을 다시 `save` 해도 2행이다. (b) claim 한 `DISCORD` 행의 `mail` 이 저장한 `AccountPnlMail`(channel·`DiscordRoute(OPS, SILENT)`·color `0x3498DB` 포함)과 `isEqualTo`. (c) channel 을 지정하지 않은 raw INSERT 행은 claim 시 `AccountPnlMail(k, s, b)` 와 같다. (d) `markFailed` 는 token 이 맞는 `PROCESSING` 행을 `FAILED`·`attempt_count + 1`·token/locked_by/locked_at null 로 바꾸고 true, token 불일치·`PENDING` 행이면 false 이며 행이 그대로다. (e) 기존 테스트 메서드는 무수정 통과 | design §4.3, §5.2 | `요구` (채널별 행·기존 claim/fencing 유지) + `markFailed` 는 `추론` (4xx 즉시 실패) | T1 | `신규테스트` (기존 클래스 확장) `io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest` | `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest' --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC6 | MockWebServer 에서 `DiscordWebhookSenderAdapter.send` 가 (a) `SILENT`·`SOUND`·`HERE` 각각 design §5.3 표의 JSON 을 보낸다(본문 JSON 트리 `isEqualTo`, `Content-Type: application/json`, method `POST`, path = 해당 대상 webhook path). (b) PNL·MARKET·OPS 를 각기 다른 path 로 설정하면 각 path 로, MARKET 하나만 설정하면 세 대상 모두 MARKET path 로, PNL·OPS 만 설정하면 MARKET 은 PNL path 로, MARKET·OPS 만 설정하면 PNL 은 MARKET path 로 간다. (c) 204·200 → 정상 종료. (d) 429 + `Retry-After: 0.5` 후 204 → `sleeper` 가 500ms 로 1회 호출되고 요청 2건으로 정상 종료. 429 + 본문 `{"retry_after":1.2}`(헤더 없음) 후 204 → 1200ms 대기 후 성공. 429 + `Retry-After: 30` → 대기 없이 요청 1건으로 `permanent=false`. 429 두 번 → 요청 2건, `permanent=false`. (e) 500·503 → `permanent=false`, 400·401·403·404 → `permanent=true`, 연결 거부(서버 종료) → `permanent=false`, `timeout=200ms` + 응답 지연 1초 → `permanent=false`. (f) `sleeper` 가 `InterruptedException` 을 던지면 `permanent=false`, 메시지 `Discord webhook PNL interrupted` 이고 호출 스레드의 interrupt 플래그가 true 다. (g) 모든 실패 케이스에서 예외 메시지·`generateSequence(e) { it.cause }` 의 모든 메시지·`stackTraceToString()`·캡처한 출력 어디에도 webhook token(`TOKENpnlQ7` 등)·`/api/webhooks/`·서버 URL 이 없고 `cause` 가 null 이다. (h) `DiscordWebhooks.toString()` 에 token·URL 이 없고 `market=fallback(PNL)` 형식이다. (i) 호출 스레드에 interrupt 를 건 뒤 `send`(응답 지연 1초) → `permanent=false`·메시지 `Discord webhook PNL interrupted`·interrupt 플래그 true·URL/token 없음·`cause` null 이고, 취소 판정 함수는 `RuntimeException(InterruptedException())`·`IllegalStateException(RuntimeException(CancellationException()))` 을 취소로, `IOException()` 을 취소 아님으로 판정한다 | design §5.3 | `요구` (embed·무음·@here·429/5xx 재시도·4xx 실패·URL 비노출·fallback) + 2개 설정 fallback 순서는 `판정` (A5) + 원인 체인 취소는 `리뷰` (⑥ R1 Minor 6) | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest` | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest' --offline --no-daemon` | exit 0 |
+| AC7 | `OwnerAlertProperties` 바인딩에서 (a) webhook 빈 값·공백은 미설정, `https://discord.example.test/api/webhooks/101/TOKENpnlQ7` 는 설정, `HTTPS://…` 대문자 scheme 허용. (b) `notaurlQ7`·`http://discord.example.test/api/webhooks/1/TOKENhttpQ7`·`https:///nohostQ7` 는 각각 바인딩 실패이고 원인 체인 메시지 중 하나에 `owner-alert.discord.webhook.pnl` 이 있으며 원인 체인 전체·stack trace 에 입력 값이 없다. (c) `routes.hourly-report.email=FALSE`·`routes.profit.discord=ops`·`routes.profit.push=Sound`·`routes.monitoring-outage.discord=none` 이 각각 `resolvedOverrides()` 에 `OwnerAlertKind` key 로 들어간다(dash key 보존). (d) `routes.profit.push=loudQ9`·`routes.profit.discord=dmQ9`·`routes.profit.email=yesQ9` 는 실패이고 메시지에 해당 key 가 있고 값이 없다. `routes.unknownkind.email=true` 는 실패이고 메시지에 `owner-alert.routes.unknownkind` 와 known 목록이 있다. (e) 세 webhook 을 설정한 Properties 의 `toString()` 에 token·`/api/webhooks/` 가 없고 `pnl=set` 이 있으며 기본 생성 `toString()` 에 `<empty>` 가 있다 | design §7.3 | `요구` (webhook 비밀값 비노출, 종류별 override) + 직접 해석·https 강제는 `상위` (직전 단위 `String?` 패턴) | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.owneralert.OwnerAlertPropertiesTest` | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertPropertiesTest' --offline --no-daemon` | exit 0 |
+| AC8 | (a) `OwnerAlertDispatcher` 가 design §5.2 전이표의 각 행대로 전이한다 — Discord sender null 인 `DISCORD` 행·`permanent=true` 는 같은 회차에 `markFailed` 1회, `permanent=false`·일반 예외는 회차 끝 `markAttemptFailed`, `markFailed` 예외 → `JobResult.Failure`, fencing(false) → 계속 진행. 실패 WARN 출력에 일반 예외 메시지(`smtp to owner@example.test`)·webhook 문자열이 없고 `channel=DISCORD`·`permanent=true` 키가 있다. sender 가 실패하면서 interrupt 플래그를 세우면 그 행은 회차 끝 `markAttemptFailed`, 다음 행은 claim 되지 않고 `Success` 다. (b) `AccountPnlMonitorJob` 이 routing(메일+Discord)·고정 `Clock`(`2026-10-20T03:00:00Z`)·`Asia/Seoul` 로 1.96% 회차를 돌리면 행이 [EMAIL 수익, DISCORD 수익(PNL/HERE/`0x2ECC71`)] 순이고 둘 다 `SENT`, 메일 sender 가 받은 메일 = `AccountPnlMailContent.profit` 결과, Discord fake 가 받은 메시지 = `AccountPnlDiscordContent.profit` 결과다. 정시 보고 켜짐이면 정시 보고는 DISCORD(PNL/SILENT) 1행뿐, 중단 메일은 EMAIL+DISCORD(OPS/SOUND), 복구는 DISCORD(OPS/SOUND) 1행. routing `EMAIL_ONLY` 면 4종 모두 EMAIL 1행씩(기존과 같은 eventKey). Discord-only routing 이면 EMAIL 행 0. (c) Discord fake 가 `permanent=false` 로 실패하면 메일은 `SENT`, Discord 행은 `PENDING`·attempt 1 이고, 다음 회차(새 Job 인스턴스)에서 같은 eventKey 로 재발송돼 `SENT` 이며 행 수가 늘지 않는다. `permanent=true` 면 한 회차 뒤 `FAILED`·attempt 1 이고 다음 회차에 Discord 호출이 없다. (d) `routing.channels.discord=true` 인데 `discordSender=null` 이면 생성자에서 `IllegalArgumentException` | design §5.1, §5.2, §8 | `요구` (채널별 행·채널별 전달·재시도/실패 구분) + 디스패처 추출은 `추론` (K4) | T1 | `신규테스트` `io.premiumspread.application.notification.owneralert.OwnerAlertDispatcherTest`, `io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobOwnerAlertTest` | `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDispatcherTest' --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobOwnerAlertTest' --offline --no-daemon` | exit 0 |
+| AC9 | `ApplicationContextRunner` 에서 (a) 메일+Discord(webhook pnl) 이면 Job·`AccountPnlEmailSenderAdapter`·`DiscordWebhookSenderAdapter` 각 1개, `OwnerAlertRouting.channels == (true, true)`. (b) `notification.email.enabled=false`·recipient 빈 값·Discord 정상이면 Job 1개, 메일 adapter 0개, Discord adapter 1개, `channels == (false, true)` 이고 출력에 `email channel off` WARN 이 있으며 `monitor not started`·`ACCOUNT_PNL_ALERT_RECIPIENT` 가 없다. (c) `owner-alert.email.enabled=false`·SMTP 켜짐·recipient 빈 값·Discord 정상이면 Job 1개, `channels == (false, true)`, `email channel off` WARN 없음, `ACCOUNT_PNL_ALERT_RECIPIENT` 없음. (d) Discord 켜짐 + webhook 3개 모두 빈 값(공백 포함)이면 메일이 정상이어도 Job·Scheduler·모든 adapter·Discord adapter 0개, 출력에 `owner-alert discord enabled but no webhook configured; monitor not started` 와 env 이름 3개가 있다. (e) `owner-alert.email.enabled=false` + Discord 미설정이면 0개, 출력에 `account-pnl-monitor enabled but email disabled; monitor not started`. (f) {`owner-alert.email.enabled` 미설정·`true`·`false`} × {SMTP `true`·`false`} × {`owner-alert.discord.enabled` 미설정·`false`·`true`} × {webhook 없음·pnl 만·market 만·셋 다} × {recipient 있음·빈 값} 전 조합에서 먼저 `hasNotFailed()`, 그다음 Job 수 = `ForeignPerpAccountReadPort` 수 ∈ {0,1} = design §7.2 판정식으로 계산한 기대값이고, Job 이 있으면 `channels.email` = 메일 adapter 존재, `channels.discord` = Discord adapter 존재. (g) `owner-alert.routes.hourly-report.email=true`·`push=sound` 를 주면 bean `OwnerAlertRouting.resolve(HOURLY_REPORT) == OwnerAlertRoute(true, DiscordRoute(PNL, SOUND))`. (h) `apps/batch/src/main/resources/application.yml` 의 `owner-alert.routes` 하위 key 집합 = `OwnerAlertKind.entries` 의 key 집합이고 각 key 에 `email`·`discord`·`push` 가 `${OWNER_ALERT_{KIND}_{FIELD}:}` 로 있다. (i) 기존 테스트 메서드는 무수정 통과. (j) `OwnerAlertChannelRequirements`(`MockEnvironment`): `recipientRequired` = `emailEffective`(메일 요청 미설정·`true`·`false` × SMTP `true`·`false` 6조합), `missingKeys` 는 `emailEffective ∧ recipient 공백` 일 때만 `[account-pnl-monitor.recipient]`·그 밖 `[]`, `ready` 는 §7.2 "채널 준비"식과 같고, `recipient()` 는 값을 그대로 돌려주며 공백이면 `IllegalStateException` 이고 메시지에 수신 주소 값이 없다. (k) 메일 채널이 쓰이는(SMTP·메일 요청 켜짐) 구성에서 recipient 가 비면 Job 0개이고 누락 WARN 의 `missing=` 에 `ACCOUNT_PNL_ALERT_RECIPIENT` 가 있으며 다른 키의 **값**(`owner@example.test`·credential 구별 값)은 출력에 없다. 메일 sender 가 쓰는 수신 주소는 `account-pnl-monitor.recipient` 값과 같다(메일 sender fake 로 `EmailMessage.to` 확인) | design §7.1, §7.2 | `요구` (env 로 채널 on/off, 둘 다 꺼짐·URL 없음 → 미기동 + env 이름 WARN, app·infra 일치) + SMTP 꺼짐 Discord-only 기동은 `요구` (사용자 확정 D2) + 수신 주소 소유 이동은 `판정` (I-3) | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirementsTest` + (기존 클래스 확장) `io.premiumspread.config.AccountPnlMonitorWiringTest` + `신규테스트` `io.premiumspread.config.OwnerAlertYamlContractTest` | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirementsTest' --offline --no-daemon && ./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --offline --no-daemon` | exit 0 |
+| AC10 | webhook 3개(`TOKENpnlQ7`·`TOKENmktQ7`·`TOKENopsQ7`)로 기동한 context 에서 (a) `OwnerAlertProperties.toString()`·`DiscordWebhooks.toString()` 에 token 과 `/api/webhooks/` 가 없다. (b) 기동 출력에 `owner-alert discord webhooks: pnl=set, market=set, ops=set` INFO 가 있고 token·`/api/webhooks/`·`discord.example.test` 가 없다. pnl 만 설정하면 INFO 가 `pnl=set, market=fallback(PNL), ops=fallback(PNL)` 이다. (c) `owner-alert.discord.webhook.ops=http://discord.example.test/api/webhooks/9/TOKENhttpQ7` 이면 기동 실패이고 원인 체인 메시지 중 하나에 `owner-alert.discord.webhook.ops` 가 있으며 원인 체인 전체·stack trace·이번 실행 출력 어디에도 `TOKENhttpQ7` 이 없다 — `owner-alert.discord.enabled=true` 와 **`false`(메일만 켜진 구성)** 두 경우 모두(design §7.3 검증 시점 결정). `owner-alert.routes.profit.push=loudQ9` 도 같은 방식으로 `loudQ9` 가 없다 | design §5.3, §7.3 | `요구` (webhook URL 로그·예외·toString·원인 체인 비노출) + Discord 꺼짐 검증은 `리뷰` (⑥ R1 Minor 8) | T1 | `신규테스트` (기존 클래스 확장) `io.premiumspread.config.AccountPnlMonitorWiringTest` | `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` | exit 0 |
+| AC11 | 실제 MySQL(batch fixture, V19 형태) + 실제 `JdbcAccountPnlAlertStore` + 실제 `DiscordWebhookSenderAdapter`(MockWebServer, pnl·ops webhook) + 기록용 메일 sender 로 (a) 1.2% 회차 1번이면 `account_pnl_mail` 에 같은 eventKey 의 `EMAIL`·`DISCORD` 행이 각 1개이고 둘 다 `SENT`, MockWebServer 가 pnl path 로 `@here` payload 1건을 받았다. (b) MockWebServer 가 첫 요청에 503 이면 회차 뒤 메일 `SENT`·Discord `PENDING`(attempt 1)이고, 새 Job 인스턴스(재시작)의 다음 회차에서 Discord 가 `SENT` 이며 메일은 다시 가지 않는다(메일 sender 기록 1건). (c) 404 면 한 회차 뒤 Discord `FAILED`(attempt 1), 다음 회차에 Discord 요청이 없다. (d) 각 시나리오 뒤 `account_pnl_mail` 어느 컬럼에도 webhook token 이 없다 | design §4, §5 | `요구` (재시작 내구성·채널별 재시도) + 영구 실패 즉시 종료는 `추론` | T1 | `신규테스트` `io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC12 | `docs/runbooks/account-pnl-alert.md` 에 (a) owner 채널 env — 고정 5종(`OWNER_ALERT_EMAIL_ENABLED`·`OWNER_ALERT_DISCORD_ENABLED`·`OWNER_ALERT_DISCORD_WEBHOOK_PNL`·`OWNER_ALERT_DISCORD_WEBHOOK_MARKET`·`OWNER_ALERT_DISCORD_WEBHOOK_OPS`) 각 행과 종류별 패턴 3종(`OWNER_ALERT_{KIND}_EMAIL`·`OWNER_ALERT_{KIND}_DISCORD`·`OWNER_ALERT_{KIND}_PUSH`) 규칙 표, `ACCOUNT_PNL_ALERT_RECIPIENT` 는 "메일 채널을 쓸 때만 필수", (b) Discord 채널 webhook 만드는 절차와 "URL 은 비밀 — 유출 시 Discord 에서 삭제·재발급", fallback 규칙(1개·2개 설정), (c) 기본 라우팅 표 4종(+ 후속 10종은 이슈 링크만), **Discord 를 켜면 정시 보고·복구 메일이 오지 않는다**(굵게), (d) 기동 판정과 WARN 3종·INFO 1종 문구 전문, (e) 재시도(429·5xx·네트워크, 다음 회차, 최대 5회)·4xx 즉시 `FAILED`·채널을 끄면 남은 행 1회 시도 후 `FAILED`·중복 가능·Spring web client DEBUG 로깅 금지·Discord 를 꺼도 webhook env 에 잘못된 값이 있으면 기동 실패, (f) outbox 설명에 `channel` 컬럼과 "owner 알림 공용", (g) AC13 체크리스트, (h) `### 배포와 롤백` — API(V19) → 구 batch 중지 → 신 batch 기동(겹치지 않음) 순서와, 롤백 시 구 batch 기동 **전** 실행할 design §4.5 SQL 전문이 있다. `docs/check-documentation.sh` 통과 | design §4.5, §13 | `요구` (runbook 갱신) + 배포·롤백은 `판정` (I-1) | T3 | 기록 문서 + `bash docs/check-documentation.sh` | `bash docs/check-documentation.sh` | exit 0 + (a)~(h) 존재를 사람 사후 검토 |
+| AC13 | owner 가 자기 Discord 서버에 pnl·ops 채널 webhook 을 만들어 로컬 batch 를 띄웠을 때 (a) 기동 로그에 `monitor not started` 가 없고 `owner-alert discord webhooks:` INFO 가 있다, (b) 정시 보고가 pnl 채널에 **무음**(알림 소리·배지 없음)으로 파란 embed 로 오고 형식이 design §6.2 와 같다, (c) 수익 알림(1% 도달 시 — env 를 실제와 다르게 바꾸지 않는다)이 pnl 채널에 `@here` 로 울리고 메일도 온다, (d) 중단·복구는 ops 채널에 소리로 오고 중단만 메일이 온다(Wi-Fi 를 끄거나 FX 수집 지연 등 자연 발생 시), (e) webhook 하나만 설정하면 모두 그 채널로 온다 | design §0, §5.3, A4 | `요구` (실제 Discord 수신·무음/@here) | T4 | owner 확인 | — | PR 코멘트에 owner 확인 기록. (d)는 관찰 기회가 없으면 "미관찰"로 기록 |
+
+**기준 개수**: 13개
+
+**분할하지 않는 이유**: 라우팅(AC1) → 행·제한(AC2) → 렌더링(AC3) → 스키마(AC4) → 저장(AC5) → Discord 발송(AC6) → 설정(AC7) → 전달(AC8) → 배선(AC9·AC10) →
+E2E(AC11)는 "알림 하나가 켜진 채널로 간다" 하나의 수직 경로다. V19·store 만 먼저 머지하면 Discord 행을 만드는 생산자가 없고, adapter 만 머지하면 소비자가 없다.
+brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
+
+**티어 강등 사유** *(T1 이 아닌 항목만. Gate 1 에서 사람이 함께 승인한다)*
+
+- AC12 → T3: runbook 설명의 충분성은 exit code 로 잴 수 없다. `check-documentation.sh` 는 형식만 본다. 롤백 SQL 의 동작 자체는 AC4-f 가 T1 으로 고정한다.
+- AC13 → T4: 실 webhook URL 은 테스트·CI 에 쓰지 않는다(testing 규칙). 무음·@here 의 실제 알림 체감과 Discord API 실동작(A4)은 사람만 확인한다.
+
+## 회귀 방어선
+
+이번 변경으로 깨질 수 있는 기존 동작. RED 면제 대상이다. base = `1bce3dd`.
+
+| # | 지켜야 할 동작 | 검증 명령 |
+|---|---|---|
+| R1 | 모듈 경계·import·관측 cardinality·조회 전용·테스트 격리 아키텍처 규칙 전체 | `./gradlew architectureTest --offline --no-daemon` |
+| R2 | 전체 unit test | `./gradlew test --offline --no-daemon` |
+| R3 | 동결·직전 단위 테스트 **무수정** | `git diff --exit-code 1bce3dd -- domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountNetPnlTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/PnlAlertPolicyTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/MonitoringOutagePolicyTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountHedgePositionTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobHourlyReportTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobObservationLogTest.kt apps/batch/src/integrationTest/kotlin/io/premiumspread/application/job/AccountPnlAlertDurabilityIntegrationTest.kt infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/notification/AccountPnlEmailSenderAdapterTest.kt infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/exchange` |
+| R4 | 실계정 알림 Domain·Job·wiring (수익 golden 포함) | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon && ./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` |
+| R5 | 기존 migration 파일 무변경(추가만) + 검증 | `test -z "$(git diff --name-only --diff-filter=MDR 1bce3dd -- infrastructure/common/src/main/resources/db/migration)" && ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` |
+| R6 | 확장한 기존 테스트 클래스(`AccountPnlMailContentTest`·`AccountPnlMonitorWiringTest`·`JdbcAccountPnlAlertStoreIntegrationTest`)에서 base 의 메서드·fixture·단언이 지워지거나 약해지지 않았다 | `git diff 1bce3dd -- <세 파일> \| grep '^-[^-]'` 출력이 비어 있음을 ⑨ 리뷰가 확인 (사람 판정. 허용 예외 없음) |
+| R7 | batch fixture 스키마 고정 테스트의 수정은 허용 예외 범위뿐이다 — `account_pnl_mail fixture 는 V18 컬럼과 같다` 의 기대 목록 **끝에** 4컬럼 추가, 클래스 KDoc 의 V18 언급을 V18·V19 로 갱신. 메서드 이름·`account_pnl_monitor_state` 단언 무변경 | `git diff 1bce3dd -- apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt` 를 ⑨ 리뷰가 확인 (사람 판정) |
+| R8 | 공통 persistence·migration 통합 (V12·V16·V17·durable notification migration, 기존 store 테스트) | `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` |
+| R9 | batch 통합 — 실계정 알림 재시작 내구성(직전 AC6)·premium durable delivery·fixture 스키마 | `./gradlew :apps:batch:integrationTest --offline --no-daemon` |
+| R10 | 거래 준비 AC20 (production 잔고 포트) — batch 배선 변경의 간접 회귀 | `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` |
+| R11 | 정본 문서·하네스 정합성 | `./gradlew harnessCheck --offline --no-daemon && bash docs/check-documentation.sh` |
+
+## 스펙 리뷰 라운드 기록 (⑥)
+
+| 라운드 | 지적 | 처리 | 반영 커밋 |
+|---|---|---|---|
+| R1 | 3 Important · 8 Minor · 1 Info — (I1) §4.1 rolling 안전 주장과 구 binary 의 channel 무관 claim, (I2) manual 출처 Discord 마지막 줄 시각이 fixture `calculatedAt`(09:00 KST)과 불일치, (I3) #90 재사용 시 수신 주소 소유 공백; (m1) zone 출처, (m2) WebClient 근거 문장, (m3) §8 관측 interrupt 재전파 분기 누락, (m4) `AccountPnlFormat` 이동 목록 누락(`sign`·`isZero`·`TIME_FORMAT`), (m5) Task 10 Step 1 의 stub 조건·`OwnerAlertProperties` 활성 시점, (m6) HTTP 원인 체인 interrupt 처리, (m7) AC12-a "env 8종" 표현, (m8) Discord 꺼짐에서 잘못된 webhook 검증 여부; (Info) brief slug | ACCEPT 11 전부 반영 + 사용자 확정 D1~D3, 오케스트레이터 판정 A5·I-1·I-3 (⑦ 사용자 확인). I1 → design K7·§4.1·§4.5, AC4-f·AC12-h, plan Task 5·12. I2 → AC3-b 기대 `09:00 KST`. I3 → design §7.2·§9, AC9-b·c·j·k, plan Task 10. m1 → design §10. m2 → plan Task 7. m3 → design §8. m4 → design §6.1, plan Task 4. m5 → plan Task 10 Step 1·3. m6 → design §5.3, AC6-i, plan Task 7. m7 → AC12-a. m8 → 유지(Discord 꺼짐에도 검증) design §7.3, AC10-c, AC12-e. Info → `_brief.md` 첫 줄 주석만 | `47e4e80` |
+| R2 | 3 Minor — §8 발송 중 interrupt 행이 동결 테스트(성공 후 플래그 → `SENT`)와 어긋남, AC9-k 기록용 `EmailSender` 주입 방법 모호(`withBean` 이면 bean 2개), R1 반영 커밋 칸 미기입. 의도적 변경 2건(요청 중 interrupt 는 cause 없는 예외 + 플래그 복구, Discord 꺼짐에도 webhook 검증)은 리뷰어가 타당 판정 | ACCEPT 3 (오케스트레이터 직접 수정: design §8 행 분리, plan Task 10 AC9-k 를 `Stubs` mock + `slot` 으로, R1 커밋 기입) · verdict APPROVE | 이 커밋 |
+
+## 증거 로그
+
+> 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### Task 0 — Gate 1 기준선 (2026-10-23, HEAD `2df1f2a`, `--offline --no-daemon`, cache 정상 — 온라인 실행 없음, Docker 사용)
+
+| 항목 | 명령 | 결과 |
+|---|---|---|
+| R1 | `./gradlew architectureTest` | exit 0 (24s) |
+| R2·R4 | `./gradlew test` | exit 0 (1m 56s) |
+| R5 | `./gradlew :infrastructure:common:verifyMigrations` | exit 0 |
+| R8 | `./gradlew :infrastructure:common:integrationTest` | exit 0 (3m 47s) |
+| R9 | `./gradlew :apps:batch:integrationTest` | exit 0 (1m 52s) |
+| V19 번호 | `ls .../db/migration \| sort -V \| tail -1` | `V18__create_account_pnl_alert.sql` (성립) |
+| [ASSUMPTION] A1 | jshell `ZonedDateTime(2026-10-23 09:26, Asia/Seoul)` `yyyy-MM-dd HH:mm z`, `Locale.ROOT` | `2026-10-23 09:26 KST` (성립) |
+| 생성자 호출처 | `grep -rn "AccountPnlMonitorJob(" apps` | `AccountPnlMonitorConfiguration` + `AccountPnlMonitorJobTest`·`AccountPnlMonitorJobHourlyReportTest`·`AccountPnlMonitorJobObservationLogTest` + `AccountPnlAlertDurabilityIntegrationTest` (성립) |
+| store 구현 | `grep ": AccountPnlAlertStore"` 등 | `JdbcAccountPnlAlertStore`, 테스트 `FakeStore`(`AccountPnlMonitorJobTest`), 배선 테스트 relaxed mockk 뿐 (성립) |
+| 수신 주소 소비처 (I-3) | `grep "properties.recipient\|\.recipient\b"` | production 값 소비는 `AccountPnlMonitorAdapterConfiguration` 의 `accountPnlMailSender`(:151) 하나. :33 은 필수 키 목록, app `AccountPnlMonitorConfiguration`:66 은 env 이름 매핑 (성립) |
+
+### Task 1 — AC3-a (2026-10-23)
+
+- RED(변이): `AccountPnlMailContent.TIME_FORMAT` 패턴 끝에 공백 하나 삽입 후 `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` → `27 tests completed, 9 failed` (새 golden 4건 `정시 보고`·`빗썸 인증 중단`·`환율 지연 중단`·`복구` + 기존 수익 golden 2건 + 기존 시각 포함 3건 FAILED), BUILD FAILED. `git checkout -- domain/src/main` 후 `git diff --stat -- domain/src/main` 빈 출력.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL, AccountPnlMailContentTest 27 tests, 0 failures. production 무변경.
+
+### Task 2 — AC1 (2026-10-23)
+
+- RED(stub `resolve = defaultRoute`): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.OwnerAlertRoutingTest' --offline --no-daemon` → `11 tests completed, 7 failed` (EMAIL_ONLY·Discord-only·fallback·email=false 명시·override·discordDisabled·채널 없음), 기본 표·key·require 테스트는 초록. BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL, OwnerAlertRoutingTest 11 tests 0 failures. `AccountPnlMailContentTest` BUILD SUCCESSFUL, `architectureTest` BUILD SUCCESSFUL.
+
+### Task 3 — AC2 (2026-10-23)
+
+- RED(stub `of`=무절단·`truncate`=입력 그대로·`expand`=emptyList): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordMessageTest' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsTest' --offline --no-daemon` → `16 tests completed, 8 failed` (절단 4건: 제목 256·설명 4097·surrogate·이모지 보존 / 확장 4건: 2행·Discord 1행·메일 1행·DISCORD 행 거부), BUILD FAILED. 동결 테스트 컴파일(`:apps:batch:compileTestKotlin :infrastructure:common:compileIntegrationTestKotlin`) 성공.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (16 tests). `./gradlew :domain:test` BUILD SUCCESSFUL (281 tests, Task 1 golden 포함), `./gradlew :apps:batch:test` BUILD SUCCESSFUL, `:infrastructure:common:compileIntegrationTestKotlin :infrastructure:batch:compileTestKotlin` BUILD SUCCESSFUL.
+
+### Task 4 — AC3-b (2026-10-23)
+
+- RED(stub 4함수 `DiscordMessage.of("x", "", 0)`): `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlDiscordContentTest' --offline --no-daemon` → `10 tests completed, 8 failed` (수익·정시·미반영·수동·평단·빗썸 인증 중단·환율 지연 중단·복구), 색 상수·`미반영 없음` 은 stub 에서도 초록. BUILD FAILED.
+- GREEN: 추출 후 `AccountPnlMailContentTest`(golden 포함) 무수정 BUILD SUCCESSFUL. AC3 명령(`MailContentTest` + `DiscordContentTest`) BUILD SUCCESSFUL (DiscordContentTest 10 tests). `./gradlew :domain:test` BUILD SUCCESSFUL.
+
+### Task 5 — AC4 (2026-10-23)
+
+- RED(V19 파일 없음): `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest' --offline --no-daemon` -> `5 tests completed, 5 failed` ((a) 버전 19·채널 컬럼 부재 assertion 실패, (b)~(f) 는 `channel` 컬럼 부재로 선행 조건 실패), BUILD FAILED.
+- GREEN: V19 추가 후 같은 명령 -> BUILD SUCCESSFUL, 5 tests 0 failures. `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` BUILD SUCCESSFUL.
+
+### Task 6 — AC5 (2026-10-23)
+
+- RED(store 무변경, 테스트·fixture 만 추가): `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest' --offline --no-daemon` -> `19 tests completed, 3 failed`, BUILD FAILED. (a) `[(k, EMAIL)]` 에 `(k, DISCORD)` 없음(중복 키로 무시), (b) claim 결과 `channel=EMAIL, discordRoute=null, discordColor=null`, (d) `markFailed` 기본 구현으로 `expected "FAILED" but was "PENDING"`.
+- GREEN: store 구현 후 같은 명령 -> BUILD SUCCESSFUL, 19 tests 0 failures (기존 14 메서드 무수정 포함).
+- `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.config.AccountPnlFixtureSchemaIntegrationTest' --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` -> BUILD SUCCESSFUL (3 + 5 tests, 0 failures).
+- 전체: `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` BUILD SUCCESSFUL (42 tests, 0 failures), `./gradlew :apps:batch:integrationTest --offline --no-daemon` BUILD SUCCESSFUL (101 tests, 0 failures), `./gradlew :infrastructure:common:test --offline --no-daemon` BUILD SUCCESSFUL.
+
+### Task 7 — AC6 (2026-10-23)
+
+- RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest' --offline --no-daemon` → `21 tests completed, 19 failed` (stub `send` 의 `UnsupportedOperationException`, `isCancellation` stub false), BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL, 21 tests 0 failures. `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 8 — AC7 (2026-10-23)
+
+- RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertPropertiesTest' --offline --no-daemon` → `8 tests completed, 5 failed` (stub 은 webhook 검증·route 해석·`toString` 마스킹 없음), BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL, 9 tests 0 failures (빈 webhook `toDiscordWebhooks` 실패 케이스 1건 추가).
+
+### Task 7 fix round 1 (2026-10-23)
+
+- AC6-(b) MARKET 단독 설정 단언 추가, AC6-(g) sleeper interrupt 테스트에 `assertNoSecret` 추가.
+- `DiscordWebhookSenderAdapterTest` → BUILD SUCCESSFUL (21 tests, 0 failures). `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 183 tests, 0 failures.
+
+### Task 9 — AC8 (2026-10-23)
+
+- Step 1 추출(채널 분기 없음) 직후 동결 테스트 무수정: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` → BUILD SUCCESSFUL (`AccountPnlMonitorJobTest` 40·`...HourlyReportTest` 7·`...ObservationLogTest` 4, 0 failures).
+- RED (stub = 디스패처가 모든 행을 메일 sender 로 보냄, Job 은 routing 무시·`init` 검증 없음): `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDispatcherTest' --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobOwnerAlertTest' --offline --no-daemon` → `20 tests completed, 16 failed`, BUILD FAILED. 예: `Expecting actual: ["claim", "markSent:1", "claim", "markSent:2", "claim"] to contain exactly ["claim", "markFailed:1", …]`, `Expecting actual: [EMAIL] to contain exactly [EMAIL, DISCORD]`, `Expecting code to raise a throwable.`
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (`OwnerAlertDispatcherTest` 11·`AccountPnlMonitorJobOwnerAlertTest` 9, 0 failures). Step 1 명령 → BUILD SUCCESSFUL. `./gradlew :apps:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 172 tests, 0 failures. `./gradlew architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (35 tests). `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.AccountPnlAlertDurabilityIntegrationTest' --offline --no-daemon` → BUILD SUCCESSFUL (5 tests, 0 failures).
+
+### Task 10 — AC9·AC10 (2026-10-23)
+
+- Step 1 (stub = `OwnerAlertChannelRequirements` 판정 전부 false·`missingKeys=[]`·`recipient` 는 `error("stub")`, 조건 3개 미부착, `ownerAlertRouting()` 은 `EMAIL_ONLY`, Job 은 새 인자를 받되 무시, yml 블록 없음) RED:
+  - `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirementsTest' --offline --no-daemon` → `4 tests completed, 4 failed`, BUILD FAILED. 예: `[email=null, smtp=true] expected: true but was: false`, `[메일만] expected: true but was: false`, `Expecting actual: [] to contain exactly ["account-pnl-monitor.recipient"]`, `IllegalStateException: stub`.
+  - `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --offline --no-daemon` → `46 tests completed, 13 failed`, BUILD FAILED. 기존 wiring 메서드 31개는 전부 초록(AC9-i). 예: `[ChannelCase(emailEnabled=null, smtp=true, discordEnabled=true, webhooks=[], recipient=true)] expected: 0`, `No qualifying bean of type '…OwnerAlertProperties'`, `Expecting actual: "" to contain: "owner-alert discord webhooks: pnl=set, market=set, ops=set"`, `[owner-alert.routes.profit.email] expected: "${OWNER_ALERT_PROFIT_EMAIL:}" but was: null`. stub 에서 통과한 신규 2건(AC9-k 수신 주소 누락 WARN·메일 sender 수신 주소)은 기존 동작을 고정하는 회귀 방어선이다.
+- GREEN: 위 두 명령 → BUILD SUCCESSFUL (`OwnerAlertChannelRequirementsTest` 4, `AccountPnlMonitorWiringTest` 44 — 채널 행렬 144조합 포함, `OwnerAlertYamlContractTest` 2, 0 failures). `./gradlew :apps:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 187 tests, 0 failures. `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 187 tests, 0 failures. `./gradlew architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (35 tests). `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` (R10) → BUILD SUCCESSFUL (3 tests).
+
+### Task 11 — AC11 (2026-10-23)
+
+- 첫 실행은 초록(앞 태스크가 구현 완료). RED 는 변이: `OwnerAlertDispatcher.sendDiscord` 의 sender 를 `null` 처리 (`(null as OwnerAlertDiscordSender?) ?: throw ...`).
+- RED: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' --offline --no-daemon` → 3 tests completed, 3 failed (BUILD FAILED). `git checkout -- apps/batch/src/main` 뒤 `git diff --stat -- apps/batch/src/main` 빈 출력.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (3 tests). 전체 `./gradlew :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL, 104 tests 0 failures.
+
+### Task 12 — 회귀·AC 재검증 (2026-10-23)
+
+- 문서: `docs/runbooks/account-pnl-alert.md`(AC12 a~h)·`.ai/architecture/ARCHITECTURE_DESIGN.md` 갱신. `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)`, `./gradlew harnessCheck --offline --no-daemon` → BUILD SUCCESSFUL.
+- 롤백 SQL 나란히 비교 (runbook `### 배포와 롤백` = Task 5 `V19OwnerAlertChannelMigrationIntegrationTest.ROLLBACK_DISCORD_ROWS`, 공백·줄바꿈 외 같은 문장):
+
+```sql
+-- runbook
+UPDATE account_pnl_mail
+SET status = 'FAILED',
+    claim_token = NULL,
+    locked_by = NULL,
+    locked_at = NULL
+WHERE channel = 'DISCORD'
+  AND status IN ('PENDING', 'PROCESSING');
+-- test 상수
+UPDATE account_pnl_mail
+SET status = 'FAILED',
+    claim_token = NULL,
+    locked_by = NULL,
+    locked_at = NULL
+WHERE channel = 'DISCORD'
+  AND status IN ('PENDING', 'PROCESSING')
+```
+
+- 회귀·AC 명령 각각 실행(모든 gradle 은 `--offline --no-daemon`, Docker 사용). 테스트 수는 그 명령으로 새로 실행된 `build/test-results` XML 합계(UP-TO-DATE 로 건너뛴 task 는 0):
+
+| 항목 | 명령 | exit | 테스트 |
+|---|---|---|---|
+| R1 | ./gradlew architectureTest | exit=0 | tests=0 failures=0 errors=0 |
+| R2 | ./gradlew test | exit=0 | tests=181 failures=0 errors=0 |
+| R3 | git diff --exit-code 1bce3dd -- domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountNetPnlTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/PnlAlertPolicyTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/MonitoringOutagePolicyTest.kt domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountHedgePositionTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobHourlyReportTest.kt apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJobObservationLogTest.kt apps/batch/src/integrationTest/kotlin/io/premiumspread/application/job/AccountPnlAlertDurabilityIntegrationTest.kt infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/notification/AccountPnlEmailSenderAdapterTest.kt infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/exchange | exit=0 | tests=0 failures=0 errors=0 |
+| R4a | ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' | exit=0 | tests=84 failures=0 errors=0 |
+| R4b | ./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' | exit=0 | tests=104 failures=0 errors=0 |
+| R5a | test -z "$(git diff --name-only --diff-filter=MDR 1bce3dd -- infrastructure/common/src/main/resources/db/migration)" | exit=0 | tests=0 failures=0 errors=0 |
+| R5b | ./gradlew :infrastructure:common:verifyMigrations | exit=0 | tests=0 failures=0 errors=0 |
+| R8 | ./gradlew :infrastructure:common:integrationTest | exit=0 | tests=0 failures=0 errors=0 |
+| R9 | ./gradlew :apps:batch:integrationTest | exit=0 | tests=0 failures=0 errors=0 |
+| R10 | ./gradlew :apps:api:test --tests '*TradePreparationWiring*' | exit=0 | tests=3 failures=0 errors=0 |
+| R11a | ./gradlew harnessCheck | exit=0 | tests=0 failures=0 errors=0 |
+| R11b | bash docs/check-documentation.sh | exit=0 | tests=0 failures=0 errors=0 |
+| AC1 | ./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.OwnerAlertRoutingTest' | exit=0 | tests=11 failures=0 errors=0 |
+| AC2 | ./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordMessageTest' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsTest' | exit=0 | tests=16 failures=0 errors=0 |
+| AC3 | ./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --tests 'io.premiumspread.domain.accountpnl.AccountPnlDiscordContentTest' | exit=0 | tests=37 failures=0 errors=0 |
+| AC4a | ./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest' | exit=0 | tests=5 failures=0 errors=0 |
+| AC4b | ./gradlew :infrastructure:common:verifyMigrations | exit=0 | tests=0 failures=0 errors=0 |
+| AC5 | ./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStoreIntegrationTest' | exit=0 | tests=19 failures=0 errors=0 |
+| AC6 | ./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest' | exit=0 | tests=21 failures=0 errors=0 |
+| AC7 | ./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertPropertiesTest' | exit=0 | tests=9 failures=0 errors=0 |
+| AC8 | ./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDispatcherTest' --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobOwnerAlertTest' | exit=0 | tests=20 failures=0 errors=0 |
+| AC9a | ./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirementsTest' | exit=0 | tests=4 failures=0 errors=0 |
+| AC9b | ./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' | exit=0 | tests=46 failures=0 errors=0 |
+| AC10 | ./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' | exit=0 | tests=44 failures=0 errors=0 |
+| AC11 | ./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' | exit=0 | tests=3 failures=0 errors=0 |
+
+- 위 R1·R2·R8·R9 는 gradle 이 `UP-TO-DATE` 로 건너뛰어 테스트 0건이었으므로 `--rerun-tasks` 를 덧붙여 실제로 다시 실행했다:
+
+| 항목 | 명령 | exit | 테스트 |
+|---|---|---|---|
+| R1x | ./gradlew architectureTest --rerun-tasks | exit=0 | tests=35 failures=0 errors=0 |
+| R2x | ./gradlew test --rerun-tasks | exit=0 | tests=944 failures=0 errors=0 |
+| R8x | ./gradlew :infrastructure:common:integrationTest --rerun-tasks | exit=0 | tests=42 failures=0 errors=0 |
+| R9x | ./gradlew :apps:batch:integrationTest --rerun-tasks | exit=0 | tests=104 failures=0 errors=0 |
+
+- R6 — `git diff 1bce3dd -- <세 파일> | grep '^-[^-]'` 출력: **빈 출력**(삭제·약화된 줄 없음).
+- R7 — `git diff 1bce3dd -- apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt` 전문:
+
+```diff
+diff --git a/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt b/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt
+index 8c2c475..307397e 100644
+--- a/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt
++++ b/apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt
+@@ -6,8 +6,9 @@ import org.junit.jupiter.api.Test
+ 
+ /**
+  * Batch 는 Flyway 를 쓰지 않고 `batch-schema.sql` fixture 로 스키마를 만든다. 아래 기대 목록은
+- * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 에서 옮긴 것이다.
+- * V18 이 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
++ * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 과
++ * `infrastructure/common/src/main/resources/db/migration/V19__add_owner_alert_channel.sql` 에서 옮긴 것이다.
++ * V18·V19 가 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
+  */
+ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
+ 
+@@ -40,9 +41,28 @@ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
+             "locked_at:datetime:YES",
+             "created_at:datetime:NO",
+             "sent_at:datetime:YES",
++            "channel:varchar:NO",
++            "discord_target:varchar:YES",
++            "discord_push:varchar:YES",
++            "discord_color:int:YES",
+         )
+     }
+ 
++    @Test
++    fun `account_pnl_mail fixture 의 UNIQUE 는 event_key 와 channel 이다`() {
++        assertThat(
++            jdbcTemplate.queryForList(
++                """
++                SELECT COLUMN_NAME FROM information_schema.STATISTICS
++                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'account_pnl_mail'
++                  AND INDEX_NAME = 'uk_account_pnl_mail_event_key_channel'
++                ORDER BY SEQ_IN_INDEX
++                """.trimIndent(),
++                String::class.java,
++            ),
++        ).containsExactly("event_key", "channel")
++    }
++
+     private fun columns(table: String): List<String> = jdbcTemplate.query(
+         """
+         SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM information_schema.COLUMNS
+```
+
+### Task 12 fix round 1 (2026-10-23)
+
+- Task 12 블록의 기본 실행 R1·R8·R9 `tests=0` 행은 gradle `UP-TO-DATE` 였다. 유효한 결과는 `--rerun-tasks` 로 재실행한 R1x·R2x·R8x·R9x 행이다. runbook 수신 주소 필수 조건·메일 env 표기 정정 후 `bash docs/check-documentation.sh` → passed.
+
+### ⑨ 재작업 1 (2026-10-23)
+
+- ktlint 25건 수동 정정(when 조건 사이 빈 줄·헬퍼 함수명·string template·인자/문장 줄바꿈), runbook 복구 SQL BINARY 비교·drift 정정, 기동 시 경로 요약 INFO, V19 CHECK 위반 판정 3819 + 제약 이름으로 좁힘.
+- `./gradlew :domain:test --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew :infrastructure:batch:test --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew :apps:batch:test --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew architectureTest --offline --no-daemon` BUILD SUCCESSFUL
+- `./gradlew :infrastructure:common:integrationTest --offline --no-daemon --tests '*V19OwnerAlertChannelMigrationIntegrationTest'` BUILD SUCCESSFUL
+- `bash docs/check-documentation.sh` passed
+
+### ⑨ 재작업 1 — detekt (2026-10-23)
+
+- `AccountPnlMonitorEnabledCondition.matches` 의 3~6 단계를 private helper 로 추출해 return 2개로 줄였다(단락 평가로 순서·WARN 문구·className 가드 유지). `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` BUILD SUCCESSFUL.
+- `./gradlew :apps:batch:test --offline --no-daemon` BUILD SUCCESSFUL. 그 밖의 #88 main 파일은 return 4개 초과 함수 없음(guard clause 는 detekt 설정상 제외).
+
+## 사람 확인 (T4)
+
+> 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
+
+| # | 확인 사항 | 확인자 | 날짜 | 앵커 |
+|---|---|---|---|---|
+| AC13 | 실제 Discord webhook 으로 4종 수신 — 채널·무음·@here·메일 병행·fallback | | | |
+
+## 변경 요청
+
+> 동결 후 기준을 바꿔야 할 때만 작성. 사람이 승인하기 전까지 구현을 중단한다.
+
+| 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
+|---|---|---|---|---|
+
+## 최종 판정
+
+- 판정 대상 코드 SHA: `0a1bda1` (base origin/dev `1bce3dd`). 이후 커밋 `c6bba79`(runbook 한 줄)와 이 판정 커밋은 문서만 바꾼다
+- 판정일: 2026-10-23 · 검증: qa-agent 직접 실행 (`--offline --no-daemon`, 테스트 task 는 `--rerun-tasks`, Docker 사용)
+- 판정: **AWAITING_HUMAN** — 자동 검증 전부 PASS, 사람 확인 항목이 남아 완료 아님
+
+| 항목 | 판정 | 비고 |
+|---|---|---|
+| AC1~AC11 (T1) | PASS | 각 명령 exit 0, 실패 0 — AC1 11, AC2 16, AC3 37, AC4 5(+verifyMigrations), AC5 19, AC6 21, AC7 9, AC8 20, AC9 4+47, AC10 45, AC11 3 |
+| AC12 (T3) | AWAITING_HUMAN | `check-documentation.sh` 통과. (a)~(h) 존재·코드 문구 일치는 qa 대조. 경로 요약 INFO 누락은 `c6bba79` 로 보완 |
+| AC13 (T4) | AWAITING_HUMAN | owner 가 실제 Discord webhook 으로 4종 수신 확인 → `## 사람 확인 (T4)` 와 PR 코멘트 |
+| R1·R2·R3·R4·R5·R8·R9·R10·R11 | PASS | architectureTest 35, `test` 945, 동결 테스트 diff 없음, accountpnl 84+105, migration 변경 = V19 추가만, integration common 42·api 174·batch 104, harnessCheck·check-documentation 통과 |
+| R6 | AWAITING_HUMAN | 세 파일 삭제 줄 0 (추가만 +315/+107/+116) — ⑨ spec-reviewer 통과 의견 |
+| R7 | AWAITING_HUMAN | 삭제는 KDoc 2줄뿐, 기대 목록 끝 4컬럼 추가. plan Task 6 이 요구한 신규 메서드 1개(UNIQUE 검증)는 기존 줄 수정이 아닌 추가 — ⑨ spec-reviewer 의견: 허용(R7 비해당) |
+| 커버리지 | 로컬 verification exit 0 (LINE 77.8%) | 최종 증거는 CI `2. Unit + coverage` (0a1bda1 pass) |
+| CI (PR #92, `0a1bda1`) | 6/7 pass | `5. ktlint + detekt` pass (⑨ 재작업에서 ktlint 25건·detekt 1건 정리). `6. Dependency + security scan` fail — dev 기존 상태 |
+
+- 미실행: 없음. 환경 문제: 없음. 재실행으로 지운 실패: 없음
+- ⑨ 미룬 권고(poison row 격리·회차 시간 예산 등)는 이슈 #90 코멘트로 이관
+- 브랜치 최종 코드 SHA 가 `0a1bda1` 과 달라지면 이 판정은 만료

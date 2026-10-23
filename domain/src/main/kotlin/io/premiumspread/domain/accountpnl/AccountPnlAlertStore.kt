@@ -38,6 +38,12 @@ interface AccountPnlAlertStore {
     fun markAttemptFailed(id: Long, claimToken: String, now: Instant): Boolean
 
     /**
+     * 재시도해도 성공할 수 없는 실패. token 이 일치하는 `PROCESSING` 행을 즉시 `FAILED`(attempt+1)로. 불일치면 false.
+     * 기본 구현은 구분하지 못하는 구현을 위해 시도 실패로 센다.
+     */
+    fun markFailed(id: Long, claimToken: String, now: Instant): Boolean = markAttemptFailed(id, claimToken, now)
+
+    /**
      * `locked_at < now − staleAfter` 인 `PROCESSING` 의 token 을 지우고 한 번의 시도로 센다(attempt+1).
      * [MAX_ATTEMPTS] 에 도달하면 `FAILED`, 아니면 `PENDING`. 반환값은 전이한 행 수(두 경우 모두 포함).
      */

@@ -3,7 +3,7 @@
 ## 목적과 범위
 
 - owner 의 실계정(빗썸 현물 롱 + 바이낸스 선물 숏) 헤지 포지션의 **순수익률·순수익금**을 1분마다 계산해, 1% 이상이면
-  메일로 알린다. 모니터링이 5분 넘게 멈추면 중단 메일, 다시 살아나면 복구 메일을 보낸다.
+  메일·Discord 로 알린다. 모니터링이 5분 넘게 멈추면 중단 메일, 다시 살아나면 복구 메일을 보낸다.
 - **조회 전용이다. 주문·출금·이체 API 를 호출하지 않고 구현하지도 않는다.** key 에도 해당 권한을 주지 않는다.
 - owner PC 로컬에서 `apps:batch` 로 실행한다. 기본값은 꺼짐이다.
 
@@ -29,23 +29,29 @@
 | 이름 | 필수 | 설명 | 예시 |
 |---|---|---|---|
 | `ACCOUNT_PNL_MONITOR_ENABLED` | 예 | 기능 플래그. 기본 `false`. `true` 일 때만 Job 이 뜬다 | `true` |
-| `ACCOUNT_PNL_ALERT_RECIPIENT` | 예 | 알림 수신 주소 | `owner@example.com` |
+| `ACCOUNT_PNL_ALERT_RECIPIENT` | 메일 채널을 쓸 때만(`OWNER_ALERT_EMAIL_ENABLED` 가 비었거나 `true`(대소문자 무관) ∧ `NOTIFICATION_EMAIL_ENABLED=true`) | 메일 수신 주소 | `owner@example.com` |
 | `BITHUMB_ACCESS_KEY` | 예 | 빗썸 조회 key | `<bithumb-access-key>` |
 | `BITHUMB_SECRET_KEY` | 예 | 빗썸 조회 secret | `<bithumb-secret-key>` |
-| `BINANCE_MODE` | 아니오 | 바이낸스 leg 방식. 기본 `api`. `api`\|`manual`(대소문자 무관). 그 밖의 값이면 기동 실패(기능이 켜져 있을 때 — `ACCOUNT_PNL_MONITOR_ENABLED=true` 이고 현재 모드의 필수값·메일·scheduling 이 모두 만족돼 설정이 바인딩될 때) | `api` |
+| `BINANCE_MODE` | 아니오 | 바이낸스 leg 방식. 기본 `api`. `api`\|`manual`(대소문자 무관). 그 밖의 값이면 기동 실패(기능이 켜져 있을 때 — `ACCOUNT_PNL_MONITOR_ENABLED=true` 이고 현재 모드의 필수값·채널(메일 또는 Discord 가 하나 이상 쓰일 때)·scheduling 이 모두 만족돼 설정이 바인딩될 때) | `api` |
 | `BINANCE_API_KEY` | **api 모드에서만** 예 | 바이낸스 읽기 key | `<binance-api-key>` |
 | `BINANCE_SECRET_KEY` | **api 모드에서만** 예 | 바이낸스 읽기 secret | `<binance-secret-key>` |
 | `BINANCE_MANUAL_*` 5종 | **manual 모드에서만**(수량·진입가) | 수동 입력 포지션. 아래 "바이낸스 수동 입력 모드" 절 | — |
-| `NOTIFICATION_EMAIL_ENABLED` | 예 | 메일 발송 활성. 기본 `false` | `true` |
-| `MAIL_HOST` / `MAIL_PORT` | 예 | SMTP 서버 | `smtp.example.com` / `587` |
-| `MAIL_USERNAME` / `MAIL_PASSWORD` | 예 | SMTP 계정 | `<smtp-user>` / `<smtp-password>` |
-| `ALERT_EMAIL_FROM` | 예 | 발신 주소 | `alert@example.com` |
+| `NOTIFICATION_EMAIL_ENABLED` | 메일 채널을 쓸 때 필요 | 메일 발송 활성. 기본 `false`. Discord 만 쓰면 꺼 둬도 된다 | `true` |
+| `OWNER_ALERT_EMAIL_ENABLED` | 아니오 | owner 알림 메일 채널 요청. 기본 `true`. 실제 사용은 `NOTIFICATION_EMAIL_ENABLED=true` 도 필요 | `true` |
+| `OWNER_ALERT_DISCORD_ENABLED` | 아니오 | owner 알림 Discord 채널 요청. 기본 `false`. `true` 면 webhook 을 하나 이상 설정해야 한다 | `true` |
+| `OWNER_ALERT_DISCORD_WEBHOOK_PNL` | Discord 를 쓸 때 셋 중 하나 이상 | **비밀**. pnl 채널 webhook URL(https). 아래 "owner 알림 채널" 절 | `<discord-webhook-url-pnl>` |
+| `OWNER_ALERT_DISCORD_WEBHOOK_MARKET` | 〃 | **비밀**. market 채널 webhook URL(https) | `<discord-webhook-url-market>` |
+| `OWNER_ALERT_DISCORD_WEBHOOK_OPS` | 〃 | **비밀**. ops 채널 webhook URL(https) | `<discord-webhook-url-ops>` |
+| `MAIL_HOST` / `MAIL_PORT` | 메일 채널을 쓸 때 | SMTP 서버 | `smtp.example.com` / `587` |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | 메일 채널을 쓸 때 | SMTP 계정 | `<smtp-user>` / `<smtp-password>` |
+| `ALERT_EMAIL_FROM` | 메일 채널을 쓸 때 | 발신 주소 | `alert@example.com` |
 | `BATCH_SCHEDULING_ENABLED` | 아니오 | 기본 `true`. `false` 면 Scheduler 가 함께 꺼진다 | `true` |
-| `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고 메일. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
+| `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고(메일·Discord) 생성 on/off. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 
 - 플래그가 `true` 여도 모드별 필수 env 중 하나라도 비면 Job 은 뜨지 않는다.
-  - 공통: `ACCOUNT_PNL_ALERT_RECIPIENT`, `BITHUMB_ACCESS_KEY`, `BITHUMB_SECRET_KEY`
+  - 공통: `BITHUMB_ACCESS_KEY`, `BITHUMB_SECRET_KEY`
+  - 메일 채널을 쓸 때만: `ACCOUNT_PNL_ALERT_RECIPIENT` (메일 채널을 쓰면 `api`·`manual` 모두 모드별 필수값에 더해진다)
   - `api` 모드: 공통 + `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`
   - `manual` 모드: 공통 + `BINANCE_MANUAL_SHORT_QUANTITY`, `BINANCE_MANUAL_ENTRY_PRICE` (바이낸스 key 불필요)
 - 누락 시 batch 로그에 다음 WARN 이 한 줄 남고 Job 은 뜨지 않는다. 비어 있는 **env 이름**만 나오며 설정 값은 나오지 않는다.
@@ -55,8 +61,146 @@
   ```
 
   `binanceMode` 는 `api` 또는 `manual`, `missing` 은 비어 있는 env 이름 목록이다. 이 WARN 은 `api` 모드에도 적용된다.
-- **`NOTIFICATION_EMAIL_ENABLED` 가 꺼져 있으면 모니터가 시작되지 않는다.** 이때 batch 로그에
-  `account-pnl-monitor enabled but email disabled; monitor not started` WARN 이 남는다.
+- 종류별 override env(`OWNER_ALERT_{KIND}_EMAIL`·`_DISCORD`·`_PUSH`)는 아래 "owner 알림 채널" 절 표를 본다.
+- 채널 기동 판정(메일 채널 = `OWNER_ALERT_EMAIL_ENABLED` 가 비었거나 `true`(대소문자 무관) ∧ `NOTIFICATION_EMAIL_ENABLED=true`, Discord 채널 = `OWNER_ALERT_DISCORD_ENABLED=true` ∧ webhook 1개 이상):
+  - **쓸 수 있는 채널이 하나도 없으면 모니터가 시작되지 않는다.** 이때 batch 로그에
+    `account-pnl-monitor enabled but email disabled; monitor not started` WARN 이 남는다.
+  - **`OWNER_ALERT_DISCORD_ENABLED=true` 인데 webhook 이 하나도 없으면 모니터가 시작되지 않는다.** 이때 다음 WARN 이 남는다.
+
+    ```text
+    owner-alert discord enabled but no webhook configured; monitor not started: set one of [OWNER_ALERT_DISCORD_WEBHOOK_PNL, OWNER_ALERT_DISCORD_WEBHOOK_MARKET, OWNER_ALERT_DISCORD_WEBHOOK_OPS]
+    ```
+  - 메일 채널만 꺼지고(`OWNER_ALERT_EMAIL_ENABLED` 가 비었거나 `true` 인데 `NOTIFICATION_EMAIL_ENABLED` 가 true 가 아님) Discord 가 쓸 수 있으면 **Discord 만으로 기동**하고 WARN 1회가 남는다.
+
+    ```text
+    owner-alert email enabled but NOTIFICATION_EMAIL_ENABLED is not true; email channel off
+    ```
+  - Discord 가 쓸 수 있으면 기동 INFO 가 남는다. 값은 URL 이 아니라 대상별 `set` 또는 `fallback(PNL|MARKET|OPS)` 다.
+
+    ```text
+    owner-alert discord webhooks: pnl=set, market=fallback(PNL), ops=set
+    ```
+
+## owner 알림 채널 (메일·Discord)
+
+owner 알림(실계정 순손익 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
+
+### webhook 만들기
+
+1. Discord 서버에서 채널 설정 → 연동 → 웹후크 → 새 웹후크 → **웹후크 URL 복사**.
+2. 용도별 채널 3개(pnl·market·ops)를 권장한다. 지금 쓰는 것은 pnl·ops 이고 market 은 후속 이슈용이다.
+3. env 에 넣는다(`OWNER_ALERT_DISCORD_ENABLED=true` + 아래 webhook). 설정하지 않은 대상은 `PNL → MARKET → OPS` 순서의 **첫 설정 대상**으로 간다.
+   - 하나만 만들면 모든 알림이 그 채널로 온다.
+   - 두 개만 만들면(예: pnl·ops) 빠진 대상(market)은 그 순서의 첫 설정 대상(pnl)으로 간다.
+
+**webhook URL 은 비밀번호와 같다.** URL 만 있으면 누구나 그 채널에 글을 쓸 수 있다. 유출되면 Discord 에서 그 웹후크를 삭제하고 새로 만든다. 셸 history·스크린샷·로그
+공유에 주의한다(위 `### credential 취급` 참조). 이 기능은 URL 을 DB·로그·예외 메시지에 남기지 않는다.
+
+### 기본 라우팅
+
+| 알림 | Discord 대상 | 알림 방식 | 메일 |
+|---|---|---|---|
+| 수익 알림(`PROFIT`) | pnl | `@here` | 예 |
+| 정시 보고(`HOURLY_REPORT`) | pnl | 무음 | **아니오** |
+| 모니터링 중단(`MONITORING_OUTAGE`) | ops | 소리 | 예 |
+| 모니터링 복구(`MONITORING_RECOVERED`) | ops | 소리 | **아니오** |
+
+- **Discord 를 켜면 정시 보고·복구 메일은 더 이상 오지 않는다(Discord 로만 온다).** 수익·중단은 메일도 계속 온다.
+- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다.
+- 후속 알림 10종(포지션 변경 등)은 [#89](https://github.com/geonyeop123/premium-spread/issues/89)·[#90](https://github.com/geonyeop123/premium-spread/issues/90)·[#91](https://github.com/geonyeop123/premium-spread/issues/91) 에서 이 표에 추가된다.
+- **무음** = 알림 소리·배지 없이 채널에만 쌓인다. **`@here`** = 채널 멤버 전원에게 알림이 간다. **소리** = 일반 알림.
+
+### 종류별 override env
+
+기본 라우팅을 종류별로 바꾼다. `{KIND}` 는 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED`. 값은 앞뒤 공백·대소문자를 무시하고 빈 값 = 지정 안 함.
+잘못된 값이면 모니터 기동이 실패한다(오류에는 key 만 찍히고 값은 찍히지 않는다).
+
+| env | 값 | 의미 |
+|---|---|---|
+| `OWNER_ALERT_{KIND}_EMAIL` | `true`\|`false` | 그 종류의 메일 on/off. Discord 가 꺼져 있을 때도 `false` 를 명시하면 메일이 빠진다 |
+| `OWNER_ALERT_{KIND}_DISCORD` | `pnl`\|`market`\|`ops`\|`none` | Discord 대상 변경. `none` 이면 그 종류는 Discord 로 가지 않는다 |
+| `OWNER_ALERT_{KIND}_PUSH` | `silent`\|`sound`\|`here` | 알림 방식 변경 |
+
+예: 정시 보고를 소리로 받기 `OWNER_ALERT_HOURLY_REPORT_PUSH=sound`, 중단을 pnl 채널로 `OWNER_ALERT_MONITORING_OUTAGE_DISCORD=pnl`,
+정시 보고도 메일로 받기 `OWNER_ALERT_HOURLY_REPORT_EMAIL=true`.
+
+두 채널이 모두 꺼지도록 override 한 알림은 행을 만들지 않는다. `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` 는 정시 보고 **생성** on/off 이고 라우팅과 별개다.
+
+### Discord 메시지 예
+
+정시 보고(pnl 채널, 무음, 파란색 embed). 숫자는 예시다.
+
+```text
+📊 정시 보고 09:00
+순수익률 +0.92% · 순손익 +1,234,567원
+체결가 기준 +0.90% (+1,200,000원)
+빗썸 청산가 140,000,000원 × 0.1 BTC (호가 VWAP)
+바이낸스 청산가 95,000.5 USDT × 0.1 BTC · 환율 1,450.00
+gross +1,500,000원 · 예상 청산 수수료 -20,000원
+진입 수수료 -10,000원 · 펀딩 +5,000원
+바이낸스 포지션: 거래소 API · 2026-10-23 09:00 KST
+```
+
+미반영 항목이 있으면 `⚠ 미반영: …` 줄이, 빗썸 평단을 사용자가 수정했으면 `빗썸 평단 사용자 수정됨` 줄이 더해진다. 제목 색은 수익 초록·정시 보고 파랑·중단 빨강·복구 회색이다.
+
+### 동작
+
+- 발송 실패 중 429·5xx·네트워크 오류는 다음 회차에 다시 시도한다(행당 최대 5회, 넘으면 `FAILED`). 429 응답의 `Retry-After` 만큼 기다린 뒤(2초 이하일 때만) 1회만 더 시도한다.
+- 그 밖 4xx(webhook 삭제·잘못된 URL 등)는 즉시 `FAILED` 로 닫고 재시도하지 않는다. 이때는 webhook 을 다시 만들어 env 를 고친다.
+- 채널을 끄면 그 채널로 쌓여 있던 행은 다음 회차에 1회 시도 후 `FAILED` 가 된다(보낼 수단이 없다).
+- 발송은 at-least-once 다. 드물게(성공 직후 프로세스 종료 등) 같은 알림이 두 번 올 수 있다.
+- 기동 INFO(Discord 가 켜졌을 때): `owner-alert discord webhooks: pnl=set, market=fallback(PNL), ops=set` — URL 이 아니라 `set` 또는 `fallback(대상)` 만 나온다.
+- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
+- **Discord 를 꺼 둔 상태여도 webhook env 에 잘못된 값(`http://` 또는 URL 이 아닌 값)이 있으면 모니터 기동이 실패한다.** 비우거나 https URL 로 고친다.
+  오류 메시지에는 `owner-alert.discord.webhook.pnl must be an https URL` 처럼 key 만 찍히고 값은 찍히지 않는다.
+
+### 한계와 금지
+
+- Spring `org.springframework.web.reactive.function.client` 로거를 DEBUG 로 켜지 않는다(요청 URL, 즉 webhook token 이 찍힌다).
+- `org.springframework.web.reactive`·`reactor.netty` 계열 로거도 DEBUG 로 켜지 않는다. 라이브러리가 webhook URL(token)을 로그에 남길 수 있다.
+- 발송 실패 로그에는 webhook URL·수신 주소가 남지 않는다. 그래도 로그를 공유하기 전에 한 번 더 확인한다.
+
+### 복구: 알 수 없는 값의 행
+
+owner 알림 전달이 같은 claim·저장 실패를 반복하며 멈췄고 원인이 `channel`·`discord_target`/`discord_push` 에 **알 수 없는 값**(대소문자·공백만 다른 값 포함)이 든 행이면(수동 DB 수정이나, enum 값이 더 적은 구 binary 로
+롤백한 경우에만 생길 수 있다) 그 행만 `FAILED` 로 닫는다. 정상 행은 건드리지 않는다.
+
+```sql
+UPDATE account_pnl_mail
+SET status = 'FAILED',
+    claim_token = NULL,
+    locked_by = NULL,
+    locked_at = NULL
+WHERE status IN ('PENDING', 'PROCESSING')
+  AND (BINARY channel NOT IN ('EMAIL', 'DISCORD')
+       OR (channel = 'DISCORD'
+           AND (BINARY discord_target NOT IN ('PNL', 'MARKET', 'OPS')
+                OR BINARY discord_push NOT IN ('SILENT', 'SOUND', 'HERE'))));
+```
+
+### 배포와 롤백
+
+배포 순서:
+
+1. API 배포 — Flyway 가 V19 를 적용한다(`account_pnl_mail` 에 `channel` 등 4컬럼 추가, 기존 행은 `EMAIL`). 이 시점에는 Discord 행이 없으므로 구 batch 가 돌아도 안전하다.
+2. **구 batch 중지** — 프로세스가 끝났는지 확인한다.
+3. 신 batch 기동.
+
+구·신 batch 를 같은 DB 에서 겹쳐 돌리지 않는다. 구 버전은 `channel` 을 몰라 Discord 행도 집어 메일로 보낸다.
+
+롤백(신 batch → 구 batch): **신 batch 를 중지**한 뒤, **구 batch 를 기동하기 전에** 아래 SQL 을 실행한다.
+
+```sql
+UPDATE account_pnl_mail
+SET status = 'FAILED',
+    claim_token = NULL,
+    locked_by = NULL,
+    locked_at = NULL
+WHERE channel = 'DISCORD'
+  AND status IN ('PENDING', 'PROCESSING');
+```
+
+효과: 미발송 Discord 사본만 닫히고 메일 행은 영향이 없다. 스키마(V19)는 되돌리지 않는다.
 
 ## 바이낸스 수동 입력 모드 (manual)
 
@@ -98,7 +242,7 @@
   갈 수 있다.
 - 수량·진입가가 바뀌면 새 에피소드(즉시 판정)로 본다. 수수료·펀딩만 바꾸면 에피소드가 유지된다.
 - taker 기본 `0.0005` 는 BNB 할인을 반영하지 않은 값이다(보수적). 진입 수수료를 BNB 로 냈다면 USDT 환산값을 입력한다.
-- manual 값은 **모니터가 기동 조건을 모두 만족해 설정이 바인딩될 때**(기능 켜짐·현재 모드의 필수값 전부·메일 켜짐·scheduling
+- manual 값은 **모니터가 기동 조건을 모두 만족해 설정이 바인딩될 때**(기능 켜짐·현재 모드의 필수값 전부·메일 또는 Discord 채널이 하나 이상 쓰일 때·scheduling
   켜짐) `api` 모드에서도 형식 검증된다. 기동 조건이 안 맞으면 검증도 되지 않는다.
 - manual 모드에서는 `바이낸스 인증 실패` 범주가 사실상 나오지 않는다(서명 호출이 없다). 바이낸스 쪽 실패는 `네트워크·요청 한도 오류`,
   `시세 지연`, `기타 오류` 로 나타난다.
@@ -250,13 +394,24 @@ PC 가 잠자기 상태였다면 깨어난 뒤 지난 시간을 감지해 메일
   바이낸스 청산가(호가 VWAP)와 최근 체결가가 바이낸스 화면과 합리적으로 맞는다.
 - [ ] (c) 알림을 받으려고 env 값을 실제와 다르게 바꾸지 않았다(위 한계 절 참조).
 
+## Discord 수신 체크리스트 (owner-alert-channel AC13)
+
+자기 Discord 서버에 pnl·ops 채널 webhook 을 만들어 `OWNER_ALERT_DISCORD_ENABLED=true` 로 로컬 batch 를 띄운 뒤 확인하고, 결과를 **PR 코멘트**로 기록한다.
+
+- [ ] (a) 기동 로그에 `monitor not started` 가 없고 `owner-alert discord webhooks:` INFO 가 있다.
+- [ ] (b) 정시 보고가 pnl 채널에 **무음**(알림 소리·배지 없음)으로 파란 embed 로 오고, 형식이 위 "Discord 메시지 예" 와 같다.
+- [ ] (c) 수익 알림(순수익률 1% 도달 시 — env 를 실제와 다르게 바꾸지 않는다)이 pnl 채널에 `@here` 로 울리고 메일도 온다.
+- [ ] (d) 중단·복구가 ops 채널에 소리로 오고 중단만 메일이 온다(Wi-Fi 를 끄거나 FX 수집 지연 등 자연 발생 시). 관찰 기회가 없으면 "미관찰"로 기록한다.
+- [ ] (e) webhook 하나만 설정하면 모든 알림이 그 채널로 온다.
+
 ## 끄는 법과 데이터 정리
 
 - 끄기: `ACCOUNT_PNL_MONITOR_ENABLED=false`(또는 미설정) 후 batch 재시작. `BATCH_SCHEDULING_ENABLED=false` 면 전체 스케줄러가 꺼진다.
+- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 4종은 모두 메일로 온다.
 - 모드 전환(`api` ↔ `manual`)은 env 수정 + batch 재시작이다. 수량·진입가가 같으면 에피소드가 유지된다.
 - 상태·outbox 테이블:
   - `account_pnl_monitor_state` — 단일 행(`id=1`). 에피소드·마지막 발송·중단 알림 여부.
-  - `account_pnl_mail` — durable 메일 outbox(`PENDING`/`PROCESSING`/`SENT`/`FAILED`). 수신자 주소는 저장하지 않는다.
+  - `account_pnl_mail` — owner 알림 공용 outbox(메일·Discord, `channel` 컬럼 `EMAIL`/`DISCORD`; 상태 `PENDING`/`PROCESSING`/`SENT`/`FAILED`). 수신 주소·webhook URL 은 저장하지 않는다.
 - 기능을 완전히 접으려면 두 테이블의 행을 지운다(테이블 자체는 migration 소유이므로 drop 하지 않는다).
 - **`FAILED` 메일은 redrive 하지 않는다.** 시간이 지난 수익 알림은 보낼 가치가 없다. 필요하면 원인만 확인하고 행을 정리한다.
 - 일반 알림 outbox 의 redrive 절차는 [durable-notification-delivery.md](durable-notification-delivery.md)이며 이 기능과 별개다.
