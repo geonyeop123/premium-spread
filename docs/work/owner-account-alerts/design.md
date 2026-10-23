@@ -3,7 +3,7 @@
 - slug: `owner-account-alerts` · base `033d513`(#88 머지, Task 0 이 `git merge-base HEAD origin/dev` 로 확인) · branch `feat/issue-89-owner-account-alerts`
 - 입력: ③ 합의(오케스트레이터 전달 범위), `docs/work/owner-alert-channel/{design,dod,plan}.md`(#88, FROZEN), `.ai/rules/{architecture,batch,testing,naming}.md`,
   `docs/runbooks/account-pnl-alert.md`
-- 상태: DRAFT — ⑥ 스펙 리뷰 전
+- 상태: DRAFT — ⑥ R1 REQUEST_CHANGES 반영 + ⑦ 사용자 결정(D1~D3) 반영(§12, §13), 재리뷰 대기
 
 ## 0. 요약
 
@@ -14,8 +14,8 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 | 알림 | `OwnerAlertKind` | 판정 | 기본 경로 |
 |---|---|---|---|
 | 순수익률 급변 | `NET_PERCENT_SWING` | 정시 버킷(zone 정시, 정시 보고와 같은 버킷)의 첫 성공 회차 `netPercent` 가 기준선. 현재값이 기준선 대비 ±임계값(기본 0.5%p) 이상이면 알림. 같은 버킷 안에서 방향(상승/하락)당 1회. 포지션 변경이면 그 버킷의 기준선을 지우고 다음 정시에 다시 잡는다 | 메일 ✗, Discord PNL `SOUND` |
-| 포지션 변경 | `POSITION_CHANGED` | 성공 회차마다 빗썸 leg(수량·평단)와 바이낸스 leg(부호 수량·진입가)를 따로 저장하고, 저장값과 다르면 바뀐 leg 의 before→after 를 알린다. 빗썸만 바뀌었고 바이낸스 출처가 `MANUAL_ENV` 면 "바이낸스 env 미갱신 — 헤지 불일치" 경고를 **해소될 때까지 1회만** 덧붙인다. 첫 기동(저장값 없음)은 저장만 | 메일 ✓, Discord PNL `HERE` |
-| 미반영 리마인더 | `UNRECOVERED_REMINDER` | zone(KST) 하루 한 번, 설정 시각(기본 09시) 이후 첫 **포지션 있는** 성공 회차에서 판정. 빗썸 진입 수수료·바이낸스 진입 수수료·펀딩비 미반영, 또는 수동 펀딩 값이 N일(기본 3) 이상 그대로면 해당 항목 전부를 한 메시지로 | 메일 ✗, Discord PNL `SILENT` |
+| 포지션 변경 | `POSITION_CHANGED` | 성공 회차마다 빗썸 leg(수량·평단)와 바이낸스 leg(부호 수량·진입가)를 따로 저장하고, 저장값과 다르면 바뀐 leg 의 before→after 를 알린다. 빗썸만 바뀌었고 바이낸스 출처가 `MANUAL_ENV` 면 "바이낸스 env 미갱신 — 헤지 불일치" 경고를 **해소될 때까지 1회만** 덧붙인다(해소 = 바이낸스 leg 변경 또는 API 출처, 사용자 확정 D3). 첫 기동(저장값 없음)은 저장만 | 메일 ✓, Discord PNL `HERE` |
+| 미반영 리마인더 | `UNRECOVERED_REMINDER` | 설정 시각(기본 09시 KST) 이후 **포지션 있는 성공 회차마다** 판정해, 빗썸 진입 수수료·바이낸스 진입 수수료·펀딩비 미반영 또는 수동 펀딩 값 N일(기본 3) 이상 미갱신 중 **하나라도 처음 해당하는 회차**에 그 시점 항목 전부를 한 메시지로 보낸다. zone(KST) 하루 최대 1회 — **보냈을 때만** 그날을 소비한다(사용자 확정 D1) | 메일 ✗, Discord PNL `SILENT` |
 
 핵심 결정 (근거는 각 절):
 
@@ -25,9 +25,9 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 | K2 | 새 알림은 Job 생성자 **맨 끝**의 `accountAlerts: AccountAlertSettings? = null` 이 null 이 아닐 때만 판정한다. null 이면 `account` 상태를 읽은 그대로 다시 저장한다. production 배선은 항상 넘긴다 — 동결·#88 Job 테스트가 무수정으로 같은 결과를 낸다 | §5.1, §2 |
 | K3 | 판정은 Domain 순수 정책 3개(`PositionChangePolicy`·`NetPercentSwingPolicy`·`UnrecoveredReminderPolicy`) + 조합기 `AccountAlertPolicy`. 결과는 sealed `AccountAlert` 이고 Job 은 sealed 타입에 대해서만 분기한다(`OwnerAlertKind` 전체 `when` 없음) | §3 |
 | K4 | leg·수동 펀딩 값은 **정규화한 10진 문자열(VARCHAR(64))** 로 저장하고 `compareTo` 로 비교한다 — DECIMAL scale 절단이 "매 회차 변경" 오탐을 만들 수 없게 | §4.2 |
-| K5 | 실패 회차는 세 정책 모두 **판정하지 않는다**(상태 그대로). 포지션 없음(`NoPosition`)은 성공 회차다 — leg 를 기록하고 청산도 변경으로 알린다 | §3.5 |
+| K5 | 실패 회차는 세 정책 모두 **판정하지 않는다**(상태 그대로). 포지션 없음(`NoPosition`)은 성공 회차다 — leg 를 기록하고 청산도 변경으로 알린다. 리마인더는 판정하지도 소비하지도 않는다 | §3.5 |
 | K6 | eventKey: 급변 `account-pnl-swing-{up\|down}-{버킷 시작 ms}`, 포지션 변경 `account-pnl-position-{감지 시각 ms}`, 리마인더 `account-pnl-reminder-{zone 자정 ms}`. outbox `(event_key, channel)` UNIQUE 가 상태 판정과 이중으로 중복을 막는다 | §3.6 |
-| K7 | #88 테스트 중 **`OwnerAlertKind` 개수를 고정한 단언 3곳**만 허용 예외로 고친다(값 3개 끝에 추가). 나머지 #88 테스트는 무수정 | §2, dod R7 |
+| K7 | #88 테스트 중 **`OwnerAlertKind` 개수를 고정한 단언 2곳**(`OwnerAlertRoutingTest:24-25`, `:34-35`)만 허용 예외로 고친다(기대 목록 끝에 값 3개 추가). 개수가 틀리게 된 같은 파일의 테스트 이름 2개(`:23`, `:42`)도 같은 허용 예외로 개수 중립/7종 문구로 바꾼다. 나머지 #88 테스트는 무수정 | §2, dod R7 |
 | K8 | V20 은 additive — 구 binary 의 상태 INSERT(9열)·UPDATE(새 열 미포함)가 V20 에서 그대로 동작하고 새 열 값을 보존한다. **롤백 SQL 없음** | §4.4 |
 
 ## 1. 범위
@@ -37,9 +37,9 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 - `OwnerAlertKind` 값 3개와 기본 경로(#88 design §3.2 목표 표 그대로), override env 9개, yml `routes` 3블록 (§6)
 - Domain: leg·상태·설정 모델, 정책 3개 + 조합기, sealed `AccountAlert`, 메일·Discord 렌더링 3종 (§3, §7)
 - V20 migration, JDBC store 상태 열 읽기·쓰기, batch fixture 스키마 (§4)
-- `AccountPnlMonitorJob` 관측 결과에 leg·출처·펀딩·관측 시각 추가, 알림 생성·라우팅, 상태 저장 (§5)
+- `AccountPnlMonitorJob` 관측 결과에 leg·출처·펀딩·관측 시각 추가, 알림 생성·라우팅, 상태 저장, 클래스 KDoc 의 시각 규칙 보강 (§5)
 - 설정 env 3개(임계값·리마인더 시각·수동 펀딩 경과 일수)와 앱 배선 (§6)
-- runbook·아키텍처 문서 갱신 (§11)
+- runbook·아키텍처·프로젝트 상태 문서 갱신 (§11)
 
 ### 1.2 제외 (scope creep 차단선)
 
@@ -61,12 +61,13 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 |---|---|---|
 | `AccountPnlMonitorJobTest`·`...HourlyReportTest`·`...ObservationLogTest` (동결) | Job 생성자 앞 13개 인자, `FakeStore` 6메서드 override, `AccountPnlMonitorState(alert, outage, version)` 3인자 생성, 회차당 행 수·종류, 관측 로그 문구, 관측 중 interrupt 재전파 | 생성자 **끝에** `accountAlerts = null` 추가(K2). 상태 4번째 프로퍼티는 기본값(K1). store interface 무변경. 관측 로그 무변경 — `observe()` 는 반환 타입(private)에 필드만 더한다 |
 | #88 `AccountPnlMonitorJobOwnerAlertTest`·`OwnerAlertDispatcherTest`·`OwnerAlertTestFakes`·`OwnerAlertDeliveryIntegrationTest`·`AccountPnlAlertDurabilityIntegrationTest` | 같은 생성자, 회차당 행 구성 | `accountAlerts` 미지정 → 새 알림 없음. 무수정 |
-| #88 `OwnerAlertRoutingTest` | `entries` 이름·key 목록 `containsExactly` 4개 (`:24-25`, `:34-35`) | **허용 예외** — 두 단언의 기대 목록 끝에 3개 추가. 나머지 메서드는 `entries.forEach` 라 새 값에도 성립 |
-| #88 `OwnerAlertPropertiesTest` | 알 수 없는 key 메시지 `known: profit, hourly-report, monitoring-outage, monitoring-recovered` (`:113`) | **허용 예외** — 기대 문자열 끝에 `, position-changed, net-percent-swing, unrecovered-reminder` |
+| #88 `OwnerAlertRoutingTest` | `entries` 이름·key 목록 `containsExactly` 4개 (`:24-25`, `:34-35`), 테스트 이름 `종류는 네 개이고…`(`:23`)·`EMAIL_ONLY 는 네 종류 모두 메일만`(`:42`) | **허용 예외** — 두 단언의 기대 목록 끝에 3개 추가, 두 이름을 개수 중립 또는 7종 문구로. 나머지 메서드는 `entries.forEach` 라 새 값에도 성립 |
+| #88 `OwnerAlertPropertiesTest` | 알 수 없는 key 메시지를 `contains("known: profit, hourly-report, monitoring-outage, monitoring-recovered")` 로 잼(`:111-113`, 메시지는 `OwnerAlertProperties.kt:87` 의 `entries.joinToString`) | 새 값은 enum **끝**에 붙어 기존 부분 문자열이 그대로 포함된다 — **무수정** |
 | #88 `AccountPnlMonitorWiringTest` | 기동 INFO `owner-alert routes: …` 를 `contains` 로 잼(`:794-803`) | 새 값은 enum **끝**에 붙으므로 기존 부분 문자열이 그대로 포함된다. 확장만 |
 | #88 `OwnerAlertYamlContractTest` | yml `routes` key 집합 = `OwnerAlertKind.entries` | yml 3블록 추가로 무수정 통과 |
 | `AccountPnlFixtureSchemaIntegrationTest` | `account_pnl_monitor_state` 열 목록 = V18 | 클래스 KDoc 이 "새 migration 이 바꾸면 함께 고친다" — **허용 예외**(기대 목록 끝에 12열, KDoc 에 V20) |
 | `JdbcAccountPnlAlertStoreIntegrationTest` (확장만) | `load()` 결과 동등성 | 새 열이 NULL/FALSE 면 `AccountAlertState.INITIAL` 로 읽혀 기존 단언 그대로 성립 |
+| api `FlywayOwnershipIntegrationTest` | API 가 모든 migration 을 적용 | V20 추가로 함께 검증된다 — dod 회귀 방어선에 `:apps:api:integrationTest` |
 
 ## 3. Domain 모델과 정책 (`io.premiumspread.domain.accountpnl`)
 
@@ -96,8 +97,8 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 | P7 | 있음 | ✗ | ✓ | 무엇이든 | 무엇이든 | 이번 legs | false | 변경(바이낸스) — 경고 해소 |
 | P8 | 있음 | ✓ | ✓ | 무엇이든 | 무엇이든 | 이번 legs | false | 변경(빗썸·바이낸스) |
 
-- "해소"는 바이낸스 leg 가 바뀌었을 때(P7·P8 — env 갱신 + 재시작) 또는 출처가 API 일 때(P2·P6)다. 빗썸이 원래 값으로 돌아오는 경우는 해소로 보지 않는다
-  (P3 에서 `warned` 유지 — 다음 빗썸 변경도 경고 없이 알린다). `[ASSUMPTION]` A6.
+- "해소"는 바이낸스 leg 가 바뀌었을 때(P7·P8 — env 갱신 + 재시작) 또는 출처가 API 일 때(P2·P6)**뿐**이다. 빗썸이 원래 값으로 돌아오는 경우는 해소로 보지 않는다
+  (P3 에서 `warned` 유지 — 다음 빗썸 변경도 경고 없이 알린다). **사용자 확정 D3.**
 - 전량 청산(`NoPosition`)도 leg 가 바뀌므로 P4~P8 중 하나로 알린다(빗썸 → `EMPTY` 이면 "없음"으로 표시).
 - 모드 전환(`api` ↔ `manual`)은 수량·진입가가 같으면 변경 아님(P2·P3) — runbook 의 기존 "에피소드 유지" 설명과 같은 규칙.
 - 재시작 사이에 바뀐 포지션도 재시작 후 첫 성공 회차에서 저장값과 비교해 알린다(상태는 DB 에 있다).
@@ -130,7 +131,7 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 ### 3.4 미반영 리마인더 `UnrecoveredReminderPolicy`
 
 상태 `ReminderState(lastDayStart: Instant?, manualFundingUsdt: BigDecimal?, manualFundingChangedAt: Instant?)`.
-불변식: `manualFundingChangedAt == null` 이면 `manualFundingUsdt == null`.
+`lastDayStart` = **리마인더를 마지막으로 보낸** zone 날짜의 자정. 불변식: `manualFundingChangedAt == null` 이면 `manualFundingUsdt == null`.
 
 **1단계 — 수동 펀딩 값 추적** (모든 성공 회차, 포지션 유무 무관):
 
@@ -144,15 +145,16 @@ outbox(`account_pnl_mail`)·전달(`OwnerAlertDispatcher`)을 **그대로** 탄�
 "이번 값" = 바이낸스 스냅샷 `fundingUsdt`(`BINANCE_MANUAL_FUNDING_USDT`, 미입력이면 null) 를 정규화한 값. 변경 시각은 DB 가 자동 기록한다(새 날짜 env 없음).
 V20 배포 후 첫 관측이 기준이므로 "N일째 미갱신"은 배포 후 N일이 지나야 처음 나올 수 있다. `[ASSUMPTION]` A4.
 
-**2단계 — 리마인더 판정.** `dayStart(at, zone) = at.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()`, 하루 범위 `[dayStart, 다음 dayStart)`.
+**2단계 — 리마인더 판정** (사용자 확정 D1). `dayStart(at, zone) = at.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()`, 하루 범위 `[dayStart, 다음 dayStart)`.
+설정 시각 이후 **포지션 있는 성공 회차마다** 판정하고, 항목이 하나라도 있는 첫 회차에 보낸다. 그날은 **보냈을 때만** 소비된다.
 
-| # | 조건 | → lastDayStart | 알림 |
+| # | 조건 (위에서부터) | → lastDayStart | 알림 |
 |---|---|---|---|
-| R1 | `pnl == null` (포지션 없음) | 그대로 | 없음 — 그날을 소비하지 않는다 |
+| R1 | `pnl == null` (포지션 없음) | 그대로 | 없음 — 판정하지 않고 소비하지 않는다 |
 | R2 | `observedAt` 의 zone 시각 `hour < reminderHour` | 그대로 | 없음 |
-| R3 | `lastDayStart == dayStart` (오늘 이미 판정) | 그대로 | 없음 |
-| R4 | 그 밖 — 오늘 첫 판정, 항목 0개 | `dayStart` | 없음 |
-| R5 | 그 밖 — 오늘 첫 판정, 항목 1개 이상 | `dayStart` | **리마인더**(항목 전부) |
+| R3 | `lastDayStart == dayStart` (오늘 이미 보냄) | 그대로 | 없음 |
+| R4 | 항목 0개 | 그대로 | 없음 — 다음 성공 회차에 다시 판정 |
+| R5 | 항목 1개 이상 | `dayStart` | **리마인더**(그 시점 항목 전부) |
 
 항목 (순서 고정, 해당하는 것만):
 
@@ -163,8 +165,10 @@ V20 배포 후 첫 관측이 기준이므로 "N일째 미갱신"은 배포 후 N
 | `FUNDING` | `pnl.fundingUnrecovered` |
 | `MANUAL_FUNDING_STALE` | 출처 `MANUAL_ENV` ∧ 1단계 뒤 `manualFundingUsdt != null` ∧ `observedAt − manualFundingChangedAt ≥ manualFundingStaleAfter` |
 
-- "그날 첫 판정"은 설정 시각 이후 **첫 포지션 있는 성공 회차**다. 그때 항목이 없으면(R4) 그날은 끝이다 — 오후에 미반영이 생겨도 다음 날 09시에 알린다.
-  실패 회차·포지션 없음 회차는 그날을 소비하지 않는다. `[ASSUMPTION]` A3.
+- 예: 09:00 에 항목 없음 → 보내지 않음, 15:00 에 항목이 처음 생기면 15:00 에 보냄(그날 소비). 같은 날 그 뒤 다른 항목이 더 생겨도 보내지 않는다(다음 날 설정 시각 이후 판정).
+  하루 종일 항목이 없으면 아무것도 보내지 않는다.
+- 실패 회차·포지션 없음 회차는 판정하지 않고 그날을 소비하지 않는다.
+- eventKey 는 zone 날짜 단위 그대로(§3.6) — 보낸 날의 자정.
 - 경과 일수 표시 = `Duration.between(changedAt, observedAt).toDays()`(내림).
 
 ### 3.5 조합기 `AccountAlertPolicy` 와 회차 종류
@@ -174,7 +178,7 @@ V20 배포 후 첫 관측이 기준이므로 "N일째 미갱신"은 배포 후 N
 | 회차 | 포지션 | 급변 | 리마인더 |
 |---|---|---|---|
 | 실패(`PnlObservation.Failed`) — `round == null` | 판정 없음, 상태 그대로 | 판정 없음 | 판정 없음(펀딩 추적도 없음) |
-| 포지션 없음(`NoPosition`) | P1~P8 | S1 또는 S2(기준선 null)·S3 | 펀딩 추적만, R1 |
+| 포지션 없음(`NoPosition`) | P1~P8 | S1 또는 S2(기준선 null)·S3 | 펀딩 추적만, R1(판정·소비 없음) |
 | 포지션 있음(`Computed`) | P1~P8 | S1~S6 | 1단계 + R2~R5 |
 
 순서: 포지션 → 급변(`positionChanged = 포지션 알림 있음`) → 리마인더. 알림 목록 순서도 같다.
@@ -194,7 +198,7 @@ outbox 행 순서는 기존 알림(수익 → 정시 보고 → 중단/복구) *
 | 급변 상승 | `account-pnl-swing-up-{bucketStart ms}` | 같은 버킷의 상승 | `upSent` |
 | 급변 하락 | `account-pnl-swing-down-{bucketStart ms}` | 같은 버킷의 하락 | `downSent` |
 | 포지션 변경 | `account-pnl-position-{detectedAt ms}` | 같은 회차(재저장)뿐 — 변경 이벤트마다 다르다 | 저장 legs 갱신 |
-| 리마인더 | `account-pnl-reminder-{dayStart ms}` | 같은 zone 날짜 | `lastDayStart` |
+| 리마인더 | `account-pnl-reminder-{dayStart ms}` | 같은 zone 날짜 | `lastDayStart`(보낸 날) |
 
 identity = `(event_key, channel)`(#88). 구독·MarketPair 는 없다(owner 단일 계정, BTC).
 
@@ -256,6 +260,7 @@ ALTER TABLE account_pnl_monitor_state
 
 - 한 문장 — MySQL DDL 은 트랜잭션이 아니므로 반쯤 적용된 V20 을 남기지 않는다. 한 ALTER 안에서 새 열을 참조하는 CHECK 는 V19 가 이미 검증했다. `[ASSUMPTION]` A1.
 - 새 열은 기존 9열 **뒤에** 붙는다. 기존 CHECK `ck_account_pnl_monitor_state_singleton` 무변경.
+- `reminder_day_start` 는 리마인더를 **보낸** 날의 zone 자정이다(§3.4).
 - `swing_baseline_percent` 는 `netPercent`(scale 2)라 DECIMAL 로 둔다. 범위 `|x| < 10^10` 은 store 가 저장 전 검증한다(§4.3).
 - batch fixture(`apps/batch/src/integrationTest/resources/batch-schema.sql`)의 `account_pnl_monitor_state` 를 V18+V20 최종 형태로 맞춘다(batch 는 Flyway 를 쓰지 않는다).
 
@@ -310,6 +315,9 @@ monitor():
 
 - `observe()` 의 private `Observed` 에 `round: AccountRound?` 를 더한다. 성공 시 `AccountRound(PositionLegs.of(k, f), f.positionSource, f.fundingUsdt,
   pnl 또는 null, completedAt)`. 실패면 null. 관측 로그·취소 재전파·실패 범주 정규화는 그대로.
+- **시각 규칙.** 기존 클래스 KDoc(`AccountPnlMonitorJob.kt:57-58`)은 "상태 전이(stale 복구·수익·중단 정책·메일 시각)는 회차 시작 시각 `now`" 라고 적는다. 계정 알림 3종은
+  예외로 **관측 완료 시각 `observedAt`**(= `completedAt`, `:140`; 포지션 있으면 `pnl.calculatedAt`, `:149`)을 쓴다 — 급변 버킷이 정시 보고 버킷과 같아야 하기 때문이다.
+  이 예외를 클래스 KDoc 에 한 줄로 덧붙인다(plan Task 10).
 - `zone` 은 기존 Job 생성자 기본값 `Asia/Seoul`(앱 배선이 넘기지 않음 — #88 §10). 급변 버킷·리마인더 날짜·표시 시각 모두 이 zone.
 - 정책 예외(불변식 위반 버그)는 기존 `PnlAlertPolicy` 와 같이 잡지 않는다 → `JobExecutor` 가 `Failure` 로 기록.
 
@@ -347,8 +355,8 @@ monitor():
 | `NET_PERCENT_SWING` | `net-percent-swing` | `PNL` | `SOUND` | false |
 | `UNRECOVERED_REMINDER` | `unrecovered-reminder` | `PNL` | `SILENT` | false |
 
-- #88 해석 규칙(§3.3) 그대로: **Discord 가 꺼져 있으면 세 종류 모두 메일로 간다**(사용자 확정 D1 의 귀결). 급변은 최대 시간당 2통, 리마인더는 하루 1통이 메일로 온다 —
-  원치 않으면 `OWNER_ALERT_NET_PERCENT_SWING_EMAIL=false` 등. runbook 에 굵게 적는다. `[ASSUMPTION]` A7.
+- #88 해석 규칙(§3.3) 그대로: **Discord 가 꺼져 있으면 세 종류 모두 메일로 간다**(#88 D1 의 귀결, 이 단위 **사용자 확정 D2**). 급변은 최대 시간당 2통, 리마인더는 하루 1통이 메일로 온다 —
+  원치 않으면 `OWNER_ALERT_NET_PERCENT_SWING_EMAIL=false` 등. runbook 에 굵게 적는다.
 - override env 9개: `OWNER_ALERT_{POSITION_CHANGED|NET_PERCENT_SWING|UNRECOVERED_REMINDER}_{EMAIL|DISCORD|PUSH}` → `owner-alert.routes.{key}.{email|discord|push}`.
   해석·검증은 #88 `OwnerAlertProperties` 그대로(코드 변경 없음, known 목록은 enum 에서 생성).
 
@@ -357,11 +365,13 @@ monitor():
 | env | property | 기본 | 의미 |
 |---|---|---|---|
 | `ACCOUNT_PNL_SWING_THRESHOLD_PERCENT` | `account-pnl-monitor.account-alerts.swing-threshold-percent` | `0.5` | 급변 임계값(%p, 양수) |
-| `ACCOUNT_PNL_REMINDER_HOUR` | `account-pnl-monitor.account-alerts.reminder-hour` | `9` | 리마인더 판정 시작 시각(zone 시, 0~23) |
+| `ACCOUNT_PNL_REMINDER_HOUR` | `account-pnl-monitor.account-alerts.reminder-hour` | `9` | 리마인더 판정 시작 시각(zone 시, 0~23). 오케스트레이터 판정 O1 |
 | `ACCOUNT_PNL_MANUAL_FUNDING_STALE_DAYS` | `account-pnl-monitor.account-alerts.manual-funding-stale-days` | `3` | 수동 펀딩 미갱신 일수(양의 정수) |
 
-- 앱 `AccountPnlMonitorConfiguration.accountPnlMonitorJob` 이 `@Value` 로 받아 `AccountAlertSettings` 를 만든다. 잘못된 값은 Domain `require` 또는 Spring 변환
-  실패로 **기동 실패**다(값은 비밀이 아니다). `AccountPnlMonitorProperties` 는 바꾸지 않는다(이 prefix 의 미바인딩 key 는 무시된다 — `hourly-report` 와 같다).
+- 앱 `AccountPnlMonitorConfiguration` 에 **별도 bean `accountAlertSettings(@Value …): AccountAlertSettings`** 를 두고, `accountPnlMonitorJob` bean 이 그 bean 을 인자로 받아
+  Job 의 `accountAlerts` 로 넘긴다. bean 으로 두는 이유: Job 필드는 private 이라 배선 테스트가 설정 값을 bean 으로 꺼내 확인해야 한다.
+- 잘못된 값은 Domain `require` 또는 Spring 변환 실패로 **기동 실패**다(값은 비밀이 아니다). `AccountPnlMonitorProperties` 는 바꾸지 않는다
+  (이 prefix 의 미바인딩 key 는 무시된다 — `hourly-report` 와 같다).
 - 수익·중단·정시 보고 env 무변경.
 
 yml 추가 (전문 — `account-pnl-monitor.hourly-report` 블록 바로 뒤, 그리고 `owner-alert.routes` 끝):
@@ -445,7 +455,7 @@ yml 추가 (전문 — `account-pnl-monitor.hourly-report` 블록 바로 뒤, �
 - 펀딩비 미반영 — {수동 미입력|이력 없음}                                        ← FUNDING
 - 수동 펀딩비 {days}일째 미갱신 — 현재 값 {signedUsdt(value)}, 마지막 변경 {time(changedAt)}   ← MANUAL_FUNDING_STALE
 
-하루 한 번({HH(reminderHour)}:00 이후 첫 성공 회차) 보냅니다. 조치 안내: docs/runbooks/account-pnl-alert.md
+하루 한 번, {HH(reminderHour)}:00 이후 항목이 처음 확인된 회차에 보냅니다. 조치 안내: docs/runbooks/account-pnl-alert.md
 ```
 
 ### 7.3 Discord (exact copy)
@@ -499,7 +509,7 @@ DB 만. 상태(기존 열 + V20 열) 갱신과 outbox 행 삽입이 한 트랜�
 | Facade 이름·주입 | **N/A** — batch 전용, REST 없음. 진입은 기존 `AccountPnlMonitorScheduler` → `AccountPnlMonitorJob` |
 | Domain port · 구현 모듈 | **새 port 없음.** 기존 `AccountPnlAlertStore`(← `infrastructure:common` `JdbcAccountPnlAlertStore`)가 확장된 `AccountPnlMonitorState` 를 저장한다. 판정은 port 가 아니라 Domain 순수 정책(`object`) — 구현이 하나뿐이고 I/O 가 없다 |
 | MarketPair identity | **N/A** — owner 단일 계정(BTC) 헤지. eventKey·상태 행에 pair 가 없다(#88 과 같음) |
-| 시간·범위 | 모든 시각 `Instant` + 주입 `Clock`. 급변 버킷 `[정시, +1h)`·리마인더 날짜 `[zone 자정, 다음 자정)` 은 Job `zone`(기본 `Asia/Seoul`). DB 집계 버킷이 아니므로 UTC 버킷 규칙 대상 아님. `aggregation.zone` 은 이 Job 에 연결돼 있지 않다(#88 §10) |
+| 시간·범위 | 모든 시각 `Instant` + 주입 `Clock`. 급변 버킷 `[정시, +1h)`·리마인더 날짜 `[zone 자정, 다음 자정)` 은 Job `zone`(기본 `Asia/Seoul`). 계정 알림은 관측 완료 시각 기준(§5.1). DB 집계 버킷이 아니므로 UTC 버킷 규칙 대상 아님. `aggregation.zone` 은 이 Job 에 연결돼 있지 않다(#88 §10) |
 | DB·cache 순서 | DB-first 한 트랜잭션, cache 없음 |
 | Flyway | 필요. `V20__add_owner_account_alert_state.sql`(V19 + 1, Task 0 확인). DDL §4.2. batch fixture 동기화 |
 | batch lock·lease·timeout·JobResult | 무변경(`lock:account-pnl:monitor`, 50s, 40s). 분기 §5.2 |
@@ -511,8 +521,8 @@ DB 만. 상태(기존 열 + V20 열) 갱신과 outbox 행 삽입이 한 트랜�
 
 | 계층 | 무엇을 | 어디서 |
 |---|---|---|
-| Domain | leg 정규화(dust·flat·scale), 상태 불변식, 설정 검증, 정책 3개 전이표 전 행 + 경계값(임계값 0.49/0.50, 정시 경계 `10:59:59.999`/`11:00:00` KST, 리마인더 `08:59:59`/`09:00:00` KST, 자정 `15:00Z`, 펀딩 `3d−1ms`/`3d`), 조합기(실패·포지션 없음·첫 기동·변경→기준선 초기화·알림 순서), 렌더링 golden 6종(메일 3·Discord 3 + 경고·하락·manual 변형), eventKey, 라우팅 기본표 | `domain` unit (고정 `Instant`, `ZoneId.of("Asia/Seoul")`, 가짜 수치 — 실제 포지션 값 금지) |
-| persistence | V20 두 경로(빈 DB, V19→V20 + 기존 행), CHECK 3개, 구 binary INSERT/UPDATE 호환·새 열 보존, store round-trip(INITIAL·전체 값·정밀도·version 충돌 시 미기록·길이 검증) | `infrastructure:common` integration (MySQL Testcontainers) |
+| Domain | leg 정규화(dust·flat·scale), 상태 불변식, 설정 검증, 정책 3개 전이표 전 행 + 경계값(임계값 0.49/0.50, 정시 경계 `10:59:59.999`/`11:00:00` KST, 리마인더 `08:59:59`/`09:00:00` KST, 15:00 KST 첫 항목 발송·같은 날 두 번째 항목 미발송, 자정 `15:00Z`, 펀딩 `3d−1ms`/`3d`), 조합기(실패·포지션 없음·첫 기동·변경→기준선 초기화·알림 순서), 렌더링 golden 6종(메일 3·Discord 3 + 경고·하락·manual 변형), eventKey, 라우팅 기본표 | `domain` unit (고정 `Instant`, `ZoneId.of("Asia/Seoul")`, 가짜 수치 — 실제 포지션 값 금지) |
+| persistence | V20 두 경로(빈 DB, V19→V20 + 기존 행), CHECK 3개, 구 binary INSERT/UPDATE 호환·새 열 보존, store round-trip(INITIAL·전체 값·정밀도·version 충돌 시 미기록·길이 검증), API Flyway 전체 적용 | `infrastructure:common` integration, `apps:api` integration (MySQL Testcontainers) |
 | application | Job: `accountAlerts=null` 이면 새 행 0·`account` 그대로, 설정 시 3종 행·경로(메일+Discord 구성), 실패 회차 무판정, 정시 보고 꺼짐에도 기준선, 재시작(새 인스턴스) 지속, version 충돌 | `apps:batch` unit (#88 `FakeOwnerAlertStore`·`MutableClock` 재사용 — 무수정) |
 | wiring | env 3개 기본값·override·잘못된 값 기동 실패, 기동 INFO routes 에 새 3종, yml routes key = enum | `apps:batch` unit (`ApplicationContextRunner`) |
 | E2E | 실제 MySQL fixture + 실제 store 로 첫 기동 → 빗썸 변경(manual, 경고) → 재시작 → 바이낸스 변경 → 급변 → 리마인더, outbox 행·상태 열 | `apps:batch` integration |
@@ -522,13 +532,27 @@ DB 만. 상태(기존 열 + V20 열) 갱신과 outbox 행 삽입이 한 트랜�
 ## 11. 문서 갱신 대상
 
 - `docs/runbooks/account-pnl-alert.md` — `## 환경변수` 에 env 3개, `### 기본 라우팅` 표에 3종(+ Discord 꺼짐이면 메일로 온다), `### 종류별 override env` 의 `{KIND}` 목록,
-  신규 `## owner 계정 알림 (포지션 변경·급변·리마인더)` 절(판정 규칙, 헤지 불일치 경고 해소 조건, 첫 기동, 리마인더 시각·소비 규칙, 수동 펀딩 변경 시각 자동 기록과 배포 후 N일, 메시지 예),
+  신규 `## owner 계정 알림 (포지션 변경·급변·리마인더)` 절(판정 규칙, 헤지 불일치 경고 해소 조건, 첫 기동, 리마인더 시각·"항목이 처음 생긴 회차에 하루 1회"·보냈을 때만 소비, 수동 펀딩 변경 시각 자동 기록과 배포 후 N일, 메시지 예),
   `### 배포와 롤백` 에 V20(롤백 SQL 없음), `## 끄는 법과 데이터 정리` 의 `account_pnl_monitor_state` 설명, 신규 `## 계정 알림 Discord 체크리스트 (owner-account-alerts AC14)`
 - `.ai/architecture/ARCHITECTURE_DESIGN.md` — 실계정 알림 흐름에 계정 알림 3종 한 줄
-- `.ai/PROJECT_STATUS.md` — migration 표에 V20 행
+- `.ai/PROJECT_STATUS.md` — `:13` 모듈 표의 `Flyway V1~V19` → `V1~V20`, migration 표(`:92` V19 행 뒤)에 V20 행
 - `docs/runbooks/redis-contract.md`·`auth-security.md`·`durable-notification-delivery.md` — 무변경
 
 ## 12. 가정과 결정
+
+### 사용자 확정 (⑦, 2026-10-23)
+
+| # | 질문 | 확정 | 반영 위치 |
+|---|---|---|---|
+| D1 | 리마인더는 09시 첫 회차 한 번만 판정할까, 항목이 생길 때까지 계속 판정할까? (초안 A3) | **변경 — 09:00 KST 이후 포지션 있는 성공 회차마다 판정, 항목이 처음 해당하는 회차에 발송, KST 하루 최대 1회(보냈을 때만 소비). 포지션 없음 회차는 판정·소비하지 않음. 종일 항목이 없으면 발송 없음** | §0, §3.4 R1~R5, §7.2, dod AC5·AC6·AC10 |
+| D2 | Discord 가 꺼져 있으면 새 3종도 메일로 갈까? (초안 A7) | **그대로 — #88 D1 규칙대로 3종 모두 메일** | §6.1, runbook |
+| D3 | 헤지 불일치 경고는 언제 해소되나? (초안 A6) | **그대로 — 바이낸스 leg 변경 또는 API 출처일 때만** | §3.2, dod AC3 |
+
+### 오케스트레이터 판정
+
+| # | 판정 | 반영 위치 |
+|---|---|---|
+| O1 | 리마인더 시작 시각은 env `ACCOUNT_PNL_REMINDER_HOUR`(기본 9)로 둔다 — 사용자 합의 항목이 아니라 오케스트레이터 판정 | §3.7, §6.2 |
 
 ### [ASSUMPTION]
 
@@ -536,20 +560,26 @@ DB 만. 상태(기존 열 + V20 열) 갱신과 outbox 행 삽입이 한 트랜�
 |---|---|---|
 | A1 | MySQL 8.0 에서 한 `ALTER TABLE` 로 열 12개 + 새 열을 참조하는 CHECK 3개가 성공한다 | Task 8 migration integration test (V19 선례) |
 | A2 | 급변 버킷 기준 시각 = 회차 관측 완료 시각(`observedAt`, 포지션 있으면 `pnl.calculatedAt`) — 정시 보고와 같은 버킷 | Task 4·10 테스트 |
-| A3 | 리마인더는 설정 시각 이후 **첫 포지션 있는 성공 회차** 한 번만 판정하고, 그때 항목이 없으면 그날은 보내지 않는다. 실패·포지션 없음 회차는 그날을 소비하지 않는다 | ⑥·⑦ 확인 — 사용자 답에 따라 R4 를 "항목이 생길 때까지 계속 판정"으로 바꿀 수 있다 |
 | A4 | 수동 펀딩 "변경 시각"의 첫 값은 V20 배포 후 첫 관측 시각이다(과거 변경 시각은 알 수 없다). API 모드로 전환하면 추적을 지운다 | runbook 명시 |
 | A5 | 빗썸 수량 < 0.0001(dust)은 빈 leg, 바이낸스 수량 0 은 진입가 무시 — dust 변동·청산 후 잔여 평단은 변경이 아니다 | Task 2 테스트 |
-| A6 | 헤지 불일치 경고는 바이낸스 leg 변경 또는 API 출처일 때만 해소된다. 빗썸이 원래 값으로 돌아와도 해소로 보지 않는다 | ⑦ 확인 |
-| A7 | Discord 가 꺼져 있으면 #88 D1 규칙대로 새 3종도 메일로 간다(급변 최대 시간당 2통) | ⑦ 확인 — 원치 않으면 기본 경로를 바꾸는 대신 runbook 의 override 로 끈다 |
 | A8 | 한 회차 행 순서는 기존 알림 뒤 포지션 → 급변 → 리마인더 | Task 10 테스트 |
 | A9 | 운영 중 `netPercent` 절댓값은 10^10 미만이다(DECIMAL(12,2)). 넘으면 save 검증 실패로 회차 `Failure` | 정상 포지션(수량 ≥ dust)에서는 성립 |
 
+(A3·A6·A7 은 사용자 확정 D1·D3·D2 로 옮겼다.)
+
 ### [DECISION_NEEDED]
 
-없음 — 범위는 ③ 합의. A3·A6·A7 은 결과가 달라지는 해석이라 ⑦ 에서 확인을 요청한다.
+없음.
 
 ## 13. 변경 이력
 
 | 라운드 | 변경 | 사유 |
 |---|---|---|
 | 초안 | — | — |
+| ⑥ R1 | K7·§2 — 허용 예외를 `OwnerAlertRoutingTest` 단언 2곳 + 테스트 이름 2개로 좁히고, `OwnerAlertPropertiesTest`(부분 문자열 `contains`)는 무수정 행으로 | R1 #1 (MAJOR), #6 |
+| ⑥ R1 | §5.1 — 계정 알림의 관측 완료 시각 규칙과 클래스 KDoc 보강 | R1 #2 |
+| ⑥ R1 | §11 — `.ai/PROJECT_STATUS.md:13` `V1~V19` → `V1~V20` | R1 #3 |
+| ⑥ R1 | §6.2 — 설정은 별도 bean `accountAlertSettings` 로(plan Task 11 과 일치) | R1 #4 |
+| ⑥ R1 | §2·§10 — API `FlywayOwnershipIntegrationTest` 가 V20 을 함께 검증(dod 회귀 방어선) | R1 #5 |
+| ⑦ | §0·§3.4 — 리마인더를 "설정 시각 이후 성공 회차마다 판정, 항목이 처음 해당하는 회차에 발송, 보냈을 때만 소비"로 변경(R4 = 미소비), `lastDayStart` 의미를 "보낸 날"로, §7.2 안내 문구 | 사용자 확정 D1 (초안 A3 변경) |
+| ⑦ | §12 — A6·A7 을 사용자 확정 D3·D2 로, `ACCOUNT_PNL_REMINDER_HOUR` 를 오케스트레이터 판정 O1 로 기록 | 사용자 확정 D2·D3, 오케스트레이터 판정 |

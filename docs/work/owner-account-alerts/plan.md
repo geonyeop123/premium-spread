@@ -11,7 +11,7 @@
 
 **Tech Stack:** Kotlin 2.0, Spring Boot 3.5 (`@Value`, `ApplicationContextRunner`), Flyway·MySQL 8 (Testcontainers), JUnit5 + AssertJ.
 
-**Spec:** `docs/work/owner-account-alerts/design.md` · **DoD:** `docs/work/owner-account-alerts/dod.md`
+**Spec:** `docs/work/owner-account-alerts/design.md` · **DoD:** `docs/work/owner-account-alerts/dod.md` · 사용자 확정 D1~D3·판정 O1 은 design §12
 
 ## Global Constraints
 
@@ -21,7 +21,8 @@
   - `AccountPnlMonitorJob` 생성자의 기존 13개 인자 순서·타입·기본값을 바꾸지 않고 **끝에** `accountAlerts: AccountAlertSettings? = null` 하나만 붙인다.
   - `AccountPnlMonitorState(alert, outage, version)` 3인자 생성과 `INITIAL` 을 유지한다 — 4번째 프로퍼티는 기본값.
   - `observe()` 의 관측 로그 문구·취소 재전파·실패 범주 정규화를 바꾸지 않는다.
-- 허용 예외는 dod R7·R8 범위뿐. 확장 테스트(`JdbcAccountPnlAlertStoreIntegrationTest`·`AccountPnlMonitorWiringTest`)는 **추가만**(R6).
+- 허용 예외는 dod R7(`OwnerAlertRoutingTest` 한 파일)·R8(fixture 스키마 테스트) 범위뿐. `OwnerAlertPropertiesTest` 는 **무수정**.
+  확장 테스트(`JdbcAccountPnlAlertStoreIntegrationTest`·`AccountPnlMonitorWiringTest`)는 **추가만**(R6).
 - `OwnerAlertKind` 전체에 대한 `when` 금지. 새 enum 값은 기존 4개 **뒤에** `POSITION_CHANGED, NET_PERCENT_SWING, UNRECOVERED_REMINDER` 순서.
 - 기존 렌더러(`AccountPnlMailContent`·`AccountPnlDiscordContent`)·`AccountPnlFormat` 기존 함수의 출력 바이트 불변(기존 golden).
 - Domain 에 Spring/JDBC 의존 금지. 앱 main 은 infrastructure 타입을 import 하지 않는다.
@@ -37,9 +38,9 @@
 1. **동결 호환** — `accountAlerts = null` 경로가 기존 회차 결과(행 수·상태 `alert`/`outage`)를 바꾸지 않는가. 저장되는 `account` 가 로드한 값 그대로인가(Task 10).
 2. **정밀도 오탐** — leg·펀딩 비교가 `compareTo`/정규화로 scale 차이를 무시하는가, DB 왕복 후에도 같은가(Task 2·9). 오탐이면 매 회차 `@here` 가 울린다.
 3. **기준선 초기화 순서** — 포지션 변경 회차에서 급변이 판정되지 않고 그 버킷 기준선이 null 이 되는가(Task 6).
-4. **리마인더 소비 규칙** — 실패·포지션 없음 회차가 그날을 소비하지 않는가, 시각 경계가 zone 기준인가(Task 5).
+4. **리마인더 소비 규칙(D1)** — 항목 0개 회차·실패·포지션 없음 회차가 그날을 소비하지 않는가, 보낸 뒤에는 같은 날 다시 보내지 않는가, 시각 경계가 zone 기준인가(Task 5).
 5. **V20 호환** — 구 binary 상태 INSERT/UPDATE 가 V20 에서 성공하고 새 열을 보존하는가(Task 8).
-6. **허용 예외 범위** — R7·R8 diff 가 기대 목록 끝 추가뿐인가.
+6. **허용 예외 범위** — R7·R8 diff 가 기대 목록 끝 추가·이름 2개 rename 뿐인가.
 
 ---
 
@@ -61,10 +62,10 @@
 | `infrastructure/common/src/main/resources/db/migration/V20__add_owner_account_alert_state.sql` (신규) | DDL | 8 |
 | `infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jdbc/accountpnl/JdbcAccountPnlAlertStore.kt` | 상태 열 읽기·쓰기·검증 | 9 |
 | `apps/batch/src/integrationTest/resources/batch-schema.sql` | `account_pnl_monitor_state` V18+V20 | 9 |
-| `apps/batch/src/main/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJob.kt` | `round`, 판정, 행 생성, 상태 저장 | 10 |
+| `apps/batch/src/main/kotlin/io/premiumspread/application/job/accountpnl/AccountPnlMonitorJob.kt` | `round`, 판정, 행 생성, 상태 저장, 클래스 KDoc 시각 규칙 | 10 |
 | `apps/batch/src/main/kotlin/io/premiumspread/config/AccountPnlMonitorConfiguration.kt` | `accountAlertSettings` bean, Job 인자 | 11 |
 | `docs/runbooks/account-pnl-alert.md`, `.ai/architecture/ARCHITECTURE_DESIGN.md`, `.ai/PROJECT_STATUS.md` | 문서 | 13 |
-| tests — domain: `OwnerAccountAlertKindTest`(owneralert), `AccountAlertStateTest`·`PositionChangePolicyTest`·`NetPercentSwingPolicyTest`·`UnrecoveredReminderPolicyTest`·`AccountAlertPolicyTest`·`AccountAlertContentTest`(accountpnl), 허용 예외 `OwnerAlertRoutingTest`; infra:batch: 허용 예외 `OwnerAlertPropertiesTest`; infra:common: `V20OwnerAccountAlertStateMigrationIntegrationTest`·`JdbcAccountPnlAlertStoreIntegrationTest`(확장); apps:batch: `AccountPnlMonitorJobAccountAlertTest`·`AccountPnlMonitorWiringTest`(확장)·`OwnerAccountAlertIntegrationTest`·허용 예외 `AccountPnlFixtureSchemaIntegrationTest` | | 1~12 |
+| tests — domain: `OwnerAccountAlertKindTest`(owneralert), `AccountAlertStateTest`·`PositionChangePolicyTest`·`NetPercentSwingPolicyTest`·`UnrecoveredReminderPolicyTest`·`AccountAlertPolicyTest`·`AccountAlertContentTest`(accountpnl), 허용 예외 `OwnerAlertRoutingTest`; infra:common: `V20OwnerAccountAlertStateMigrationIntegrationTest`·`JdbcAccountPnlAlertStoreIntegrationTest`(확장); apps:batch: `AccountPnlMonitorJobAccountAlertTest`·`AccountPnlMonitorWiringTest`(확장)·`OwnerAccountAlertIntegrationTest`·허용 예외 `AccountPnlFixtureSchemaIntegrationTest` | | 1~12 |
 
 ---
 
@@ -80,23 +81,24 @@
   ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon                   # R5
   ./gradlew :infrastructure:common:integrationTest --offline --no-daemon                    # R9 (Docker)
   ./gradlew :apps:batch:integrationTest --offline --no-daemon                               # R10 (Docker)
+  ./gradlew :apps:api:integrationTest --offline --no-daemon                                 # R13 (Docker)
   ls infrastructure/common/src/main/resources/db/migration | sort -V | tail -1              # V20 번호 근거
   grep -rn "AccountPnlMonitorJob(" --include=*.kt apps                                      # 생성자 호출처
   grep -rn "AccountPnlMonitorState(" --include=*.kt .                                       # 상태 생성처 (3인자 유지 확인)
   grep -rn "OwnerAlertKind.entries\|known: profit" --include=*.kt .                         # enum 개수 고정 단언 (R7)
   ```
-- [ ] **Step 2: 예상 결과.** merge-base `033d513`. gradle 5건 exit 0. `ls` 마지막 줄 `V19__add_owner_alert_channel.sql`. 생성자 호출처는 `AccountPnlMonitorConfiguration` +
+- [ ] **Step 2: 예상 결과.** merge-base `033d513`. gradle 6건 exit 0. `ls` 마지막 줄 `V19__add_owner_alert_channel.sql`. 생성자 호출처는 `AccountPnlMonitorConfiguration` +
   테스트(`AccountPnlMonitorJobTest`·`...HourlyReportTest`·`...ObservationLogTest`·`AccountPnlMonitorJobOwnerAlertTest`) + 통합(`AccountPnlAlertDurabilityIntegrationTest`·
-  `OwnerAlertDeliveryIntegrationTest`)이고 모두 13개 인자 이내. 상태 생성처는 모두 3인자. enum 고정 단언은 `OwnerAlertRoutingTest`(:24-25, :34-35)·`OwnerAlertPropertiesTest`(:113)
-  뿐(그 밖 `entries` 사용처는 `forEach`/집합 비교). **다르면 멈추고 보고한다** — V19 가 아니면 V20 번호, base 가 다르면 dod R3·R5 의 base 를 Gate 1 에서 다시 정한다.
-  Docker 부재면 R9·R10 "미실행"(green 금지).
+  `OwnerAlertDeliveryIntegrationTest`)이고 모두 13개 인자 이내. 상태 생성처는 모두 3인자. enum 개수를 `containsExactly` 로 고정한 곳은 `OwnerAlertRoutingTest`(:24-25, :34-35)뿐이고
+  `OwnerAlertPropertiesTest`(:111-113)는 `contains` 부분 문자열이다(그 밖 `entries` 사용처는 `forEach`/집합 비교). **다르면 멈추고 보고한다** — V19 가 아니면 V20 번호,
+  base 가 다르면 dod R3·R5 의 base 를 Gate 1 에서 다시 정한다. Docker 부재면 R9·R10·R13 "미실행"(green 금지).
 - [ ] **Step 3: Commit** — `docs: owner 계정 알림 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: `OwnerAlertKind` 3종과 yml routes (AC1, AC11-f)
 
 **Files:** Modify `domain/src/main/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRouting.kt`, `apps/batch/src/main/resources/application.yml`(routes 3블록만);
 Test Create `domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAccountAlertKindTest.kt`;
-허용 예외 Modify `domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRoutingTest.kt`(:24-25, :34-35), `infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/owneralert/OwnerAlertPropertiesTest.kt`(:113)
+허용 예외(R7) Modify `domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRoutingTest.kt`(:23, :24-25, :34-35, :42)
 
 **Interfaces — Produces (전문, 기존 4개 뒤에 추가):**
 
@@ -108,19 +110,21 @@ Test Create `domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAcco
 
 yml: design §6.2 의 routes 3블록(`position-changed`·`net-percent-swing`·`unrecovered-reminder`)을 `owner-alert.routes.monitoring-recovered` 뒤에 **그대로**.
 
-허용 예외 수정 (전문):
-- `OwnerAlertRoutingTest:25` 기대 목록 → `"PROFIT", "HOURLY_REPORT", "MONITORING_OUTAGE", "MONITORING_RECOVERED", "POSITION_CHANGED", "NET_PERCENT_SWING", "UNRECOVERED_REMINDER"`
-- `OwnerAlertRoutingTest:35` → `"profit", "hourly-report", "monitoring-outage", "monitoring-recovered", "position-changed", "net-percent-swing", "unrecovered-reminder"`
-- `OwnerAlertPropertiesTest:113` → `"known: profit, hourly-report, monitoring-outage, monitoring-recovered, position-changed, net-percent-swing, unrecovered-reminder"`
+허용 예외 수정 (전문, `OwnerAlertRoutingTest` 한 파일):
+- `:23` 이름 `종류는 네 개이고 기본 경로는 설계 표와 같다` → `종류 목록과 기본 경로는 설계 표와 같다`
+- `:25` 기대 목록 → `"PROFIT", "HOURLY_REPORT", "MONITORING_OUTAGE", "MONITORING_RECOVERED", "POSITION_CHANGED", "NET_PERCENT_SWING", "UNRECOVERED_REMINDER"`
+- `:35` → `"profit", "hourly-report", "monitoring-outage", "monitoring-recovered", "position-changed", "net-percent-swing", "unrecovered-reminder"`
+- `:42` 이름 `EMAIL_ONLY 는 네 종류 모두 메일만` → `EMAIL_ONLY 는 모든 종류가 메일만`
+- 그 밖 줄 무변경. `OwnerAlertPropertiesTest` 는 수정하지 않는다(부분 문자열 `contains` 라 enum 끝 추가에도 통과).
 
 **테스트가 재는 것** (`OwnerAccountAlertKindTest`):
 - `계정 알림 세 종류의 기본 경로는 설계 표와 같다` — 3종 `defaultRoute` `isEqualTo` (AC1-b)
 - `계정 알림 key 는 kebab 이고 fromKey 로 되돌아온다` — 3 key, `fromKey(" Net-Percent-Swing ")` (AC1-a)
-- `메일과 Discord 를 모두 쓰면 기본 경로` / `Discord 가 꺼져 있으면 세 종류 모두 메일만` — `OwnerAlertRouting(both)`·`EMAIL_ONLY` (AC1-c)
+- `메일과 Discord 를 모두 쓰면 기본 경로` / `Discord 가 꺼져 있으면 세 종류 모두 메일만` — `OwnerAlertRouting(both)`·`EMAIL_ONLY` (AC1-c, 사용자 확정 D2)
 
 - [ ] **Step 1:** enum 값 3개를 **stub 경로** `OwnerAlertRoute(email = true, discord = null)` 로 추가, 허용 예외 수정, yml routes 3블록, 새 테스트 작성.
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → RED(기본 경로·both 해석 단언 실패, `EMAIL_ONLY`·key 는 초록일 수 있다). 증거 로그 AC1.
-- [ ] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → PASS(#88 테스트 무수정, routes INFO 는 `contains` 라 새 값이 뒤에 붙어도 성립).
+- [ ] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS(`OwnerAlertPropertiesTest` 무수정 통과 포함). `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` → PASS(#88 테스트 무수정, routes INFO 는 `contains` 라 새 값이 뒤에 붙어도 성립).
 - [ ] **Step 4: Commit** — `feat: owner 계정 알림 종류 세 개와 기본 경로`
 
 ### Task 2: leg·상태·설정·알림 타입 (AC2)
@@ -185,7 +189,10 @@ data class SwingState(
     companion object { val INITIAL = SwingState(null, null, false, false) }
 }
 
-/** 미반영 리마인더 상태 (design §3.4). manualFundingChangedAt == null 이면 manualFundingUsdt == null. */
+/**
+ * 미반영 리마인더 상태 (design §3.4). [lastDayStart] = 리마인더를 마지막으로 **보낸** zone 날짜의 자정.
+ * manualFundingChangedAt == null 이면 manualFundingUsdt == null.
+ */
 data class ReminderState(
     val lastDayStart: Instant?,
     val manualFundingUsdt: BigDecimal?,
@@ -346,13 +353,14 @@ object PositionChangePolicy {
 }
 ```
 
-상태 전이표: design §3.2 P1~P8 **그대로**(구현·테스트 모두 그 표가 정본). `next.legs` 는 항상 이번 `legs`.
+상태 전이표: design §3.2 P1~P8 **그대로**(구현·테스트 모두 그 표가 정본, 해소 조건은 사용자 확정 D3). `next.legs` 는 항상 이번 `legs`.
 
 **테스트가 재는 것** (`now = 2026-10-20T03:00:00Z`, before = 빗썸 `0.5`/`100000000`, 바이낸스 `-0.5`/`70000`):
 - P1 — INITIAL → 알림 null, `next == (legs, false)`
 - P2·P3 — 같은 legs(scale 만 다른 `0.50`) API/manual, `warned` true 유지(P3)·false 로(P2)
 - P4 — 빗썸 `0.6` manual, warned false → 경고 true, next warned true, 알림 필드 전부
 - P5 — 같은 조건 warned true → 경고 false, next warned true
+- P3 해소 아님 — warned true 상태에서 빗썸이 원래 `0.5` 로 돌아옴(manual) → 이 회차는 P5(빗썸 변경, 경고 없음)·warned true 유지
 - P6 — 빗썸만 API → 경고 false, next warned false
 - P7 — 바이낸스 `-0.6` 만, warned true → 경고 false, next warned false
 - P8 — 둘 다 → `koreaChanged && foreignChanged`, 경고 false
@@ -417,21 +425,27 @@ object UnrecoveredReminderPolicy {
     /** zone 날짜의 자정. 범위 [dayStart, 다음 dayStart). */
     fun dayStart(at: Instant, zone: ZoneId): Instant
 
-    /** design §3.4 — 1단계 수동 펀딩 추적(모든 성공 회차) → 2단계 R1~R5. */
+    /**
+     * design §3.4 — 1단계 수동 펀딩 추적(모든 성공 회차) → 2단계 R1~R5(사용자 확정 D1).
+     * 설정 시각 이후 포지션 있는 회차마다 판정하고, 항목이 있는 첫 회차에 보낸다. lastDayStart 는 **보냈을 때만** 갱신한다.
+     */
     fun decide(state: ReminderState, round: AccountRound, settings: AccountAlertSettings, zone: ZoneId): ReminderDecision
 }
 ```
 
+상태 전이표: design §3.4 R1~R5 그대로 — R4(항목 0개)는 `lastDayStart` 를 **바꾸지 않는다**.
+
 **요건 (구현부):** 펀딩 값 비교는 `compareTo`(null ↔ 값은 다름), 저장 값은 `stripTrailingZeros()`. `MANUAL_FUNDING_STALE` 판정은 1단계 **이후** 상태로. `days = Duration.between(changedAt, observedAt).toDays()`.
-항목 순서는 `ReminderItem` 선언 순서.
+항목 순서는 `ReminderItem` 선언 순서. 알림의 `dayStart` = 이번 회차의 `dayStart(observedAt, zone)`, `detectedAt = observedAt`.
 
 **테스트가 재는 것** (zone `Asia/Seoul`, 기본 설정, `AccountRound` 헬퍼 — 미반영 플래그는 스냅샷 `entryFeeKrw`/`entryCommissionUsdt`/`fundingUsdt` 를 null 로 해 `AccountNetPnl.calculate` 로 만든다):
 - 펀딩 추적 4행 — API → `(null, null)`; manual 첫 관측 `3.2` → `(3.2, t)`; `3.20` → 그대로; `4.0`·null → `(새 값, t)` (AC5-a)
-- 시각 경계 — `2026-10-19T23:59:59Z` 없음, `2026-10-20T00:00:00Z` 리마인더·`lastDayStart == 2026-10-19T15:00:00Z`, `05:00Z` 없음, `2026-10-20T15:00:00Z` 없음, `2026-10-21T00:00:00Z` 리마인더 (AC5-b)
+- 시각 경계(항목 있음) — `2026-10-19T23:59:59Z` 없음, `2026-10-20T00:00:00Z` 리마인더·`lastDayStart == 2026-10-19T15:00:00Z`, `05:00Z` 없음, `2026-10-20T15:00:00Z` 없음, `2026-10-21T00:00:00Z` 리마인더 (AC5-b)
 - 항목 순서·부분 집합 — 3플래그 모두 → 3항목 순서, 빗썸만 → 1항목 (AC5-c)
 - 펀딩 경과 — changedAt `2026-10-17T00:00:00.001Z`, 판정 `2026-10-20T00:00:00Z` → 없음; changedAt `2026-10-17T00:00:00Z` → 있음, `days == 3`, `fundingUsdt == 3.2` (AC5-d)
-- 항목 0개 — 알림 null, `lastDayStart` 오늘 (AC5-e)
-- 포지션 없음 — 펀딩 추적만, `lastDayStart` 그대로, 알림 null (AC5-f)
+- `항목이 처음 생긴 회차에 보내고 같은 날 두 번째 항목은 보내지 않는다` — `00:00Z`·`03:00Z` 항목 0 → 알림 null·`lastDayStart` null 유지, `06:00Z`(15:00 KST) 빗썸 진입 수수료 null → 리마인더 `[KOREA_ENTRY_FEE]`·`lastDayStart == 2026-10-19T15:00:00Z`, `08:00Z` 펀딩까지 null → 알림 null (AC5-e)
+- `종일 항목이 없으면 아무것도 보내지 않는다` — `00:00Z`~`14:59Z` 사이 여러 회차 항목 0 → 알림 0, `lastDayStart` null (AC5-e)
+- `포지션 없음 회차는 판정하지도 소비하지도 않는다` — `01:00Z` NoPosition(항목 조건과 무관) → 펀딩 추적만·`lastDayStart` 그대로·알림 null, 이어 `01:01Z` Computed 항목 있음 → 리마인더 (AC5-f)
 - `reminderHour = 0` — `2026-10-20T15:00:00Z` 판정 (AC5-g)
 
 - [ ] **Step 1:** 시그니처 + **stub** `decide = ReminderDecision(state, null)`, `dayStart` 실제 구현 + 테스트.
@@ -458,8 +472,9 @@ object AccountAlertPolicy {
 }
 ```
 
-**테스트가 재는 것** (zone `Asia/Seoul`): dod AC6 (a)~(e) — 실패 회차 동일성, 첫 기동 Computed `2026-10-20T00:30:00Z`(미반영 없음) 알림 0·세 상태 채워짐, 빗썸 변경 manual → `[PositionChanged(경고)]`·`swing == (00:00Z, null, F, F)`,
-겹침 순서 2건(`[NetPercentSwing, UnrecoveredReminder]`, 변경 겹침 시 `[PositionChanged, UnrecoveredReminder]`), NoPosition 회차의 `reminder.lastDayStart` 불변.
+**테스트가 재는 것** (zone `Asia/Seoul`): dod AC6 (a)~(e) — 실패 회차 동일성, 첫 기동 Computed `2026-10-20T00:30:00Z`(미반영 없음) 알림 0·legs·기준선·펀딩 추적 채워짐·`reminder.lastDayStart` null,
+빗썸 변경 manual → `[PositionChanged(경고)]`·`swing == (00:00Z, null, F, F)`, 겹침 순서 2건(`[NetPercentSwing, UnrecoveredReminder]`, 변경 겹침 시 `[PositionChanged, UnrecoveredReminder]`),
+NoPosition 회차의 `reminder.lastDayStart` 불변.
 
 - [ ] **Step 1:** 시그니처 + **stub** `decide = AccountAlertDecision(state, emptyList())` + 테스트.
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertPolicyTest' --offline --no-daemon` → RED((a) 는 stub 에서도 초록). 증거 로그 AC6.
@@ -497,11 +512,12 @@ object AccountAlertContent {
 }
 ```
 
-`mail`·`discord` 는 sealed `AccountAlert` 에 대한 `when` 으로 분기한다. 문구는 design §7.2·§7.3 **그대로**(exact copy), Discord 는 `DiscordMessage.of`. 메일 행은 EMAIL 행(`AccountPnlMail(eventKey, subject, body)`).
+`mail`·`discord` 는 sealed `AccountAlert` 에 대한 `when` 으로 분기한다. 문구는 design §7.2·§7.3 **그대로**(exact copy — 리마인더 안내 줄은 `하루 한 번, {HH}:00 이후 항목이 처음 확인된 회차에 보냅니다. …`),
+Discord 는 `DiscordMessage.of`. 메일 행은 EMAIL 행(`AccountPnlMail(eventKey, subject, body)`).
 
 **테스트가 재는 것** (zone `Asia/Seoul`, golden 은 design §7 템플릿으로 손으로 계산한 문자열):
 - 메일 golden 6건 — 포지션(빗썸 `0.5`→`0.6`·평단 `100000000`→`101000000`, manual, 경고, `detectedAt = 2026-10-20T03:00:00Z`), 포지션(바이낸스 `숏 0.5 BTC · 진입가 70000 USDT → 없음`, API),
-  급변 상승(기준 `0.40` → `0.90`, 버킷 `03:00Z` = `12:00`), 급변 하락(`0.40` → `-0.10`), 리마인더 4항목(manual, 펀딩 `3.2`, `days = 3`, `reminderHour = 9`), 리마인더 1항목(API 빗썸만) (AC7-a)
+  급변 상승(기준 `0.40` → `0.90`, 버킷 `03:00Z` = `12:00`), 급변 하락(`0.40` → `-0.10`), 리마인더 4항목(manual, 펀딩 `3.2`, `days = 3`, `reminderHour = 9`), 리마인더 1항목(API 빗썸만, `detectedAt = 2026-10-20T06:00:00Z`) (AC7-a)
 - Discord golden 6건 — 같은 시나리오 제목·설명·색 (AC7-b)
 - eventKey 4종 값과 정규식 (AC7-c)
 - 금지 문자열 없음 (AC7-d)
@@ -557,7 +573,7 @@ WHERE id = 1
 - [ ] **Step 1:** 테스트 작성(V20 없음).
 - [ ] **Step 2:** `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V20OwnerAccountAlertStateMigrationIntegrationTest' --offline --no-daemon` → RED(버전·열 부재. (c)(d) 는 열 부재로 선행 조건 실패 — RED 근거는 (a)(b)). 증거 로그 AC8.
 - [ ] **Step 3:** V20 작성 → PASS. CHECK 생성 오류면 `[ASSUMPTION]` A1 이 깨진 것 — 멈추고 보고.
-- [ ] **Step 4:** `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS.
+- [ ] **Step 4:** `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS. `./gradlew :apps:api:integrationTest --offline --no-daemon` → PASS(R13, Flyway 전체 적용).
 - [ ] **Step 5: Commit** — `feat: owner 계정 알림 상태 열 V20 migration`
 
 ### Task 9: JDBC store 상태 열·batch fixture (AC9, AC12 일부)
@@ -672,6 +688,13 @@ private data class Observed(
 )
 ```
 
+클래스 KDoc 보강 (전문 — 기존 `:57-58` 의 시각 문단 **뒤에** 한 항목 추가, 기존 문장은 그대로):
+
+```
+ * - 예외: owner 계정 알림(포지션 변경·순수익률 급변·미반영 리마인더)은 관측 완료 시각(`completedAt` = 포지션이 있으면 `pnl.calculatedAt`)을 쓴다.
+ *   급변 버킷이 정시 보고와 같은 버킷(`calculatedAt` 의 zone 정시)이어야 하기 때문이다 (owner-account-alerts design §5.1).
+```
+
 `JobResult` 분기: design §5.2 표 그대로.
 
 로그 (키 전문 — design §5.3):
@@ -690,17 +713,17 @@ private data class Observed(
 **테스트가 재는 것** (`AccountPnlMonitorJobAccountAlertTest` — #88 `FakeOwnerAlertStore`·`FakeMailSender`·`FakeDiscordSender`·`MutableClock` **무수정 재사용**, 계정·환율·lock fake 는 이 클래스 안에 만든다(동결 테스트 파일 무수정),
 routing `OwnerAlertRouting(OwnerAlertChannels(true, true))`, `hourlyReportEnabled = false`, 기본 fixture 는 미반영 없음·manual 출처, clock 시작 `2026-10-20T00:30:00Z`(09:30 KST)):
 - `설정이 없으면 계정 알림을 만들지 않고 상태를 그대로 둔다` — store.state.account 에 임의 값(legs·기준선)을 넣고 빗썸 변경·큰 변동·미반영 회차 3번 → `account-pnl-position-`·`-swing-`·`-reminder-` 접두사 행 0, `store.state.account` 불변 (AC10-a)
-- `첫 회차는 leg 만 기록한다` — 행 0, `account.position.legs` 채워짐 (AC10-b)
+- `첫 회차는 leg 만 기록한다` — 행 0, `account.position.legs` 채워짐, `account.reminder.lastDayStart` null (AC10-b)
 - `빗썸만 바뀐 수동 회차는 메일과 Discord @here 로 변경을 알리고 경고는 한 번뿐이다` — 행 [EMAIL, DISCORD(PNL/HERE, `COLOR_HEDGE_MISMATCH`)] `SENT`, 새 Job 인스턴스로 빗썸 재변경 → 경고 없는 변경(`COLOR_POSITION_CHANGED`) (AC10-c)
 - `같은 시간 안에 0.5%p 움직이면 Discord 소리로 한 번만 알린다` — 버킷 첫 회차 뒤 `+0.50` → DISCORD(PNL/SOUND) 1행, EMAIL 0, 같은 버킷 추가 상승 → 행 증가 없음 (AC10-d)
-- `09시 이후 미반영이 있으면 무음 리마인더 한 번` — **새 store**·빗썸 진입 수수료 null fixture 로 시작(첫 회차가 그날 판정이므로) → DISCORD(PNL/SILENT) 1행, 같은 날 다음 회차 증가 없음 (AC10-e)
+- `미반영이 처음 생긴 회차에 무음 리마인더 한 번` — 09:30 KST 첫 회차(미반영 없음) 행 0 → `clock +5h` 빗썸 진입 수수료 null 회차 → DISCORD(PNL/SILENT) 1행 → `+1h` 펀딩까지 null 회차 → 행 증가 없음 (AC10-e)
 - `관측 실패 회차는 계정 알림 상태를 바꾸지 않는다` — korea fake 예외 → `account` 불변, 새 행 0 (AC10-f)
 - `메일만 쓰면 세 종류 모두 메일 한 통씩` — `EMAIL_ONLY` (AC10-g)
 - `version 충돌이면 저장하지 않고 다음 회차가 다시 판정한다` — save 직전 version 을 올리는 store 래퍼(이 클래스 안, `FakeOwnerAlertStore` 위임) → `Skipped("state-version-conflict")`·행 0 → 다음 회차 변경 행 생성 (AC10-h)
 
 - [ ] **Step 1:** 생성자 인자·`Observed.round` 추가, **stub**: `monitor()` 가 `accountAlerts` 를 무시하고 `account = loaded.account` 로 저장 + 테스트 작성.
 - [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobAccountAlertTest' --offline --no-daemon` → RED((a)(f) 는 초록일 수 있다). 증거 로그 AC10.
-- [ ] **Step 3:** 구현. dod AC10 명령 → PASS(동결 Job 테스트 3개·#88 Job·디스패처 테스트 포함). `./gradlew architectureTest --offline --no-daemon` → PASS.
+- [ ] **Step 3:** 구현 + 클래스 KDoc 보강(위 전문). dod AC10 명령 → PASS(동결 Job 테스트 3개·#88 Job·디스패처 테스트 포함). `./gradlew architectureTest --offline --no-daemon` → PASS.
 - [ ] **Step 4: Commit** — `feat: 실계정 모니터 회차에서 owner 계정 알림 판정·발송`
 
 ### Task 11: 설정·배선 (AC11)
@@ -708,7 +731,7 @@ routing `OwnerAlertRouting(OwnerAlertChannels(true, true))`, `hourlyReportEnable
 **Files:** Modify `apps/batch/src/main/kotlin/io/premiumspread/config/AccountPnlMonitorConfiguration.kt`, `apps/batch/src/main/resources/application.yml`(`account-alerts` 블록만);
 Test (추가만) `apps/batch/src/test/kotlin/io/premiumspread/config/AccountPnlMonitorWiringTest.kt`
 
-**Interfaces — Produces (전문):**
+**Interfaces — Produces (전문, design §6.2):**
 
 ```kotlin
 // AccountPnlMonitorConfiguration — 클래스·조건 무변경, bean 1개 추가 + Job bean 인자 끝에 1개
@@ -725,8 +748,6 @@ fun accountPnlMonitorJob(
     accountAlerts: AccountAlertSettings,
 ): AccountPnlMonitorJob   // 기존 인자 전달 + accountAlerts = accountAlerts
 ```
-
-design §6.2 의 "Job bean 이 `@Value` 로 받는다"를 **별도 bean** 으로 구체화한다 — 배선 테스트가 설정 값을 bean 으로 꺼내 확인할 수 있게(Job 필드는 private).
 
 yml (전문): design §6.2 의 `account-alerts` 블록을 `account-pnl-monitor.hourly-report` 바로 뒤에 그대로.
 
@@ -750,10 +771,10 @@ yml (전문): design §6.2 의 `account-alerts` 블록을 `account-pnl-monitor.h
 
 **테스트가 재는 것** (`AccountPnlAlertDurabilityIntegrationTest` 의 fake 계정·환율·lock 구성을 이 클래스 안에 다시 만든다 — 그 파일 무수정. 기록용 메일·Discord sender(이 클래스 안), routing `OwnerAlertChannels(true, true)`,
 `hourlyReportEnabled = false`, `accountAlerts = AccountAlertSettings()`, manual 출처, 빗썸 진입 수수료 null(미반영 1항목), `MutableClock` 시작 `2026-10-19T23:30:00Z`(08:30 KST)). 한 메서드 안의 순차 시나리오:
-1. `23:30Z` 첫 회차 → outbox 행 0, 상태 4 leg 열 채워짐, `manual_funding_changed_at = 23:30Z` (AC12-a·f)
+1. `23:30Z` 첫 회차 → outbox 행 0(08:30 KST 라 리마인더 판정 전), 상태 4 leg 열 채워짐, `manual_funding_changed_at = 23:30Z`, `reminder_day_start` NULL (AC12-a·f)
 2. `23:31Z` 빗썸 수량 `0.5 → 0.6` → `account-pnl-position-*` EMAIL·DISCORD 각 1행 `SENT`, `hedge_mismatch_warned = 1` (AC12-b)
 3. 새 Job 인스턴스, 바이낸스 `-0.5 → -0.6`·펀딩 `3.2 → 4.0`, `23:32Z` → 경고 없는 변경 1건(Discord 기록 제목에 `헤지 불일치` 없음), `hedge_mismatch_warned = 0`, `manual_funding_changed_at = 23:32Z` (AC12-c·f)
-4. `2026-10-20T00:00:05Z`(09:00 KST, 새 버킷) → `swing_bucket_start = 00:00Z`·`swing_baseline_percent` 저장, `account-pnl-reminder-{2026-10-19T15:00:00Z ms}` DISCORD 1행, `reminder_day_start = 2026-10-19T15:00:00Z` (AC12-d·e)
+4. `2026-10-20T00:00:05Z`(09:00 KST, 새 버킷, 항목 있음) → `swing_bucket_start = 00:00Z`·`swing_baseline_percent` 저장, `account-pnl-reminder-{2026-10-19T15:00:00Z ms}` DISCORD 1행, `reminder_day_start = 2026-10-19T15:00:00Z` (AC12-d·e)
 5. `00:01Z` 빗썸 호가를 올려 `netPercent` 를 기준선 +0.50 이상으로 → `account-pnl-swing-up-{00:00Z ms}` DISCORD 1행 (AC12-d)
 6. `00:02Z` → 리마인더·급변 행 수 증가 없음 (AC12-e)
 
@@ -767,16 +788,18 @@ yml (전문): design §6.2 의 `account-alerts` 블록을 `account-pnl-monitor.h
 
 **Files:** Modify `docs/runbooks/account-pnl-alert.md`, `.ai/architecture/ARCHITECTURE_DESIGN.md`, `.ai/PROJECT_STATUS.md`
 
-**요건:** design §11 목록과 dod AC13 (a)~(f) 전부. 메시지 예는 가짜 숫자. AC14 체크리스트 절 제목 `## 계정 알림 Discord 체크리스트 (owner-account-alerts AC14)` 에 dod AC14 (a)~(e) 를 체크박스로.
-`### 배포와 롤백` 에 "V20 은 additive — 구 binary 와 호환, 롤백 SQL 없음, 신 batch 는 API(V20) 배포 뒤 기동" 추가. `account_pnl_monitor_state` 설명에 "에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 날짜·수동 펀딩 변경 시각".
+**요건:** design §11 목록과 dod AC13 (a)~(f) 전부. 메시지 예는 가짜 숫자. 리마인더 설명은 사용자 확정 D1 문구 그대로("설정 시각 이후 포지션 있는 성공 회차마다 확인, 항목이 처음 확인된 회차에 하루 1회, 보냈을 때만 그날 소비, 포지션 없음 회차는 확인하지 않음, 종일 없으면 보내지 않음").
+AC14 체크리스트 절 제목 `## 계정 알림 Discord 체크리스트 (owner-account-alerts AC14)` 에 dod AC14 (a)~(e) 를 체크박스로.
+`### 배포와 롤백` 에 "V20 은 additive — 구 binary 와 호환, 롤백 SQL 없음, 신 batch 는 API(V20) 배포 뒤 기동" 추가. `account_pnl_monitor_state` 설명에 "에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각".
+`.ai/PROJECT_STATUS.md`: `:13` 모듈 표 `Flyway V1~V19` → `Flyway V1~V20`, migration 표의 V19 행(`:92`) 뒤에 `| V20 | account_pnl_monitor_state 에 owner 계정 알림 상태 12열 | 포지션 변경·순수익률 급변·미반영 리마인더 상태 |` 행.
 
 - [ ] **Step 1:** 문서 작성.
-- [ ] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck --offline --no-daemon` → PASS.
+- [ ] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck --offline --no-daemon` → PASS. `grep -n "V1~V20" .ai/PROJECT_STATUS.md` 1줄.
 - [ ] **Step 3: Commit** — `docs: owner 계정 알림 runbook 과 아키텍처 문서`
 
 ### Task 14: 최종 gate
 
-- [ ] **Step 1:** dod 회귀 방어선 R1~R12 전부 실행, R6·R7·R8 diff 출력을 증거 로그에 첨부.
+- [ ] **Step 1:** dod 회귀 방어선 R1~R13 전부 실행, R6·R7·R8 diff 출력을 증거 로그에 첨부.
 - [ ] **Step 2:** dod AC1~AC12 검증 명령 전부 실행·기록. AC13 사람 사후 검토 요청, AC14 owner 확인 요청(PR 코멘트).
 - [ ] **Step 3: Commit** — `docs: owner 계정 알림 최종 검증 기록`
 
@@ -785,3 +808,10 @@ yml (전문): design §6.2 의 `account-alerts` 블록을 `account-pnl-monitor.h
 | 라운드 | 변경 | 사유 |
 |---|---|---|
 | 초안 | — | — |
+| ⑥ R1 | Task 1 — 허용 예외를 `OwnerAlertRoutingTest` 한 파일(단언 2곳 + 이름 2개)로, `OwnerAlertPropertiesTest` 수정 제거 | R1 #1 (MAJOR), #6 |
+| ⑥ R1 | Task 10 — 클래스 KDoc 시각 규칙 보강 단계 | R1 #2 |
+| ⑥ R1 | Task 13 — `.ai/PROJECT_STATUS.md:13` `V1~V20` + V20 행 | R1 #3 |
+| ⑥ R1 | Task 11 — design §6.2 와 일치(별도 bean), "구체화" 문구 제거 | R1 #4 |
+| ⑥ R1 | Task 0·8·14 — `:apps:api:integrationTest`(R13) | R1 #5 |
+| ⑦ | Task 5·6·10·12·13 — 리마인더 "항목이 처음 생긴 회차에 하루 1회, 보냈을 때만 소비" 반영(테스트 경계 15:00 발송·같은 날 두 번째 항목 미발송·종일 없음·NoPosition 미소비) | 사용자 확정 D1 |
+| ⑦ | Task 1·3 — D2·D3 확정 표기, P3 해소 아님 테스트 | 사용자 확정 D2·D3 |
