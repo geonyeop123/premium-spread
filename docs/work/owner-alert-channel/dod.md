@@ -179,6 +179,12 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
   - `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --offline --no-daemon` → `46 tests completed, 13 failed`, BUILD FAILED. 기존 wiring 메서드 31개는 전부 초록(AC9-i). 예: `[ChannelCase(emailEnabled=null, smtp=true, discordEnabled=true, webhooks=[], recipient=true)] expected: 0`, `No qualifying bean of type '…OwnerAlertProperties'`, `Expecting actual: "" to contain: "owner-alert discord webhooks: pnl=set, market=set, ops=set"`, `[owner-alert.routes.profit.email] expected: "${OWNER_ALERT_PROFIT_EMAIL:}" but was: null`. stub 에서 통과한 신규 2건(AC9-k 수신 주소 누락 WARN·메일 sender 수신 주소)은 기존 동작을 고정하는 회귀 방어선이다.
 - GREEN: 위 두 명령 → BUILD SUCCESSFUL (`OwnerAlertChannelRequirementsTest` 4, `AccountPnlMonitorWiringTest` 44 — 채널 행렬 144조합 포함, `OwnerAlertYamlContractTest` 2, 0 failures). `./gradlew :apps:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 187 tests, 0 failures. `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL, 187 tests, 0 failures. `./gradlew architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (35 tests). `./gradlew :apps:api:test --tests '*TradePreparationWiring*' --offline --no-daemon` (R10) → BUILD SUCCESSFUL (3 tests).
 
+### Task 11 — AC11 (2026-10-23)
+
+- 첫 실행은 초록(앞 태스크가 구현 완료). RED 는 변이: `OwnerAlertDispatcher.sendDiscord` 의 sender 를 `null` 처리 (`(null as OwnerAlertDiscordSender?) ?: throw ...`).
+- RED: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDeliveryIntegrationTest' --offline --no-daemon` → 3 tests completed, 3 failed (BUILD FAILED). `git checkout -- apps/batch/src/main` 뒤 `git diff --stat -- apps/batch/src/main` 빈 출력.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (3 tests). 전체 `./gradlew :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL, 104 tests 0 failures.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
