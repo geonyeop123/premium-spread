@@ -181,3 +181,5 @@ source: docs/work/owner-account-alerts/design.md (DRAFT)
 - 2026-10-23 Task 14 · 경계면 대조 V20 SQL ↔ batch-schema.sql ↔ fixture 스키마 테스트 ↔ store SQL, yml env ↔ runbook env 표, routes 기본값 ↔ runbook 라우팅 표 → 불일치 없음
 - 2026-10-23 Task 14 · ktlint·detekt → 로컬 실행 불가(네트워크 차단), CI 확인 필요
 - 2026-10-23 ⑩ 판정 · PASS (T1 12/12) · AWAITING_HUMAN: AC13, AC14 · 사람판정 R6/R7/R8 diff 가 dod 범위와 일치 · 판정 코드 SHA 403e016 (이후 커밋은 문서만)
+- 2026-10-23 ⑪ CI · PR #94 head 18b9f13 → 1 Compile+architecture·2 Unit+coverage·3 API integration·4 Batch integration·5 ktlint+detekt·7 Docker build pass. 6 Dependency scan fail 은 web npm audit 기존 실패(dev 033d513 도 fail), 이 PR 무관
+- 2026-10-23 ⑪ CI 정리 · 403e016 이후 코드 커밋 66f20bc(ktlint 서식)·b5f32b5(ReturnCount — 리마인더 decide 분기를 when 식으로, 동치)·18b9f13(when 줄 끝 주석) 은 동작 무변경. `:domain:test` accountpnl.* 초록, CI 2~4 재통과로 확인
