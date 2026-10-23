@@ -27,7 +27,7 @@ import org.springframework.core.type.ClassMetadata
 import java.time.Clock
 
 /**
- * 실계정 순손익 기능이 명시적으로 켜졌고 필수값(메일 채널이 쓰일 때만 수신자·빗썸 credential·바이낸스 모드별)이 모두 있으며
+ * 실계정 순손익 기능이 명시적으로 켜졌고 수신자(메일 채널이 쓰일 때만)·빗썸 credential·바이낸스 모드별 필수값이 모두 있으며
  * owner 알림 채널(메일·Discord)이 하나 이상 준비됐을 때만 참이다 (design §7.2 표 순서 1~7).
  *
  * 앱 구성 클래스는 auto-configuration 보다 먼저 평가되므로 adapter bean 존재(`@ConditionalOnBean`)를 조건으로
@@ -46,7 +46,8 @@ class AccountPnlMonitorEnabledCondition : Condition {
 
         val emailRequested = env.getProperty(OWNER_EMAIL_ENABLED_KEY)?.trim().orEmpty()
             .let { it.isEmpty() || it.equals("true", ignoreCase = true) }
-        // EmailAutoConfiguration 의 @ConditionalOnProperty(havingValue = "true") 와 같은 규칙(trim 없음).
+        // SMTP 플래그(notification.email.enabled)에만 해당하는 규칙: EmailAutoConfiguration 의
+        // @ConditionalOnProperty(havingValue = "true") 와 같다(trim 없음).
         val smtpOn = env.getProperty(SMTP_ENABLED_KEY).equals("true", ignoreCase = true)
         val emailEffective = emailRequested && smtpOn
         val discordRequested = env.getProperty(DISCORD_ENABLED_KEY)?.trim().equals("true", ignoreCase = true)

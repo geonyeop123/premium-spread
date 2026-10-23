@@ -3,7 +3,7 @@
 ## 목적과 범위
 
 - owner 의 실계정(빗썸 현물 롱 + 바이낸스 선물 숏) 헤지 포지션의 **순수익률·순수익금**을 1분마다 계산해, 1% 이상이면
-  메일로 알린다. 모니터링이 5분 넘게 멈추면 중단 메일, 다시 살아나면 복구 메일을 보낸다.
+  메일·Discord 로 알린다. 모니터링이 5분 넘게 멈추면 중단 메일, 다시 살아나면 복구 메일을 보낸다.
 - **조회 전용이다. 주문·출금·이체 API 를 호출하지 않고 구현하지도 않는다.** key 에도 해당 권한을 주지 않는다.
 - owner PC 로컬에서 `apps:batch` 로 실행한다. 기본값은 꺼짐이다.
 
@@ -29,10 +29,10 @@
 | 이름 | 필수 | 설명 | 예시 |
 |---|---|---|---|
 | `ACCOUNT_PNL_MONITOR_ENABLED` | 예 | 기능 플래그. 기본 `false`. `true` 일 때만 Job 이 뜬다 | `true` |
-| `ACCOUNT_PNL_ALERT_RECIPIENT` | 메일 채널을 쓸 때만(`OWNER_ALERT_EMAIL_ENABLED`≠false ∧ `NOTIFICATION_EMAIL_ENABLED=true`) | 메일 수신 주소 | `owner@example.com` |
+| `ACCOUNT_PNL_ALERT_RECIPIENT` | 메일 채널을 쓸 때만(`OWNER_ALERT_EMAIL_ENABLED` 가 비었거나 `true`(대소문자 무관) ∧ `NOTIFICATION_EMAIL_ENABLED=true`) | 메일 수신 주소 | `owner@example.com` |
 | `BITHUMB_ACCESS_KEY` | 예 | 빗썸 조회 key | `<bithumb-access-key>` |
 | `BITHUMB_SECRET_KEY` | 예 | 빗썸 조회 secret | `<bithumb-secret-key>` |
-| `BINANCE_MODE` | 아니오 | 바이낸스 leg 방식. 기본 `api`. `api`\|`manual`(대소문자 무관). 그 밖의 값이면 기동 실패(기능이 켜져 있을 때 — `ACCOUNT_PNL_MONITOR_ENABLED=true` 이고 현재 모드의 필수값·메일·scheduling 이 모두 만족돼 설정이 바인딩될 때) | `api` |
+| `BINANCE_MODE` | 아니오 | 바이낸스 leg 방식. 기본 `api`. `api`\|`manual`(대소문자 무관). 그 밖의 값이면 기동 실패(기능이 켜져 있을 때 — `ACCOUNT_PNL_MONITOR_ENABLED=true` 이고 현재 모드의 필수값·채널(메일 또는 Discord 가 하나 이상 쓰일 때)·scheduling 이 모두 만족돼 설정이 바인딩될 때) | `api` |
 | `BINANCE_API_KEY` | **api 모드에서만** 예 | 바이낸스 읽기 key | `<binance-api-key>` |
 | `BINANCE_SECRET_KEY` | **api 모드에서만** 예 | 바이낸스 읽기 secret | `<binance-secret-key>` |
 | `BINANCE_MANUAL_*` 5종 | **manual 모드에서만**(수량·진입가) | 수동 입력 포지션. 아래 "바이낸스 수동 입력 모드" 절 | — |
@@ -51,7 +51,7 @@
 
 - 플래그가 `true` 여도 모드별 필수 env 중 하나라도 비면 Job 은 뜨지 않는다.
   - 공통: `BITHUMB_ACCESS_KEY`, `BITHUMB_SECRET_KEY`
-  - 메일 채널을 쓸 때만: `ACCOUNT_PNL_ALERT_RECIPIENT` (메일 채널을 쓰면 `api`·`manual` 모두 공통 필수에 더해진다)
+  - 메일 채널을 쓸 때만: `ACCOUNT_PNL_ALERT_RECIPIENT` (메일 채널을 쓰면 `api`·`manual` 모두 모드별 필수값에 더해진다)
   - `api` 모드: 공통 + `BINANCE_API_KEY`, `BINANCE_SECRET_KEY`
   - `manual` 모드: 공통 + `BINANCE_MANUAL_SHORT_QUANTITY`, `BINANCE_MANUAL_ENTRY_PRICE` (바이낸스 key 불필요)
 - 누락 시 batch 로그에 다음 WARN 이 한 줄 남고 Job 은 뜨지 않는다. 비어 있는 **env 이름**만 나오며 설정 값은 나오지 않는다.
@@ -62,7 +62,7 @@
 
   `binanceMode` 는 `api` 또는 `manual`, `missing` 은 비어 있는 env 이름 목록이다. 이 WARN 은 `api` 모드에도 적용된다.
 - 종류별 override env(`OWNER_ALERT_{KIND}_EMAIL`·`_DISCORD`·`_PUSH`)는 아래 "owner 알림 채널" 절 표를 본다.
-- 채널 기동 판정(메일 채널 = `OWNER_ALERT_EMAIL_ENABLED`≠false ∧ `NOTIFICATION_EMAIL_ENABLED=true`, Discord 채널 = `OWNER_ALERT_DISCORD_ENABLED=true` ∧ webhook 1개 이상):
+- 채널 기동 판정(메일 채널 = `OWNER_ALERT_EMAIL_ENABLED` 가 비었거나 `true`(대소문자 무관) ∧ `NOTIFICATION_EMAIL_ENABLED=true`, Discord 채널 = `OWNER_ALERT_DISCORD_ENABLED=true` ∧ webhook 1개 이상):
   - **쓸 수 있는 채널이 하나도 없으면 모니터가 시작되지 않는다.** 이때 batch 로그에
     `account-pnl-monitor enabled but email disabled; monitor not started` WARN 이 남는다.
   - **`OWNER_ALERT_DISCORD_ENABLED=true` 인데 webhook 이 하나도 없으면 모니터가 시작되지 않는다.** 이때 다음 WARN 이 남는다.
@@ -70,7 +70,7 @@
     ```text
     owner-alert discord enabled but no webhook configured; monitor not started: set one of [OWNER_ALERT_DISCORD_WEBHOOK_PNL, OWNER_ALERT_DISCORD_WEBHOOK_MARKET, OWNER_ALERT_DISCORD_WEBHOOK_OPS]
     ```
-  - 메일 채널만 꺼지고(`OWNER_ALERT_EMAIL_ENABLED`≠false 인데 `NOTIFICATION_EMAIL_ENABLED` 가 true 가 아님) Discord 가 쓸 수 있으면 **Discord 만으로 기동**하고 WARN 1회가 남는다.
+  - 메일 채널만 꺼지고(`OWNER_ALERT_EMAIL_ENABLED` 가 비었거나 `true` 인데 `NOTIFICATION_EMAIL_ENABLED` 가 true 가 아님) Discord 가 쓸 수 있으면 **Discord 만으로 기동**하고 WARN 1회가 남는다.
 
     ```text
     owner-alert email enabled but NOTIFICATION_EMAIL_ENABLED is not true; email channel off
@@ -145,7 +145,7 @@ gross +1,500,000원 · 예상 청산 수수료 -20,000원
 
 ### 동작
 
-- 발송 실패 중 429·5xx·네트워크 오류는 다음 회차에 다시 시도한다(행당 최대 5회, 넘으면 `FAILED`). 429 응답의 대기 시간이 2초 이하면 즉시 1회만 더 시도한다.
+- 발송 실패 중 429·5xx·네트워크 오류는 다음 회차에 다시 시도한다(행당 최대 5회, 넘으면 `FAILED`). 429 응답의 `Retry-After` 만큼 기다린 뒤(2초 이하일 때만) 1회만 더 시도한다.
 - 그 밖 4xx(webhook 삭제·잘못된 URL 등)는 즉시 `FAILED` 로 닫고 재시도하지 않는다. 이때는 webhook 을 다시 만들어 env 를 고친다.
 - 채널을 끄면 그 채널로 쌓여 있던 행은 다음 회차에 1회 시도 후 `FAILED` 가 된다(보낼 수단이 없다).
 - 발송은 at-least-once 다. 드물게(성공 직후 프로세스 종료 등) 같은 알림이 두 번 올 수 있다.
@@ -161,7 +161,7 @@ gross +1,500,000원 · 예상 청산 수수료 -20,000원
 
 ### 복구: 알 수 없는 값의 행
 
-owner 알림 전달이 같은 claim·저장 실패를 반복하며 멈췄고 원인이 `discord_target`/`discord_push` 에 **알 수 없는 값**이 든 행이면(수동 DB 수정이나, enum 값이 더 적은 구 binary 로
+owner 알림 전달이 같은 claim·저장 실패를 반복하며 멈췄고 원인이 `channel`·`discord_target`/`discord_push` 에 **알 수 없는 값**(대소문자·공백만 다른 값 포함)이 든 행이면(수동 DB 수정이나, enum 값이 더 적은 구 binary 로
 롤백한 경우에만 생길 수 있다) 그 행만 `FAILED` 로 닫는다. 정상 행은 건드리지 않는다.
 
 ```sql
@@ -170,10 +170,11 @@ SET status = 'FAILED',
     claim_token = NULL,
     locked_by = NULL,
     locked_at = NULL
-WHERE channel = 'DISCORD'
-  AND status IN ('PENDING', 'PROCESSING')
-  AND (discord_target NOT IN ('PNL', 'MARKET', 'OPS')
-       OR discord_push NOT IN ('SILENT', 'SOUND', 'HERE'));
+WHERE status IN ('PENDING', 'PROCESSING')
+  AND (BINARY channel NOT IN ('EMAIL', 'DISCORD')
+       OR (channel = 'DISCORD'
+           AND (BINARY discord_target NOT IN ('PNL', 'MARKET', 'OPS')
+                OR BINARY discord_push NOT IN ('SILENT', 'SOUND', 'HERE'))));
 ```
 
 ### 배포와 롤백
@@ -240,7 +241,7 @@ WHERE channel = 'DISCORD'
   갈 수 있다.
 - 수량·진입가가 바뀌면 새 에피소드(즉시 판정)로 본다. 수수료·펀딩만 바꾸면 에피소드가 유지된다.
 - taker 기본 `0.0005` 는 BNB 할인을 반영하지 않은 값이다(보수적). 진입 수수료를 BNB 로 냈다면 USDT 환산값을 입력한다.
-- manual 값은 **모니터가 기동 조건을 모두 만족해 설정이 바인딩될 때**(기능 켜짐·현재 모드의 필수값 전부·메일 켜짐·scheduling
+- manual 값은 **모니터가 기동 조건을 모두 만족해 설정이 바인딩될 때**(기능 켜짐·현재 모드의 필수값 전부·메일 또는 Discord 채널이 하나 이상 쓰일 때·scheduling
   켜짐) `api` 모드에서도 형식 검증된다. 기동 조건이 안 맞으면 검증도 되지 않는다.
 - manual 모드에서는 `바이낸스 인증 실패` 범주가 사실상 나오지 않는다(서명 호출이 없다). 바이낸스 쪽 실패는 `네트워크·요청 한도 오류`,
   `시세 지연`, `기타 오류` 로 나타난다.

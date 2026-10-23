@@ -72,7 +72,7 @@ internal object AccountPnlMonitorRequirements {
 }
 
 /**
- * 기능이 켜졌고 필수값(메일 채널이면 수신자·빗썸 credential·해석된 바이낸스 모드)이 모두 있으며 owner 알림 채널이 준비됐을 때만
+ * 기능이 켜졌고 수신자(메일 채널이 쓰일 때만)·빗썸 credential·바이낸스 모드별 필수값이 모두 있으며 owner 알림 채널이 준비됐을 때만
  * 참이다 (design §7.2). 로그는 남기지 않는다.
  */
 class AccountPnlCredentialsPresentCondition : Condition {
