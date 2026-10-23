@@ -63,12 +63,7 @@ data class PositionWatchState(val legs: PositionLegs?, val hedgeMismatchWarned: 
 }
 
 /** 순수익률 급변 상태 (design §3.3). bucketStart == null 이면 나머지는 null/false/false. */
-data class SwingState(
-    val bucketStart: Instant?,
-    val baselinePercent: BigDecimal?,
-    val upSent: Boolean,
-    val downSent: Boolean,
-) {
+data class SwingState(val bucketStart: Instant?, val baselinePercent: BigDecimal?, val upSent: Boolean, val downSent: Boolean) {
     init {
         require(bucketStart != null || (baselinePercent == null && !upSent && !downSent)) {
             "swing state without a bucket must be empty."
@@ -84,11 +79,7 @@ data class SwingState(
  * 미반영 리마인더 상태 (design §3.4). [lastDayStart] = 리마인더를 마지막으로 **보낸** zone 날짜의 자정.
  * manualFundingChangedAt == null 이면 manualFundingUsdt == null.
  */
-data class ReminderState(
-    val lastDayStart: Instant?,
-    val manualFundingUsdt: BigDecimal?,
-    val manualFundingChangedAt: Instant?,
-) {
+data class ReminderState(val lastDayStart: Instant?, val manualFundingUsdt: BigDecimal?, val manualFundingChangedAt: Instant?) {
     init {
         require(manualFundingChangedAt != null || manualFundingUsdt == null) {
             "manual funding value requires its change time."

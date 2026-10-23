@@ -31,8 +31,10 @@ object NetPercentSwingPolicy {
         return when {
             delta >= threshold && !state.upSent ->
                 SwingDecision(state.copy(upSent = true), alert(SwingDirection.UP, bucket, baseline, threshold, pnl))
+
             delta <= threshold.negate() && !state.downSent ->
                 SwingDecision(state.copy(downSent = true), alert(SwingDirection.DOWN, bucket, baseline, threshold, pnl))
+
             else -> SwingDecision(state, null)
         }
     }

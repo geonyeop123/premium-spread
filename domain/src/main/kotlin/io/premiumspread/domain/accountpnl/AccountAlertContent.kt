@@ -31,10 +31,12 @@ object AccountAlertContent {
     /** design §3.6 — `account-pnl-position-{ms}` / `account-pnl-swing-{up|down}-{ms}` / `account-pnl-reminder-{ms}`. */
     fun eventKey(alert: AccountAlert): String = when (alert) {
         is AccountAlert.PositionChanged -> "account-pnl-position-${alert.detectedAt.toEpochMilli()}"
+
         is AccountAlert.NetPercentSwing -> {
             val direction = if (alert.direction == SwingDirection.UP) "up" else "down"
             "account-pnl-swing-$direction-${alert.bucketStart.toEpochMilli()}"
         }
+
         is AccountAlert.UnrecoveredReminder -> "account-pnl-reminder-${alert.dayStart.toEpochMilli()}"
     }
 
@@ -57,6 +59,7 @@ object AccountAlertContent {
             positionDiscordLines(alert, zone).joinToString("\n"),
             if (alert.hedgeMismatchWarning) COLOR_HEDGE_MISMATCH else COLOR_POSITION_CHANGED,
         )
+
         is AccountAlert.NetPercentSwing -> {
             val up = alert.direction == SwingDirection.UP
             DiscordMessage.of(
@@ -65,6 +68,7 @@ object AccountAlertContent {
                 if (up) COLOR_SWING_UP else COLOR_SWING_DOWN,
             )
         }
+
         is AccountAlert.UnrecoveredReminder -> DiscordMessage.of(
             "🗒️ 미반영 리마인더 · ${alert.items.size}건",
             reminderDiscordLines(alert, zone).joinToString("\n"),
@@ -176,8 +180,11 @@ object AccountAlertContent {
         val foreignReason = if (alert.source == ForeignPerpPositionSource.MANUAL_ENV) "수동 미입력" else "이력 없음"
         return when (item) {
             ReminderItem.KOREA_ENTRY_FEE -> "진입 수수료(빗썸) 미반영 — 이력 없음"
+
             ReminderItem.FOREIGN_ENTRY_FEE -> "진입 수수료(바이낸스) 미반영 — $foreignReason"
+
             ReminderItem.FUNDING -> "펀딩비 미반영 — $foreignReason"
+
             ReminderItem.MANUAL_FUNDING_STALE -> {
                 val funding = requireNotNull(alert.manualFunding) { "manual funding staleness is required." }
                 "수동 펀딩비 ${funding.days}일째 미갱신 — 현재 값 ${signedUsdt(funding.fundingUsdt)}, " +
@@ -206,6 +213,7 @@ object AccountAlertContent {
 
     private fun foreignLeg(leg: ForeignLeg): String = when {
         leg.isFlat -> NONE
+
         else -> {
             val side = if (leg.signedQuantity.signum() < 0) "숏" else "롱"
             "$side ${plain(leg.signedQuantity.abs())} $QUANTITY_UNIT · 진입가 ${plain(leg.entryPrice)} USDT"
