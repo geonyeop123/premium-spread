@@ -4,6 +4,7 @@ import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.owneralert.DiscordTarget
 import io.premiumspread.domain.owneralert.OwnerAlertChannels
 import io.premiumspread.domain.owneralert.OwnerAlertDiscordSender
+import io.premiumspread.domain.owneralert.OwnerAlertKind
 import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import io.premiumspread.email.EmailSender
 import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapter
@@ -193,10 +194,24 @@ class AccountPnlMonitorAdapterConfiguration {
         ownerAlert: OwnerAlertProperties,
         mailSender: ObjectProvider<AccountPnlMailSender>,
         discordSender: ObjectProvider<OwnerAlertDiscordSender>,
-    ): OwnerAlertRouting = OwnerAlertRouting(
-        OwnerAlertChannels(email = mailSender.ifAvailable != null, discord = discordSender.ifAvailable != null),
-        ownerAlert.resolvedOverrides(),
-    )
+    ): OwnerAlertRouting {
+        val routing = OwnerAlertRouting(
+            OwnerAlertChannels(email = mailSender.ifAvailable != null, discord = discordSender.ifAvailable != null),
+            ownerAlert.resolvedOverrides(),
+        )
+        log.info("owner-alert routes: {}", describeRoutes(routing))
+        return routing
+    }
+
+    /** 종류별 해석된 경로 요약. URL·수신 주소는 담지 않는다. */
+    private fun describeRoutes(routing: OwnerAlertRouting): String = OwnerAlertKind.entries.joinToString(", ") { kind ->
+        val route = routing.resolve(kind)
+        val parts = listOfNotNull(
+            "email".takeIf { route.email },
+            route.discord?.let { "discord(${it.target},${it.push})" },
+        )
+        "${kind.key}=${parts.joinToString("+").ifEmpty { "off" }}"
+    }
 
     private fun client(baseUrl: String): WebClient = WebClient.builder().baseUrl(baseUrl.removeSuffix("/")).build()
 

@@ -786,6 +786,25 @@ class AccountPnlMonitorWiringTest {
     }
 
     @Test
+    fun `기동 INFO 에 종류별 해석된 경로 요약이 있고 webhook 값이 없다`(output: CapturedOutput) {
+        val bothStart = output.all.length
+        runner.withPropertyValues(*enabledProps, *allWebhookProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(bothStart))
+            .contains(
+                "owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), " +
+                    "monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND)",
+            ).doesNotContain(*webhookValues)
+            .doesNotContain("owner@example.test")
+
+        val emailStart = output.all.length
+        runner.withPropertyValues(*enabledProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(emailStart))
+            .contains(
+                "owner-alert routes: profit=email, hourly-report=email, monitoring-outage=email, monitoring-recovered=email",
+            )
+    }
+
+    @Test
     fun `http webhook 은 기동 실패이고 값이 어디에도 없다`(output: CapturedOutput) {
         val property = "owner-alert.discord.webhook.ops"
         listOf("true", "false").forEach { discordEnabled ->
