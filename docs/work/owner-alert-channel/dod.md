@@ -129,6 +129,11 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - RED(stub `resolve = defaultRoute`): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.OwnerAlertRoutingTest' --offline --no-daemon` → `11 tests completed, 7 failed` (EMAIL_ONLY·Discord-only·fallback·email=false 명시·override·discordDisabled·채널 없음), 기본 표·key·require 테스트는 초록. BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL, OwnerAlertRoutingTest 11 tests 0 failures. `AccountPnlMailContentTest` BUILD SUCCESSFUL, `architectureTest` BUILD SUCCESSFUL.
 
+### Task 3 — AC2 (2026-10-23)
+
+- RED(stub `of`=무절단·`truncate`=입력 그대로·`expand`=emptyList): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordMessageTest' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsTest' --offline --no-daemon` → `16 tests completed, 8 failed` (절단 4건: 제목 256·설명 4097·surrogate·이모지 보존 / 확장 4건: 2행·Discord 1행·메일 1행·DISCORD 행 거부), BUILD FAILED. 동결 테스트 컴파일(`:apps:batch:compileTestKotlin :infrastructure:common:compileIntegrationTestKotlin`) 성공.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (16 tests). `./gradlew :domain:test` BUILD SUCCESSFUL (281 tests, Task 1 golden 포함), `./gradlew :apps:batch:test` BUILD SUCCESSFUL, `:infrastructure:common:compileIntegrationTestKotlin :infrastructure:batch:compileTestKotlin` BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

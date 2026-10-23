@@ -1,5 +1,7 @@
 package io.premiumspread.domain.accountpnl
 
+import io.premiumspread.domain.owneralert.DiscordRoute
+import io.premiumspread.domain.owneralert.OwnerAlertChannel
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.DecimalFormat
@@ -10,7 +12,24 @@ import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-data class AccountPnlMail(val eventKey: String, val subject: String, val body: String)
+/**
+ * owner 알림 공용 outbox 행 (이름은 호환 때문에 유지 — design §4.4).
+ * EMAIL 행: subject/body = 메일 제목/본문. DISCORD 행: subject/body = embed 제목/설명, Discord 필드 필수.
+ */
+data class AccountPnlMail(
+    val eventKey: String,
+    val subject: String,
+    val body: String,
+    val channel: OwnerAlertChannel = OwnerAlertChannel.EMAIL,
+    val discordRoute: DiscordRoute? = null,
+    val discordColor: Int? = null,
+) {
+    init {
+        val discord = channel == OwnerAlertChannel.DISCORD
+        require(discord == (discordRoute != null)) { "discordRoute must be set only for DISCORD rows." }
+        require(discord == (discordColor != null)) { "discordColor must be set only for DISCORD rows." }
+    }
+}
 
 /** 실계정 순손익 알림 메일의 제목·본문 (design §4.3). 숫자·시각 표기는 locale 과 무관하다. */
 object AccountPnlMailContent {
