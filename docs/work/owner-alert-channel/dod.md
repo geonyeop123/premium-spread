@@ -313,6 +313,11 @@ index 8c2c475..307397e 100644
 - `./gradlew :infrastructure:common:integrationTest --offline --no-daemon --tests '*V19OwnerAlertChannelMigrationIntegrationTest'` BUILD SUCCESSFUL
 - `bash docs/check-documentation.sh` passed
 
+### ⑨ 재작업 1 — detekt (2026-10-23)
+
+- `AccountPnlMonitorEnabledCondition.matches` 의 3~6 단계를 private helper 로 추출해 return 2개로 줄였다(단락 평가로 순서·WARN 문구·className 가드 유지). `./gradlew :apps:batch:test --tests 'io.premiumspread.config.AccountPnlMonitorWiringTest' --offline --no-daemon` BUILD SUCCESSFUL.
+- `./gradlew :apps:batch:test --offline --no-daemon` BUILD SUCCESSFUL. 그 밖의 #88 main 파일은 return 4개 초과 함수 없음(guard clause 는 detekt 설정상 제외).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

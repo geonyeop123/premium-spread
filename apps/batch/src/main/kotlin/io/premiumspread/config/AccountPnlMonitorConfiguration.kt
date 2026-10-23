@@ -22,6 +22,7 @@ import org.springframework.context.annotation.Condition
 import org.springframework.context.annotation.ConditionContext
 import org.springframework.context.annotation.Conditional
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
 import org.springframework.core.type.AnnotatedTypeMetadata
 import org.springframework.core.type.ClassMetadata
 import java.time.Clock
@@ -54,39 +55,57 @@ class AccountPnlMonitorEnabledCondition : Condition {
         val webhookConfigured = WEBHOOKS.any { (key, _) -> !env.getProperty(key).isNullOrBlank() }
         val discordEffective = discordRequested && webhookConfigured
 
-        // 3
+        // 3~6 은 순서대로 단락 평가한다. 하나라도 거절하면 이후 단계(와 그 WARN)는 실행되지 않는다.
+        // 7: 모두 통과하면 true.
+        return requiredSettingsPresent(env, emailEffective, manualMode, logging) &&
+            discordWebhookPresent(discordRequested, webhookConfigured, logging) &&
+            anyChannelEffective(emailEffective, discordEffective, logging) &&
+            warnEmailChannelOff(emailRequested && !smtpOn && discordEffective, logging)
+    }
+
+    // 3
+    private fun requiredSettingsPresent(
+        env: Environment,
+        emailEffective: Boolean,
+        manualMode: Boolean,
+        logging: Boolean,
+    ): Boolean {
         val required = (if (emailEffective) listOf(RECIPIENT) else emptyList()) + COMMON + if (manualMode) MANUAL else API
         val missing = required.filter { (key, _) -> env.getProperty(key).isNullOrBlank() }.map { (_, envName) -> envName }
-        if (missing.isNotEmpty()) {
-            if (logging) {
-                log.warn(
-                    "account-pnl-monitor enabled but required settings missing; monitor not started: binanceMode={}, missing={}",
-                    if (manualMode) "manual" else "api",
-                    missing,
-                )
-            }
-            return false
+        if (missing.isNotEmpty() && logging) {
+            log.warn(
+                "account-pnl-monitor enabled but required settings missing; monitor not started: binanceMode={}, missing={}",
+                if (manualMode) "manual" else "api",
+                missing,
+            )
         }
-        // 4
-        if (discordRequested && !webhookConfigured) {
-            if (logging) {
-                log.warn(
-                    "owner-alert discord enabled but no webhook configured; monitor not started: set one of {}",
-                    WEBHOOKS.map { (_, envName) -> envName },
-                )
-            }
-            return false
+        return missing.isEmpty()
+    }
+
+    // 4
+    private fun discordWebhookPresent(discordRequested: Boolean, webhookConfigured: Boolean, logging: Boolean): Boolean {
+        val missing = discordRequested && !webhookConfigured
+        if (missing && logging) {
+            log.warn(
+                "owner-alert discord enabled but no webhook configured; monitor not started: set one of {}",
+                WEBHOOKS.map { (_, envName) -> envName },
+            )
         }
-        // 5
-        if (!emailEffective && !discordEffective) {
-            if (logging) log.warn("account-pnl-monitor enabled but email disabled; monitor not started")
-            return false
-        }
-        // 6
-        if (emailRequested && !smtpOn && discordEffective && logging) {
+        return !missing
+    }
+
+    // 5
+    private fun anyChannelEffective(emailEffective: Boolean, discordEffective: Boolean, logging: Boolean): Boolean {
+        val none = !emailEffective && !discordEffective
+        if (none && logging) log.warn("account-pnl-monitor enabled but email disabled; monitor not started")
+        return !none
+    }
+
+    // 6 (경고만 남기고 항상 true)
+    private fun warnEmailChannelOff(emailChannelOff: Boolean, logging: Boolean): Boolean {
+        if (emailChannelOff && logging) {
             log.warn("owner-alert email enabled but NOTIFICATION_EMAIL_ENABLED is not true; email channel off")
         }
-        // 7
         return true
     }
 
