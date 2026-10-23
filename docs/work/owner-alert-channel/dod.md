@@ -124,6 +124,11 @@ brief 의 Phase 분할에서 이 단위 전체가 Phase 1(채널) 하나다.
 - RED(변이): `AccountPnlMailContent.TIME_FORMAT` 패턴 끝에 공백 하나 삽입 후 `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlMailContentTest' --offline --no-daemon` → `27 tests completed, 9 failed` (새 golden 4건 `정시 보고`·`빗썸 인증 중단`·`환율 지연 중단`·`복구` + 기존 수익 golden 2건 + 기존 시각 포함 3건 FAILED), BUILD FAILED. `git checkout -- domain/src/main` 후 `git diff --stat -- domain/src/main` 빈 출력.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL, AccountPnlMailContentTest 27 tests, 0 failures. production 무변경.
 
+### Task 2 — AC1 (2026-10-23)
+
+- RED(stub `resolve = defaultRoute`): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.OwnerAlertRoutingTest' --offline --no-daemon` → `11 tests completed, 7 failed` (EMAIL_ONLY·Discord-only·fallback·email=false 명시·override·discordDisabled·채널 없음), 기본 표·key·require 테스트는 초록. BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL, OwnerAlertRoutingTest 11 tests 0 failures. `AccountPnlMailContentTest` BUILD SUCCESSFUL, `architectureTest` BUILD SUCCESSFUL.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
