@@ -9,8 +9,9 @@ object RedisTtl {
     // Ticker 캐시: 5초 (1초 갱신 * 5회 여유)
     val TICKER: Duration = Duration.ofSeconds(5)
 
-    // FX 캐시: 31분 (30분 스케줄 + 1분 버퍼)
-    val FX: Duration = Duration.ofMinutes(31)
+    // FX 캐시: 40분. FX 수집 허용 공백(Domain FxIngestionFreshness, 30분) + 5분 이상이어야 한다 — 캐시가 freshness 판정보다
+    // 먼저 만료되면 판정은 신선인데 값이 없는 #93 이 재발한다. infrastructure:common FxCacheTtlContractTest 가 강제한다.
+    val FX: Duration = Duration.ofMinutes(40)
 
     // Premium 캐시: 5초
     val PREMIUM: Duration = Duration.ofSeconds(5)
