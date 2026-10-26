@@ -189,7 +189,7 @@ shadcn 3.x → 4.22.1: node_modules/shadcn/dist/tailwind.css 삭제 0줄, 추가
 
 | # | 확인 사항 | 확인자 | 날짜 | 앵커 |
 |---|---|---|---|---|
-| AC6 | 프리미엄 차트·트래킹 화면 육안 확인 | | | |
+| AC6 | 프리미엄 차트·트래킹 화면 육안 확인 | 프로젝트 오너 (세션 대화 승인, Claude 대리 기록) | 2026-10-26 | https://github.com/geonyeop123/premium-spread/pull/95#issuecomment-6406853460 |
 
 ## 변경 요청
 
@@ -203,13 +203,13 @@ DoD VERDICT: issue-82-web-npm-audit @ d687664 (apps/web == b73752c)
   수용기준 표:     7개  (T1 1 · T2 3 · T3 2 · T4 1)
   T1/T2 자동:      4개 중 4개 PASS
   T3 기록 제출:    2개 중 2건
-  T4 사람 확인:    1개 중 0건 완료, 1건 대기
+  T4 사람 확인:    1개 중 1건 완료, 0건 대기
   변경 요청:       0건
-  => AWAITING_HUMAN
+  => VERIFIED
 ```
 
 **사람 확인이 필요한 항목**
 
-- AC6: 프리미엄 차트·트래킹 화면 육안 확인 — PR #95 코멘트 앵커 필요. 확인 전까지 PR Draft 유지, `Closes #82` 보류
+- 없음. AC6는 2026-10-26 오너 승인(PR #95 코멘트 앵커). 승인은 세션 대화에서 받았고 코멘트는 Claude가 대리 작성했다
 
 > 이 판정 이후의 커밋은 `docs/work/issue-82-web-npm-audit/dod.md` 증거 기록뿐이다(`apps/web` 무변경).
