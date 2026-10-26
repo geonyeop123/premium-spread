@@ -11,7 +11,7 @@ import java.sql.Timestamp
 class JdbcExchangeRateWriteRepository(private val jdbcTemplate: JdbcTemplate, private val clock: Clock) {
 
     /**
-     * 환율 스냅샷 저장 (30분 단위)
+     * 환율 스냅샷 저장. 수집 회차마다 저장하며 같은 observed_at 은 한 행으로 수렴한다
      */
     fun save(baseCurrency: String, quoteCurrency: String, rate: BigDecimal, observedAt: Instant) {
         jdbcTemplate.update(

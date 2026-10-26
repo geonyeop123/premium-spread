@@ -28,7 +28,7 @@ batch:
     bithumb-flush:
       fixed-rate: ${BITHUMB_FLUSH_FIXED_RATE:1s}
     exchange-rate:
-      fixed-rate: ${EXCHANGE_RATE_FIXED_RATE:30m}
+      fixed-rate: ${EXCHANGE_RATE_FIXED_RATE:5m}
       startup-delay: ${EXCHANGE_RATE_STARTUP_DELAY:5s}
     premium:
       fixed-rate: ${PREMIUM_FIXED_RATE:1s}
@@ -155,13 +155,13 @@ market-streams:
     quote: ${BITHUMB_MARKET_QUOTE:KRW}
 
 exchange-rate:
-  endpoint: ${EXCHANGE_RATE_ENDPOINT:https://v6.exchangerate-api.com}
+  endpoint: ${EXCHANGE_RATE_ENDPOINT:https://api.twelvedata.com}
   api-key: ${EXCHANGE_RATE_API_KEY}
   base: ${EXCHANGE_RATE_BASE:USD}
   quote: ${EXCHANGE_RATE_QUOTE:KRW}
   connect-timeout: ${EXCHANGE_RATE_CONNECT_TIMEOUT:2s}
   read-timeout: ${EXCHANGE_RATE_READ_TIMEOUT:3s}
-  max-retries: ${EXCHANGE_RATE_MAX_RETRIES:3}
+  max-retries: ${EXCHANGE_RATE_MAX_RETRIES:1}
   initial-backoff: ${EXCHANGE_RATE_INITIAL_BACKOFF:250ms}
   max-backoff: ${EXCHANGE_RATE_MAX_BACKOFF:2s}
 

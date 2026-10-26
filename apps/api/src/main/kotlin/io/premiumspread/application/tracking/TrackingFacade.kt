@@ -60,8 +60,10 @@ class TrackingFacade(
         private val SNAPSHOT_MAX_AGE: Duration = Duration.ofSeconds(SNAPSHOT_MAX_AGE_SECONDS)
 
         /**
-         * 환율 한도는 수집 주기에서 유도한다. batch 의 exchange-rate fixed-rate 가 30m 이므로
-         * 그보다 작으면 정상 운영에서도 모든 archive 가 확정 불가가 된다 (design.md §5.3.2).
+         * 환율 한도는 수집 주기에서 유도한다. batch exchange-rate 주기는 5분이고 35분은 유지한다.
+         * 제공자 timestamp 기준이라 주말(forex 휴장)엔 확정 불가 — 후속 F1
+         * (design fx-provider-twelve-data §8). 수집 주기보다 작으면 정상 운영에서도
+         * 모든 archive 가 확정 불가가 된다 (design.md §5.3.2).
          */
         private val FX_MAX_AGE: Duration = Duration.ofMinutes(35)
     }

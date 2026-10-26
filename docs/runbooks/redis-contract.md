@@ -15,8 +15,10 @@
 | Key | TTL | Payload |
 |---|---:|---|
 | `ticker:{exchange}:{symbol}` | 5초 | `schema_version`, `exchange`, `symbol`, `currency`, `price`, `volume`, `timestamp` |
-| `fx:{base}:{quote}` | 31분 | `schema_version`, `base`, `quote`, `rate`, `timestamp`, `source` |
+| `fx:{base}:{quote}` | 40분 | `schema_version`, `base`, `quote`, `rate`, `timestamp`, `source` |
 | `premium:{korea}:{foreign}:{symbol}` | 5초 | 아래 premium v2 payload |
+
+`fx:{base}:{quote}` TTL 은 FX 수집 허용 공백(`FxIngestionFreshness.MAX_INGESTION_GAP`, 30분) + 5분 이상이어야 한다 — `FxCacheTtlContractTest` 가 강제한다.
 
 `timestamp`, `observed_at`, `fx_observed_at`은 epoch milliseconds다. ticker의 빈 `volume`은 `null`로
 복원한다. FX/ticker reader는 cutover 호환을 위해 unversioned payload를 읽지만 새 writer는 항상 version 2를 쓴다.

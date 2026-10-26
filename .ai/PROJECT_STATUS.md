@@ -62,7 +62,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 ## 기능 상태
 
 - WebSocket Binance/Bithumb 시세 수집과 1초 down-sample
-- USD/KRW 30분 수집, Premium 1초 계산, minute/hour/day 집계
+- USD/KRW 5분 수집(Twelve Data), Premium 1초 계산, minute/hour/day 집계
 - canonical `MarketPair` 기반 premium/position/notification 저장·조회
 - Tracking 기록(현재 시세/입력값)과 KRW gross 손익 계산, 종료 시점 스냅샷 확정
 - JWT Access/rotating Refresh 인증, Redis family/session fencing
@@ -79,11 +79,18 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   라우팅(Domain `OwnerAlertKind`), `OwnerAlertDispatcher`(apps:batch)·`DiscordWebhookSenderAdapter`(infrastructure:batch),
   outbox `account_pnl_mail` 에 `channel`·Discord 컬럼과 `UNIQUE(event_key, channel)`(V19). owner Discord 수신 확인(AC13)은
   미완료이며 후속은 이슈 #89~#91이다
-- owner 계정 알림 3종(#89, 구현·검증 완료, Draft PR, AC14 실 Discord owner 확인 대기): 실계정 포지션 변경,
+- owner 계정 알림 3종(#89, 구현·검증 완료, PR #94 merged `728e3f1`, AC14 (c)(d)(e) owner 확인 대기): 실계정 포지션 변경,
   순수익률 급변(정시 기준선), 미반영 항목 하루 1회 리마인더. 상태는 `account_pnl_monitor_state` 12열(V20)에
-  저장하고 [runbook](../docs/runbooks/account-pnl-alert.md)에 체크리스트가 있다. 머지 후 후속 후보:
+  저장하고 [runbook](../docs/runbooks/account-pnl-alert.md)에 체크리스트가 있다. 후속 후보:
   - 계정 알림이 켜진 상태의 Job save 예외·interrupt 분기 테스트
   - 평단 1원 미만 변경 시 알림 본문에서 before와 after가 같게 보이는 표시 개선
+- 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, PR #99, AC8 로컬 운영 실기동 관찰 완료 — 주말 동작 미관찰):
+  수집 5분·허용 공백 30분(`FxIngestionFreshness`)·캐시 TTL 40분을 테스트와 기동 검증으로 묶었다.
+  [설계](../docs/work/fx-provider-twelve-data/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다. 후속 후보:
+  - api `TrackingFacade.FX_MAX_AGE` 35분이 제공자 timestamp 기준이라 주말(forex 휴장, timestamp 금요일 마감 고정)에 추적 확정 실패(F1)
+  - 환율 클라이언트 `overallDeadline` 공식이 시도당 connect+responseTimeout+body timeout(8s)이 아니라 5s로 계산되어, max-retries override 시 block deadline이 먼저 끊을 수 있음
+  - Twelve Data가 한도 초과를 HTTP 200 + code 429로 줄 때 metric이 contract로 집계됨(rate_limited 분리 후보)
+  - `exchange_rate.rate DECIMAL(10,4)` 대 캐시 `toPlainString` 전체 정밀도 차이
 
 ## Migration 상태와 소유권
 

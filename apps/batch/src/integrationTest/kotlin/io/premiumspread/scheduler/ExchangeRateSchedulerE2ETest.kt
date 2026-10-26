@@ -1,8 +1,6 @@
 package io.premiumspread.interfaces.scheduling
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.application.job.fx.FxIngestionJob
-import io.premiumspread.infrastructure.batch.exchange.ExchangeRateResponse
 import io.premiumspread.support.BatchIntegrationTestBase
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -12,6 +10,9 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.math.BigDecimal
+import java.sql.Timestamp
+import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 @DisplayName("ExchangeRateScheduler E2E")
 class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
@@ -22,21 +23,19 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
     @Autowired
     lateinit var exchangeRateMockServer: MockWebServer
 
-    private val objectMapper = ObjectMapper().apply { findAndRegisterModules() }
-
-    private fun enqueueSuccessResponse(rate: BigDecimal = BigDecimal("1432.60")) {
-        val response = ExchangeRateResponse(
-            result = "success",
-            baseCode = "USD",
-            targetCode = "KRW",
-            conversionRate = rate,
-            timeLastUpdateUnix = 1706486401L,
-        )
+    private fun enqueueSuccessResponse() {
         exchangeRateMockServer.enqueue(
             MockResponse()
-                .setBody(objectMapper.writeValueAsString(response))
+                .setBody("""{"symbol":"USD/KRW","rate":1234.5678,"timestamp":1767225600}""")
                 .addHeader("Content-Type", "application/json"),
         )
+    }
+
+    // 공유 mock server 에 이전 테스트의 미소비 요청이 남아 있을 수 있어 enqueue 전에 비운다.
+    private fun drainRecordedRequests() {
+        while (exchangeRateMockServer.takeRequest(0, TimeUnit.MILLISECONDS) != null) {
+            // drain
+        }
     }
 
     @Nested
@@ -56,8 +55,11 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             assertThat(hash).isNotEmpty
             assertThat(hash["base"]).isEqualTo("USD")
             assertThat(hash["quote"]).isEqualTo("KRW")
-            assertThat(BigDecimal(hash["rate"])).isEqualByComparingTo(BigDecimal("1432.60"))
-            assertThat(hash["timestamp"]).isNotNull()
+            assertThat(BigDecimal(hash["rate"])).isEqualByComparingTo(BigDecimal("1234.5678"))
+            assertThat(hash["timestamp"]).isEqualTo("1767225600000")
+
+            val ttlSeconds = redisTemplate.getExpire("fx:usd:krw", TimeUnit.SECONDS)
+            assertThat(ttlSeconds).isGreaterThan(2100L).isLessThanOrEqualTo(2400L)
         }
 
         @Test
@@ -73,8 +75,28 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
                 "SELECT * FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
             )
             assertThat(results).hasSize(1)
-            assertThat(results[0]["rate"] as BigDecimal).isEqualByComparingTo(BigDecimal("1432.60"))
-            assertThat(results[0]["observed_at"]).isNotNull()
+            assertThat(results[0]["rate"] as BigDecimal).isEqualByComparingTo(BigDecimal("1234.5678"))
+            // 쓰기(Timestamp.from)와 읽기(Timestamp)가 같은 JVM, 같은 드라이버의 JDBC Timestamp 왕복이라 대칭이다.
+            val observedAt = jdbcTemplate.queryForObject(
+                "SELECT observed_at FROM exchange_rate WHERE base_currency = 'USD' AND quote_currency = 'KRW'",
+                Timestamp::class.java,
+            )
+            assertThat(observedAt!!.toInstant()).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"))
+        }
+
+        @Test
+        fun `요청은 Authorization 헤더에 apikey 를 싣는다`() {
+            // given
+            drainRecordedRequests()
+            enqueueSuccessResponse()
+
+            // when
+            exchangeRateJob.run()
+
+            // then
+            val request = exchangeRateMockServer.takeRequest(1, TimeUnit.SECONDS)
+            assertThat(request).isNotNull
+            assertThat(request!!.getHeader("Authorization")).isEqualTo("apikey test-dummy-key")
         }
 
         @Test
@@ -111,7 +133,7 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             // then - 캐시 검증
             val hash = redisTemplate.opsForHash<String, String>().entries("fx:usd:krw")
             assertThat(hash).isNotEmpty
-            assertThat(BigDecimal(hash["rate"])).isEqualByComparingTo(BigDecimal("1432.60"))
+            assertThat(BigDecimal(hash["rate"])).isEqualByComparingTo(BigDecimal("1234.5678"))
 
             // then - DB 검증
             val results = jdbcTemplate.queryForList(

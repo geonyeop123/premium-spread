@@ -7,6 +7,7 @@ import io.premiumspread.domain.market.ExchangeRateProvider
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatusCode
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientRequestException
@@ -37,7 +38,13 @@ class ExchangeRateClient(
             val response = fetchResponse(base, quote)
             response.toSnapshot(base, quote).also {
                 meterRegistry.counter(FETCH_METRIC, "provider", PROVIDER, "outcome", "success").increment()
-                log.debug("Fetched exchange rate: {}/{} = {}", base, quote, it.rate)
+                log.debug(
+                    "Fetched exchange rate base={} quote={} rate={} observedAt={}",
+                    base,
+                    quote,
+                    it.rate,
+                    it.observedAt,
+                )
             }
         } catch (exception: Exception) {
             val cause = Exceptions.unwrap(exception)
@@ -66,16 +73,18 @@ class ExchangeRateClient(
             .doBeforeRetry { signal ->
                 meterRegistry.counter("fx.fetch.retry", "provider", PROVIDER).increment()
                 log.warn(
-                    "Exchange rate request retry {}/{}: {}",
+                    "Exchange rate request retry {}/{}: {}: {}",
                     signal.totalRetries() + 1,
                     properties.maxRetries,
+                    signal.failure().javaClass.simpleName,
                     signal.failure().message,
                 )
             }
             .onRetryExhaustedThrow { _, signal -> signal.failure() }
 
         return exchangeRateWebClient.get()
-            .uri("/v6/{apiKey}/pair/{base}/{quote}", properties.apiKey, base, quote)
+            .uri { it.path("/exchange_rate").queryParam("symbol", "{symbol}").build("$base/$quote") }
+            .header(HttpHeaders.AUTHORIZATION, "apikey ${properties.apiKey}")
             .exchangeToMono { response ->
                 // Start the body deadline after response headers arrive. Applying timeout
                 // around the whole exchange also measures one-time Netty initialization and
@@ -84,69 +93,70 @@ class ExchangeRateClient(
             }
             .retryWhen(retry)
             .block(properties.overallDeadline())
-            ?: throw ExchangeRateApiException("Exchange rate API returned an empty response")
+            ?: fail("Exchange rate API returned an empty response")
     }
 
     private fun org.springframework.web.reactive.function.client.ClientResponse.toResponseMono(): Mono<ExchangeRateResponse> {
         if (statusCode().is2xxSuccessful) return bodyToMono(ExchangeRateResponse::class.java)
 
-        return bodyToMono(String::class.java)
-            .defaultIfEmpty("")
-            .flatMap { body ->
-                val status = statusCode()
-                if (properties.isRetryable(status.value())) {
-                    Mono.error(RetryableExchangeRateException(status, body))
-                } else {
-                    Mono.error(ExchangeRateHttpException(status, body))
-                }
-            }
+        // 오류 본문은 소비·폐기하고 예외 메시지와 로그에 넣지 않는다.
+        val status = statusCode()
+        val error = if (properties.isRetryable(status.value())) {
+            RetryableExchangeRateException(status)
+        } else {
+            ExchangeRateHttpException(status)
+        }
+        return releaseBody().then(Mono.error(error))
     }
 
     private fun ExchangeRateResponse.toSnapshot(base: String, quote: String): ExchangeRateSnapshot {
-        if (result != "success") {
-            throw ExchangeRateApiException("Exchange rate API error: ${errorType ?: "unknown"}")
+        if (status.equals("error", ignoreCase = true)) fail("Exchange rate API error: code=${code ?: "unknown"}")
+        if (symbol == null || !symbol.equals("$base/$quote", ignoreCase = true)) {
+            fail("Unexpected exchange rate symbol (expected $base/$quote)")
         }
-        if (baseCode != null && !baseCode.equals(base, ignoreCase = true)) {
-            throw ExchangeRateApiException("Unexpected base currency: $baseCode")
-        }
-        if (targetCode != null && !targetCode.equals(quote, ignoreCase = true)) {
-            throw ExchangeRateApiException("Unexpected quote currency: $targetCode")
-        }
+        val observedRate = rate ?: fail("No rate in response")
+        if (observedRate.signum() <= 0) fail("Non-positive rate in response")
+        val epochSeconds = timestamp?.takeIf { it > 0 } ?: fail("No observation timestamp in response")
         return ExchangeRateSnapshot(
             baseCurrency = base,
             quoteCurrency = quote,
-            rate = conversionRate ?: throw ExchangeRateApiException("No conversion rate in response"),
-            observedAt = timeLastUpdateUnix?.let(Instant::ofEpochSecond)
-                ?: throw ExchangeRateApiException("No observation timestamp in response"),
+            rate = observedRate,
+            observedAt = Instant.ofEpochSecond(epochSeconds),
             source = Exchange.FX_PROVIDER,
         )
     }
 
+    private fun fail(message: String): Nothing = throw ExchangeRateApiException(message)
+
     private fun isRetryable(throwable: Throwable): Boolean {
         val cause = Exceptions.unwrap(throwable)
-        return cause is RetryableExchangeRateException ||
-            cause is WebClientRequestException ||
-            cause is TimeoutException ||
-            cause.cause is TimeoutException
+        return cause is RetryableExchangeRateException || cause is WebClientRequestException || cause.isTimeout()
     }
 
-    private fun Throwable.toMetricOutcome(): String = when (this) {
-        is RetryableExchangeRateException, is ExchangeRateHttpException -> "http"
-        is WebClientRequestException -> "connection"
-        is TimeoutException -> "timeout"
-        is ExchangeRateApiException -> "contract"
+    // Reactor timeout(java.util.concurrent)과 Netty ReadTimeout/responseTimeout 이 경쟁하므로 둘 다 본다.
+    private fun Throwable.isTimeout(): Boolean = isTimeoutType() || cause?.isTimeoutType() == true
+
+    private fun Throwable.isTimeoutType(): Boolean =
+        this is TimeoutException || this is io.netty.handler.timeout.TimeoutException
+
+    private fun Throwable.toMetricOutcome(): String = when {
+        isTimeout() -> "timeout"
+        this is RetryableExchangeRateException || this is ExchangeRateHttpException -> "http"
+        this is WebClientRequestException -> "connection"
+        this is ExchangeRateApiException -> "contract"
         else -> "other"
     }
 
     private companion object {
-        const val PROVIDER = "EXCHANGERATE_API"
+        const val PROVIDER = "TWELVE_DATA"
         const val FETCH_METRIC = "fx.fetch"
     }
 }
 
 open class ExchangeRateApiException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
-open class ExchangeRateHttpException(val status: HttpStatusCode, body: String) :
-    ExchangeRateApiException("Exchange rate HTTP ${status.value()}: ${body.take(256)}")
+// 응답 본문은 어떤 HTTP 예외 메시지에도 넣지 않는다.
+open class ExchangeRateHttpException(val status: HttpStatusCode) :
+    ExchangeRateApiException("Exchange rate HTTP ${status.value()}")
 
-class RetryableExchangeRateException(status: HttpStatusCode, body: String) : ExchangeRateHttpException(status, body)
+class RetryableExchangeRateException(status: HttpStatusCode) : ExchangeRateHttpException(status)

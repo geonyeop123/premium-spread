@@ -41,7 +41,7 @@ artifact, image 또는 배포 bundle에는 값을 기록하지 않는다. 구체
 - DB/Redis: `MYSQL_ROOT_PASSWORD`, `MYSQL_USER`, `MYSQL_PWD`, `REDIS_PASSWORD`
 - 인증: `JWT_SECRET_KEY`, `JWT_ISSUER`, `JWT_AUDIENCE`, token expiry/clock skew,
   `AUTH_REFRESH_HMAC_KEY`, `AUTH_CORS_ALLOWED_ORIGINS`
-- 외부 연동: `EXCHANGE_RATE_API_KEY`, 필요 시 exchange/SMTP/Slack credential
+- 외부 연동: `EXCHANGE_RATE_API_KEY`(Twelve Data API key), 필요 시 exchange/SMTP/Slack credential
 
 기능 flag인 `NOTIFICATION_EMAIL_ENABLED`, 일회성 승인인 `MIGRATION_V12_ALLOW_EMPTY`도 같은 host source에서
 주입한다. V12 승인은 해당 배포가 끝나면 즉시 `false`로 되돌린다.
@@ -80,6 +80,47 @@ V1은 단일 owner 시스템이며 근거는 [design.md D10](../work/private-liv
 계획의 존재를 노출하지 않기 위한 설계다(D10). 그래서 응답만으로는 둘을 구분할 수 없고 주입된 환경변수를
 직접 확인해야 한다. 조회·무효화·refresh는 이 검사를 받지 않으므로 그쪽이 200이라고 해서 허가 목록이
 올바른 것은 아니다.
+
+### 환율 제공자 (Twelve Data)
+
+환율은 Twelve Data `/exchange_rate` 로 수집한다. env 이름은 기존 `EXCHANGE_RATE_*` 그대로이고 값만 바뀐다.
+
+- 발급: twelvedata.com 에서 Basic(무료: 분당 8, 하루 800 크레딧) key 를 받아 `EXCHANGE_RATE_API_KEY` 로 주입한다.
+- 인증은 `Authorization: apikey` 헤더라 key 가 URL·로그에 남지 않는다.
+- 기본값: 수집 주기 5분(`EXCHANGE_RATE_FIXED_RATE`), `EXCHANGE_RATE_MAX_RETRIES` 1. 재시도는 5xx·연결 오류·timeout 만이고
+  **429 는 재시도하지 않는다**(분당 한도는 같은 분 안 재시도가 또 429 이고, 일일 한도는 UTC 자정까지 회복되지 않는다. 다음 회차가 재시도다).
+- 허용 공백은 30분(Domain 정책), Redis TTL 은 40분이다. 수집이 30분 넘게 성공하지 못하면 `STALE_FX` 로 드러난다.
+
+크레딧 예산 (실패 요청도 크레딧을 쓴다고 가정):
+
+- 최악 하루 호출 = `(86400 / fixedRate초 + 2) × (max-retries + 1)`. 기본값(300초, 1)은 `(288 + 2) × 2 = 580` 으로 800 이내다.
+- `max-retries` 1 기준 **`EXCHANGE_RATE_FIXED_RATE` 를 4분 미만으로 줄이지 않는다**(800 초과).
+- **key 하나에 batch 프로세스 하나**만 쓴다. 로컬 운영 batch 와 다른 배포가 같은 key 를 쓰면 예산이 두 배가 된다.
+- 재기동마다 최대 4회 호출이 더해진다(기동 실행 1 + 주기 첫 tick 1, 각 재시도 포함).
+
+기존 제공자에서 전환할 때 host env 또는 `~/.config/premium-spread/account-pnl.env` 에서 아래 override 가 남아 있으면 지운다.
+
+- `EXCHANGE_RATE_ENDPOINT`(구 제공자 주소가 남아 있으면 Twelve Data 로 가지 않는다)
+- `EXCHANGE_RATE_FIXED_RATE`, `EXCHANGE_RATE_MAX_RETRIES`
+- `EXCHANGE_RATE_FIXED_RATE` 가 15분을 넘으면(`fixedRate × 2 ≤ 30분` 위반) batch 가 기동에 실패한다.
+
+timeout 확인: `EXCHANGE_RATE_CONNECT_TIMEOUT`·`EXCHANGE_RATE_READ_TIMEOUT`·`EXCHANGE_RATE_MAX_RETRIES`·`EXCHANGE_RATE_MAX_BACKOFF` 를 바꾸면
+
+```text
+overallDeadline = (connect + read) × (max-retries + 1) + max-backoff × max-retries + 5s
+overallDeadline < FX_JOB_TIMEOUT(기본 30s, batch.jobs.fx-ingestion) < FX_JOB_LEASE(기본 35s)
+```
+
+기본값은 17s < 30s < 35s 다. `FX_JOB_LEASE` 는 `FX_JOB_TIMEOUT` 보다 커야 한다.
+
+주말(forex 휴장): Twelve Data 가 금요일 마감 값과 그 timestamp 를 계속 돌려준다고 가정한다.
+
+| 소비자 | 주말 동작 |
+|---|---|
+| FX 수집 Job | 매 회차 성공. DB 는 같은 `observed_at` 행으로 수렴, 캐시는 5분마다 TTL 갱신 |
+| Account PnL 모니터 | 수집 성공 시각 기준이라 신선하게 계산. 메일의 환율 관측 시각은 금요일 |
+| Premium 실시간 계산 | 금요일 마감 환율로 계산 |
+| api Tracking 확정 | 환율 관측이 35분을 넘어 확정 불가(`STALE_PREMIUM_SNAPSHOT`). 후속 과제 |
 
 ## 배포 순서
 

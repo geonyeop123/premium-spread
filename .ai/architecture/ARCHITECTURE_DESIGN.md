@@ -73,7 +73,7 @@ Binance/Bithumb WebSocket
   → apps:batch TickerFlushJob (1초, owner-token lock/timeout)
   → ticker seconds ZSet
 
-FX API (30분)
+Twelve Data FX API (5분)
   → FxIngestionJob → MySQL 먼저 commit → Redis FX cache
 
 PremiumRealtimeJob (1초)
