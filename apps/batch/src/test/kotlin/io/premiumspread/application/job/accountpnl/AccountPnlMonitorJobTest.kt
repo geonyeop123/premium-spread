@@ -22,6 +22,7 @@ import io.premiumspread.domain.accountpnl.OutageState
 import io.premiumspread.domain.accountpnl.PnlAlertState
 import io.premiumspread.domain.accountpnl.PriceLevel
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.domain.exchangerate.FxIngestionFreshness
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
@@ -216,9 +217,9 @@ class AccountPnlMonitorJobTest {
     // ---- 환율 신선도 ----
 
     @Test
-    fun `환율 수집 마지막 성공이 2시간을 넘으면 STALE_FX`() {
+    fun `환율 수집 마지막 성공이 허용 공백을 넘으면 STALE_FX`() {
         givenLastCalculationSucceededLongAgo()
-        lastSuccess.fxIngestion = { clock.instant().minus(Duration.ofHours(2)).minusMillis(1) }
+        lastSuccess.fxIngestion = { clock.instant().minus(FxIngestionFreshness.MAX_INGESTION_GAP).minusMillis(1) }
 
         assertThat(job.run()).isEqualTo(JobResult.Success)
 
@@ -227,8 +228,8 @@ class AccountPnlMonitorJobTest {
     }
 
     @Test
-    fun `환율 수집 마지막 성공이 정확히 2시간이면 계산한다`() {
-        lastSuccess.fxIngestion = { clock.instant().minus(Duration.ofHours(2)) }
+    fun `환율 수집 마지막 성공이 정확히 허용 공백이면 계산한다`() {
+        lastSuccess.fxIngestion = { clock.instant().minus(FxIngestionFreshness.MAX_INGESTION_GAP) }
 
         job.run()
 
@@ -236,7 +237,7 @@ class AccountPnlMonitorJobTest {
     }
 
     @Test
-    fun `환율 값이 오래돼도 수집 성공이 2시간 이내면 계산한다`() {
+    fun `환율 값이 오래돼도 수집 성공이 허용 공백 이내면 계산한다`() {
         fx.observedAt = { clock.instant().minus(Duration.ofDays(3)) }
         lastSuccess.fxIngestion = { clock.instant().minus(Duration.ofMinutes(10)) }
 
@@ -258,21 +259,21 @@ class AccountPnlMonitorJobTest {
     }
 
     @Test
-    fun `FX 수집 성공 기록이 없으면 Job 첫 실행 시각부터 2시간을 잰다`() {
+    fun `FX 수집 성공 기록이 없으면 Job 첫 실행 시각부터 허용 공백을 잰다`() {
         lastSuccess.fxIngestion = { null }
         korea.bid = BigDecimal("100500000") // 수익 메일 없이 성공 여부만 본다
 
         job.run()
         assertThat(store.state.outage.lastSuccessAt).isEqualTo(t0)
 
-        clock.advance(Duration.ofHours(2))
+        clock.advance(FxIngestionFreshness.MAX_INGESTION_GAP)
         job.run()
-        assertThat(store.state.outage.lastSuccessAt).describedAs("첫 실행 후 정확히 2시간은 신선").isEqualTo(clock.instant())
+        assertThat(store.state.outage.lastSuccessAt).describedAs("첫 실행 후 정확히 허용 공백은 신선").isEqualTo(clock.instant())
 
         val lastComputed = clock.instant()
         clock.advance(Duration.ofMillis(1))
         job.run()
-        assertThat(store.state.outage.lastSuccessAt).describedAs("2시간 1밀리초는 STALE_FX").isEqualTo(lastComputed)
+        assertThat(store.state.outage.lastSuccessAt).describedAs("허용 공백 + 1밀리초는 STALE_FX").isEqualTo(lastComputed)
 
         clock.advance(Duration.ofMinutes(6))
         job.run()

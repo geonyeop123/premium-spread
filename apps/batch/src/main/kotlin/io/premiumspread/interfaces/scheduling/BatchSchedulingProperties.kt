@@ -1,5 +1,6 @@
 package io.premiumspread.interfaces.scheduling
 
+import io.premiumspread.domain.exchangerate.FxIngestionFreshness
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -35,12 +36,15 @@ data class BatchSchedulingProperties(
     }
 
     data class ExchangeRate(
-        val fixedRate: Duration = Duration.ofMinutes(30),
+        val fixedRate: Duration = Duration.ofMinutes(5),
         val startupDelay: Duration = Duration.ofSeconds(5),
     ) {
         init {
             require(fixedRate.isPositive()) { "exchangeRate.fixedRate must be positive." }
             require(!startupDelay.isNegative) { "exchangeRate.startupDelay must not be negative." }
+            require(fixedRate.multipliedBy(2) <= FxIngestionFreshness.MAX_INGESTION_GAP) {
+                "exchangeRate.fixedRate must be at most half of the FX ingestion gap ${FxIngestionFreshness.MAX_INGESTION_GAP}."
+            }
         }
     }
 

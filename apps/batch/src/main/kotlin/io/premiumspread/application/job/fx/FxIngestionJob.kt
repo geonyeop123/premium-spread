@@ -33,7 +33,13 @@ class FxIngestionJob(
                 rateWriter.save(fxRate)
                 cacheWriter.save(fxRate)
 
-                log.info("Fetched exchange rate - USD/KRW: {}", fxRate.rate)
+                log.info(
+                    "Fetched exchange rate - base={} quote={} rate={} observedAt={}",
+                    fxRate.baseCurrency,
+                    fxRate.quoteCurrency,
+                    fxRate.rate,
+                    fxRate.observedAt,
+                )
                 JobResult.Success
             } catch (exception: Exception) {
                 log.error("Failed to fetch exchange rate", exception)

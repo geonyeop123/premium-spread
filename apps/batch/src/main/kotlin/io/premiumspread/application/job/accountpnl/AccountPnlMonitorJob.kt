@@ -33,6 +33,7 @@ import io.premiumspread.domain.accountpnl.PnlAlertPolicy
 import io.premiumspread.domain.accountpnl.PnlObservation
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
+import io.premiumspread.domain.exchangerate.FxIngestionFreshness
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
@@ -256,7 +257,7 @@ class AccountPnlMonitorJob(
     /** 값의 나이가 아니라 수집이 마지막으로 성공한 시각으로 판정한다 (주말엔 원천 값이 바뀌지 않는다). */
     private fun checkFxFreshness(now: Instant): ExchangeRateSnapshot {
         val reference = lastSuccess.findLastSuccess(JobId.FX_INGESTION) ?: checkNotNull(firstRunAt.get())
-        if (Duration.between(reference, now) > MAX_FX_INGESTION_GAP) {
+        if (FxIngestionFreshness.isStale(reference, now)) {
             throw AccountReadException(
                 AccountReadFailureCategory.STALE_FX,
                 "fx ingestion has not succeeded since $reference",
@@ -359,7 +360,6 @@ class AccountPnlMonitorJob(
     private companion object {
         val MAX_QUOTE_AGE: Duration = Duration.ofSeconds(10)
         val MAX_QUOTE_SKEW: Duration = Duration.ofSeconds(5)
-        val MAX_FX_INGESTION_GAP: Duration = Duration.ofHours(2)
         val STALE_CLAIM_AFTER: Duration = Duration.ofMinutes(5)
         const val VERSION_CONFLICT = "state-version-conflict"
         const val CANCELLED = "cancelled"

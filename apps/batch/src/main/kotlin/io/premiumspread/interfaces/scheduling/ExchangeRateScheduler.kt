@@ -13,7 +13,7 @@ class ExchangeRateScheduler(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Scheduled(fixedRateString = "\${batch.scheduling.exchange-rate.fixed-rate:1800000}")
+    @Scheduled(fixedRateString = "\${batch.scheduling.exchange-rate.fixed-rate:300000}")
     fun fetchExchangeRate() {
         job.run()
     }
