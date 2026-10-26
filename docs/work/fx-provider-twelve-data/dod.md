@@ -3,7 +3,7 @@ feature: 환율 제공자 Twelve Data 교체와 FX 캐시 TTL 여유 (issue #93)
 slug: fx-provider-twelve-data
 status: FROZEN
 frozen_at: 2026-10-26
-verdict_commit:
+verdict_commit: c92cc67
 source: docs/work/fx-provider-twelve-data/design.md (DRAFT)
 ---
 
@@ -119,3 +119,36 @@ source: docs/work/fx-provider-twelve-data/design.md (DRAFT)
 | R4 | `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` | exit 0, 51 tests / 0 failures (Docker) |
 | R6 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0, 최신 `V20__add_owner_account_alert_state.sql` |
 | g1~g7 | plan Task 0 Step 1 grep | 예상(Step 2)과 전부 일치 — g1 2줄, g2 3줄, g3 1줄, g4 1줄, g5 2줄, g6 6파일, g7 0줄 |
+
+### ⑨ 리뷰 기록 (2026-10-26)
+
+| 리뷰어 | 판정 | 처리 |
+|---|---|---|
+| spec-reviewer | REQUEST_CHANGES (Major 1: AC4(e3) 401 경로 출력 미측정, Minor 4) | 전부 반영 — c92cc67 |
+| code-reviewer | APPROVE (Minor 7) | 반영: Netty timeout 재시도·누출 테스트 양성 대조·응답 DTO toString — c92cc67. 후속: deadline 공식 여유, HTTP 200+code 429 metric 분류, `DECIMAL(10,4)` 정밀도. 반박: CRLF churn(dev blob 대부분 CRLF) |
+
+### ⑩ 최종 판정 (판정 SHA c92cc67, base 728e3f1)
+
+| 행 | 판정 | 증거 |
+|---|---|---|
+| AC1 | PASS | exit 0, 5 tests |
+| AC2 | PASS | exit 0, 2 tests |
+| AC3 | PASS | exit 0 |
+| AC4 | PASS | exit 0, 19 tests |
+| AC5 | PASS | exit 0, accountpnl 68 tests |
+| AC6 | PASS | exit 0, 5 tests (MySQL·Redis Testcontainers) |
+| AC7 | AWAITING_HUMAN | `bash docs/check-documentation.sh` exit 0, 경계면 대조 통과 — 사람 사후 검토 대기 |
+| AC8 | AWAITING_HUMAN | owner Twelve Data key 실기동 확인 대기 (T4) |
+| R1 | PASS | architectureTest 35/0 |
+| R2 | PASS | test 1047/0 (기준선 +26) |
+| R3 | PASS | :apps:batch:integrationTest 106/0 |
+| R4 | PASS | :infrastructure:common:integrationTest 51/0 |
+| R5 | PASS | diff 허용 범위(import 1, 값 3, 이름·describedAs 6) |
+| R6 | PASS | migration diff 없음, verifyMigrations exit 0 |
+| R7 | PASS | harnessCheck exit 0, check-documentation exit 0 |
+| R8 | CI_PENDING | ktlint·detekt CI 대기 |
+| R9 | PASS | :apps:api:test 143/0 (추가 :apps:api:integrationTest 174/0) |
+
+커버리지(jacoco XML 합산, 게이트 exit 0): overall 78.27%, domain 95.40%, application 91.05%.
+
+**종합: PASS_WITH_PENDING** — AC7·AC8·R8 대기.
