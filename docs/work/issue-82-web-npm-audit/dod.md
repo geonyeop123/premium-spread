@@ -1,8 +1,8 @@
 ---
 feature: apps/web npm audit 취약점 해소
 slug: issue-82-web-npm-audit
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-26
 verdict_commit:
 source: https://github.com/geonyeop123/premium-spread/issues/82
 ---
