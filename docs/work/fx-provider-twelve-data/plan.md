@@ -61,7 +61,7 @@
 
 **Files:** 없음 (dod `## 증거 로그` 에 append)
 
-- [ ] **Step 1:** 기준선 실행·기록. grep 은 결과가 정해진 범위로만 좁혔다(선언부·과거 기록 디렉터리·build 산출물 제외).
+- [x] **Step 1:** 기준선 실행·기록. grep 은 결과가 정해진 범위로만 좁혔다(선언부·과거 기록 디렉터리·build 산출물 제외).
   ```bash
   git rev-parse --short HEAD && git merge-base HEAD origin/dev | cut -c1-7          # base 728e3f1 확인
   ./gradlew architectureTest --offline --no-daemon                                 # R1
@@ -78,7 +78,7 @@
   grep -rln --exclude-dir=build "EXCHANGERATE_API\|exchangerate-api" apps infrastructure modules domain docs/runbooks .ai/architecture .ai/context .ai/rules .ai/PROJECT_STATUS.md AGENTS.md README.md .env.example deploy docker  # (g6)
   grep -rn "import io.premiumspread.domain" apps/batch/src/main/kotlin/io/premiumspread/interfaces/scheduling  # (g7)
   ```
-- [ ] **Step 2: 예상 결과.** merge-base `728e3f1`. gradle 5건 exit 0. grep:
+- [x] **Step 2: 예상 결과.** merge-base `728e3f1`. gradle 5건 exit 0. grep:
   - (g1) `AccountPnlMonitorJob.kt:259`, `:362` 2줄
   - (g2) `:221`, `:231`, `:268` 3줄
   - (g3) `infrastructure/common/.../cache/exchangerate/FxCacheWriter.kt:26` 1줄
@@ -89,7 +89,7 @@
   - (g7) 0줄 (Task 4 가 처음 추가 — `ArchitectureBoundaryTest` 의 금지 대상은 기술 패키지라 허용)
 
   **다르면 멈추고 보고한다.** Docker 부재면 R3·R4 "미실행"(green 금지).
-- [ ] **Step 3: Commit** — `docs: Twelve Data 환율 교체 Gate 1 기준선 기록` (dod 증거 로그만)
+- [x] **Step 3: Commit** — `docs: Twelve Data 환율 교체 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: Domain 허용 공백 `FxIngestionFreshness` (AC1)
 
@@ -122,10 +122,10 @@ object FxIngestionFreshness {
 - 상수 = `Duration.ofMinutes(30)`
 - 경과 0 → false, 30분 → false, 30분 + 1ms → true, −1분 → false
 
-- [ ] **Step 1:** stub — `MAX_INGESTION_GAP = Duration.ofHours(2)`, `isStale` 는 `> MAX_INGESTION_GAP`. 테스트 작성.
-- [ ] **Step 2:** dod AC1 명령 → RED(상수 단언·`30분+1ms → true` 실패). 증거 로그 AC1.
-- [ ] **Step 3:** 상수 30분. dod AC1 명령 → PASS. `./gradlew test --offline --no-daemon` → PASS(아직 사용처 없음).
-- [ ] **Step 4: Commit** — `feat: FX 수집 허용 공백 30분을 Domain 정책으로`
+- [x] **Step 1:** stub — `MAX_INGESTION_GAP = Duration.ofHours(2)`, `isStale` 는 `> MAX_INGESTION_GAP`. 테스트 작성.
+- [x] **Step 2:** dod AC1 명령 → RED(상수 단언·`30분+1ms → true` 실패). 증거 로그 AC1.
+- [x] **Step 3:** 상수 30분. dod AC1 명령 → PASS. `./gradlew test --offline --no-daemon` → PASS(아직 사용처 없음).
+- [x] **Step 4: Commit** — `feat: FX 수집 허용 공백 30분을 Domain 정책으로`
 
 ### Task 2: `RedisTtl.FX` 40분과 TTL 불변식 (AC2)
 
@@ -148,10 +148,10 @@ runbook 표 아래 한 줄(전문): `` `fx:{base}:{quote}` TTL 은 FX 수집 허
 - `RedisTtl.FX == Duration.ofMinutes(40)`
 - `RedisTtl.FX.minus(FxIngestionFreshness.MAX_INGESTION_GAP) >= Duration.ofMinutes(5)` (테스트 이름에 "캐시가 freshness 판정보다 먼저 만료되지 않는다")
 
-- [ ] **Step 1:** 테스트 작성(`RedisTtl` 은 31분 그대로).
-- [ ] **Step 2:** dod AC2 명령 → RED(두 단언 모두 실패: 31분, 여유 1분). 증거 로그 AC2.
-- [ ] **Step 3:** `RedisTtl.FX` 40분 + 주석, runbook 갱신. dod AC2 명령 → PASS. `./gradlew test --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `fix: FX 캐시 TTL 을 허용 공백보다 길게 (40분)`
+- [x] **Step 1:** 테스트 작성(`RedisTtl` 은 31분 그대로).
+- [x] **Step 2:** dod AC2 명령 → RED(두 단언 모두 실패: 31분, 여유 1분). 증거 로그 AC2.
+- [x] **Step 3:** `RedisTtl.FX` 40분 + 주석, runbook 갱신. dod AC2 명령 → PASS. `./gradlew test --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `fix: FX 캐시 TTL 을 허용 공백보다 길게 (40분)`
 
 ### Task 3: Twelve Data adapter (AC4, AC6)
 
@@ -291,11 +291,11 @@ class RetryableExchangeRateException(status: HttpStatusCode) : ExchangeRateHttpE
     로 비우고, `run()` 뒤 `takeRequest(1, TimeUnit.SECONDS)` 가 null 이 아니며 그 `getHeader("Authorization")` 가 `apikey ` 로 시작함을 단언한다
 - 최종 실패(500×3) 테스트는 그대로 — DB·캐시 없음
 
-- [ ] **Step 1:** 테스트 먼저 — `ExchangeRateClientTest` 재작성, E2E 픽스처·단언 변경. 둘 다 **기존 production 코드로 컴파일된다**(새 공개 API 를 쓰지 않는다: `ExchangeRateHttpException::class`,
+- [x] **Step 1:** 테스트 먼저 — `ExchangeRateClientTest` 재작성, E2E 픽스처·단언 변경. 둘 다 **기존 production 코드로 컴파일된다**(새 공개 API 를 쓰지 않는다: `ExchangeRateHttpException::class`,
   `RetryableExchangeRateException::class`, `ExchangeRateClientProperties(...)` 기존 생성자).
-- [ ] **Step 2:** dod AC4 명령 → RED(경로 `/v6/...`·헤더 없음·매핑 실패·기본값 단언 실패, (e2) 는 기존 메시지에 본문이 붙어 `isEqualTo` 와 sentinel 부재 단언 실패). dod AC6 명령 → RED(Twelve Data JSON 을 구 DTO 가 해석 못 해 Job Failure → DB 행 단언 실패). 증거 로그 AC4·AC6.
-- [ ] **Step 3:** 위 전문대로 구현, yml 두 줄. dod AC4 → PASS, dod AC6 → PASS(Docker). `./gradlew architectureTest --offline --no-daemon`(R1 — 테스트 URL 격리 포함) → PASS. `./gradlew test --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 환율 제공자를 Twelve Data 로 교체 (헤더 인증, 429 비재시도)`
+- [x] **Step 2:** dod AC4 명령 → RED(경로 `/v6/...`·헤더 없음·매핑 실패·기본값 단언 실패, (e2) 는 기존 메시지에 본문이 붙어 `isEqualTo` 와 sentinel 부재 단언 실패). dod AC6 명령 → RED(Twelve Data JSON 을 구 DTO 가 해석 못 해 Job Failure → DB 행 단언 실패). 증거 로그 AC4·AC6.
+- [x] **Step 3:** 위 전문대로 구현, yml 두 줄. dod AC4 → PASS, dod AC6 → PASS(Docker). `./gradlew architectureTest --offline --no-daemon`(R1 — 테스트 URL 격리 포함) → PASS. `./gradlew test --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 환율 제공자를 Twelve Data 로 교체 (헤더 인증, 429 비재시도)`
 
 ### Task 4: Job·Scheduler — 허용 공백과 수집 주기 5분 (AC5, AC3)
 
@@ -362,11 +362,11 @@ data class ExchangeRate(
   → `IllegalArgumentException`·메시지에 `exchangeRate.fixedRate`; `ClassPathResource("application.yml")` 본문이 `fixed-rate: ${EXCHANGE_RATE_FIXED_RATE:5m}`·`max-retries: ${EXCHANGE_RATE_MAX_RETRIES:1}`·`api.twelvedata.com`
   을 포함하고 `exchangerate-api.com` 을 포함하지 않음(scheme 포함 URL 을 테스트 소스에 쓰지 않는다)
 
-- [ ] **Step 1:** 테스트 먼저 — R5 수정, `FxIngestionScheduleContractTest` 작성.
-- [ ] **Step 2:** dod AC5 명령 → RED(Job 이 아직 2시간: `30분+1ms → STALE_FX` 와 첫 실행 `+1ms` 단언 실패). dod AC3 명령 → RED(기본 30분, 15분+1ms 허용, yml `30m`). 증거 로그 AC5·AC3.
-- [ ] **Step 3:** 위 전문대로 구현. dod AC5·AC3 → PASS. `./gradlew architectureTest --offline --no-daemon`(scheduling → domain import 허용 확인) → PASS. `./gradlew test --offline --no-daemon` → PASS.
+- [x] **Step 1:** 테스트 먼저 — R5 수정, `FxIngestionScheduleContractTest` 작성.
+- [x] **Step 2:** dod AC5 명령 → RED(Job 이 아직 2시간: `30분+1ms → STALE_FX` 와 첫 실행 `+1ms` 단언 실패). dod AC3 명령 → RED(기본 30분, 15분+1ms 허용, yml `30m`). 증거 로그 AC5·AC3.
+- [x] **Step 3:** 위 전문대로 구현. dod AC5·AC3 → PASS. `./gradlew architectureTest --offline --no-daemon`(scheduling → domain import 허용 확인) → PASS. `./gradlew test --offline --no-daemon` → PASS.
   `./gradlew :apps:batch:integrationTest --offline --no-daemon`(R3) → PASS.
-- [ ] **Step 4: Commit** — `fix: FX 수집 주기 5분과 허용 공백 30분을 기동 시 검증`
+- [x] **Step 4: Commit** — `fix: FX 수집 주기 5분과 허용 공백 30분을 기동 시 검증`
 
 ### Task 5: 문서·주석 (AC7)
 
@@ -394,13 +394,15 @@ data class ExchangeRate(
   주말(forex 휴장)엔 확정 불가 — 후속 F1(design fx-provider-twelve-data §8)". 세 파일 모두 코드 줄 무변경.
 - 정본 문서(`AGENTS.md`·`.ai/*`·`docs/runbooks/*`)·env 예시·README 에 `exchangerate-api` 가 남지 않는다(`.ai/planning/**`·`docs/superpowers/**`·`docs/work/**` 의 과거 기록은 손대지 않는다).
 
-- [ ] **Step 1:** 문서·주석 수정.
-- [ ] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck --offline --no-daemon` → exit 0. Task 0 (g6) grep 재실행 → Task 3 이후 남은 3개 production 파일(yml·Client·Properties 기본값의 구 문자열은 Task 3 에서 사라짐)을 포함해 **출력 없음**.
+- [x] **Step 1:** 문서·주석 수정.
+- [x] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck --offline --no-daemon` → exit 0. Task 0 (g6) grep 재실행 → Task 3 이후 남은 3개 production 파일(yml·Client·Properties 기본값의 구 문자열은 Task 3 에서 사라짐)을 포함해 **출력 없음**.
   `grep -n "2시간\|30분 주기" docs/runbooks/account-pnl-alert.md` → FX 관련 줄 없음. `git diff --exit-code 728e3f1 -- infrastructure/common/src/main/resources/db/migration` → exit 0.
   `./gradlew :apps:api:test --offline --no-daemon`(R9) → PASS. 증거 로그 AC7.
-- [ ] **Step 3: Commit** — `docs: Twelve Data 환율 제공자와 5분 주기·TTL 40분 문서화`
+- [x] **Step 3: Commit** — `docs: Twelve Data 환율 제공자와 5분 주기·TTL 40분 문서화`
 
 ### Task 6: 최종 gate
+
+> 이 태스크는 ⑩ qa 실측(판정 SHA `c92cc67`)으로 갈음했다. 증거는 dod 증거 로그에 있고 아래 체크박스는 별도로 실행하지 않았다.
 
 - [ ] **Step 1:** dod AC1~AC6 검증 명령 개별 실행, R1~R4·R6·R7·R9 실행(Docker 필요 항목 포함), R5 diff 확인. 결과를 증거 로그에 append.
 - [ ] **Step 2:** `./gradlew jacocoTestReport jacocoTestCoverageVerification --offline --no-daemon` → exit 0(최종 증거는 CI artifact).

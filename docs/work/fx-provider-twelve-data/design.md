@@ -3,7 +3,7 @@
 - slug: `fx-provider-twelve-data` · base `728e3f1`(origin/dev, Task 0 이 `git merge-base HEAD origin/dev` 로 확인) · branch `fix/issue-93-fx-provider-twelve-data`
 - 입력: ③ 합의(오케스트레이터 전달 범위 — 제공자를 Twelve Data 로, 수집 주기 5분, #93 TTL 여유 함께 해결), `.ai/rules/{architecture,batch,testing,naming}.md`,
   `docs/runbooks/{redis-contract,deployment,account-pnl-alert}.md`, 현재 코드(아래 §2)
-- 상태: DRAFT (⑥ R1 반영)
+- 상태: IMPLEMENTED — ⑩ PASS (판정 SHA c92cc67), AC8(owner Twelve Data key 실기동) 대기. 구현 중 변경은 §13 참조
 
 ## 0. 요약
 
@@ -472,3 +472,7 @@ forex 는 주말에 닫힌다. Twelve Data 가 금요일 마감 값과 그 times
 | ⑥ R1 | §2·§5.2·§10 — `lock:fx` 런타임 출처를 `BatchJobProperties.kt:15` + yml `batch.jobs.fx-ingestion` 으로 정정, runbook timeout 확인 지시 | R1 #8 |
 | ⑥ R1 | §2·§11 — `AccountPnlMonitorJobTest` 를 "경계 3개 + :239 이름만"으로 정정 | R1 #9 |
 | ⑥ R1 | §5.1 fixed-rate 회차 라벨을 "288 + 경계 1, 상한"으로 | 자체 정정 |
+| 구현 | §4.4 — `ExchangeRateClient.isRetryable`·metric 분류가 Netty `io.netty.handler.timeout.TimeoutException`(ReadTimeout/responseTimeout)도 timeout 으로 본다 | Reactor `.timeout` 과 같은 시간에 경쟁해 Netty 가 이기면 재시도가 빠지던 기존 결함(⑨ 리뷰). 본문 수신 중 경로는 결정적 재현이 불가해 코드 리뷰로 확인 |
+| 구현 | §4.3 — `ExchangeRateResponse.toString()` override 로 제공자 message 를 가림(`message=<redacted>`) | 자동 `toString()` 이 제공자 문구를 그대로 노출 |
+| 구현 | E2E `observed_at` 읽기를 `queryForObject(..., Timestamp::class.java)` 로 | `queryForList` 는 `LocalDateTime` 을 반환 |
+| 구현 | 누출 테스트에 양성 대조(Authorization 헤더에 sentinel 이 실제로 실림) 추가, E2E 헤더는 정확 비교 | 누출 부재 단언이 헛돌지 않음을 보장 |
