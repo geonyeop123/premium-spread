@@ -9,6 +9,7 @@ import io.mockk.slot
 import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJob
 import io.premiumspread.application.notification.owneralert.OwnerAlertDispatcher
+import io.premiumspread.domain.accountpnl.AccountAlertSettings
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
@@ -51,6 +52,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.test.util.ReflectionTestUtils
 import java.math.BigDecimal
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -823,6 +825,79 @@ class AccountPnlMonitorWiringTest {
     fun `잘못된 push 값은 기동 실패이고 값이 어디에도 없다`(output: CapturedOutput) {
         val property = "owner-alert.routes.profit.push"
         assertFailsWithoutValue(output, property, "loudQ9", *enabledProps, "$property=loudQ9")
+    }
+
+    // ---- owner 계정 알림 설정 (owner-account-alerts AC11) ----
+
+    @Test
+    fun `계정 알림 설정은 기본값으로 뜬다`() {
+        runner.withPropertyValues(*enabledProps).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx.getBean(AccountAlertSettings::class.java)).isEqualTo(AccountAlertSettings())
+            val job = ctx.getBean(AccountPnlMonitorJob::class.java)
+            assertThat(ReflectionTestUtils.getField(job, "accountAlerts")).isSameAs(ctx.getBean(AccountAlertSettings::class.java))
+        }
+    }
+
+    @Test
+    fun `계정 알림 설정 env 가 반영된다`() {
+        runner.withPropertyValues(
+            *enabledProps,
+            "account-pnl-monitor.account-alerts.swing-threshold-percent=0.8",
+            "account-pnl-monitor.account-alerts.reminder-hour=7",
+            "account-pnl-monitor.account-alerts.manual-funding-stale-days=5",
+        ).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            val settings = ctx.getBean(AccountAlertSettings::class.java)
+            assertThat(settings.swingThreshold).isEqualByComparingTo(BigDecimal("0.8"))
+            assertThat(settings.reminderHour).isEqualTo(7)
+            assertThat(settings.manualFundingStaleAfter).isEqualTo(Duration.ofDays(5))
+            val job = ctx.getBean(AccountPnlMonitorJob::class.java)
+            assertThat(ReflectionTestUtils.getField(job, "accountAlerts")).isSameAs(settings)
+        }
+    }
+
+    @Test
+    fun `잘못된 계정 알림 설정은 기동 실패다`() {
+        listOf(
+            "reminder-hour=24" to "reminderHour must be between 0 and 23.",
+            "swing-threshold-percent=0" to "swingThreshold must be positive.",
+            "manual-funding-stale-days=0" to "manualFundingStaleAfter must be positive.",
+        ).forEach { (prop, message) ->
+            runner.withPropertyValues(*enabledProps, "account-pnl-monitor.account-alerts.$prop").run { ctx ->
+                assertThat(ctx).`as`(prop).hasFailed()
+                assertThat(causeChainMessages(ctx.startupFailure)).`as`(prop).anyMatch { it.contains(message) }
+            }
+        }
+    }
+
+    @Test
+    fun `기동 INFO 경로 요약에 계정 알림 세 종류가 있다`(output: CapturedOutput) {
+        val bothStart = output.all.length
+        runner.withPropertyValues(*enabledProps, *allWebhookProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(bothStart)).contains(
+            "position-changed=email+discord(PNL,HERE), net-percent-swing=discord(PNL,SOUND), " +
+                "unrecovered-reminder=discord(PNL,SILENT)",
+        )
+
+        val emailStart = output.all.length
+        runner.withPropertyValues(*enabledProps).run { ctx -> assertThat(ctx).hasNotFailed() }
+        assertThat(output.all.substring(emailStart)).contains(
+            "position-changed=email, net-percent-swing=email, unrecovered-reminder=email",
+        )
+    }
+
+    @Test
+    fun `계정 알림 종류별 override 가 라우팅 bean 에 반영된다`() {
+        runner.withPropertyValues(
+            *enabledProps,
+            *discordProps,
+            "owner-alert.routes.net-percent-swing.email=true",
+        ).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(routingOf(ctx).resolve(OwnerAlertKind.NET_PERCENT_SWING))
+                .isEqualTo(OwnerAlertRoute(true, DiscordRoute(DiscordTarget.PNL, DiscordPush.SOUND)))
+        }
     }
 
     @Configuration(proxyBeanMethods = false)

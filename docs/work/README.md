@@ -10,3 +10,4 @@
 - [빗썸 실계정 조회 실 API 불일치 수정](bithumb-orders-query-hash/README.md)
 - [실계정 순손익 회차별 로그와 정시 보고 메일](account-pnl-round-log/README.md)
 - [owner 알림 채널 기반 — Discord·메일 라우팅](owner-alert-channel/README.md)
+- [owner 계정 알림 — 포지션 변경·순수익률 급변·미반영 리마인더](owner-account-alerts/README.md)

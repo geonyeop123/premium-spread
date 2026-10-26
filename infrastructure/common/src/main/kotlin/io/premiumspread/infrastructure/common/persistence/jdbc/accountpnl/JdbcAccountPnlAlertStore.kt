@@ -1,11 +1,18 @@
 package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 
+import io.premiumspread.domain.accountpnl.AccountAlertState
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.ClaimedAccountPnlMail
+import io.premiumspread.domain.accountpnl.ForeignLeg
+import io.premiumspread.domain.accountpnl.KoreaLeg
 import io.premiumspread.domain.accountpnl.OutageState
 import io.premiumspread.domain.accountpnl.PnlAlertState
+import io.premiumspread.domain.accountpnl.PositionLegs
+import io.premiumspread.domain.accountpnl.PositionWatchState
+import io.premiumspread.domain.accountpnl.ReminderState
+import io.premiumspread.domain.accountpnl.SwingState
 import io.premiumspread.domain.owneralert.DiscordPush
 import io.premiumspread.domain.owneralert.DiscordRoute
 import io.premiumspread.domain.owneralert.DiscordTarget
@@ -16,6 +23,7 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.support.TransactionTemplate
+import java.math.BigDecimal
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Clock
@@ -25,6 +33,8 @@ import java.util.UUID
 
 /**
  * 실계정 순손익 알림 상태(단일 행, 낙관적 version)와 owner 알림 공용 outbox(메일·Discord).
+ *
+ * 상태 행은 수익·중단 + owner 계정 알림(#89) 상태다.
  *
  * 한 알림은 채널마다 한 행이며 중복 제거는 `(event_key, channel)` UNIQUE 가 한다. 이 binary 이전 버전의 claim 은
  * channel 을 모른다 — 구·신 batch 를 겹쳐 돌리지 않는다(runbook 배포와 롤백).
@@ -50,7 +60,11 @@ class JdbcAccountPnlAlertStore(
         jdbcTemplate.query(
             """
             SELECT in_episode, position_fingerprint, last_sent_at,
-                   last_success_at, monitoring_since, outage_notified, version
+                   last_success_at, monitoring_since, outage_notified, version,
+                   korea_quantity, korea_average_buy_price, foreign_signed_quantity, foreign_entry_price,
+                   hedge_mismatch_warned, swing_bucket_start, swing_baseline_percent,
+                   swing_up_sent, swing_down_sent, reminder_day_start,
+                   manual_funding_usdt, manual_funding_changed_at
             FROM account_pnl_monitor_state
             WHERE id = $STATE_ID
             """.trimIndent(),
@@ -60,6 +74,7 @@ class JdbcAccountPnlAlertStore(
 
     override fun save(expectedVersion: Long, state: AccountPnlMonitorState, mails: List<AccountPnlMail>): Boolean {
         require(expectedVersion >= 0) { "expectedVersion must not be negative." }
+        validateState(state.account)
         mails.forEach(::validate)
         return saveTransaction.execute {
             val stateWritten = if (expectedVersion == 0L) insertState(state) else updateState(expectedVersion, state)
@@ -176,8 +191,12 @@ class JdbcAccountPnlAlertStore(
             """
             INSERT INTO account_pnl_monitor_state (
                 id, in_episode, position_fingerprint, last_sent_at,
-                last_success_at, monitoring_since, outage_notified, version, updated_at
-            ) VALUES ($STATE_ID, ?, ?, ?, ?, ?, ?, 1, ?)
+                last_success_at, monitoring_since, outage_notified, version, updated_at,
+                korea_quantity, korea_average_buy_price, foreign_signed_quantity, foreign_entry_price,
+                hedge_mismatch_warned, swing_bucket_start, swing_baseline_percent,
+                swing_up_sent, swing_down_sent, reminder_day_start,
+                manual_funding_usdt, manual_funding_changed_at
+            ) VALUES ($STATE_ID, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             state.alert.inEpisode,
             state.alert.positionFingerprint,
@@ -186,6 +205,7 @@ class JdbcAccountPnlAlertStore(
             state.outage.monitoringSince?.toSqlTimestamp(),
             state.outage.outageNotified,
             clock.instant().toSqlTimestamp(),
+            *accountArguments(state.account),
         ) == 1
     } catch (exception: DuplicateKeyException) {
         false
@@ -202,7 +222,19 @@ class JdbcAccountPnlAlertStore(
                 monitoring_since = ?,
                 outage_notified = ?,
                 version = version + 1,
-                updated_at = ?
+                updated_at = ?,
+                korea_quantity = ?,
+                korea_average_buy_price = ?,
+                foreign_signed_quantity = ?,
+                foreign_entry_price = ?,
+                hedge_mismatch_warned = ?,
+                swing_bucket_start = ?,
+                swing_baseline_percent = ?,
+                swing_up_sent = ?,
+                swing_down_sent = ?,
+                reminder_day_start = ?,
+                manual_funding_usdt = ?,
+                manual_funding_changed_at = ?
             WHERE id = $STATE_ID
               AND version = ?
             """.trimIndent(),
@@ -213,8 +245,51 @@ class JdbcAccountPnlAlertStore(
             state.outage.monitoringSince?.toSqlTimestamp(),
             state.outage.outageNotified,
             clock.instant().toSqlTimestamp(),
+            *accountArguments(state.account),
             expectedVersion,
         ) == 1
+
+    /** design §4.3 표 순서. leg·펀딩은 지수 표기를 피하려 `toPlainString()` 으로 저장한다. */
+    private fun accountArguments(account: AccountAlertState): Array<Any?> {
+        val legs = account.position.legs
+        return arrayOf(
+            legs?.korea?.quantity?.toPlainString(),
+            legs?.korea?.averageBuyPrice?.toPlainString(),
+            legs?.foreign?.signedQuantity?.toPlainString(),
+            legs?.foreign?.entryPrice?.toPlainString(),
+            account.position.hedgeMismatchWarned,
+            account.swing.bucketStart?.toSqlTimestamp(),
+            account.swing.baselinePercent,
+            account.swing.upSent,
+            account.swing.downSent,
+            account.reminder.lastDayStart?.toSqlTimestamp(),
+            account.reminder.manualFundingUsdt?.toPlainString(),
+            account.reminder.manualFundingChangedAt?.toSqlTimestamp(),
+        )
+    }
+
+    /** 값은 메시지에 넣지 않는다. */
+    private fun validateState(account: AccountAlertState) {
+        account.position.legs?.let { legs ->
+            val values = listOf(
+                legs.korea.quantity,
+                legs.korea.averageBuyPrice,
+                legs.foreign.signedQuantity,
+                legs.foreign.entryPrice,
+            )
+            require(values.all { it.toPlainString().length <= MAX_DECIMAL_TEXT_LENGTH }) {
+                "position leg must be at most $MAX_DECIMAL_TEXT_LENGTH characters as a plain decimal."
+            }
+        }
+        account.reminder.manualFundingUsdt?.let {
+            require(it.toPlainString().length <= MAX_DECIMAL_TEXT_LENGTH) {
+                "manual funding must be at most $MAX_DECIMAL_TEXT_LENGTH characters as a plain decimal."
+            }
+        }
+        account.swing.baselinePercent?.let {
+            require(it.abs() < MAX_BASELINE_PERCENT_EXCLUSIVE) { "swing baseline percent is out of range." }
+        }
+    }
 
     /**
      * 같은 (event_key, channel) 은 무시한다. 다른 제약 위반·오류는 그대로 던진다(INSERT IGNORE 를 쓰지 않는 이유).
@@ -284,7 +359,37 @@ class JdbcAccountPnlAlertStore(
             outageNotified = getBoolean("outage_notified"),
         ),
         version = getLong("version"),
+        account = toAccountState(),
     )
+
+    private fun ResultSet.toAccountState(): AccountAlertState {
+        val koreaQuantity = getString("korea_quantity")
+        val legs = if (koreaQuantity == null) {
+            null
+        } else {
+            PositionLegs(
+                korea = KoreaLeg.of(BigDecimal(koreaQuantity), BigDecimal(getString("korea_average_buy_price"))),
+                foreign = ForeignLeg.of(
+                    BigDecimal(getString("foreign_signed_quantity")),
+                    BigDecimal(getString("foreign_entry_price")),
+                ),
+            )
+        }
+        return AccountAlertState(
+            position = PositionWatchState(legs, getBoolean("hedge_mismatch_warned")),
+            swing = SwingState(
+                bucketStart = getInstantOrNull("swing_bucket_start"),
+                baselinePercent = getBigDecimal("swing_baseline_percent"),
+                upSent = getBoolean("swing_up_sent"),
+                downSent = getBoolean("swing_down_sent"),
+            ),
+            reminder = ReminderState(
+                lastDayStart = getInstantOrNull("reminder_day_start"),
+                manualFundingUsdt = getString("manual_funding_usdt")?.let { BigDecimal(it).stripTrailingZeros() },
+                manualFundingChangedAt = getInstantOrNull("manual_funding_changed_at"),
+            ),
+        )
+    }
 
     private fun ResultSet.toPendingMail(): PendingMail {
         val channel = OwnerAlertChannel.valueOf(getString("channel"))
@@ -322,5 +427,7 @@ class JdbcAccountPnlAlertStore(
         const val MAX_EVENT_KEY_LENGTH = 128
         const val MAX_SUBJECT_LENGTH = 255
         const val MAX_BODY_BYTES = 65_535 // MySQL TEXT
+        const val MAX_DECIMAL_TEXT_LENGTH = 64 // VARCHAR(64)
+        val MAX_BASELINE_PERCENT_EXCLUSIVE: BigDecimal = BigDecimal.TEN.pow(10) // DECIMAL(12,2)
     }
 }

@@ -7,8 +7,9 @@ import org.junit.jupiter.api.Test
 /**
  * Batch 는 Flyway 를 쓰지 않고 `batch-schema.sql` fixture 로 스키마를 만든다. 아래 기대 목록은
  * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 과
- * `infrastructure/common/src/main/resources/db/migration/V19__add_owner_alert_channel.sql` 에서 옮긴 것이다.
- * V18·V19 가 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
+ * `infrastructure/common/src/main/resources/db/migration/V19__add_owner_alert_channel.sql`,
+ * `infrastructure/common/src/main/resources/db/migration/V20__add_owner_account_alert_state.sql` 에서 옮긴 것이다.
+ * V18·V19·V20 이 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
  */
 class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
 
@@ -24,6 +25,18 @@ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
             "outage_notified:tinyint:NO",
             "version:bigint:NO",
             "updated_at:datetime:NO",
+            "korea_quantity:varchar:YES",
+            "korea_average_buy_price:varchar:YES",
+            "foreign_signed_quantity:varchar:YES",
+            "foreign_entry_price:varchar:YES",
+            "hedge_mismatch_warned:tinyint:NO",
+            "swing_bucket_start:datetime:YES",
+            "swing_baseline_percent:decimal:YES",
+            "swing_up_sent:tinyint:NO",
+            "swing_down_sent:tinyint:NO",
+            "reminder_day_start:datetime:YES",
+            "manual_funding_usdt:varchar:YES",
+            "manual_funding_changed_at:datetime:YES",
         )
     }
 

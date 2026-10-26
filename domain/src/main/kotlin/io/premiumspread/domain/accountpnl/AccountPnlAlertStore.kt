@@ -4,7 +4,13 @@ import java.time.Duration
 import java.time.Instant
 
 /** 수익 알림·중단 알림 상태와 낙관적 버전. `version == 0` 이면 아직 저장된 행이 없다. */
-data class AccountPnlMonitorState(val alert: PnlAlertState, val outage: OutageState, val version: Long) {
+data class AccountPnlMonitorState(
+    val alert: PnlAlertState,
+    val outage: OutageState,
+    val version: Long,
+    /** owner 계정 알림 상태(#89). 3인자 생성(동결 테스트)과 V20 이전 행은 INITIAL. */
+    val account: AccountAlertState = AccountAlertState.INITIAL,
+) {
     companion object {
         val INITIAL = AccountPnlMonitorState(PnlAlertState.INITIAL, OutageState.INITIAL, 0)
     }
