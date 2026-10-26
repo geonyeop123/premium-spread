@@ -117,6 +117,55 @@ $ npm --prefix apps/web run test    → Test Files 1 passed (1) · Tests 10 pass
 $ npm --prefix apps/web run build   → exit 0, Route: / · /_not-found · /login · /register · /trackings · /trackings/[id]
 ```
 
+### GREEN — AC1·AC2·R1·R2·R3
+
+`apps/web` 트리는 `b73752c` 이후 바뀌지 않았다(`git diff --quiet b73752c HEAD -- apps/web` exit 0). 아래는 그 트리를 가진 `a9ef8c8`에서 실행했다.
+
+```
+[GREEN] 2026-10-26T09:46:08+09:00 a9ef8c8 (apps/web == b73752c)
+$ rm -rf apps/web/node_modules apps/web/.next && npm --prefix apps/web ci --include=optional   → exit 0
+$ bash ci/run-npm-audit.sh                                  → found 0 vulnerabilities, exit 0   (AC1)
+$ npm --prefix apps/web audit --json                        → metadata.vulnerabilities: info 0 · low 0 · moderate 0 · high 0 · critical 0 · total 0
+$ npm --prefix apps/web ls next eslint-config-next --depth=0
+├── eslint-config-next@16.4.3
+└── next@16.4.3                                             (AC2)
+$ npm --prefix apps/web run lint                            → exit 0   (R1)
+$ npm --prefix apps/web run test                            → Test Files 1 passed (1) · Tests 10 passed (10), exit 0   (R2)
+$ npm --prefix apps/web run build                           → exit 0, Route: / · /_not-found · /login · /register · /trackings · /trackings/[id]   (R3)
+```
+
+### GREEN — AC5
+
+```
+[GREEN] 2026-10-26T09:46:36+09:00 a9ef8c8
+$ (cd apps/web && npx next dev -p 3083)   # 3000 대신 3083, 기동 후 종료. dev 로그 error 0건
+GET /               -> 200
+GET /login          -> 200
+GET /register       -> 200
+GET /trackings      -> 200
+GET /trackings/1    -> 200
+```
+
+### GREEN — AC7
+
+```
+[GREEN] 2026-10-26T09:45:30+09:00 a9ef8c8
+$ docker build -q -f apps/web/Dockerfile -t premium-web:issue-82 .   → exit 0
+$ docker run -d --name pw82 -p 3082:3000 premium-web:issue-82
+GET /       -> 200
+GET /login  -> 200
+컨테이너 내부: node v20.20.2, next 16.4.3, "✓ Ready"
+$ docker rm -f pw82
+```
+
+### R3 보조 — shadcn `tailwind.css` 전후 diff (design §4)
+
+```
+[관찰] 2026-10-26 fe142d1
+shadcn 3.x → 4.22.1: node_modules/shadcn/dist/tailwind.css 삭제 0줄, 추가 542줄 (95행 뒤 scroll-fade @property/@theme 유틸리티)
+기존 accordion keyframes 등은 그대로. build exit 0
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
