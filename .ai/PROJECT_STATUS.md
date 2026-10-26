@@ -62,7 +62,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 ## 기능 상태
 
 - WebSocket Binance/Bithumb 시세 수집과 1초 down-sample
-- USD/KRW 30분 수집, Premium 1초 계산, minute/hour/day 집계
+- USD/KRW 5분 수집(Twelve Data), Premium 1초 계산, minute/hour/day 집계
 - canonical `MarketPair` 기반 premium/position/notification 저장·조회
 - Tracking 기록(현재 시세/입력값)과 KRW gross 손익 계산, 종료 시점 스냅샷 확정
 - JWT Access/rotating Refresh 인증, Redis family/session fencing

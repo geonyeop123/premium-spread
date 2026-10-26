@@ -28,7 +28,7 @@ class RedisJobRunRecorderAdapter(
 
     /**
      * 이 프로세스가 기록한 마지막 성공 시각. `batch:last_run:*` Redis 키는 TTL 이 짧아(BATCH_HEALTH)
-     * 30분 주기 작업을 덮지 못하므로 읽지 않는다. 프로세스 시작 후 성공이 없으면 null.
+     * 분 단위 주기 작업의 마지막 성공을 보장하지 못하므로 읽지 않는다. 프로세스 시작 후 성공이 없으면 null.
      */
     override fun findLastSuccess(jobId: JobId): Instant? =
         lastSuccessAt[jobId.tag]?.let { Instant.ofEpochMilli(it.get()) }

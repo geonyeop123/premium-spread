@@ -71,7 +71,7 @@ totalPnlPercent = totalPnlKrw / koreaEntryValue × 100
 ## 5. 시세, 환율, 집계
 
 - Binance/Bithumb 시세는 WebSocket으로 받고 1초 단위로 down-sample한다.
-- USD/KRW는 30분마다 수집하며 DB 저장 성공 뒤 Redis를 갱신한다.
+- USD/KRW는 5분마다(Twelve Data) 수집하며 DB 저장 성공 뒤 Redis를 갱신한다.
 - Premium은 1초마다 계산한다.
 - seconds 데이터는 minute, hour, day bucket으로 집계한다.
 - 저장 시각은 UTC이며 일 단위 업무 경계/cron은 기본 `Asia/Seoul`이다.

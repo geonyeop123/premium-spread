@@ -75,7 +75,7 @@ premium = ((koreaPrice - foreignPrice × fxRate) / (foreignPrice × fxRate)) × 
 |--------|------|-----------|
 | 한국 시세 | 1초 | 빗썸 API → Redis |
 | 해외 시세 | 1초 | 바이낸스 API → Redis |
-| 환율 | 30분 | ExchangeRate API → Redis + DB |
+| 환율 | 5분 | Twelve Data → Redis + DB |
 | 프리미엄 | 1초 | 계산 → Redis |
 | 프리미엄/티커 집계 | 1분/1시간/1일 | Redis ZSet 집계 → DB |
 
