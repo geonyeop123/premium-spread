@@ -11,7 +11,7 @@ import java.time.Duration
 @Validated
 @ConfigurationProperties(prefix = "exchange-rate")
 data class ExchangeRateClientProperties(
-    val endpoint: URI = URI.create("https://v6.exchangerate-api.com"),
+    val endpoint: URI = URI.create("https://api.twelvedata.com"),
     @field:NotBlank
     val apiKey: String,
     @field:NotBlank
@@ -22,10 +22,10 @@ data class ExchangeRateClientProperties(
     val readTimeout: Duration = Duration.ofSeconds(3),
     @field:Min(0)
     @field:Max(10)
-    val maxRetries: Int = 3,
+    val maxRetries: Int = 1,
     val initialBackoff: Duration = Duration.ofMillis(250),
     val maxBackoff: Duration = Duration.ofSeconds(2),
-    val retryableStatuses: Set<Int> = setOf(429) + (500..599),
+    val retryableStatuses: Set<Int> = (500..599).toSet(),
 ) {
     init {
         require(endpoint.scheme == "http" || endpoint.scheme == "https") { "exchange-rate.endpoint must use http or https" }
@@ -47,4 +47,9 @@ data class ExchangeRateClientProperties(
         // 전체 안전장치가 정상적인 retry budget을 먼저 끊지 않도록 고정 초기화 여유를 둔다.
         return requestBudget.plus(backoffBudget).plusSeconds(5)
     }
+
+    override fun toString(): String =
+        "ExchangeRateClientProperties(endpoint=$endpoint, apiKey=****, base=$base, quote=$quote, " +
+            "connectTimeout=$connectTimeout, readTimeout=$readTimeout, maxRetries=$maxRetries, " +
+            "initialBackoff=$initialBackoff, maxBackoff=$maxBackoff, retryableStatuses=$retryableStatuses)"
 }
