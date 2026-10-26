@@ -3,7 +3,7 @@ feature: apps/web npm audit 취약점 해소
 slug: issue-82-web-npm-audit
 status: FROZEN
 frozen_at: 2026-10-26
-verdict_commit:
+verdict_commit: d687664
 source: https://github.com/geonyeop123/premium-spread/issues/82
 ---
 
@@ -166,6 +166,23 @@ shadcn 3.x → 4.22.1: node_modules/shadcn/dist/tailwind.css 삭제 0줄, 추가
 기존 accordion keyframes 등은 그대로. build exit 0
 ```
 
+### T3 — AC3
+
+```
+[T3 관찰] 2026-10-26 PR #95 head d687664
+증거: https://github.com/geonyeop123/premium-spread/actions/runs/40251646215
+1. Compile + architecture  pass · 2. Unit + coverage pass · 3. API integration pass · 4. Batch integration pass
+5. ktlint + detekt pass · 6. Dependency + security scan pass · 7. Docker image build pass   → 7/7
+```
+
+### T3 — AC4
+
+```
+[T3 관찰] 2026-10-26 PR #95 본문 "잔여 advisory (AC4)" 절
+증거: https://github.com/geonyeop123/premium-spread/pull/95
+"잔여 0건" 기록 — GREEN AC1 의 audit --json (low 0 · moderate 0) 과 일치
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -182,11 +199,17 @@ shadcn 3.x → 4.22.1: node_modules/shadcn/dist/tailwind.css 삭제 0줄, 추가
 ## 최종 판정
 
 ```
-DoD VERDICT: issue-82-web-npm-audit @ <commit SHA>
+DoD VERDICT: issue-82-web-npm-audit @ d687664 (apps/web == b73752c)
   수용기준 표:     7개  (T1 1 · T2 3 · T3 2 · T4 1)
-  T1/T2 자동:      4개 중 <p>개 PASS
-  T3 기록 제출:    2개 중 <q>건
-  T4 사람 확인:    1개 중 <r>건 완료, <1-r>건 대기
-  변경 요청:       <k>건
-  =>
+  T1/T2 자동:      4개 중 4개 PASS
+  T3 기록 제출:    2개 중 2건
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기
+  변경 요청:       0건
+  => AWAITING_HUMAN
 ```
+
+**사람 확인이 필요한 항목**
+
+- AC6: 프리미엄 차트·트래킹 화면 육안 확인 — PR #95 코멘트 앵커 필요. 확인 전까지 PR Draft 유지, `Closes #82` 보류
+
+> 이 판정 이후의 커밋은 `docs/work/issue-82-web-npm-audit/dod.md` 증거 기록뿐이다(`apps/web` 무변경).

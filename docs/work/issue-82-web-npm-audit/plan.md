@@ -49,8 +49,8 @@
 
 ## Task 7 — 검증·마무리
 
-- [ ] 최종 커밋 SHA에서 `npm --prefix apps/web ci --include=optional` 후 `bash ci/run-npm-audit.sh` 재실행, `npm --prefix apps/web audit --json`(실행 시각 포함)을 증거로 남김 (AC1)
-- [ ] dod 증거 로그에 GREEN 기록 (AC1·AC2·AC5·AC7·R1~R3)
-- [ ] PR을 **Draft**로 생성. 본문에 잔여 low/moderate 목록과 사유(AC4). `Closes #82`는 아직 넣지 않는다
-- [ ] PR checks 7/7 success 확인 후 기록 (AC3)
+- [x] 최종 커밋 SHA에서 `npm --prefix apps/web ci --include=optional` 후 `bash ci/run-npm-audit.sh` 재실행, `npm --prefix apps/web audit --json`(실행 시각 포함)을 증거로 남김 (AC1)
+- [x] dod 증거 로그에 GREEN 기록 (AC1·AC2·AC5·AC7·R1~R3)
+- [x] PR을 **Draft**로 생성. 본문에 잔여 low/moderate 목록과 사유(AC4). `Closes #82`는 아직 넣지 않는다
+- [x] PR checks 7/7 success 확인 후 기록 (AC3)
 - [ ] 사용자 육안 확인(AC6)을 PR 코멘트로 받은 뒤 `Closes #82`를 본문 최상단에 넣고 Ready for review로 전환
