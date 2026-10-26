@@ -11,3 +11,4 @@
 - [실계정 순손익 회차별 로그와 정시 보고 메일](account-pnl-round-log/README.md)
 - [owner 알림 채널 기반 — Discord·메일 라우팅](owner-alert-channel/README.md)
 - [owner 계정 알림 — 포지션 변경·순수익률 급변·미반영 리마인더](owner-account-alerts/README.md)
+- [환율 제공자 Twelve Data 교체와 FX 캐시 TTL 여유](fx-provider-twelve-data/README.md)
