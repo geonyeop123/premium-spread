@@ -3,7 +3,7 @@
 - slug: `fx-provider-twelve-data` · base `728e3f1`(origin/dev, Task 0 이 `git merge-base HEAD origin/dev` 로 확인) · branch `fix/issue-93-fx-provider-twelve-data`
 - 입력: ③ 합의(오케스트레이터 전달 범위 — 제공자를 Twelve Data 로, 수집 주기 5분, #93 TTL 여유 함께 해결), `.ai/rules/{architecture,batch,testing,naming}.md`,
   `docs/runbooks/{redis-contract,deployment,account-pnl-alert}.md`, 현재 코드(아래 §2)
-- 상태: DRAFT
+- 상태: DRAFT (⑥ R1 반영)
 
 ## 0. 요약
 
@@ -22,7 +22,7 @@ freshness 판정보다 먼저 만료될 수 있는 구조** 자체가 결함이�
 | K2 | `RedisTtl.FX = 40분`. 불변식 `RedisTtl.FX ≥ MAX_INGESTION_GAP + 5분` 을 `infrastructure:common` 단위 테스트가 묶는다(이 모듈만 Domain 과 `modules:redis` 를 둘 다 본다) | §3.2 |
 | K3 | 수집 주기 기본값 5분. `BatchSchedulingProperties.ExchangeRate` 가 `fixedRate × 2 ≤ MAX_INGESTION_GAP` 을 기동 시 검증한다(한 회차 실패를 견딘다) | §3.3 |
 | K4 | 기존 포트 `ExchangeRateProvider` 와 클래스 이름(`ExchangeRateClient`·`ExchangeRateClientProperties`·`ExchangeRateResponse`)·설정 prefix `exchange-rate.*`·env 이름(`EXCHANGE_RATE_*`)을 유지하고 **구현 내용만** Twelve Data 로 바꾼다. 운영자는 키 값만 교체한다 | §4, §6 |
-| K5 | 인증은 `Authorization: apikey <key>` 헤더. key 는 URL·예외 메시지·로그·`toString()` 어디에도 나타나지 않는다. HTTP 오류 본문은 메시지에 넣지 않는다 | §4.3, §4.5 |
+| K5 | 인증은 `Authorization: apikey <key>` 헤더. key 는 URL·예외 메시지·로그·`toString()` 어디에도 나타나지 않는다. HTTP 오류 본문은 **재시도 예외를 포함한 모든 예외 메시지**에 넣지 않는다 — 재시도 WARN 로그가 예외 메시지를 남기므로 이것이 로그 누출 차단이기도 하다 | §4.3–4.6 |
 | K6 | `max-retries` 기본 3 → **1**, 재시도 대상은 5xx·연결 오류·timeout. **429 는 재시도하지 않는다**. 최악 하루 호출 580 ≤ 800 | §5 |
 | K7 | HTTP 200 이어도 본문 `status:"error"` 면 계약 오류(재시도 없음). symbol 불일치·rate ≤ 0·필드 누락도 계약 오류 | §4.4 |
 | K8 | Flyway 불필요 — `exchange_rate` 스키마·unique key 그대로 | §7 |
@@ -38,23 +38,23 @@ freshness 판정보다 먼저 만료될 수 있는 구조** 자체가 결함이�
 - `AccountPnlMonitorJob` 의 FX 허용 공백을 Domain 상수로, `FxIngestionJob` 성공 로그에 `observedAt` 추가 (§3.1, §4.6)
 - 수집 주기 기본값 5분(yml·`BatchSchedulingProperties`·Scheduler fallback)과 기동 검증 (§3.3)
 - yml `exchange-rate` 블록 기본값(endpoint·max-retries) (§6)
-- 문서: redis-contract·deployment·account-pnl-alert runbook, `.env.example`·`deploy/.env.prd.example`, ARCHITECTURE·PROJECT_STATUS·project-overview·README 의 주기·제공자 서술,
-  `JdbcExchangeRateWriteRepository`·`TrackingFacade` 의 낡은 주석 (§9)
+- 문서·주석: redis-contract·deployment·account-pnl-alert runbook, `.env.example`·`deploy/.env.prd.example`, ARCHITECTURE·PROJECT_STATUS·project-overview·README 의 주기·제공자 서술,
+  `JdbcExchangeRateWriteRepository`·`RedisJobRunRecorderAdapter`·`TrackingFacade` 의 낡은 주석 (§9)
 
 ### 1.2 제외 (scope creep 차단선)
 
-- `ExchangeRateProvider` 포트 시그니처 변경, 새 포트·새 Job·새 JobId, `JobConfig`(lock:fx 35s/30s) 변경
+- `ExchangeRateProvider` 포트 시그니처 변경, 새 포트·새 Job·새 JobId, `lock:fx` 설정(`BatchJobProperties`·yml `batch.jobs.fx-ingestion`·`DefaultJobConfigProvider`) 변경
 - `PremiumRealtimeJob` 에 FX freshness 판정 추가, batch `FxRateReadAdapter` 에 DB fallback 추가
 - api `TrackingFacade.FX_MAX_AGE` 의 값·판정 방식 변경(주말 대응) — 후속 후보 F1 (§8)
 - 기동 직후 이중 실행(fixed-rate 첫 tick + startup 실행) 제거 — 후속 후보 F2 (§5.1)
 - 제공자 다중화·fallback 제공자, 크레딧 사용량 metric
-- env 이름 변경, 클래스·패키지 rename, Redis key·payload 변경, Flyway migration
+- env 이름 변경, 클래스·패키지 rename, Redis key·payload 변경, Flyway migration(기존 `V6` 주석 포함 — immutable)
 
 ## 2. 현재 구조
 
 ```text
 ExchangeRateScheduler (fixed-rate 30m + startup 5s)
-  → FxIngestionJob.run()  [JobExecutor: lock:fx, lease 35s, timeout 30s]
+  → FxIngestionJob.run()  [JobExecutor: lock:fx, lease 35s, timeout 30s — 런타임 값은 BatchJobProperties + yml batch.jobs.fx-ingestion]
       → ExchangeRateProvider.fetch(USD, KRW)      ← infrastructure:batch ExchangeRateClient (exchangerate-api v6, key 가 URL path 에)
       → FxRateWritePort.save   (MySQL exchange_rate, ON DUPLICATE KEY UPDATE rate)   ← DB-first
       → FxRateCacheWritePort.save (Redis fx:usd:krw, TTL RedisTtl.FX=31m)
@@ -69,7 +69,7 @@ ExchangeRateScheduler (fixed-rate 30m + startup 5s)
 |---|---|---|
 | `ExchangeRateClientTest` (infra:batch) | exchangerate-api JSON, 5xx 재시도 상한, 4xx 비재시도, read timeout 재시도 | Twelve Data 계약으로 **다시 쓴다**(같은 파일). 5xx·4xx·timeout 시나리오는 유지 |
 | `ExchangeRateSchedulerE2ETest` (apps:batch integration) | `ExchangeRateResponse(result=…, conversionRate=…)` 생성자로 응답 직렬화, 실패 3회(500) | 응답을 **raw JSON 문자열**로 바꾼다(DTO 생성자에 묶이지 않게). `BatchTestConfig` 의 `maxRetries = 2` 는 유지 — 500×3 시나리오가 그대로 성립 |
-| `AccountPnlMonitorJobTest` :218-280 | 허용 공백 2시간 경계(2h 통과, 2h+1ms 실패, 첫 실행 기준 2h) | **허용 예외** — 기대값을 `FxIngestionFreshness.MAX_INGESTION_GAP` 으로, 이름의 "2시간"을 "허용 공백"으로 (dod R5) |
+| `AccountPnlMonitorJobTest` :218-280 | 허용 공백 2시간 경계 테스트 3개(:219·:230·:261) + 이름에 "2시간"이 든 10분 값 테스트 1개(:239) | **허용 예외** — 경계 3개는 기대값을 `FxIngestionFreshness.MAX_INGESTION_GAP` 으로, 4개 모두 이름·`describedAs` 의 "2시간"을 "허용 공백"으로. :239 의 10분 값은 그대로 (dod R5) |
 | 그 밖의 `JobLastSuccessReadPort` fake | 모두 `now − 10분` 반환 | 30분 안이라 무수정 통과 |
 | `TestIsolationArchitectureTest` | 테스트 소스에 `https?://` 외부 host 금지 | 테스트는 Twelve Data URL 을 **scheme 포함으로 쓰지 않는다**. 기본 endpoint 확인은 `endpoint.host == "api.twelvedata.com"` 처럼 host 문자열로만 |
 
@@ -112,7 +112,7 @@ object FxIngestionFreshness {
 | 항목 | 값 |
 |---|---|
 | `MAX_INGESTION_GAP` | 30분 |
-| 쓰기→성공 기록 지연 상한 | 30초 (`lock:fx` execution timeout) |
+| 쓰기→성공 기록 지연 상한 | 30초 (`lock:fx` execution timeout, §5.2) |
 | 관측된 시계 튐 | 3분 (#93) |
 | 테스트가 강제하는 최소 여유 `TTL − GAP` | **5분** (30초 + 3분 + 여분) |
 | 채택 `RedisTtl.FX` | **40분** (실제 여유 10분) |
@@ -206,8 +206,10 @@ data class ExchangeRateResponse(
 | 9 | 그 외 | `ExchangeRateSnapshot(base, quote, rate, Instant.ofEpochSecond(timestamp), Exchange.FX_PROVIDER)` | — | — |
 
 - 연결 오류(`WebClientRequestException`)·timeout(`TimeoutException`, cause 포함)은 기존처럼 재시도 대상.
-- HTTP 오류 본문은 **읽어서 버린다**(연결 재사용을 위해 소비하되 메시지에 넣지 않는다). 기존 `body.take(256)` 를 메시지에 붙이던 동작을 없앤다 — 오류 본문이 무엇을
-  되비출지 보장할 수 없다. 4번 행도 `message` 가 아니라 `code` 만 싣는다. 진단은 HTTP status·`code`(401 인증, 429 한도, 400/404 심볼) 로 충분하다.
+- **HTTP 오류 본문은 1·2행 어느 예외 메시지에도 넣지 않는다.** 본문은 연결 재사용을 위해 소비·폐기만 한다. 현재 코드는 `ExchangeRateHttpException`/
+  `RetryableExchangeRateException` 메시지에 `body.take(256)` 를 붙이고(`ExchangeRateClient.kt:149-152`), 재시도 WARN 이 `signal.failure().message` 를 남기므로
+  (`:68-73`) 5xx 본문이 재시도마다 로그로 나간다. 이 경로를 메시지에서 본문을 없애는 것으로 막는다 — 오류 본문이 무엇을 되비출지 보장할 수 없다.
+  4번 행도 `message` 가 아니라 `code` 만 싣는다. 진단은 HTTP status·`code`(401 인증, 429 한도, 400/404 심볼) 로 충분하다.
 - 5번의 기대값만 메시지에 싣고 받은 symbol 은 싣지 않는다(제공자 제어 문자열).
 - 예외 타입(전문):
 
@@ -264,7 +266,7 @@ data class ExchangeRateClientProperties(
 | 경로 | 차단 |
 |---|---|
 | 요청 URL(→ `WebClientRequestException` 메시지, 접근 로그) | 헤더 인증 — URL 에 key 없음 |
-| HTTP 오류 본문 되비침 | 본문을 예외·로그에 넣지 않음(§4.4) |
+| HTTP 오류 본문 되비침 → 예외 메시지 → 재시도 WARN·최종 ERROR 로그 | 본문을 어떤 예외 메시지에도 넣지 않음(§4.4) |
 | `ExchangeRateClientProperties.toString()` | override(위) |
 | 로그 | 아래 §4.6 키만 |
 
@@ -273,13 +275,16 @@ data class ExchangeRateClientProperties(
 | 위치 | 레벨 | 담는 키 | 담지 않는 값 |
 |---|---|---|---|
 | `ExchangeRateClient` 성공 | DEBUG | base, quote, rate, observedAt | apiKey, 헤더, 응답 객체 |
-| `ExchangeRateClient` 재시도 | WARN | 회차(n/max), 실패 예외의 클래스 단순 이름과 메시지(§4.4 메시지 또는 연결/timeout 메시지) | apiKey, 헤더, 응답 본문, 제공자 `message` |
+| `ExchangeRateClient` 재시도 | WARN | 회차 번호(`n/max`), 실패 예외의 클래스 단순 이름, 실패 예외의 메시지(§4.4 표의 본문 없는 메시지 또는 연결/timeout 예외 메시지) | apiKey, 헤더, 응답 본문, 제공자 `message` |
 | `ExchangeRateClient` 최종 실패 | ERROR | base, quote, cause(스택 포함) | 같음 |
 | `FxIngestionJob` 성공 | INFO | base, quote, rate, observedAt | 같음 |
 | `FxIngestionJob` 실패 | ERROR | exception(기존) | 같음 |
 
+재시도 WARN 은 기존 문구 접두 `Exchange rate request retry`, 최종 실패 ERROR 는 기존 `Failed to fetch exchange rate` 접두를 유지한다 — 누출 테스트의 양성 대조(로그가
+실제로 찍혔음)가 이 두 접두를 본다. 그 밖의 문구는 구현 재량.
+
 `FxIngestionJob` 성공 로그는 현재 `Fetched exchange rate - USD/KRW: {rate}` 로 쌍이 하드코딩돼 있다. `observedAt` 을 더하면 운영자가 로그만으로 "값이 분 단위로 갱신되는가 / 주말에
-고정됐는가"를 볼 수 있다(T4 검증에 쓴다). 로깅 문구 자체는 구현 재량.
+고정됐는가"를 볼 수 있다(T4 검증에 쓴다).
 
 ## 5. 크레딧 예산과 timeout
 
@@ -289,7 +294,7 @@ Twelve Data Basic: 하루 800 크레딧, 분당 8. `/exchange_rate` 1회 = 1 크
 
 | 항목 | 회차 |
 |---|---|
-| fixed-rate 5분 × 24시간 (기동 직후 첫 tick 포함) | 289 |
+| fixed-rate 5분 × 24시간 (288 + 경계 1, 상한) | 289 |
 | startup 실행(기동 5초 뒤, fixed-rate 와 별개) | 1 |
 | 합계 회차 R | 290 |
 
@@ -319,8 +324,13 @@ Twelve Data Basic: 하루 800 크레딧, 분당 8. `/exchange_rate` 1회 = 1 크
 | `overallDeadline()` = (2+3)×2 + 2×1 + 5 | **17s** |
 | `lock:fx` execution timeout / lease | 30s / 35s |
 
-17s < 30s < 35s — `block(overallDeadline)` 이 Job timeout 보다 먼저 끝나고, lock 은 timeout 뒤에도 남는다. 기본값의 `overallDeadline() == 17s` 를 단위 테스트가 잰다.
-`JobConfig` 는 apps:batch 에 있어 infra 테스트가 직접 볼 수 없으므로 30s 와의 관계는 이 표와 테스트 이름에 남긴다.
+- `lock:fx` 값의 **런타임 출처**: `BatchJobProperties.kt:15`(`fxIngestion = LockSpec("lock:fx", 35s, 30s)` 기본값)와 yml `batch.jobs.fx-ingestion`
+  (`lease: ${FX_JOB_LEASE:35s}`, `execution-timeout: ${FX_JOB_TIMEOUT:30s}`). `JobConfig.kt` 의 `DefaultJobConfigProvider` 는 같은 값을 가진 생성자 기본 인자일 뿐이다.
+- 17s < 30s < 35s — `block(overallDeadline)` 이 Job timeout 보다 먼저 끝나고, lock 은 timeout 뒤에도 남는다. 기본값의 `overallDeadline() == 17s` 를 단위 테스트가 잰다.
+  Job timeout 은 apps:batch 설정이라 infra 테스트가 직접 볼 수 없으므로, 30s 와의 관계는 이 표·테스트 이름·runbook 에 남긴다.
+- runbook(deployment)에 적는다: `EXCHANGE_RATE_CONNECT_TIMEOUT`·`EXCHANGE_RATE_READ_TIMEOUT`·`EXCHANGE_RATE_MAX_RETRIES`·`EXCHANGE_RATE_MAX_BACKOFF` 를 바꾸면
+  `overallDeadline = (connect + read) × (max-retries + 1) + max-backoff × max-retries + 5s` 가 `FX_JOB_TIMEOUT`(기본 30s)보다 작은지 확인하고, `FX_JOB_LEASE` 는
+  `FX_JOB_TIMEOUT` 보다 커야 한다.
 
 ## 6. 설정·env
 
@@ -347,6 +357,7 @@ exchange-rate:
   5분 주기에서 평일엔 회차마다 새 `observed_at`(분 단위) 행이 생기고 하루 최대 약 290행이다. 주말엔 같은 timestamp 가 오면 `ON DUPLICATE KEY UPDATE rate` 로 한 행에 수렴한다
   (기존과 같은 동작). 보존 정책은 범위 밖 — 연 약 7만 행 수준이라 즉시 문제 아님. `[ASSUMPTION]` A5.
 - `JdbcExchangeRateWriteRepository.save` KDoc 의 "(30분 단위)" 는 "수집 회차마다, 같은 observed_at 은 한 행으로 수렴"으로 고친다(주석만).
+- `V6__create_ticker_and_exchange_rate_tables.sql:52` 의 주석 "(30분 단위)" 도 낡았지만 **고치지 않는다** — migration 은 append-only·immutable 이고 체크섬이 바뀐다.
 
 ### 7.1 주말 동작
 
@@ -368,8 +379,8 @@ forex 는 주말에 닫힌다. Twelve Data 가 금요일 마감 값과 그 times
 
 **이번 범위에 넣지 않는다.** 근거:
 1. 이 변경은 이 판정을 **나쁘게 만들지 않고** 평일에는 처음으로 통과하게 만든다. 회귀가 아니다.
-2. 주말 판정을 고치려면 "수집 성공 시각" 기준으로 바꿔야 하는데, 그 값은 batch 프로세스의 `JobLastSuccessReadPort`(runbook 상 프로세스 메모리 기반)에 있어 api 가 읽을 경로가 없다.
-   새 port·저장소 계약이 필요한 별도 설계다.
+2. 주말 판정을 고치려면 "수집 성공 시각" 기준으로 바꿔야 하는데, 그 값은 batch 프로세스의 `JobLastSuccessReadPort`(프로세스 메모리 기반, `RedisJobRunRecorderAdapter`)에 있어
+   api 가 읽을 경로가 없다. 새 port·저장소 계약이 필요한 별도 설계다.
 3. 주말 archive 를 막는 것이 맞는지(금요일 환율로 확정해도 되는지)는 사용자 판단이 필요한 비즈니스 질문이다.
 
 이번엔 동작 무변경, KDoc 주석의 "batch 의 exchange-rate fixed-rate 가 30m 이므로" 를 현재 사실(주기 5분, 35분은 유지, 주말엔 제공자 timestamp 가 고정돼 실패하며 후속 F1)로만 고친다.
@@ -381,16 +392,15 @@ forex 는 주말에 닫힌다. Twelve Data 가 금요일 마감 값과 그 times
 | 파일 | 변경 |
 |---|---|
 | `docs/runbooks/redis-contract.md:18` | `fx:{base}:{quote}` TTL `31분` → `40분`, 표 아래 한 줄: "허용 공백(`FxIngestionFreshness.MAX_INGESTION_GAP` 30분) + 5분 이상 — `FxCacheTtlContractTest` 가 강제" |
-| `docs/runbooks/deployment.md:44` | `EXCHANGE_RATE_API_KEY` 를 "Twelve Data API key" 로 명시. 신규 `### 환율 제공자 (Twelve Data)` — 발급, 헤더 인증(key 가 URL 에 없음), 주기 5분·max-retries 1·429 비재시도, 크레딧 식과 4분 하한, key 당 batch 하나, 전환 시 지울 override(§6), 주말 동작(§7.1) |
-| `docs/runbooks/account-pnl-alert.md:413, :418, :430` | 환율 수집 간격 `2시간` → `30분`, `(30분 주기)` → `(5분 주기)` |
-| `.env.example:5-7`, `deploy/.env.prd.example:42-44` | 주석 `ExchangeRate API` / `exchangerate-api.com 에서 발급` → `Twelve Data` / `twelvedata.com 에서 발급(Basic 무료)`. 키 이름·placeholder 그대로 |
+| `docs/runbooks/deployment.md:44` | `EXCHANGE_RATE_API_KEY` 를 "Twelve Data API key" 로 명시. 신규 `### 환율 제공자 (Twelve Data)` — 발급, 헤더 인증(key 가 URL 에 없음), 주기 5분·max-retries 1·429 비재시도, 크레딧 식과 4분 하한, key 당 batch 하나, 전환 시 지울 override(§6), timeout 변경 시 `overallDeadline < FX_JOB_TIMEOUT < FX_JOB_LEASE` 확인(§5.2), 주말 동작(§7.1) |
+| `docs/runbooks/account-pnl-alert.md` 3줄 4곳 | `:413` 환율 수집 간격 `2시간` → `30분`; `:418` `2시간을 넘긴` → `30분을 넘긴` 과 `(30분 주기)` → `(5분 주기)`; `:430` `2시간 넘게` → `30분 넘게` |
+| `.env.example:5-6`, `deploy/.env.prd.example:42-43` | 주석 `ExchangeRate API` / `exchangerate-api.com 에서 발급` → `Twelve Data` / `twelvedata.com 에서 발급(Basic 무료)`. 키 이름·placeholder 그대로 |
 | `.ai/architecture/ARCHITECTURE_DESIGN.md:76` | `FX API (30분)` → `Twelve Data FX API (5분)` |
 | `.ai/PROJECT_STATUS.md:65` | `USD/KRW 30분 수집` → `USD/KRW 5분 수집(Twelve Data)` |
 | `.ai/context/project-overview.md:74` | `30분마다` → `5분마다(Twelve Data)` |
 | `README.md:78` | `30분 · ExchangeRate API` → `5분 · Twelve Data` |
-| `infrastructure/batch/.../ExchangeRateResponse.kt` KDoc | exchangerate-api 예시 → Twelve Data 예시(§4.3, 가짜 값) |
-| `JdbcExchangeRateWriteRepository` KDoc, `TrackingFacade` KDoc | 주석만 (§7, §8) |
-| `docs/runbooks/auth-security.md`·`durable-notification-delivery.md` | 무변경 |
+| 주석 4곳 | `ExchangeRateResponse.kt` KDoc(exchangerate-api 예시 → Twelve Data 예시, 가짜 값, Task 3), `JdbcExchangeRateWriteRepository.kt:14` "(30분 단위)"(§7), `RedisJobRunRecorderAdapter.kt:31` "30분 주기 작업을 덮지 못하므로" → 주기와 무관한 서술("FX 등 분 단위 주기 작업의 마지막 성공을 보장하지 못하므로")로, `TrackingFacade.kt` `FX_MAX_AGE` KDoc(§8) |
+| 고치지 않음 | `V6__create_ticker_and_exchange_rate_tables.sql:52` "(30분 단위)" — immutable migration(§7). `.ai/planning/**`·`docs/superpowers/**`·`docs/work/**`(이 slug 제외)의 과거 기록. `docs/runbooks/auth-security.md`·`durable-notification-delivery.md` |
 
 ## 10. 설계 완결성 체크리스트 (orchestrator ④)
 
@@ -402,7 +412,7 @@ forex 는 주말에 닫힌다. Twelve Data 가 금요일 마감 값과 그 times
 | 시간·범위 | `observedAt = Instant.ofEpochSecond(timestamp)`(UTC). 허용 공백 판정은 주입 `Clock` 의 `Instant` 끼리, 경계 포함(정확히 30분 = 신선). 집계 버킷 무관 |
 | DB·cache 순서 | DB-first 무변경. TTL 불변식 §3.2 |
 | Flyway | **불필요**(§7). Task 0 이 `ls … \| sort -V \| tail -1` 로 최신 번호만 기록 |
-| batch lock·lease·timeout·JobResult | 무변경 `lock:fx` 35s/30s. `overallDeadline` 17s(§5.2). `FxIngestionJob` 분기 무변경: 성공 → `JobResult.Success`, 모든 예외 → `JobResult.Failure(exception)`(DB·캐시 미기록). `AccountPnlMonitorJob` 의 `STALE_FX` 분기는 문턱만 30분 |
+| batch lock·lease·timeout·JobResult | 무변경 `lock:fx` 35s/30s(런타임 출처 `BatchJobProperties` + yml `batch.jobs.fx-ingestion`, §5.2). `overallDeadline` 17s. `FxIngestionJob` 분기 무변경: 성공 → `JobResult.Success`, 모든 예외 → `JobResult.Failure(exception)`(DB·캐시 미기록). `AccountPnlMonitorJob` 의 `STALE_FX` 분기는 문턱만 30분 |
 | 알림 event identity | 변경 없음 |
 | 공개 endpoint | 변경 없음 |
 | Redis | TTL 만 변경(`RedisTtl.FX` 40분) + runbook 동시 갱신. key·payload 무변경 |
@@ -416,8 +426,8 @@ forex 는 주말에 닫힌다. Twelve Data 가 금요일 마감 값과 그 times
 |---|---|---|
 | Domain | `isStale` 경계: 30분 신선, 30분+1ms stale, 0, 미래(음수) 신선, 상수 = 30분 | `domain` unit, 고정 `Instant` |
 | TTL 계약 | `RedisTtl.FX == 40분`, `RedisTtl.FX − MAX_INGESTION_GAP ≥ 5분` | `infrastructure:common` unit |
-| adapter | 요청 경로·symbol·헤더·URL 에 key 없음, 매핑, 거절 규칙 9행, 재시도(5xx 2회·429/401 1회·timeout 상한), 기본값(endpoint host·r=1·retryable=500..599·deadline 17s), 누출(예외 메시지·출력·`toString`·URL) | `infrastructure:batch` unit (MockWebServer, `OutputCaptureExtension` — `DiscordWebhookSenderAdapterTest` 선례) |
-| application | `AccountPnlMonitorJob` 허용 공백 30분 경계·첫 실행 기준 | `apps:batch` unit (기존 `AccountPnlMonitorJobTest` 허용 예외 수정) |
+| adapter | 요청 경로·symbol·헤더·URL 에 key 없음, 매핑, 거절 규칙 9행, 재시도(5xx 2회·429/401 1회·timeout 상한), 기본값(endpoint host·r=1·retryable=500..599·deadline 17s), 누출 — 401 본문 되비침과 **503 본문 되비침의 재시도 WARN 경로**(예외 메시지·출력·`toString`·URL, 출력에 재시도·최종 실패 로그가 실제로 있는지 양성 대조) | `infrastructure:batch` unit (MockWebServer, `OutputCaptureExtension` — `DiscordWebhookSenderAdapterTest` 선례) |
+| application | `AccountPnlMonitorJob` 허용 공백 30분 경계 3개(정확히·+1ms·첫 실행 기준) | `apps:batch` unit (기존 `AccountPnlMonitorJobTest` 허용 예외 수정) |
 | 설정 | `ExchangeRate` 기본 5분·15분 허용·15분+1ms 거부, yml 기본값 문자열(주기 5m·endpoint host·max-retries 1, 구 제공자 host 부재) | `apps:batch` unit |
 | E2E | Twelve Data JSON → DB `observed_at` = timestamp, 캐시 rate·timestamp, 캐시 TTL ∈ (35분, 40분], 요청 헤더, 최종 실패 시 DB·캐시 없음 | `apps:batch` integration (MySQL/Redis Testcontainers + MockWebServer) |
 | 경계 | 모듈·import·테스트 격리(외부 URL) | root `architectureTest` |
@@ -455,3 +465,10 @@ forex 는 주말에 닫힌다. Twelve Data 가 금요일 마감 값과 그 times
 | 라운드 | 변경 | 사유 |
 |---|---|---|
 | 초안 | — | — |
+| ⑥ R1 | §9 account-pnl-alert 수정 대상을 `:413`·`:418`(2곳)·`:430` 의 3줄 4곳으로 | R1 #2 |
+| ⑥ R1 | K5·§4.4·§4.5 — 재시도 예외 메시지에서 본문 제거를 계약으로 명시(현재 `:149-152` 본문 포함 + `:68-73` WARN 경로) | R1 #3 |
+| ⑥ R1 | §4.6 재시도 WARN 키를 "회차 번호 + 예외 클래스 단순 이름 + 본문 없는 메시지"로 확정, 양성 대조용 로그 접두 유지 | R1 #4 |
+| ⑥ R1 | §1.1·§7·§9 — `RedisJobRunRecorderAdapter.kt:31` 주석 추가, `V6` 주석은 immutable 이라 미수정 명시 | R1 #7 |
+| ⑥ R1 | §2·§5.2·§10 — `lock:fx` 런타임 출처를 `BatchJobProperties.kt:15` + yml `batch.jobs.fx-ingestion` 으로 정정, runbook timeout 확인 지시 | R1 #8 |
+| ⑥ R1 | §2·§11 — `AccountPnlMonitorJobTest` 를 "경계 3개 + :239 이름만"으로 정정 | R1 #9 |
+| ⑥ R1 | §5.1 fixed-rate 회차 라벨을 "288 + 경계 1, 상한"으로 | 자체 정정 |
