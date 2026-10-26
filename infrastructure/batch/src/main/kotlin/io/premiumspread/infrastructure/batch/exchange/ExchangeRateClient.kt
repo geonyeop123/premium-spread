@@ -130,17 +130,20 @@ class ExchangeRateClient(
 
     private fun isRetryable(throwable: Throwable): Boolean {
         val cause = Exceptions.unwrap(throwable)
-        return cause is RetryableExchangeRateException ||
-            cause is WebClientRequestException ||
-            cause is TimeoutException ||
-            cause.cause is TimeoutException
+        return cause is RetryableExchangeRateException || cause is WebClientRequestException || cause.isTimeout()
     }
 
-    private fun Throwable.toMetricOutcome(): String = when (this) {
-        is RetryableExchangeRateException, is ExchangeRateHttpException -> "http"
-        is WebClientRequestException -> "connection"
-        is TimeoutException -> "timeout"
-        is ExchangeRateApiException -> "contract"
+    // Reactor timeout(java.util.concurrent)과 Netty ReadTimeout/responseTimeout 이 경쟁하므로 둘 다 본다.
+    private fun Throwable.isTimeout(): Boolean = isTimeoutType() || cause?.isTimeoutType() == true
+
+    private fun Throwable.isTimeoutType(): Boolean =
+        this is TimeoutException || this is io.netty.handler.timeout.TimeoutException
+
+    private fun Throwable.toMetricOutcome(): String = when {
+        isTimeout() -> "timeout"
+        this is RetryableExchangeRateException || this is ExchangeRateHttpException -> "http"
+        this is WebClientRequestException -> "connection"
+        this is ExchangeRateApiException -> "contract"
         else -> "other"
     }
 

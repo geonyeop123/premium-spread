@@ -99,7 +99,7 @@ class AccountPnlMonitorJob(
     private val owner = "account-pnl-monitor:" + UUID.randomUUID()
     private val dispatcher = OwnerAlertDispatcher(store, mailSender, discordSender, clock, owner)
 
-    /** FX 수집 성공 기록이 없을 때(프로세스 시작 직후) 2시간을 재는 기준. 이 인스턴스의 첫 실행 시각이다. */
+    /** FX 수집 성공 기록이 없을 때(프로세스 시작 직후) 허용 공백(`FxIngestionFreshness.MAX_INGESTION_GAP`)을 재는 기준. 이 인스턴스의 첫 실행 시각이다. */
     private val firstRunAt = AtomicReference<Instant?>(null)
 
     fun run(): JobResult = executor.execute(jobConfigs.get(JobId.ACCOUNT_PNL_MONITOR)) { monitor() }

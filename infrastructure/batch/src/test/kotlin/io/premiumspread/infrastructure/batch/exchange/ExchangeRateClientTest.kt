@@ -12,9 +12,11 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
+import org.springframework.web.reactive.function.client.WebClientRequestException
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 @ExtendWith(OutputCaptureExtension::class)
 class ExchangeRateClientTest {
@@ -129,7 +131,7 @@ class ExchangeRateClientTest {
     }
 
     @Test
-    fun `503 은 기본 maxRetries 만큼만 재시도한다`() {
+    fun `maxRetries=1 이면 503 은 2회 요청 후 RetryableExchangeRateException 이다`() {
         repeat(2) { server.enqueue(MockResponse().setResponseCode(503)) }
 
         assertThatThrownBy { client().fetchConfiguredRate() }
@@ -168,12 +170,30 @@ class ExchangeRateClientTest {
         }
 
         assertThatThrownBy { client(maxRetries = 1, readTimeout = Duration.ofMillis(200)).fetchConfiguredRate() }
-            .isInstanceOf(Exception::class.java)
+            .isInstanceOf(TimeoutException::class.java)
         assertThat(server.requestCount).isEqualTo(2)
     }
 
     @Test
-    fun `401 오류 본문의 key 는 예외 메시지와 URL 에 나타나지 않는다`() {
+    fun `응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다`() {
+        repeat(2) {
+            server.enqueue(success().setHeadersDelay(2, TimeUnit.SECONDS))
+        }
+
+        assertThatThrownBy { client(maxRetries = 1, readTimeout = Duration.ofMillis(200)).fetchConfiguredRate() }
+            .isInstanceOf(WebClientRequestException::class.java)
+        assertThat(server.requestCount).isEqualTo(2)
+    }
+
+    @Test
+    fun `응답 DTO toString 은 제공자 message 를 노출하지 않는다`() {
+        val response = ExchangeRateResponse(status = "error", code = 401, message = "bad key $SENTINEL")
+
+        assertThat(response.toString()).doesNotContain(SENTINEL).contains("code=401")
+    }
+
+    @Test
+    fun `401 오류 본문의 key 는 예외 메시지와 URL 에 나타나지 않는다`(output: CapturedOutput) {
         server.enqueue(
             MockResponse().setResponseCode(401).setHeader("Content-Type", "application/json").setBody(
                 """{"code":401,"message":"bad key $SENTINEL","status":"error"}""",
@@ -184,8 +204,11 @@ class ExchangeRateClientTest {
         assertThatThrownBy { client(properties).fetchConfiguredRate() }
             .isInstanceOf(ExchangeRateHttpException::class.java)
             .hasMessage("Exchange rate HTTP 401")
-        assertThat(server.takeRequest().requestUrl.toString()).doesNotContain(SENTINEL)
+        val request = server.takeRequest()
+        assertThat(request.getHeader("Authorization")).isEqualTo("apikey $SENTINEL")
+        assertThat(request.requestUrl.toString()).doesNotContain(SENTINEL)
         assertThat(properties.toString()).doesNotContain(SENTINEL).contains("apiKey=****")
+        assertThat(output.all).contains("Failed to fetch exchange rate").doesNotContain(SENTINEL)
     }
 
     @Test
@@ -200,8 +223,11 @@ class ExchangeRateClientTest {
             .hasMessage("Exchange rate HTTP 503")
 
         assertThat(server.requestCount).isEqualTo(2)
-        assertThat(server.takeRequest().requestUrl.toString()).doesNotContain(SENTINEL)
-        assertThat(server.takeRequest().requestUrl.toString()).doesNotContain(SENTINEL)
+        repeat(2) {
+            val request = server.takeRequest()
+            assertThat(request.getHeader("Authorization")).isEqualTo("apikey $SENTINEL")
+            assertThat(request.requestUrl.toString()).doesNotContain(SENTINEL)
+        }
         assertThat(properties.toString()).doesNotContain(SENTINEL).contains("apiKey=****")
         assertThat(output.all)
             .contains("Exchange rate request retry")

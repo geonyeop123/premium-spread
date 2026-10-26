@@ -96,7 +96,7 @@ class ExchangeRateSchedulerE2ETest : BatchIntegrationTestBase() {
             // then
             val request = exchangeRateMockServer.takeRequest(1, TimeUnit.SECONDS)
             assertThat(request).isNotNull
-            assertThat(request!!.getHeader("Authorization")).startsWith("apikey ")
+            assertThat(request!!.getHeader("Authorization")).isEqualTo("apikey test-dummy-key")
         }
 
         @Test

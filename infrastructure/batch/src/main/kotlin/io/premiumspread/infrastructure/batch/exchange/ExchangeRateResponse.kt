@@ -10,9 +10,9 @@ import java.math.BigDecimal
  *
  * Example (Success):
  * {
- *   "symbol": "EUR/USD",
- *   "rate": 1.12167,
- *   "timestamp": 1792975320
+ *   "symbol": "USD/KRW",
+ *   "rate": 1234.5678,
+ *   "timestamp": 1767225600
  * }
  *
  * Example (Error):
@@ -32,4 +32,9 @@ data class ExchangeRateResponse(
     val status: String? = null,
     val code: Int? = null,
     val message: String? = null,
-)
+) {
+    // 제공자 message 는 자동 toString 으로 로그에 새지 않게 가린다.
+    override fun toString(): String =
+        "ExchangeRateResponse(symbol=$symbol, rate=$rate, timestamp=$timestamp, " +
+            "status=$status, code=$code, message=<redacted>)"
+}
