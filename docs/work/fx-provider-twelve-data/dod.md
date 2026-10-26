@@ -1,8 +1,8 @@
 ---
 feature: 환율 제공자 Twelve Data 교체와 FX 캐시 TTL 여유 (issue #93)
 slug: fx-provider-twelve-data
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-26
 verdict_commit:
 source: docs/work/fx-provider-twelve-data/design.md (DRAFT)
 ---
