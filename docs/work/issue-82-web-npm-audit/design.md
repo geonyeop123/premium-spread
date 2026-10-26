@@ -29,6 +29,7 @@ CI `quality-gate.yml`의 `6. Dependency + security scan` 잡은 `bash ci/run-npm
 | D3 | `shadcn`을 **제거하지 않고 `^4.22.1`로 업그레이드**한다 (③ 합의) | `src/app/globals.css`가 `@import "shadcn/tailwind.css"`를 쓰므로 CLI 전용이 아니라 빌드 의존성이다. 4.22.1도 `./tailwind.css`를 export한다. 이슈 원문이 말한 1.0.0 다운그레이드는 지금 audit이 제안하지 않는다 |
 | D4 | 나머지 전이 의존성은 `npm audit fix`(force 없이)로 lockfile을 갱신한다. 그래도 남으면 기존 `overrides` 항목의 하한을 올리거나 항목을 추가한다 | 저장소가 이미 `overrides`로 전이 의존성을 고정해 왔다 (BKF-04) |
 | D5 | 변경은 `apps/web/package.json`·`apps/web/package-lock.json`에 한정한다. major 업그레이드로 깨진 설정·테스트만 같은 작업에서 고친다 | 이슈 요구사항 |
+| D7 | `eslint-config-next` 16.4.3이 `eslint-plugin-react-hooks`를 7.1.1로 올리며 새 규칙 `react-hooks/set-state-in-effect`가 `src/app/trackings/page.tsx`·`src/app/trackings/[id]/page.tsx`의 effect 내 조회 호출 3곳을 오류로 잡는다. `eslint.config.mjs`에 **이 두 파일 한정** override로 규칙을 끈다 (⑧ 중 사용자 결정) | 소스를 바꾸지 않고 D5의 "깨진 설정 수정" 범위에서 해결한다. overrides로 7.0.1 고정은 `eslint-config-next`의 `^7.1.0` 요구를 어겨 기각했다. 조회 패턴 개선은 별도 이슈로 다룬다 |
 | D6 | high 미만(low/moderate) 잔여 건이 있으면 PR 본문에 패키지·advisory·미해결 사유를 적는다 | 이슈 수용 기준. 게이트는 high 이상만 막는다 |
 
 ## 3. 제외
