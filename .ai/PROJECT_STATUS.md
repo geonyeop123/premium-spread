@@ -84,7 +84,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   저장하고 [runbook](../docs/runbooks/account-pnl-alert.md)에 체크리스트가 있다. 후속 후보:
   - 계정 알림이 켜진 상태의 Job save 예외·interrupt 분기 테스트
   - 평단 1원 미만 변경 시 알림 본문에서 before와 after가 같게 보이는 표시 개선
-- 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, Draft PR 예정, AC8 owner Twelve Data key 실기동 대기):
+- 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, PR #99, AC8 로컬 운영 실기동 관찰 완료 — 주말 동작 미관찰):
   수집 5분·허용 공백 30분(`FxIngestionFreshness`)·캐시 TTL 40분을 테스트와 기동 검증으로 묶었다.
   [설계](../docs/work/fx-provider-twelve-data/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다. 후속 후보:
   - api `TrackingFacade.FX_MAX_AGE` 35분이 제공자 timestamp 기준이라 주말(forex 휴장, timestamp 금요일 마감 고정)에 추적 확정 실패(F1)
@@ -124,6 +124,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 6. Premium symbol-only legacy Redis key는 기본 pair에서만 최대 5초 read window로 호환한다. writer는 v2 key만
    쓰므로 legacy key에 의존하는 외부 consumer가 있다면 cutover 전에 제거해야 한다.
 7. Docker app과 local `bootRun`을 동시에 실행하면 8080/8081 port가 충돌한다.
+8. Quality Gate 6번 잡의 `ci/run-npm-audit.sh`는 실시간 advisory DB를 조회한다. `apps/web` lockfile이 그대로여도
+   새 advisory가 공개되면 다시 실패한다(#82에서 23건 해소). 주기적 의존성 갱신은 아직 도입하지 않았다.
 
 ## 운영 정본
 
