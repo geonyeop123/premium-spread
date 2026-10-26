@@ -108,3 +108,14 @@ source: docs/work/fx-provider-twelve-data/design.md (DRAFT)
 ## 증거 로그
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### Task 0 기준선 (2026-10-26, HEAD d61aa20, merge-base 728e3f1)
+
+| 항목 | 명령 | 결과 |
+|---|---|---|
+| R1 | `./gradlew architectureTest --offline --no-daemon` | exit 0, 35 tests / 0 failures |
+| R2 | `./gradlew test --offline --no-daemon` | exit 0, 1021 tests / 0 failures |
+| R3 | `./gradlew :apps:batch:integrationTest --offline --no-daemon` | exit 0, 105 tests / 0 failures (Docker) |
+| R4 | `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` | exit 0, 51 tests / 0 failures (Docker) |
+| R6 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0, 최신 `V20__add_owner_account_alert_state.sql` |
+| g1~g7 | plan Task 0 Step 1 grep | 예상(Step 2)과 전부 일치 — g1 2줄, g2 3줄, g3 1줄, g4 1줄, g5 2줄, g6 6파일, g7 0줄 |
