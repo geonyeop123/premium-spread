@@ -152,3 +152,15 @@ source: docs/work/fx-provider-twelve-data/design.md (DRAFT)
 커버리지(jacoco XML 합산, 게이트 exit 0): overall 78.27%, domain 95.40%, application 91.05%.
 
 **종합: PASS_WITH_PENDING** — AC7·AC8·R8 대기.
+
+### CI (PR #99, head 0bb8c8b, Quality Gate run 40259122817)
+
+| job | 결과 | 비고 |
+|---|---|---|
+| 1. Compile + architecture | pass | |
+| 2. Unit + coverage | pass | |
+| 3. API integration | pass | |
+| 4. Batch integration | pass | |
+| 5. ktlint + detekt | pass | R8 PASS |
+| 6. Dependency + security scan | fail | `apps/web` npm audit — 기존 이슈 #82, 이 PR 무관(web 변경 없음) |
+| 7. Docker image build | pass | |
