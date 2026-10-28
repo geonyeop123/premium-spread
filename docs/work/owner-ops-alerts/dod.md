@@ -251,3 +251,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - RED: 조건의 `ready` 반환을 임시로 `false && ready` 로 막고 `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertDeliveryWiringTest' --offline --no-daemon` → exit 1, 10 tests 중 6 실패 (a·b·e·g 2건·i). 사유: Job/Scheduler bean 부재·INFO 로그 부재·48조합 기대 불일치 assertion 실패.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (10 tests). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
 - 환경 메모: 중간에 `--offline` 이 build-logic 의존성 해석을 거부(`No cached version ... opentest4j`)해 한 번 `--offline` 없이 `:build-logic:compileJava` 를 실행해 캐시를 복구한 뒤 `--offline` 로 재개했다.
+
+### Task 14 — AC12 E2E 통합
+
+- RED: `OwnerOpsSignalJob` 의 `outbox.enqueue(changed, rows)` 를 `enqueue(changed, emptyList())` 로 임시 변이 후 `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerOpsAlertIntegrationTest' --offline --no-daemon` → BUILD FAILED, 3 tests 중 2 실패 ((a)(b)(c) 시나리오 행 개수 assertion :116, (d) 사전 행 assertion). (e) 는 enqueue 를 직접 호출하므로 통과.
+- 변이 되돌림: `git checkout -- apps/batch/src/main` 후 `git diff --stat -- apps/batch/src/main` 빈 출력.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (3 tests). R11 `./gradlew :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL (109 tests / 실패 0). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
