@@ -129,7 +129,7 @@ OwnerOpsSignalScheduler (30초) → OwnerOpsSignalJob (JobExecutor)
   → 환율 마지막 성공 · 최신 tick · Job 연속 실패 카운터(in-memory) 읽기 port
   → Domain OpsSignals 관측 → OpsIncidentPolicy
   → owner_alert_signal_state(version, V21) + account_pnl_mail outbox (한 트랜잭션, OwnerAlertOutbox port)
-OwnerAlertDeliveryScheduler (15초) → OwnerAlertDeliveryJob → OwnerAlertDispatcher → 메일·Discord
+OwnerAlertDeliveryScheduler (60초) → OwnerAlertDeliveryJob → OwnerAlertDispatcher → 메일·Discord
 ```
 
 환율 수집 지연·시세 수집 끊김·Job 연속 실패를 장애 시작 1회, 6시간 재알림, 복구 1회로 알린다. 채널 bean 과 전달 Job 은 PnL 모니터와 독립이며 같은 outbox 를 PnL 회차 안 디스패처와 함께 비운다(`SKIP LOCKED`·claim token). 운영 절차는 [`docs/runbooks/owner-ops-alert.md`](../../docs/runbooks/owner-ops-alert.md)를 따른다.

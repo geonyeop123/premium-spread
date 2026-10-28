@@ -86,7 +86,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   - 평단 1원 미만 변경 시 알림 본문에서 before와 after가 같게 보이는 표시 개선
 - owner 운영 알림(#91, 구현 완료, AC14 owner 확인 대기): 환율 수집 지연·시세 수집 끊김·Job 연속 실패를 장애 시작 1회,
   6시간 재알림, 복구 1회로 메일 및/또는 Discord 알림. `OwnerOpsSignalJob`(30초)이 상태 `owner_alert_signal_state`(V21)와 outbox 를
-  함께 저장하고 독립 `OwnerAlertDeliveryJob`(15초)이 전달한다. PnL 모니터와 독립이다.
+  함께 저장하고 독립 `OwnerAlertDeliveryJob`(60초)이 전달한다. PnL 모니터와 독립이다.
   [runbook](../docs/runbooks/owner-ops-alert.md)에 Discord 수신 체크리스트가 있다
 - 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, PR #99, AC8 로컬 운영 실기동 관찰 완료 — 주말 동작 미관찰):
   수집 5분·허용 공백 30분(`FxIngestionFreshness`)·캐시 TTL 40분을 테스트와 기동 검증으로 묶었다.

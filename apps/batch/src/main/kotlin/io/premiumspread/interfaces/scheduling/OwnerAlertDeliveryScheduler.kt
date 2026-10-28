@@ -14,7 +14,7 @@ class OwnerAlertDeliveryScheduler(
     private val job: OwnerAlertDeliveryJob,
     @Suppress("unused") private val scheduling: BatchSchedulingProperties,
 ) {
-    @Scheduled(fixedRateString = "\${batch.scheduling.owner-alert-delivery.fixed-rate:15000}")
+    @Scheduled(fixedRateString = "\${batch.scheduling.owner-alert-delivery.fixed-rate:60000}")
     fun deliver() {
         job.run()
     }

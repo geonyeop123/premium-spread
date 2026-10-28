@@ -24,7 +24,8 @@ owner 가 batch 의 지속 장애를 메일·Discord 로 받는 기능이다(#91
 - 복구 뒤 같은 신호가 다시 나빠지면 새 장애다(새 감지 시각 = 새 eventKey, 1번째 알림부터).
 - 상태는 DB(`owner_alert_signal_state`)에 있어 batch 를 재시작해도 6시간 간격과 장애 상태가 이어진다.
 - 알림 하나는 켜진 채널 수만큼 outbox 행(`account_pnl_mail`)이 되고 채널별로 따로 재시도한다. 신호 상태 갱신과 outbox 행 삽입은 한 트랜잭션이다.
-- 전달은 두 곳이 한다: PnL 회차 안 디스패처(PnL 모니터가 켜진 경우)와 독립 전달 Job(15초 주기). 둘이 같은 outbox 를 claim 해도 `SKIP LOCKED` 와 `claim_token` fencing 으로 한 행은 한 디스패처만 집어 이중 발송이 없다. 발송 자체는 at-least-once 다(성공 직후 프로세스 종료 시 드물게 한 번 더).
+- 전달은 두 곳이 한다: PnL 회차 안 디스패처(PnL 모니터가 켜진 경우)와 독립 전달 Job(60초 주기). 둘이 같은 outbox 를 claim 해도 `SKIP LOCKED` 와 `claim_token` fencing 으로 한 행은 한 디스패처만 집어 이중 발송이 없다. 발송 자체는 at-least-once 다(성공 직후 프로세스 종료 시 드물게 한 번 더).
+- 재시도 예산: 재시도 가능한 전달 실패는 다음 회차에 다시 시도하고 행당 5회면 `FAILED` 다. 전달 Job 이 60초 주기이므로 약 4~5분 안에 소진된다(PnL 모니터가 켜져 있으면 두 디스패처가 함께 시도해 약 2~5분).
 
 ## 라우팅
 
@@ -50,7 +51,7 @@ owner 가 batch 의 지속 장애를 메일·Discord 로 받는 기능이다(#91
 | `OWNER_ALERT_OPS_JOB_FAILURE_COUNT` | `owner-alert.ops.job-failure-count` | `3` | Job 연속 실패 횟수(이상) |
 | `OWNER_ALERT_OPS_JOB_FAILURE_DURATION` | `owner-alert.ops.job-failure-duration` | `5m` | 첫 실패 후 경과(이상) |
 | `OWNER_ALERT_OPS_REALERT_INTERVAL` | `owner-alert.ops.realert-interval` | `6h` | 재알림 간격(이상) |
-| `OWNER_ALERT_DELIVERY_FIXED_RATE` | `batch.scheduling.owner-alert-delivery.fixed-rate` | `15s` | 전달 Job 주기 |
+| `OWNER_ALERT_DELIVERY_FIXED_RATE` | `batch.scheduling.owner-alert-delivery.fixed-rate` | `60s` | 전달 Job 주기 |
 | `OWNER_OPS_SIGNAL_FIXED_RATE` | `batch.scheduling.owner-ops-signal.fixed-rate` | `30s` | 운영 신호 Job 주기 |
 | `OWNER_ALERT_DELIVERY_LOCK_KEY`·`_LEASE`·`_TIMEOUT` | `batch.jobs.owner-alert-delivery.*` | `lock:owner-alert:delivery` · `50s` · `40s` | 전달 Job lock |
 | `OWNER_OPS_SIGNAL_LOCK_KEY`·`_LEASE`·`_TIMEOUT` | `batch.jobs.owner-ops-signal.*` | `lock:owner-ops:signal` · `20s` · `10s` | 운영 신호 Job lock |
@@ -73,6 +74,8 @@ recipientMissing  = emailEffective ∧ ACCOUNT_PNL_ALERT_RECIPIENT 공백
 discordMisconfigured = discordRequested ∧ ¬webhookConfigured
 ready             = ¬recipientMissing ∧ ¬discordMisconfigured ∧ (emailEffective ∨ discordEffective)
 ```
+
+`notification.email.enabled` 는 trim 없이 `true`(대소문자 무시)와 비교한다. `" true"` 처럼 공백이 붙으면 꺼진 것으로 본다.
 
 | 구성 요소 | 뜨는 조건 |
 |---|---|
@@ -101,7 +104,7 @@ ready             = ¬recipientMissing ∧ ¬discordMisconfigured ∧ (emailEffe
 - **`Unknown` 대기:** 재시작 직후에는 FX 성공 기록·tick·카운터가 비어 있다. 이 상태는 정상도 장애도 아닌 `Unknown` 이라 DB 에 남은 장애를 닫지도(가짜 복구) 열지도 않는다.
   이 batch 인스턴스의 첫 실행부터 FX 는 30분, 시세는 5분이 지나도 근거가 없으면 그때 장애로 본다. Job 신호에는 대기 규칙이 없다(카운터가 비면 실패가 없었거나 재시작이다).
 - **다중 인스턴스:** 카운터와 tick 은 인스턴스마다 따로 센다. 이 기능은 batch 한 인스턴스를 전제한다.
-- 이 경로의 판정 지연: 운영 신호 Job 주기 30초 + 전달 주기 15초가 더해진다.
+- 이 경로의 판정 지연: 운영 신호 Job 주기 30초 + 전달 주기 60초가 더해진다.
 - `batch.market` 을 바꿔 감시 대상에서 빠진 신호 행은 남는다. 장애 중이었으면 복구 알림이 오지 않는다(아래 "상태 확인과 정리").
 
 ## 이 경로로 알릴 수 없는 장애
@@ -168,6 +171,8 @@ SELECT signal_key, alert_kind, active, incident_started_at FROM owner_alert_sign
 ```sql
 UPDATE owner_alert_signal_state SET active = FALSE, incident_started_at = NULL, last_notified_at = NULL, notify_count = 0, version = version + 1, updated_at = UTC_TIMESTAMP(6) WHERE signal_key = '<key>';
 ```
+
+장애가 열린 Job 을 설정으로 끈 채 재시작하면 그 신호는 `Unknown` 으로 남아 복구 알림이 오지 않는다. 같은 정리 SQL 로 닫는다.
 
 ## 배포
 

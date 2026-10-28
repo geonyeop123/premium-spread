@@ -47,7 +47,7 @@ class OwnerAlertJobConfigTest {
 
         assertThat(jobs.get(JobId.OWNER_ALERT_DELIVERY)).isEqualTo(DELIVERY)
         assertThat(jobs.get(JobId.OWNER_OPS_SIGNAL)).isEqualTo(SIGNAL)
-        assertThat(scheduling.ownerAlertDelivery.fixedRate).isEqualTo(Duration.ofSeconds(15))
+        assertThat(scheduling.ownerAlertDelivery.fixedRate).isEqualTo(Duration.ofSeconds(60))
         assertThat(scheduling.ownerOpsSignal.fixedRate).isEqualTo(Duration.ofSeconds(30))
     }
 

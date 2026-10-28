@@ -41,7 +41,7 @@ batch 가 스스로 "지속되는 운영 장애"를 감지해 owner 에게 Disco
 | K3 | 복구는 종류 하나 `OPS_RECOVERED` 를 더한다 — 라우팅이 종류 단위이고 복구 경로(SILENT·메일 false)가 장애 경로(SOUND)와 달라서다. enum 은 4개 추가(#88 §3.2 목표 표의 3개 + 복구 1개) | §2 |
 | K4 | 관측은 **3상태**(`Down`/`Up`/`Unknown`)다. 재시작 직후처럼 근거가 없으면 `Unknown` 이고, `Unknown` 은 장애를 열지도 닫지도 않는다 — 재시작이 가짜 복구를 만들지 않는다 | §5.2 |
 | K5 | Job 연속 실패 카운터는 `infrastructure:batch` `RedisJobRunRecorderAdapter` 의 **in-memory** 맵이다(Redis 무변경). 재시작하면 0 부터 다시 센다 — 한계로 명시 | §6 |
-| K6 | 전달은 새 `OwnerAlertDeliveryJob`(15초, `OwnerAlertDispatcher` 재사용)이 한다. `AccountPnlMonitorJob` 의 회차 안 전달은 그대로 둔다 — 두 디스패처가 같은 outbox 를 claim 해도 `FOR UPDATE SKIP LOCKED` + `PENDING` 조건 claim 이라 한 행은 한 번만 집힌다 | §7 |
+| K6 | 전달은 새 `OwnerAlertDeliveryJob`(60초, `OwnerAlertDispatcher` 재사용)이 한다. `AccountPnlMonitorJob` 의 회차 안 전달은 그대로 둔다 — 두 디스패처가 같은 outbox 를 claim 해도 `FOR UPDATE SKIP LOCKED` + `PENDING` 조건 claim 이라 한 행은 한 번만 집힌다 | §7 |
 | K7 | 운영 신호 Job 과 전달 Job 자신은 Job 연속 실패 감시 대상에서 **뺀다** — 자기 실패를 자기 경로로 알릴 수 없다. 두 Job 의 실패는 기존 Slack `BATCH_JOB_FAILED` 가 맡는다 | §6.3 |
 | K8 | 운영 알림은 기본 **켜짐**(`OWNER_ALERT_OPS_ENABLED=true`). 쓸 수 있는 owner 채널이 없으면 기동하지 않는다 | §9 · `[ASSUMPTION]` A1 |
 
@@ -443,10 +443,11 @@ fun interface JobFailureStreakReadPort {
 
 | `completed` outcome | 카운터 |
 |---|---|
-| `FAILED` | 없으면 `(1, at, at)`, 있으면 `(n + 1, first, at)` |
+| `FAILED` | 없으면 `(1, at, at)`, 있으면 `(n + 1, first, maxOf(last, at))` |
 | `SUCCEEDED` | 제거 |
 | `SKIPPED` (lock 미획득·취소·version 충돌 등 모든 Skipped) | 무변경 |
 
+- `last` 를 `maxOf(last, at)` 으로 두는 이유: 동시 완료가 역순으로 도착해도 `last` 가 first 보다 앞서거나 되감겨 불변식 예외가 나지 않게 한다.
 - 갱신은 `completed` 의 **첫 문장**이다 — 뒤의 메트릭·Redis 쓰기가 예외를 던져도(Redis 장애 = 대표적인 연속 실패 원인) 카운트가 남는다.
 - `JobExecutor.recordCompletion`(`JobExecutor.kt:186-199`)이 모든 결과 경로(lock 획득 예외·timeout·lock 상실·action 결과)를 `completed` 로 보내므로
   JobExecutor 는 바꾸지 않는다. timeout 은 Failure 로 센다.
@@ -474,7 +475,7 @@ FX 수집 실패는 두 신호가 함께 볼 수 있다: `JOB_CONSECUTIVE_FAILUR
 ### 7.1 흐름
 
 ```
-OwnerAlertDeliveryScheduler(15s) ──run()──▶ OwnerAlertDeliveryJob (JobExecutor: lock:owner-alert:delivery, 50s/40s)
+OwnerAlertDeliveryScheduler(60s) ──run()──▶ OwnerAlertDeliveryJob (JobExecutor: lock:owner-alert:delivery, 50s/40s)
    store.recoverStale(now, 5m) → OwnerAlertDispatcher(store, mail, discord, clock, "owner-alert-delivery:{uuid}").dispatch()
 OwnerOpsSignalScheduler(30s) ──run()──▶ OwnerOpsSignalJob (JobExecutor: lock:owner-ops:signal, 20s/10s)
    관측 → OpsIncidentPolicy → OwnerOpsAlertContent → routing.resolve(kind) → OwnerAlertRows.expand
@@ -605,7 +606,7 @@ class OwnerAlertDeliveryScheduler(
     private val job: OwnerAlertDeliveryJob,
     @Suppress("unused") private val scheduling: BatchSchedulingProperties,
 ) {
-    @Scheduled(fixedRateString = "\${batch.scheduling.owner-alert-delivery.fixed-rate:15000}")
+    @Scheduled(fixedRateString = "\${batch.scheduling.owner-alert-delivery.fixed-rate:60000}")
     fun deliver() { job.run() }
 }
 
@@ -628,7 +629,7 @@ trigger 는 `ExchangeRateScheduler`(`ExchangeRateScheduler.kt:16` — yml 값은
 
 | JobId | lock key | lease | timeout | 주기 | 주기 env |
 |---|---|---|---|---|---|
-| `OWNER_ALERT_DELIVERY` | `lock:owner-alert:delivery` | 50s | 40s | fixed-rate 15s | `OWNER_ALERT_DELIVERY_FIXED_RATE` |
+| `OWNER_ALERT_DELIVERY` | `lock:owner-alert:delivery` | 50s | 40s | fixed-rate 60s | `OWNER_ALERT_DELIVERY_FIXED_RATE` |
 | `OWNER_OPS_SIGNAL` | `lock:owner-ops:signal` | 20s | 10s | fixed-rate 30s | `OWNER_OPS_SIGNAL_FIXED_RATE` |
 
 - 전달 timeout 40s 는 PnL 모니터와 같다(Discord 행당 최대 3s+429 경로, #88 A6). 넘으면 JobExecutor 가 interrupt 하고 남은 행은 PENDING(#88 §5.3).
@@ -648,7 +649,7 @@ trigger 는 `ExchangeRateScheduler`(`ExchangeRateScheduler.kt:16` — yml 값은
 | `OWNER_ALERT_OPS_JOB_FAILURE_COUNT` | `owner-alert.ops.job-failure-count` | `3` | Job 연속 실패 횟수(이상) |
 | `OWNER_ALERT_OPS_JOB_FAILURE_DURATION` | `owner-alert.ops.job-failure-duration` | `5m` | 첫 실패 후 경과(이상) |
 | `OWNER_ALERT_OPS_REALERT_INTERVAL` | `owner-alert.ops.realert-interval` | `6h` | 재알림 간격(이상) |
-| `OWNER_ALERT_DELIVERY_FIXED_RATE` | `batch.scheduling.owner-alert-delivery.fixed-rate` | `15s` | 전달 Job 주기 |
+| `OWNER_ALERT_DELIVERY_FIXED_RATE` | `batch.scheduling.owner-alert-delivery.fixed-rate` | `60s` | 전달 Job 주기 |
 | `OWNER_OPS_SIGNAL_FIXED_RATE` | `batch.scheduling.owner-ops-signal.fixed-rate` | `30s` | 운영 신호 Job 주기 |
 | `OWNER_ALERT_DELIVERY_LOCK_KEY`·`_LEASE`·`_TIMEOUT` | `batch.jobs.owner-alert-delivery.*` | §8.4 | |
 | `OWNER_OPS_SIGNAL_LOCK_KEY`·`_LEASE`·`_TIMEOUT` | `batch.jobs.owner-ops-signal.*` | §8.4 | |
@@ -923,7 +924,7 @@ object OwnerOpsAlertContent {
 |---|---|---|
 | A1 | 운영 알림 기본 켜짐이 owner 의도와 맞다(채널이 준비된 배포에서 기동 즉시 감시 시작). 기존에 Discord/메일 채널을 켜 둔 환경은 배포 후 운영 알림을 받기 시작한다 | ⑦ owner 승인에서 확인 — 아니면 기본값 `false` 로 바꾼다(yml 한 줄·조건 한 줄·runbook) |
 | A5 | PnL 모니터가 꺼졌을 때 `OwnerAlertProperties` 가 바인딩되지 않는다는 것을 단언하는 기존 테스트가 없다 | Task 0 grep. 있으면 멈추고 보고(허용 예외 여부를 Gate 1 에서 정한다) |
-| A7 | 운영 신호 Job 30초 주기·전달 Job 15초 주기가 Redis lock·MySQL 부하에서 무시할 수준이다(회차당 SELECT 1 + 변화 있을 때만 트랜잭션 1, 전달은 빈 claim 1) | 운영 관찰 |
+| A7 | 운영 신호 Job 30초 주기·전달 Job 60초 주기가 Redis lock·MySQL 부하에서 무시할 수준이다(회차당 SELECT 1 + 변화 있을 때만 트랜잭션 1, 전달은 빈 claim 1) | 운영 관찰 |
 
 ### 확인된 사실 (⑥ R1 에서 가정 → 사실)
 
@@ -952,3 +953,5 @@ object OwnerOpsAlertContent {
 | ⑥ R1 | §4.1 — V21·fixture 테이블 옵션, fixture `IF NOT EXISTS` | Minor 7 |
 | ⑥ R1 | §9.2·§13 — 수신 주소 누락은 INFO(오케스트레이터 판정), `discordMisconfigured` 명시 | Minor 8 |
 | ⑥ R1 | §5.1·§9.1·§9.4·§14 — A2·A3·A4·A6 를 확인된 사실로 | 추가 확인 사실 |
+| ⑨ 변경 요청 #1 | §7·§8.4 등 — 독립 전달 Job 주기 15s → 60s (lock 50s·timeout 40s 유지) | dod 변경 요청 #1 |
+| ⑨ fix wave | §6.2 — FAILED 갱신을 `(n+1, first, maxOf(last, at))` 로 명시, 이유 한 줄 | 최종 리뷰 minor |

@@ -48,7 +48,7 @@ batch:
     account-pnl-monitor:
       fixed-rate: ${ACCOUNT_PNL_MONITOR_FIXED_RATE:60000}
     owner-alert-delivery:
-      fixed-rate: ${OWNER_ALERT_DELIVERY_FIXED_RATE:15s}
+      fixed-rate: ${OWNER_ALERT_DELIVERY_FIXED_RATE:60s}
     owner-ops-signal:
       fixed-rate: ${OWNER_OPS_SIGNAL_FIXED_RATE:30s}
     zone: ${AGGREGATION_ZONE:Asia/Seoul}
