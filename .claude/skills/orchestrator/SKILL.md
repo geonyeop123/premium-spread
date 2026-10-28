@@ -50,6 +50,7 @@ byte-identical하게 유지하고, 원본이 갱신되면 통째로 다시 복�
 | `codex-code-review` | ⑨ | Claude 경로(`code-reviewer`)로 수행 — 기본값 |
 | `codex-subagent-driven-development` | ⑧ | `superpowers:subagent-driven-development` — 기본값 |
 | `finalize` | ⑪-c | `.ai/rules/git.md` 규약대로 직접 커밋 + `gh pr create` |
+| 지식 그래프 — `graphify` CLI + `~/graphs/<레포>/graph.json` (저장소 밖 개인 설치) | ①② | 기존 `Explore` 탐색. 둘 다 있으면 사용자 명시 없이 쓴다 — `.claude/skills/orchestrator/references/knowledge-graph.md` |
 
 **codex는 기본값이 아니다.** 사용자가 `--engine codex`처럼 명시하지 않으면 호출하지 않는다.
 
@@ -211,6 +212,7 @@ cd .worktrees/{branch-dashed}
   변경) 낡은 기준으로 분기된다. 이후 ⑨⑩⑪의 diff 대상과 PR target도 모두 같은 `origin/{base}`를 쓴다.
 - 베이스 작업 트리의 미커밋 변경은 건드리지 않는다. 임의 `--force`·reset 금지.
 - worktree 제거는 ⑪ PR 머지 이후에만.
+- **지식 그래프(선택).** `~/graphs/` 가 있으면 `.claude/skills/orchestrator/references/knowledge-graph.md` §1 판정을 하고, worktree 를 이번에 새로 만들었으면(변경 0) §2 최신화까지 한다. `~/graphs/` 가 없으면 아무것도 하지 않고 알리지도 않는다.
 
 ## ② 브레인스토밍
 
@@ -221,6 +223,7 @@ cd .worktrees/{branch-dashed}
 - 내구성 있는 사후 반응이 필요하면 durable notification 경로(claim·fencing·재시도)를 설계에 넣을지
   여기서 판단한다. in-memory event나 `@Async`를 전달 보장으로 쓰지 않는다.
 - 광범위한 코드 탐색은 `Explore`에 위임하고 요약만 받는다.
+- ①에서 지식 그래프를 쓰기로 판정했으면 영향 범위 첫 패스는 `.claude/skills/orchestrator/references/knowledge-graph.md` §4 를 따른다. 본문·로직 판단은 그대로 Read·`Explore` 다. ① 판정이 컨텍스트에 남아 있지 않으면 references §1 을 다시 확인한다. 판정하지 않았으면 기존과 같다.
 
 ## ③ 사용자 합의
 
