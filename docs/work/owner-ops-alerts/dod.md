@@ -137,3 +137,36 @@ V21(AC6)은 신호 상태의 유일한 저장소라 정책(AC3)과 떼어 낼 �
 ## 증거 로그
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### Task 0 — Gate 1 기준선 (HEAD 03dfc4d, merge-base 20a7484, 2026-10-28)
+
+실행 환경: Docker 28.3.2. 모든 gradle 명령 `--offline --no-daemon`. 테스트 수는 각 모듈 `build/test-results/<task>/TEST-*.xml` 의 tests/skipped/failures/errors 합.
+
+| 명령 | exit | 결과 |
+|---|---|---|
+| `./gradlew test architectureTest` (R1·R2) | 0 | BUILD SUCCESSFUL |
+| `./gradlew :infrastructure:common:verifyMigrations` (R5) | 0 | BUILD SUCCESSFUL |
+| `./gradlew :infrastructure:common:integrationTest` (R10) | 0 | BUILD SUCCESSFUL |
+| `./gradlew :apps:batch:integrationTest` (R11) | 0 | BUILD SUCCESSFUL |
+| `./gradlew :apps:api:integrationTest` (R13) | 0 | BUILD SUCCESSFUL |
+
+`test` 태스크 (skipped·failures·errors 전부 0): apps:api 143, apps:batch 205, domain 359, infrastructure:api 31, infrastructure:batch 202, infrastructure:common 45, modules:jpa 7, modules:redis 18, supports:email 12, supports:logging 9, supports:monitoring 16 — 합계 1047.
+`architectureTest` (architecture-tests): 35, 전부 통과.
+`integrationTest` (skipped·failures·errors 전부 0): infrastructure:common 51, apps:batch 106, apps:api 174 — 합계 331.
+
+grep 사실:
+- (g1) 최신 migration `V20__add_owner_account_alert_state.sql` — 예상대로, V21 번호 근거 유지.
+- (g3) `PremiumRealtimeJob.kt:39-40` 이 `market.pair.koreaExchange/koreaQuote`, `foreignExchange/foreignQuote` 쌍으로 조회, `TickerFlushJobs.kt:34` 는 `(exchange, quote)`. 파일명은 `TickerFlushJobs.kt`.
+- (g4) `AccountPnlMonitorAdapterConfiguration` 참조 테스트: `apps/batch/src/test/kotlin/io/premiumspread/config/AccountPnlMonitorWiringTest.kt` 하나.
+- (g5) `OwnerAlertRoutingTest.kt` `containsExactly` 2곳: `:25`(종류 이름 목록), `:35`(key 목록) — R7 대상 줄.
+- (g6) `JobId.entries`·`JobId.values()` 매치 없음.
+- (g7) `AccountPnlFixtureSchemaIntegrationTest.kt:70` `TABLE_NAME = 'account_pnl_mail'`, `:82` `TABLE_NAME = ?`(열 조회). 테이블 목록 단언 아님, `account_pnl_*` 개별 테이블 열 단언 → R9 불필요(무수정).
+- (g8) PnL 꺼짐에서 `OwnerAlertProperties` 미바인딩을 단언하는 테스트 없음. `AccountPnlMonitorWiringTest.kt:767` 은 켜진 경우의 `getBean`, `OwnerAlertPropertiesTest` 는 별도 바인딩 테스트. 예상대로, A5 유지.
+- (g10) `OWNER_ALERT_DISCORD_ENABLED` 언급: `docs/runbooks/account-pnl-alert.md` 만 (`.env.example`·`deploy`·`docker` 에는 없음).
+- (g11) `account_pnl_monitor` 언급: `.ai/PROJECT_STATUS.md:83,103,105`, `.ai/architecture/ARCHITECTURE_DESIGN.md:114,120`, `docs/runbooks/account-pnl-alert.md:213,389,497`. job tag `job=account_pnl_monitor` 는 runbook `:389`.
+- (g12) `@Scheduled(fixedRateString = "${batch.scheduling.<name>.fixed-rate:<ms>}")` 패턴, `interfaces/scheduling` 8개 Scheduler (예: `AccountPnlMonitorScheduler.kt:14` account-pnl-monitor, 60000).
+- (g13) `JobExecutorTest.kt:39` `JobExecutor(lock, recorder, alert, clock)` 하나.
+- (g14) 6줄 발견 — `:89` 만 R8 대상(`assertNoBeans`), 나머지 5줄(`:584`·`:607`·`:629`·`:630`·`:644`)은 무수정 유지 대상(controller 판정, ledger). 5줄은 PnL 켜짐 + 해당 채널 미준비 시나리오(SMTP 꺼짐, owner 메일 꺼짐, webhook 공백, 채널 없음)의 부재 단언이라 bean 이동 뒤에도 무수정으로 통과해야 하는 회귀 증거. 브리프 예상(`:89` 한 줄)과의 차이를 기록한 것이며 dod 기준 본문은 바꾸지 않는다.
+- (g15) `infrastructure/common/src/integrationTest` 에 `CommonInfrastructureAutoConfiguration` 을 쓰는 기존 통합 테스트 없음 → AC7-i 는 신규 패턴.
+
+R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R3 행에 적힌 경로 그대로 — `domain/src/test/.../accountpnl/**`, `domain/src/test/.../owneralert/{DiscordMessageTest,OwnerAccountAlertKindTest}.kt`, `apps/batch/src/test/kotlin/io/premiumspread/application/**`, `apps/batch/src/test/.../config/OwnerAlertYamlContractTest.kt`, `apps/batch/src/integrationTest/.../application/job/{AccountPnlAlertDurabilityIntegrationTest,OwnerAlertDeliveryIntegrationTest,OwnerAccountAlertIntegrationTest}.kt`, `infrastructure/batch/src/test/.../{notification,owneralert,exchange,job}/**`, `infrastructure/common/src/integrationTest/.../migration/{V19,V20}*`, `infrastructure/common/src/integrationTest/.../accountpnl/JdbcAccountPnlAlertStoreIntegrationTest.kt`. 제외(허용 예외): R7 `OwnerAlertRoutingTest.kt`, R8 `AccountPnlMonitorWiringTest.kt`, R9 해당 없음.
