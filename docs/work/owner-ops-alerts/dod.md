@@ -220,3 +220,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` (R10) → BUILD SUCCESSFUL (exit 0).
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
 - AC7-i 는 `ApplicationContextRunner` + 실제 MySQL DataSource + DataSource/JdbcTemplate/TransactionManager auto-configuration + `CommonInfrastructureAutoConfiguration` + 고정 `Clock` bean 으로 구성했고 다른 bean 은 필요 없었다.
+
+### Task 9 — AC5 Job 연속 실패 카운터
+
+- RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.job.*' --offline --no-daemon` → exit 1, 10 tests 중 5 실패 (a·b·c·d·f). 사유: stub `findFailureStreak = null`, 카운터 미갱신. (e) 는 SUCCEEDED 뒤 null 을 보므로 stub 에서도 통과한다.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0). 기존 job 패키지 테스트 무수정 통과.
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).

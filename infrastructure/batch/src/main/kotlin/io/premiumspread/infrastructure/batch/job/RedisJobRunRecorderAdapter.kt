@@ -2,6 +2,8 @@ package io.premiumspread.infrastructure.batch.job
 
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import io.premiumspread.domain.job.JobFailureStreak
+import io.premiumspread.domain.job.JobFailureStreakReadPort
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.job.JobRunOutcome
@@ -21,10 +23,12 @@ class RedisJobRunRecorderAdapter(
     private val meterRegistry: MeterRegistry,
     private val clock: Clock = Clock.systemUTC(),
 ) : JobRunRecorder,
-    JobLastSuccessReadPort {
+    JobLastSuccessReadPort,
+    JobFailureStreakReadPort {
     private val log = LoggerFactory.getLogger(javaClass)
     private val startedAt = ConcurrentHashMap<String, Instant>()
     private val lastSuccessAt = ConcurrentHashMap<String, AtomicLong>()
+    private val failureStreaks = ConcurrentHashMap<JobId, JobFailureStreak>()
 
     /**
      * 이 프로세스가 기록한 마지막 성공 시각. `batch:last_run:*` Redis 키는 TTL 이 짧아(BATCH_HEALTH)
@@ -32,6 +36,28 @@ class RedisJobRunRecorderAdapter(
      */
     override fun findLastSuccess(jobId: JobId): Instant? =
         lastSuccessAt[jobId.tag]?.let { Instant.ofEpochMilli(it.get()) }
+
+    /** 이 프로세스의 연속 실패. 재시작하면 비어 있다 (owner-ops-alerts design §6.2 K5). */
+    override fun findFailureStreak(jobId: JobId): JobFailureStreak? = failureStreaks[jobId]
+
+    /** FAILED 는 +1, SUCCEEDED 는 제거, SKIPPED 는 무변경. 뒤의 메트릭·Redis 쓰기 예외와 무관하게 반영되도록 먼저 호출한다. */
+    private fun recordFailureStreak(jobId: JobId, outcome: JobRunOutcome, at: Instant) {
+        when (outcome) {
+            JobRunOutcome.FAILED -> failureStreaks.compute(jobId) { _, current ->
+                if (current == null) {
+                    JobFailureStreak(jobId, 1, at, at)
+                } else {
+                    // 완료 시각이 뒤섞여 도착해도 last >= first 불변식을 지킨다.
+                    current.copy(
+                        consecutiveFailures = current.consecutiveFailures + 1,
+                        lastFailureAt = maxOf(current.lastFailureAt, at),
+                    )
+                }
+            }
+            JobRunOutcome.SUCCEEDED -> failureStreaks.remove(jobId)
+            JobRunOutcome.SKIPPED -> Unit
+        }
+    }
 
     override fun started(jobId: JobId, runId: String, at: Instant) {
         startedAt[runId] = at
@@ -44,6 +70,7 @@ class RedisJobRunRecorderAdapter(
         at: Instant,
         detail: String?,
     ) {
+        recordFailureStreak(jobId, outcome, at)
         meterRegistry.counter(
             "batch.job.run",
             "job",
