@@ -3,7 +3,7 @@
 - slug: `owner-ops-alerts` · base `origin/dev` `20a7484`(Task 0 확인) · branch `feat/issue-91-owner-ops-alerts`
 - 입력: issue #91 · ③ 사용자 합의(아래 §0.1) · `docs/work/owner-alert-channel/design.md`(#88, 라우팅 §3·outbox §4·전달 §5·연결 경로 §9) ·
   `docs/work/owner-account-alerts/*`(#89) · `.ai/rules/{architecture,batch,testing,naming}.md`
-- 상태: DRAFT — ⑥ R1 REQUEST_CHANGES 9건 반영(§15)
+- 상태: IMPLEMENTED — ⑩ 검증 완료, owner 확인 대기(AC13 runbook 검토·AC14 Discord 수신). 스펙 리뷰 반영과 구현 중 변경은 §15 참조
 
 ## 0. 요약
 

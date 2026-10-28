@@ -3,7 +3,7 @@ feature: owner 운영 알림 — 환율 수집 지연·시세 수집 끊김·Job
 slug: owner-ops-alerts
 status: FROZEN
 frozen_at: 2026-10-28
-verdict_commit:
+verdict_commit: bdb09c1
 source: docs/work/owner-ops-alerts/design.md (DRAFT)
 ---
 

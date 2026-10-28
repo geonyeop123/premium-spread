@@ -83,7 +83,7 @@ in-memory 카운터를 `JobFailureStreakReadPort` 로 읽는다. 새 `OwnerOpsSi
 
 **Files:** 없음 (dod `## 증거 로그` 에 append)
 
-- [ ] **Step 1:** 기준선 실행·기록.
+- [x] **Step 1:** 기준선 실행·기록.
   ```bash
   git rev-parse --short HEAD && git merge-base HEAD origin/dev | cut -c1-7                    # base 20a7484 확인
   ./gradlew test architectureTest --offline --no-daemon                                     # R1·R2 — 테스트 수 기록(build/test-results XML 집계)
@@ -105,12 +105,12 @@ in-memory 카운터를 `JobFailureStreakReadPort` 로 읽는다. 새 `OwnerOpsSi
   grep -rn "doesNotHaveBean(" --include=*.kt apps/batch/src/test infrastructure/batch/src/test | grep -E "EmailSenderAdapter|OwnerAlertRouting|OwnerAlertDiscordSender|DiscordWebhookSenderAdapter"  # (g14) R8 — 채널 bean 부재 단언 위치
   grep -rln "CommonInfrastructureAutoConfiguration" --include=*.kt infrastructure/common/src/integrationTest   # (g15) AC7-i — auto-configuration 을 띄우는 기존 통합 테스트 패턴
   ```
-- [ ] **Step 2: 예상 결과.** merge-base `20a7484`. gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지). (g1) `V20__add_owner_account_alert_state.sql`.
+- [x] **Step 2: 예상 결과.** merge-base `20a7484`. gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지). (g1) `V20__add_owner_account_alert_state.sql`.
   (g3) `BatchMarket` 의 korea/foreign 두 쌍으로 조회. (g4) `AccountPnlMonitorWiringTest.kt` 하나. (g5) `containsExactly` 2곳. (g6) `when` 외 개수 단언 없음.
   (g8) PnL 꺼짐에서 `OwnerAlertProperties` 미바인딩을 단언하는 테스트 없음. (g14) `AccountPnlMonitorWiringTest.kt:89` 한 줄(같은 파일의 `assertNoBeans()` 안)뿐.
   **다르면 멈추고 보고한다** — (g1) 이 V20 이 아니면 V21 번호·dod AC6, (g4)/(g14) 가 다른 파일·줄을 보이면 dod R8 범위를 Gate 1 에서 다시 정한다, (g7) 결과로 R9 필요 여부 확정,
   (g8) 이 다르면 design §9.3·A5 를 다시 정한다. (g5)·(g7)·(g10)·(g11)·(g12)·(g13)·(g14)·(g15) 결과와 R3 의 정확한 경로 목록을 증거 로그에 남긴다.
-- [ ] **Step 3: Commit** — `docs: owner 운영 알림 Gate 1 기준선 기록` (dod 증거 로그만)
+- [x] **Step 3: Commit** — `docs: owner 운영 알림 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: `OwnerAlertKind` 4종과 yml routes (AC1)
 
@@ -157,10 +157,10 @@ key 기대 목록 끝에 `"fx-ingestion-delayed", "market-stream-down", "job-con
 - `메일과 Discord 를 모두 쓰면 기본 경로` / `Discord 가 꺼져 있으면 네 종류 모두 메일만` — `OwnerAlertRouting(OwnerAlertChannels(true, true))`·`EMAIL_ONLY` → `(true, null)` (AC1-c)
 - `복구는 무음이고 메일이 없다` — `OPS_RECOVERED` both 채널 해석 `(false, OPS/SILENT)`
 
-- [ ] **Step 1:** enum 값 4개를 **stub 경로** `OwnerAlertRoute(email = true, discord = null)` 로 추가, 허용 예외 수정, yml routes 4블록, 새 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → RED(기본 경로·both 해석·복구 단언 실패. key·`EMAIL_ONLY` 는 stub 에서도 초록일 수 있다). 증거 로그 AC1.
-- [ ] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS(`OwnerAlertPropertiesTest`·`OwnerAlertYamlContractTest` 무수정 통과 포함). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 운영 알림 종류 네 개와 기본 경로`
+- [x] **Step 1:** enum 값 4개를 **stub 경로** `OwnerAlertRoute(email = true, discord = null)` 로 추가, 허용 예외 수정, yml routes 4블록, 새 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → RED(기본 경로·both 해석·복구 단언 실패. key·`EMAIL_ONLY` 는 stub 에서도 초록일 수 있다). 증거 로그 AC1.
+- [x] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS(`OwnerAlertPropertiesTest`·`OwnerAlertYamlContractTest` 무수정 통과 포함). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 운영 알림 종류 네 개와 기본 경로`
 
 ### Task 2: `JobId` 2종·연속 실패 port·JobConfig·주기 (AC10)
 
@@ -209,7 +209,7 @@ fun interface JobFailureStreakReadPort {
         JobId.OWNER_OPS_SIGNAL -> ownerOpsSignal
 
 // BatchSchedulingProperties — zone 앞에 필드 2개
-    @field:Valid val ownerAlertDelivery: FixedRate = FixedRate(Duration.ofSeconds(15)),
+    @field:Valid val ownerAlertDelivery: FixedRate = FixedRate(Duration.ofSeconds(15)), // (⑨ 변경 요청 #1 로 60s)
     @field:Valid val ownerOpsSignal: FixedRate = FixedRate(Duration.ofSeconds(30)),
 ```
 
@@ -234,10 +234,10 @@ yml (전문): `batch.scheduling` 의 `account-pnl-monitor` 블록 뒤
 - `두 provider 는 모든 JobId 에서 같은 값` — `JobId.entries.forEach { BatchJobProperties().get(it) == DefaultJobConfigProvider.get(it) }` (AC10-a·c)
 - `yml 의 jobs 와 scheduling 값` — `application.yml` 을 `Binder` 로 읽어 두 LockSpec·주기 `15s`/`30s` (AC10-b)
 
-- [ ] **Step 1:** 전문대로 추가하되 **stub** 으로 두 `JobConfig`(Default·Properties 모두)의 lease/timeout 을 `5s`/`3s` 로 둔다. 테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertJobConfigTest' --offline --no-daemon` → RED(기본값 단언 실패). 증거 로그 AC10.
-- [ ] **Step 3:** 값을 전문으로. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 운영 알림 Job 식별자와 lock·주기 설정`
+- [x] **Step 1:** 전문대로 추가하되 **stub** 으로 두 `JobConfig`(Default·Properties 모두)의 lease/timeout 을 `5s`/`3s` 로 둔다. 테스트 작성.
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertJobConfigTest' --offline --no-daemon` → RED(기본값 단언 실패). 증거 로그 AC10.
+- [x] **Step 3:** 값을 전문으로. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 운영 알림 Job 식별자와 lock·주기 설정`
 
 ### Task 3: 범용 enqueue port 와 신호 상태 타입 (AC3-g)
 
@@ -309,10 +309,10 @@ interface OwnerAlertOutbox {
 - `version 음수 거부`, `initial 은 incident null·version 0·active false`
 - `incident 불변식` — `notifyCount = 0`, `lastNotifiedAt = startedAt − 1ms` 거부, `lastNotifiedAt = startedAt` 허용
 
-- [ ] **Step 1:** 타입을 **stub**(init 블록 비움)으로 작성, 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.OwnerAlertSignalStateTest' --offline --no-daemon` → RED(거부 단언 실패). 증거 로그 AC3.
-- [ ] **Step 3:** init 을 전문으로. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 알림 범용 enqueue port 와 신호 상태 타입`
+- [x] **Step 1:** 타입을 **stub**(init 블록 비움)으로 작성, 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.OwnerAlertSignalStateTest' --offline --no-daemon` → RED(거부 단언 실패). 증거 로그 AC3.
+- [x] **Step 3:** init 을 전문으로. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 알림 범용 enqueue port 와 신호 상태 타입`
 
 ### Task 4: 운영 신호와 3상태 관측 (AC2)
 
@@ -394,10 +394,10 @@ object OpsSignals {
 - `설정 기본값과 거부` — 기본값 4개, 네 거부 입력의 메시지 전문 (AC2-e)
 - `JobFailureStreak 불변식` — `consecutiveFailures = 0`, `lastFailureAt < firstFailureAt` 거부 (AC2-f)
 
-- [ ] **Step 1:** 타입은 전문, `OpsSignals` 세 함수는 **stub**(항상 `Unknown`), key 는 실제 식. 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OpsSignalsTest' --offline --no-daemon` → RED(Up/Down 단언 실패. key·설정·불변식은 초록). 증거 로그 AC2.
-- [ ] **Step 3:** design §5.2 표대로 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 운영 신호 모델과 3상태 관측 함수`
+- [x] **Step 1:** 타입은 전문, `OpsSignals` 세 함수는 **stub**(항상 `Unknown`), key 는 실제 식. 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OpsSignalsTest' --offline --no-daemon` → RED(Up/Down 단언 실패. key·설정·불변식은 초록). 증거 로그 AC2.
+- [x] **Step 3:** design §5.2 표대로 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 운영 신호 모델과 3상태 관측 함수`
 
 ### Task 5: 장애 정책 (AC3)
 
@@ -465,10 +465,10 @@ object OpsIncidentPolicy {
 - `signalKey 불일치 거부` (AC3-f)
 - `notice kind` — Alert 는 신호 종류, Recovered 는 `OPS_RECOVERED`
 
-- [ ] **Step 1:** **stub** `decide` = `OpsIncidentDecision(null, null)`. 테스트 작성.
-- [ ] **Step 2:** dod AC3 명령 → RED(T1·T3·T5·재발생 단언 실패. T2·T4·T6·불일치는 초록일 수 있다). 증거 로그 AC3.
-- [ ] **Step 3:** 전이표대로 구현. dod AC3 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 운영 장애 정책 — 첫 알림·6시간 재알림·복구`
+- [x] **Step 1:** **stub** `decide` = `OpsIncidentDecision(null, null)`. 테스트 작성.
+- [x] **Step 2:** dod AC3 명령 → RED(T1·T3·T5·재발생 단언 실패. T2·T4·T6·불일치는 초록일 수 있다). 증거 로그 AC3.
+- [x] **Step 3:** 전이표대로 구현. dod AC3 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 운영 장애 정책 — 첫 알림·6시간 재알림·복구`
 
 ### Task 6: 알림 본문 (AC4)
 
@@ -512,10 +512,10 @@ object OwnerOpsAlertContent {
 - 금지 문자열 — 10개 결과 문자열 모두에 `example.test`·`/api/webhooks/`·`@`·`http` 없음 (AC4-e)
 - mail 결과의 `channel == EMAIL`, `discordRoute == null`
 
-- [ ] **Step 1:** **stub** — `eventKey`·`threshold`·`elapsed` 는 실제 식, `mail = AccountPnlMail(eventKey, "x", "")`, `discord = DiscordMessage("x", "", 0)`. 테스트 작성(golden 은 design §10.2 로 손으로 작성).
-- [ ] **Step 2:** dod AC4 명령 → RED(golden 10건 실패. eventKey·표기·금지 문자열은 초록). 증거 로그 AC4.
-- [ ] **Step 3:** 템플릿 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 운영 알림 메일·Discord 본문`
+- [x] **Step 1:** **stub** — `eventKey`·`threshold`·`elapsed` 는 실제 식, `mail = AccountPnlMail(eventKey, "x", "")`, `discord = DiscordMessage("x", "", 0)`. 테스트 작성(golden 은 design §10.2 로 손으로 작성).
+- [x] **Step 2:** dod AC4 명령 → RED(golden 10건 실패. eventKey·표기·금지 문자열은 초록). 증거 로그 AC4.
+- [x] **Step 3:** 템플릿 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 운영 알림 메일·Discord 본문`
 
 ### Task 7: V21 migration (AC6)
 
@@ -557,10 +557,10 @@ batch fixture(`batch-schema.sql`)는 위 DDL 과 열·제약·테이블 옵션�
 - `V20 에서 V21 로 올려도 기존 행이 그대로다` — V20 까지 적용 후 `account_pnl_monitor_state`·`account_pnl_mail` 행 INSERT → latest → 값 동일, 새 테이블 0행 (AC6-b)
 - `CHECK 가 어긋난 행을 거부한다` — dod AC6-c 4건 각각 예외 (AC6-c)
 
-- [ ] **Step 1:** 테스트 작성(파일 없음 상태).
-- [ ] **Step 2:** dod AC6 명령 → RED(버전·열 부재 assertion 실패 — Flyway 는 V20 까지 정상 적용되므로 테스트는 실행된다). 증거 로그 AC6.
-- [ ] **Step 3:** V21·fixture 작성. dod AC6 명령 → PASS. `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS, `./gradlew :apps:batch:integrationTest --offline --no-daemon` → PASS(fixture 스키마 테스트 포함, R9 필요 시 허용 예외만). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 알림 신호 상태 테이블 V21`
+- [x] **Step 1:** 테스트 작성(파일 없음 상태).
+- [x] **Step 2:** dod AC6 명령 → RED(버전·열 부재 assertion 실패 — Flyway 는 V20 까지 정상 적용되므로 테스트는 실행된다). 증거 로그 AC6.
+- [x] **Step 3:** V21·fixture 작성. dod AC6 명령 → PASS. `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS, `./gradlew :apps:batch:integrationTest --offline --no-daemon` → PASS(fixture 스키마 테스트 포함, R9 필요 시 허용 예외만). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 알림 신호 상태 테이블 V21`
 
 ### Task 8: `JdbcOwnerAlertOutbox` 와 outbox INSERT 단일 소유자 (AC7)
 
@@ -617,10 +617,10 @@ SQL 요건 (컬럼 물리명 = design §4.1):
 (i) 는 Task 0 (g15) 의 기존 패턴대로 `ApplicationContextRunner` 에 Testcontainers DataSource + JDBC·트랜잭션 auto-configuration + `CommonInfrastructureAutoConfiguration` 을 올려
 `getBeansOfType(OwnerAlertOutbox::class.java)` 가 1개이고 `JdbcOwnerAlertOutbox` 임을 단언.
 
-- [ ] **Step 1:** `JdbcOwnerAlertOutbox` 를 **stub**(`loadSignals = emptyMap()`, `enqueue = true` 무기록)으로 만들되 `@Import` 는 아직 추가하지 않는다. `OwnerAlertOutboxRows` 추출은 실제로. 테스트 작성.
-- [ ] **Step 2:** dod AC7 명령 → RED(새 테스트의 기록·읽기 단언 실패, (i) bean 0개 단언 실패. 기존 `JdbcAccountPnlAlertStoreIntegrationTest` 는 추출 뒤에도 초록이어야 한다 — 빨간색이면 추출이 동작을 바꾼 것이므로 멈춘다). 증거 로그 AC7.
-- [ ] **Step 3:** 구현과 `@Import` 추가. dod AC7 명령 → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon`(R10) → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 알림 범용 enqueue JDBC 구현`
+- [x] **Step 1:** `JdbcOwnerAlertOutbox` 를 **stub**(`loadSignals = emptyMap()`, `enqueue = true` 무기록)으로 만들되 `@Import` 는 아직 추가하지 않는다. `OwnerAlertOutboxRows` 추출은 실제로. 테스트 작성.
+- [x] **Step 2:** dod AC7 명령 → RED(새 테스트의 기록·읽기 단언 실패, (i) bean 0개 단언 실패. 기존 `JdbcAccountPnlAlertStoreIntegrationTest` 는 추출 뒤에도 초록이어야 한다 — 빨간색이면 추출이 동작을 바꾼 것이므로 멈춘다). 증거 로그 AC7.
+- [x] **Step 3:** 구현과 `@Import` 추가. dod AC7 명령 → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon`(R10) → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 알림 범용 enqueue JDBC 구현`
 
 ### Task 9: Job 연속 실패 카운터 (AC5)
 
@@ -649,10 +649,10 @@ bean 등록은 기존 `@Import(RedisJobRunRecorderAdapter::class)`(`BatchJobSupp
 **테스트가 재는 것** (`RedisJobRunRecorderFailureStreakTest`, `SimpleMeterRegistry` + MockK `StringRedisTemplate`): dod AC5 (a)~(f).
 (e) 는 FAILED 1회 뒤 `opsForValue().set` 이 `RuntimeException` 을 던지게 하고 `completed(SUCCEEDED)` 가 던진 뒤에도 streak 이 null. (f) 는 가상 스레드 100개가 같은 Job `completed(FAILED)` → `consecutiveFailures == 100`.
 
-- [ ] **Step 1:** **stub** `findFailureStreak = null`, 카운터 미갱신. 테스트 작성.
-- [ ] **Step 2:** dod AC5 명령 → RED. 증거 로그 AC5.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS(기존 `infrastructure/batch/.../job` 테스트 무수정 통과). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: batch Job 연속 실패 카운터`
+- [x] **Step 1:** **stub** `findFailureStreak = null`, 카운터 미갱신. 테스트 작성.
+- [x] **Step 2:** dod AC5 명령 → RED. 증거 로그 AC5.
+- [x] **Step 3:** 구현. 같은 명령 → PASS(기존 `infrastructure/batch/.../job` 테스트 무수정 통과). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: batch Job 연속 실패 카운터`
 
 ### Task 10: 채널 bean 을 PnL 모니터 구성에서 분리 (AC11-a·b·c·d·f·h·j, AC15)
 
@@ -715,10 +715,10 @@ class OwnerAlertChannelConfiguration {
   R8 로 부재 단언을 뺀 시나리오(`:98-101` 플래그 false, `:103-108` 의 계정 key 4개 각각 누락, `:337-398` 의 PnL 꺼짐 시나리오들과 같은 property)에서 `AccountPnlMonitorJob`·계정 adapter 3개는 없고
   `AccountPnlEmailSenderAdapter`·`OwnerAlertRouting` 은 있다. `account-pnl-monitor.recipient=` 이면 채널 bean 도 없다. `batch.scheduling.enabled=false` 면 채널 bean 도 없다.
 
-- [ ] **Step 1:** `OwnerAlertChannelConfiguration` 을 위 클래스 조건·`@EnableConfigurationProperties` 만 있고 **bean 이 없는 stub** 으로, `OwnerAlertChannelReadyCondition` 은 전문으로 만든다(아직 import 에 넣지 않는다). 두 새 테스트를 작성.
-- [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfigurationTest' :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertChannelIndependenceWiringTest' --offline --no-daemon` → RED(채널 bean 존재 assertion 실패). 증거 로그 AC11·AC15.
-- [ ] **Step 3:** bean 3개 이동, `@Import` 추가, 허용 예외(R8) 적용. 같은 명령 → PASS. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `refactor: owner 알림 채널 bean 을 PnL 모니터 구성에서 분리`
+- [x] **Step 1:** `OwnerAlertChannelConfiguration` 을 위 클래스 조건·`@EnableConfigurationProperties` 만 있고 **bean 이 없는 stub** 으로, `OwnerAlertChannelReadyCondition` 은 전문으로 만든다(아직 import 에 넣지 않는다). 두 새 테스트를 작성.
+- [x] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfigurationTest' :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertChannelIndependenceWiringTest' --offline --no-daemon` → RED(채널 bean 존재 assertion 실패). 증거 로그 AC11·AC15.
+- [x] **Step 3:** bean 3개 이동, `@Import` 추가, 허용 예외(R8) 적용. 같은 명령 → PASS. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `refactor: owner 알림 채널 bean 을 PnL 모니터 구성에서 분리`
 
 ### Task 11: 독립 전달 Job (AC9)
 
@@ -753,10 +753,10 @@ class OwnerAlertDeliveryJob(
 **테스트가 재는 것** (`OwnerAlertDeliveryJobTest`, #88 `FakeOwnerAlertStore`·`FakeMailSender`·`FakeDiscordSender`·`MutableClock` **무수정 재사용**, executor 는 Task 0 (g13) 의 기존 구성): dod AC9 (a)~(e) 각각.
 (b) 는 PENDING 12행 → 1회차 claim 10·발송 10, 2회차 2. (a) 는 `recoverStale` 호출 인자 `(now, 5m)` 와 호출 순서(claim 보다 먼저).
 
-- [ ] **Step 1:** **stub** `run = executor.execute(jobConfigs.get(JobId.OWNER_ALERT_DELIVERY)) { JobResult.Success }`. 테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDeliveryJobTest' --offline --no-daemon` → RED. 증거 로그 AC9.
-- [ ] **Step 3:** 구현. dod AC9 명령 → PASS(디스패처·PnL Job 테스트 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 알림 독립 전달 Job`
+- [x] **Step 1:** **stub** `run = executor.execute(jobConfigs.get(JobId.OWNER_ALERT_DELIVERY)) { JobResult.Success }`. 테스트 작성.
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDeliveryJobTest' --offline --no-daemon` → RED. 증거 로그 AC9.
+- [x] **Step 3:** 구현. dod AC9 명령 → PASS(디스패처·PnL Job 테스트 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 알림 독립 전달 Job`
 
 ### Task 12: 운영 신호 Job (AC8)
 
@@ -812,10 +812,10 @@ class OwnerOpsSignalJob(
 (i) 저장 전 interrupt 는 마지막 관측 fake 가 호출될 때 `Thread.currentThread().interrupt()` 를 건다. (j) 는 `OutputCaptureExtension` 으로 로그에 `example.test`·`owner@`·주입한 관측 예외 메시지 문자열이 없음.
 (k) 는 tick fake 가 `RuntimeException(InterruptedException())` 을 던지게 하고 action 을 executor 없이 직접 부르는 경로(또는 executor 결과가 `Failure` 이고 원인이 그 예외)로 재전파·interrupt 플래그 true·enqueue 0회를 확인한다 — 테스트 끝에 `Thread.interrupted()` 로 플래그를 지운다.
 
-- [ ] **Step 1:** **stub** `run = executor.execute(jobConfigs.get(JobId.OWNER_OPS_SIGNAL)) { JobResult.Success }`. fake·테스트 작성.
-- [ ] **Step 2:** dod AC8 명령 → RED(행·상태·분기·재전파 단언 실패. (a) 는 초록일 수 있다). 증거 로그 AC8.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 운영 신호 Job`
+- [x] **Step 1:** **stub** `run = executor.execute(jobConfigs.get(JobId.OWNER_OPS_SIGNAL)) { JobResult.Success }`. fake·테스트 작성.
+- [x] **Step 2:** dod AC8 명령 → RED(행·상태·분기·재전파 단언 실패. (a) 는 초록일 수 있다). 증거 로그 AC8.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 운영 신호 Job`
 
 ### Task 13: 앱 배선·기동 조건·Scheduler (AC11)
 
@@ -938,10 +938,10 @@ dod AC11 (a)~(g)·(i) 각각((h) 는 Task 10 의 infra 테스트가 잰다).
 - (i) 는 email 요청(빈 값/true/false) × SMTP(true/false) × 수신 주소(있음/없음) × Discord 요청(true/false) × webhook(있음/없음) 48조합에서 `OwnerAlertDeliveryJob` bean 존재 여부 == 기대표(design §9.2 `ready` 규칙을 테스트 안 표로 적는다 — infra 함수는 `internal`). SMTP true 조합은 runner 에 `EmailSender` fake 를 둔다.
 - (g) 는 `owner-alert.ops.market-stale-after=7m`·`job-failure-count=4`·`job-failure-duration=10m`·`realert-interval=3h` 에서 bean `OwnerOpsAlertProperties.toSettings() == OpsAlertSettings(7m, 4, 10m, 3h)`, 그리고 `realert-interval=0s` 는 기동 실패이고 원인 체인에 `realertInterval must be positive.`.
 
-- [ ] **Step 1:** 조건 2개를 **stub**(항상 false)으로, 나머지 전문. 테스트 작성.
-- [ ] **Step 2:** dod AC11 명령 → RED((a)(b)(e)(g) bean 존재·로그 단언 실패). 증거 로그 AC11.
-- [ ] **Step 3:** 조건 구현. dod AC11 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS(앱 main 이 infra 를 import 하지 않음 포함).
-- [ ] **Step 4: Commit** — `feat: owner 운영 알림 앱 배선과 Scheduler`
+- [x] **Step 1:** 조건 2개를 **stub**(항상 false)으로, 나머지 전문. 테스트 작성.
+- [x] **Step 2:** dod AC11 명령 → RED((a)(b)(e)(g) bean 존재·로그 단언 실패). 증거 로그 AC11.
+- [x] **Step 3:** 조건 구현. dod AC11 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS(앱 main 이 infra 를 import 하지 않음 포함).
+- [x] **Step 4: Commit** — `feat: owner 운영 알림 앱 배선과 Scheduler`
 
 ### Task 14: E2E 통합 (AC12)
 
@@ -953,10 +953,10 @@ fake `JobLastSuccessReadPort`·`JobFailureStreakReadPort`·`LatestMarketTickRead
 - (d) 장애 상태에서 새 `OwnerOpsSignalJob` 인스턴스 + FX 성공 기록 null → 29분 동안 30초 간격 회차 → `account_pnl_mail` 행 수 불변, 상태 행 `active = 1`.
 - (e) PENDING EMAIL 6행을 `JdbcOwnerAlertOutbox.enqueue(emptyList(), rows)` 로 넣고 → 전달 Job 의 `run()` 과 owner `account-pnl-monitor:e2e` 의 `OwnerAlertDispatcher.dispatch()` 를 두 스레드에서 동시에 → 기록용 sender 의 eventKey 별 호출 수가 모두 1, 6행 모두 `SENT`.
 
-- [ ] **Step 1:** 테스트 작성.
-- [ ] **Step 2:** RED — 변이: `OwnerOpsSignalJob` 의 `enqueue` 호출에서 `rows` 대신 `emptyList()` 를 넘긴다. dod AC12 명령 → (a) 행 부재 assertion 실패. 증거 로그 AC12. 변이를 되돌리고 `git diff --stat -- apps/batch/src/main` 빈 출력 확인.
-- [ ] **Step 3:** dod AC12 명령 → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon`(R11) → PASS.
-- [ ] **Step 4: Commit** — `test: owner 운영 알림 E2E — 재알림·복구·재시작·동시 전달`
+- [x] **Step 1:** 테스트 작성.
+- [x] **Step 2:** RED — 변이: `OwnerOpsSignalJob` 의 `enqueue` 호출에서 `rows` 대신 `emptyList()` 를 넘긴다. dod AC12 명령 → (a) 행 부재 assertion 실패. 증거 로그 AC12. 변이를 되돌리고 `git diff --stat -- apps/batch/src/main` 빈 출력 확인.
+- [x] **Step 3:** dod AC12 명령 → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon`(R11) → PASS.
+- [x] **Step 4: Commit** — `test: owner 운영 알림 E2E — 재알림·복구·재시작·동시 전달`
 
 ### Task 15: 문서 (AC13)
 
@@ -973,15 +973,15 @@ Task 0 (g10)·(g11) 이 찾은 파일
 - `ARCHITECTURE_DESIGN.md`: `### 실계정 순손익 알림` 절 뒤에 운영 알림 흐름 한 단락.
 - `PROJECT_STATUS.md`: `:13` `Flyway V1~V21`, migration 표 V21 행, 기능 상태 한 항목(AC14 owner 확인 대기 명시).
 
-- [ ] **Step 1:** 작성.
-- [ ] **Step 2:** `bash docs/check-documentation.sh` → exit 0. 증거 로그 AC13.
-- [ ] **Step 3: Commit** — `docs: owner 운영 알림 runbook·아키텍처·상태 문서`
+- [x] **Step 1:** 작성.
+- [x] **Step 2:** `bash docs/check-documentation.sh` → exit 0. 증거 로그 AC13.
+- [x] **Step 3: Commit** — `docs: owner 운영 알림 runbook·아키텍처·상태 문서`
 
 ### Task 16: 최종 검증 (⑩)
 
 **Files:** 없음 (dod 증거 로그)
 
-- [ ] **Step 1:** dod 회귀 방어선 R1·R2·R4·R5·R10·R11·R12·R13·R15 명령과 AC1~AC13·AC15 검증 명령을 각각 실행해 exit code·테스트 수를 기록한다. Task 0 대비 테스트 수 증가를 적는다.
-- [ ] **Step 2:** 경계면 대조 — V21 SQL ↔ `batch-schema.sql` ↔ `JdbcOwnerAlertOutbox` SQL 컬럼, yml env ↔ runbook env 표, routes 기본값 ↔ runbook 라우팅 표, JobConfig ↔ yml jobs ↔ runbook.
-- [ ] **Step 3:** R3·R5·R6·R7·R8·R9 diff 를 실행해 사람 판정용 출력으로 남긴다(R8 은 dod 의 두 종류 diff 외 줄이 없는지). ktlint·detekt 는 CI(R14).
-- [ ] **Step 4:** dod 판정 블록을 표에서 세어 출력한다(AC13 T3 기록 제출, AC14 T4 → `AWAITING_HUMAN`).
+- [x] **Step 1:** dod 회귀 방어선 R1·R2·R4·R5·R10·R11·R12·R13·R15 명령과 AC1~AC13·AC15 검증 명령을 각각 실행해 exit code·테스트 수를 기록한다. Task 0 대비 테스트 수 증가를 적는다.
+- [x] **Step 2:** 경계면 대조 — V21 SQL ↔ `batch-schema.sql` ↔ `JdbcOwnerAlertOutbox` SQL 컬럼, yml env ↔ runbook env 표, routes 기본값 ↔ runbook 라우팅 표, JobConfig ↔ yml jobs ↔ runbook.
+- [x] **Step 3:** R3·R5·R6·R7·R8·R9 diff 를 실행해 사람 판정용 출력으로 남긴다(R8 은 dod 의 두 종류 diff 외 줄이 없는지). ktlint·detekt 는 CI(R14).
+- [x] **Step 4:** dod 판정 블록을 표에서 세어 출력한다(AC13 T3 기록 제출, AC14 T4 → `AWAITING_HUMAN`).
