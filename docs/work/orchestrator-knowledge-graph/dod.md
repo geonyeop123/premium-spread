@@ -52,6 +52,7 @@ source: 요구 U1–U4 (`docs/work/orchestrator-knowledge-graph/design.md` §3),
 | R1 | `./gradlew harnessCheckTest` | exit 0 |
 | R2 | `bash docs/check-documentation.sh` | exit 0 |
 | R3 | `git diff --quiet 20a7484 -- CLAUDE.md .claude/agents docs/check-harness.sh docs/test-check-harness.sh` | exit 0 |
+| R4 | `grep -c $'\r$' docs/harness-changelog.md` — 이 파일의 CRLF 규약 유지(⑥ ISSUE-1) | `15` (기준선 14 + 새 행 1) |
 
 ## 증거 로그
 

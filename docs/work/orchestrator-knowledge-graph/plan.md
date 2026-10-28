@@ -37,7 +37,7 @@
 ## Task 2 — 편집 4 (references) + 편집 5 (변경 이력) + 커밋
 
 - [ ] 블록 4 → `.claude/skills/orchestrator/references/knowledge-graph.md` (sha `5369caf6…`).
-- [ ] 블록 5 → `docs/harness-changelog.md` 헤더 구분선 다음 줄.
+- [ ] 블록 5 → `docs/harness-changelog.md` 헤더 구분선 다음 줄. **이 파일은 CRLF 다** — 새 행도 `\r\n` 으로 끝낸다(`grep -c $'\r$'` 14 → 15).
 - [ ] `./gradlew harnessCheck harnessCheckTest` exit 0 · `bash docs/check-documentation.sh` exit 0.
 - [ ] 커밋: `chore: orchestrator 에 선택 지식 그래프 경로 추가` + 한글 bullet 본문 (`.ai/rules/git.md`, Co-Authored-By 없음).
 

@@ -19,7 +19,7 @@
 
 ## 1. 무엇을 왜 바꾸는가
 
-② 의 영향 범위 파악은 지금 `Explore` fan-out 이 전부다(`SKILL.md:115`·`:128` "사전 탐색 위임 원칙", `:223`).
+② 의 영향 범위 파악은 지금 `Explore` fan-out 이 전부다(`SKILL.md:115` 모델 라우팅 표의 `Explore` 행 · `:128` "사전 탐색 위임 원칙" · `:223`).
 저장소 밖 `~/graphs/<레포>/` 에 코드 지식 그래프를 두고 `graphify` CLI 를 쓰는 개발자는 "이 심볼을 누가 쓰는가 ·
 어떤 테스트가 import 하는가" 를 `파일:L라인` 근거와 함께 한 번에 받는다. 이 저장소의 그래프는
 `~/graphs/premium-spread/` 에 2026-10-28 처음 만들었다(BUILT_FROM = `20a7484`). 그 사용법을 orchestrator 의 **선택 경로**로 적는다.
@@ -39,7 +39,7 @@
 
 ## 4. 설계 판단 (A)
 
-- **A1. references 를 전체 경로로 표기.** `docs/check-harness.sh` 축 1 은 `docs/ .ai/ .claude/ ci/ config/ http/ gradle/ docker/` 접두 백틱 토큰만 실재 검사한다(`:46`). 전체 경로여야 파일 삭제·이동이 게이트에 걸린다.
+- **A1. references 를 전체 경로로 표기.** `docs/check-harness.sh` 축 1 은 `docs/ .ai/ .claude/ ci/ config/ http/ gradle/ docker/`·`apps/ modules/ …` 등 소유 접두 백틱 토큰만 실재 검사한다(`:45-50`). 전체 경로여야 파일 삭제·이동이 게이트에 걸린다.
 - **A2. 2 단계 판정.** `SKILL.md` 는 `~/graphs/` 존재만 본다 — 없으면 references 를 읽지도 않는다. 미설치자에게 늘어나는 행동은 디렉터리 확인 1 회.
 - **A3. `refresh.sh` 의 base 인자는 `origin/{base}`.** 이 저장소 ① 은 로컬 `{base}` 가 아니라 `origin/{base}` 에서 분기한다(`SKILL.md:205-210`). `refresh.sh` 는 둘째 인자를 `merge-base --is-ancestor HEAD "$BASE"` 에 넘기므로 `origin/{base}` 가 맞다. 로컬 `dev` 는 stale 할 수 있다. §3 오래됨 비교도 같은 ref 를 쓴다. **aic-api 문면과 다른 유일한 지점이다.**
 - **A4. references 는 축 1·2 스캔 대상이 아니다.** `check_refs`·`check_frontmatter` 는 `.claude/skills/*/SKILL.md` 만 본다(`docs/check-harness.sh:229-233`, `:279-283`). "SKILL.md 없는 스킬 디렉터리" 검사(`:360`)는 `.claude/skills/*/` 최상위만 보므로 `references/` 하위 디렉터리는 걸리지 않는다. frontmatter 없이 둔다.
@@ -170,7 +170,7 @@ GRAPHIFY_OUT=~/graphs/<레포> graphify explain <테이블명>
 
 | 본다 | 못 본다 |
 |---|---|
-| references 전체 경로 3 곳의 실재(축 1) · `SKILL.md` frontmatter(축 2) · ⓪·⑤·⑪-d 필수 절(축 3) · `docs/harness-changelog.md` 헤더 | references 본문의 정확성 · 그래프 없는 환경에서의 행동 — dod AC 의 grep 과 사람 검토(T4)가 본다 |
+| references 전체 경로 3 곳의 실재(축 1) · `SKILL.md` frontmatter(축 2) · ⓪·⑤·⑥·⑪-d 필수 절과 ⓪→① 순서·`CLAUDE.md` `## 하네스`(축 3) · `docs/harness-changelog.md` 헤더 | references 본문의 정확성 · 그래프 없는 환경에서의 행동 — dod AC 의 grep 과 사람 검토(T4)가 본다 |
 
 ## 8. 구현 순서
 
