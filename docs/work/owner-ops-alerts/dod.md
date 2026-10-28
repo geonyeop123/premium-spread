@@ -212,3 +212,11 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 
 - RED: `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V21OwnerAlertSignalStateMigrationIntegrationTest' --offline --no-daemon` → exit 1, 3 tests 모두 실패 (버전 21 부재 assertion, 새 테이블 부재 SQL 오류, CHECK 예외 미발생). 사유: V21 파일 없음.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0, 3 tests 통과). `verifyMigrations` PASS, `:apps:batch:integrationTest` PASS(R9 불필요), `test architectureTest` PASS.
+
+### Task 8 — AC7 JdbcOwnerAlertOutbox 와 outbox INSERT 단일 소유자
+
+- RED: `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.*' --offline --no-daemon` → exit 1, 34 tests 중 9 실패 (a·b·c·d·e·f·f2·g·i). 사유: `JdbcOwnerAlertOutbox` 가 `loadSignals = emptyMap()`/`enqueue = true` 무기록 stub 이고 `@Import` 미등록이라 기록·읽기·예외 단언과 bean 1개 단언이 실패. `OwnerAlertOutboxRows` 추출 뒤에도 기존 `JdbcAccountPnlAlertStoreIntegrationTest` 는 초록.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0). 구현과 `CommonJdbcConfiguration` `@Import` 추가.
+- `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` (R10) → BUILD SUCCESSFUL (exit 0).
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+- AC7-i 는 `ApplicationContextRunner` + 실제 MySQL DataSource + DataSource/JdbcTemplate/TransactionManager auto-configuration + `CommonInfrastructureAutoConfiguration` + 고정 `Clock` bean 으로 구성했고 다른 bean 은 필요 없었다.

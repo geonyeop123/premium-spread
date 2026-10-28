@@ -75,12 +75,12 @@ class JdbcAccountPnlAlertStore(
     override fun save(expectedVersion: Long, state: AccountPnlMonitorState, mails: List<AccountPnlMail>): Boolean {
         require(expectedVersion >= 0) { "expectedVersion must not be negative." }
         validateState(state.account)
-        mails.forEach(::validate)
+        mails.forEach(OwnerAlertOutboxRows::validate)
         return saveTransaction.execute {
             val stateWritten = if (expectedVersion == 0L) insertState(state) else updateState(expectedVersion, state)
             if (stateWritten) {
                 val createdAt = clock.instant()
-                mails.forEach { insertMail(it, createdAt) }
+                mails.forEach { OwnerAlertOutboxRows.insert(jdbcTemplate, it, createdAt) }
             }
             stateWritten
         } == true
@@ -291,41 +291,6 @@ class JdbcAccountPnlAlertStore(
         }
     }
 
-    /**
-     * 같은 (event_key, channel) 은 무시한다. 다른 제약 위반·오류는 그대로 던진다(INSERT IGNORE 를 쓰지 않는 이유).
-     * channel·discord_target·discord_push 는 enum 이름으로 저장한다.
-     */
-    private fun insertMail(mail: AccountPnlMail, createdAt: Instant) {
-        jdbcTemplate.update(
-            """
-            INSERT INTO account_pnl_mail (
-                event_key, channel, subject, body, discord_target, discord_push, discord_color,
-                status, attempt_count, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?)
-            ON DUPLICATE KEY UPDATE id = id
-            """.trimIndent(),
-            mail.eventKey,
-            mail.channel.name,
-            mail.subject,
-            mail.body,
-            mail.discordRoute?.target?.name,
-            mail.discordRoute?.push?.name,
-            mail.discordColor,
-            createdAt.toSqlTimestamp(),
-        )
-    }
-
-    private fun validate(mail: AccountPnlMail) {
-        require(mail.eventKey.isNotBlank()) { "eventKey must not be blank." }
-        require(mail.eventKey.length <= MAX_EVENT_KEY_LENGTH) {
-            "eventKey must be at most $MAX_EVENT_KEY_LENGTH characters."
-        }
-        require(mail.subject.length <= MAX_SUBJECT_LENGTH) { "subject must be at most $MAX_SUBJECT_LENGTH characters." }
-        require(mail.body.toByteArray(Charsets.UTF_8).size <= MAX_BODY_BYTES) {
-            "body must be at most $MAX_BODY_BYTES bytes in UTF-8."
-        }
-    }
-
     private fun PendingMail.claimBy(owner: String, now: Instant): ClaimedAccountPnlMail {
         val claimToken = UUID.randomUUID().toString()
         val affected = jdbcTemplate.update(
@@ -424,9 +389,6 @@ class JdbcAccountPnlAlertStore(
     private companion object {
         const val STATE_ID = 1
         const val MAX_OWNER_LENGTH = 64
-        const val MAX_EVENT_KEY_LENGTH = 128
-        const val MAX_SUBJECT_LENGTH = 255
-        const val MAX_BODY_BYTES = 65_535 // MySQL TEXT
         const val MAX_DECIMAL_TEXT_LENGTH = 64 // VARCHAR(64)
         val MAX_BASELINE_PERCENT_EXCLUSIVE: BigDecimal = BigDecimal.TEN.pow(10) // DECIMAL(12,2)
     }
