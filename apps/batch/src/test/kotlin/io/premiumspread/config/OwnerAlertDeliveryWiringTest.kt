@@ -1,5 +1,6 @@
 package io.premiumspread.config
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
 import io.premiumspread.application.common.DefaultJobConfigProvider
 import io.premiumspread.application.common.JobConfigProvider
@@ -14,15 +15,20 @@ import io.premiumspread.domain.batch.BatchMarketProvider
 import io.premiumspread.domain.job.JobFailureStreakReadPort
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.LatestMarketTickReadPort
+import io.premiumspread.domain.market.FxRateReadPort
 import io.premiumspread.domain.owneralert.OwnerAlertChannels
 import io.premiumspread.domain.owneralert.OwnerAlertDiscordSender
 import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import io.premiumspread.domain.ownerops.OpsAlertSettings
 import io.premiumspread.email.EmailSender
+import io.premiumspread.infrastructure.batch.BatchJobSupportConfiguration
+import io.premiumspread.infrastructure.batch.accountpnl.AccountPnlMonitorAdapterConfiguration
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfiguration
+import io.premiumspread.interfaces.scheduling.AccountPnlMonitorScheduler
 import io.premiumspread.interfaces.scheduling.BatchSchedulingProperties
 import io.premiumspread.interfaces.scheduling.OwnerAlertDeliveryScheduler
 import io.premiumspread.interfaces.scheduling.OwnerOpsSignalScheduler
+import io.premiumspread.monitoring.AlertService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -33,6 +39,7 @@ import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.data.redis.core.StringRedisTemplate
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -49,6 +56,10 @@ class OwnerAlertDeliveryWiringTest {
         val configs = buildList {
             add(Stubs::class.java)
             if (withEmailSender) add(EmailStub::class.java)
+            add(BatchJobSupportConfiguration::class.java)
+            add(AccountPnlMonitorAdapterConfiguration::class.java)
+            add(AccountPnlMonitorConfiguration::class.java)
+            add(AccountPnlMonitorScheduler::class.java)
             add(OwnerAlertChannelConfiguration::class.java)
             add(OwnerAlertDeliveryConfiguration::class.java)
             add(OwnerOpsAlertConfiguration::class.java)
@@ -81,6 +92,27 @@ class OwnerAlertDeliveryWiringTest {
             assertThat(ctx).hasSingleBean(OwnerAlertDeliveryScheduler::class.java)
             assertThat(ctx).hasSingleBean(OwnerOpsSignalScheduler::class.java)
             assertThat(ctx).doesNotHaveBean(AccountPnlMonitorJob::class.java)
+        }
+    }
+
+    @Test
+    fun `PnL 켜짐이면 PnL 모니터와 두 Job 과 Scheduler 3개가 각각 하나씩 뜬다`() {
+        runner(withEmailSender = true).withPropertyValues(
+            "notification.email.enabled=true",
+            "account-pnl-monitor.enabled=true",
+            "account-pnl-monitor.recipient=$recipient",
+            "account-pnl-monitor.bithumb.access-key=BITHUMB-ACCESS-SECRET-VALUE",
+            "account-pnl-monitor.bithumb.secret-key=BITHUMB-SECRET-SECRET-VALUE",
+            "account-pnl-monitor.binance.api-key=BINANCE-API-SECRET-VALUE",
+            "account-pnl-monitor.binance.secret-key=BINANCE-SECRET-SECRET-VALUE",
+        ).run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).hasSingleBean(AccountPnlMonitorJob::class.java)
+            assertThat(ctx).hasSingleBean(OwnerAlertDeliveryJob::class.java)
+            assertThat(ctx).hasSingleBean(OwnerOpsSignalJob::class.java)
+            assertThat(ctx).hasSingleBean(AccountPnlMonitorScheduler::class.java)
+            assertThat(ctx).hasSingleBean(OwnerAlertDeliveryScheduler::class.java)
+            assertThat(ctx).hasSingleBean(OwnerOpsSignalScheduler::class.java)
         }
     }
 
@@ -219,6 +251,9 @@ class OwnerAlertDeliveryWiringTest {
                                 assertThat(ctx.getBeansOfType(OwnerAlertDeliveryJob::class.java).isNotEmpty())
                                     .describedAs("combination %s", props)
                                     .isEqualTo(expected)
+                                assertThat(ctx.getBeansOfType(OwnerAlertRouting::class.java).isNotEmpty())
+                                    .describedAs("routing %s", props)
+                                    .isEqualTo(expected)
                             }
                             checked++
                         }
@@ -249,6 +284,14 @@ class OwnerAlertDeliveryWiringTest {
         @Bean fun market(): BatchMarketProvider = mockk(relaxed = true)
 
         @Bean fun outbox(): OwnerAlertOutbox = mockk(relaxed = true)
+
+        @Bean fun fxRateReadPort(): FxRateReadPort = mockk(relaxed = true)
+
+        @Bean fun stringRedisTemplate(): StringRedisTemplate = mockk(relaxed = true)
+
+        @Bean fun meterRegistry(): SimpleMeterRegistry = SimpleMeterRegistry()
+
+        @Bean fun alertService(): AlertService = mockk(relaxed = true)
     }
 
     @Configuration(proxyBeanMethods = false)
