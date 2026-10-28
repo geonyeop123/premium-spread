@@ -272,3 +272,80 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - B (firstRunAt 유지): `OwnerOpsSignalJobTest` 에 시세·FX 대기 테스트 추가. 변이 `compareAndSet(null, now)` → `set(now)` 에서 같은 명령 FAILED 3건(시세 5분·FX 30분 30초·다른 quote) 확인 후 원복(`git diff --stat -- apps/batch/src/main` 빈 출력).
 - F (MarketPair guard): 다른 quote tick 테스트가 guard 전 FAILED(assertion: enqueue 없음 → `single()` 실패), `OwnerOpsSignalJob.latestTick` 추가 후 BUILD SUCCESSFUL.
 - C·D·E·G: KDoc 변경, `RedisJobRunRecorderFailureStreakTest` 역순 FAILED 케이스(기존 `maxOf` 로 통과 — 회귀 방지), `OwnerAlertChannelConfigurationTest` 원인 메시지 단언(검증 강화라 RED 없음), `OpsSignalsTest` Down-before-Up 행, `OwnerOpsAlertContent` requireNotNull. `:domain:test :infrastructure:batch:test :apps:batch:test` BUILD SUCCESSFUL.
+
+### ⑩ 최종 검증 (HEAD bdb09c1, base 20a7484, 2026-10-28)
+
+실행 환경: Docker 가동. 모든 gradle 명령 `--offline --no-daemon`. 테스트 수는 `build/test-results/<task>/TEST-*.xml` 합. `cleanTest`/`cleanIntegrationTest` 후 실행해 UP-TO-DATE 재사용이 아님.
+
+**전체 명령**
+
+| 명령 | exit | 결과 |
+|---|---|---|
+| `./gradlew test architectureTest` (R1·R2) | 0 | unit 1156 / architecture 35, skipped·failures·errors 0 (2m 02s) |
+| `:infrastructure:common:integrationTest` (R10) | 0 | 64 / 실패 0 (6m 52s) |
+| `:apps:api:integrationTest` (R13) | 0 | 174 / 실패 0 (2m 55s) |
+| `:apps:batch:integrationTest` (R11) | 0 | 109 / 실패 0 (1m 52s) |
+| `:infrastructure:common:verifyMigrations` (R5) | 0 | BUILD SUCCESSFUL |
+| `bash docs/check-documentation.sh` (R12) | 0 | documentation check passed (20 files, 15 required paths) |
+| `jacocoTestReport jacocoTestCoverageVerification` (R15) | 0 | overall·domain·application 게이트 통과 |
+
+**Task 0 기준선 대비 테스트 수**
+
+| 구분 | Task 0 | ⑩ | 증가 |
+|---|---|---|---|
+| unit 합계 | 1047 | 1156 | +109 (domain 359→405, apps:batch 205→255, infrastructure:batch 202→215, 그 외 동일) |
+| architectureTest | 35 | 35 | 0 |
+| common IT | 51 | 64 | +13 |
+| batch IT | 106 | 109 | +3 |
+| api IT | 174 | 174 | 0 |
+
+**커버리지 (LINE, jacoco XML 실측; 게이트는 exclusions 적용 후 통과)**: root 집계 78.9% (6708 covered / 1797 missed, 기준 70%), domain 87.8% (1786/249, 기준 85%), application(apps:api+apps:batch, exclusion 미적용 단순 합) 약 95.5% (2836/134 missed, 기준 80%). 최종 증거는 CI artifact.
+
+**AC 명령 (dod 표 그대로)**
+
+| AC | exit | 테스트 수 |
+|---|---|---|
+| AC1 | 0 | domain owneralert.* 29, infra:batch OwnerAlertPropertiesTest 9, apps:batch OwnerAlertYamlContractTest 2 |
+| AC2 | 0 | OpsSignalsTest 10 |
+| AC3 | 0 | domain 16 |
+| AC4 | 0 | domain 15 |
+| AC5 | 0 | infra:batch job.* 11 |
+| AC6 | 0 | common IT 3 |
+| AC7 | 0 | common IT accountpnl.* 34 |
+| AC8 | 0 | apps:batch ownerops.* 21 |
+| AC9 | 0 | apps:batch 88 |
+| AC10 | 0 | 3 |
+| AC11 | 0 | infra:batch owneralert.* 18, apps:batch config.* 87 |
+| AC12 | 0 | batch IT 3 |
+| AC13 | 0 | check-documentation.sh exit 0, runbook `docs/runbooks/owner-ops-alert.md` 존재 (T3 사람 사후 검토) |
+| AC14 | — | T4, owner 확인 대기 (PR 코멘트 앵커 없음) |
+| AC15 | 0 | 6 |
+| R4 | 0 | domain 179, apps:batch 175 |
+
+**R3·R5·R6·R7·R8·R9 diff (사람 판정용)**
+
+- R3: `git diff --name-status --diff-filter=MDR 20a7484 -- '*Test*.kt'` 결과 M 2건뿐 — `OwnerAlertRoutingTest.kt`(R7), `AccountPnlMonitorWiringTest.kt`(R8). 동결 대상 경로의 그 밖 수정·삭제·rename 없음. 같은 범위 비테스트 M: `apps/batch/src/integrationTest/resources/batch-schema.sql`(V21 테이블 추가, 테스트 코드 아님).
+- R5: migration 디렉터리 MDR 빈 출력, V21 추가만(A).
+- R6: `JdbcAccountPnlAlertStore` diff = `mails.forEach(::validate)`→`OwnerAlertOutboxRows::validate`, insertMail 호출→`OwnerAlertOutboxRows.insert`, 메서드·상수 3개 삭제. `OwnerAlertOutboxRows` 의 SQL·검증 메시지·상수 문자열은 원본과 동일(타임스탬프 변환만 `Timestamp.from`).
+- R7: 종류 이름·key `containsExactly` 두 줄 끝에 4개 추가만.
+- R8: 정확히 import 1줄(OwnerAlertChannelConfiguration) + runner 1줄 + `:89` `doesNotHaveBean(AccountPnlEmailSenderAdapter)` 삭제 1줄. 그 외 줄 없음.
+- R9: `AccountPnlFixtureSchemaIntegrationTest.kt` 무수정(해당 없음).
+
+**경계면 대조**
+
+- V21 SQL ↔ `batch-schema.sql` ↔ `JdbcOwnerAlertOutbox` SQL: 8열(signal_key, alert_kind, active, incident_started_at, last_notified_at, notify_count, version, updated_at) 이름·순서 일치, 두 DDL 의 타입·CHECK 동일. INSERT 7 파라미터 + version 리터럴 1.
+- application.yml env ↔ runbook env 표: ops 5개, scheduling 2개, jobs lock 6개, routes 12개 일치 (기본값 true/5m/3/5m/6h/60s/30s/50s·40s/20s·10s 일치).
+- routes 기본값 ↔ runbook 라우팅 표 ↔ `OwnerAlertKind`: 일치 (FX/MARKET: 메일 X·OPS·SOUND, JOB: 메일 O, RECOVERED: 무음).
+- JobConfig ↔ yml jobs ↔ BatchJobProperties ↔ runbook: lock key·lease·timeout 일치. 전달 주기 60s: yml `60s`, `BatchSchedulingProperties` 60s, Scheduler fallback 60000, runbook 60s 일치. 신호 Job 30s/30000 일치.
+
+**미실행·CI 확인**: R14 ktlint·detekt — 로컬 실행 불가, `AWAITING_CI`(UNVERIFIED). 커버리지 최종 증거 CI artifact. 실패·flaky 없음(infrastructure:api `RedisRefreshSessionStoreIntegrationTest` 는 이번 범위 밖 `integrationTest` 미실행, `test` 31 통과).
+
+```
+DoD VERDICT: owner-ops-alerts @ bdb09c1
+  수용기준 표:     15개  (T1 13 · T3 1 · T4 1)
+  T1/T2 자동:      13개 중 13개 PASS
+  T3 기록 제출:    1개 중 1건 (AC13, 사람 사후 검토 대기)
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기 (AC14)
+  변경 요청:       1건
+  => AWAITING_HUMAN
+```
