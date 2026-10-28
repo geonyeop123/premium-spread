@@ -170,3 +170,9 @@ grep 사실:
 - (g15) `infrastructure/common/src/integrationTest` 에 `CommonInfrastructureAutoConfiguration` 을 쓰는 기존 통합 테스트 없음 → AC7-i 는 신규 패턴.
 
 R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R3 행에 적힌 경로 그대로 — `domain/src/test/.../accountpnl/**`, `domain/src/test/.../owneralert/{DiscordMessageTest,OwnerAccountAlertKindTest}.kt`, `apps/batch/src/test/kotlin/io/premiumspread/application/**`, `apps/batch/src/test/.../config/OwnerAlertYamlContractTest.kt`, `apps/batch/src/integrationTest/.../application/job/{AccountPnlAlertDurabilityIntegrationTest,OwnerAlertDeliveryIntegrationTest,OwnerAccountAlertIntegrationTest}.kt`, `infrastructure/batch/src/test/.../{notification,owneralert,exchange,job}/**`, `infrastructure/common/src/integrationTest/.../migration/{V19,V20}*`, `infrastructure/common/src/integrationTest/.../accountpnl/JdbcAccountPnlAlertStoreIntegrationTest.kt`. 제외(허용 예외): R7 `OwnerAlertRoutingTest.kt`, R8 `AccountPnlMonitorWiringTest.kt`, R9 해당 없음.
+
+### Task 1 — AC1 OwnerAlertKind 운영 알림 4종
+
+- RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → exit 1, 29 tests 중 2 실패 (`OwnerOpsAlertKindTest` `운영 알림 네 종류의 기본 경로는 설계 표와 같다`·`복구는 무음이고 메일이 없다`). 사유: stub 경로 `(true, null)` 이 설계 표와 다름 (assertion 실패).
+- GREEN: AC1 명령 (`:domain:test owneralert.*` + `OwnerAlertPropertiesTest` + `OwnerAlertYamlContractTest`) → BUILD SUCCESSFUL (exit 0). `OwnerAlertRoutingTest` 는 R7 예외(기대 목록 2곳 끝에 값 추가)만, 나머지 두 테스트 무수정 통과.
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).

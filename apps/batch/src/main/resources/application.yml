@@ -131,6 +131,22 @@ owner-alert:
       email: ${OWNER_ALERT_UNRECOVERED_REMINDER_EMAIL:}
       discord: ${OWNER_ALERT_UNRECOVERED_REMINDER_DISCORD:}
       push: ${OWNER_ALERT_UNRECOVERED_REMINDER_PUSH:}
+    fx-ingestion-delayed:
+      email: ${OWNER_ALERT_FX_INGESTION_DELAYED_EMAIL:}
+      discord: ${OWNER_ALERT_FX_INGESTION_DELAYED_DISCORD:}
+      push: ${OWNER_ALERT_FX_INGESTION_DELAYED_PUSH:}
+    market-stream-down:
+      email: ${OWNER_ALERT_MARKET_STREAM_DOWN_EMAIL:}
+      discord: ${OWNER_ALERT_MARKET_STREAM_DOWN_DISCORD:}
+      push: ${OWNER_ALERT_MARKET_STREAM_DOWN_PUSH:}
+    job-consecutive-failures:
+      email: ${OWNER_ALERT_JOB_CONSECUTIVE_FAILURES_EMAIL:}
+      discord: ${OWNER_ALERT_JOB_CONSECUTIVE_FAILURES_DISCORD:}
+      push: ${OWNER_ALERT_JOB_CONSECUTIVE_FAILURES_PUSH:}
+    ops-recovered:
+      email: ${OWNER_ALERT_OPS_RECOVERED_EMAIL:}
+      discord: ${OWNER_ALERT_OPS_RECOVERED_DISCORD:}
+      push: ${OWNER_ALERT_OPS_RECOVERED_PUSH:}
 
 # 거래 준비 조건 평가 (design.md D14) — 값의 근거는 수집 계약의 10초 중단 규칙이다.
 trade-preparation:
