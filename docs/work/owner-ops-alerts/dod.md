@@ -226,3 +226,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.job.*' --offline --no-daemon` → exit 1, 10 tests 중 5 실패 (a·b·c·d·f). 사유: stub `findFailureStreak = null`, 카운터 미갱신. (e) 는 SUCCEEDED 뒤 null 을 보므로 stub 에서도 통과한다.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0). 기존 job 패키지 테스트 무수정 통과.
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+
+### Task 10 — AC11·AC15 채널 bean 을 PnL 모니터 구성에서 분리
+
+- RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfigurationTest' :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertChannelIndependenceWiringTest' --offline --no-daemon --continue` → exit 1, infra 5 tests 중 2 실패(PnL 꺼짐 Discord, 메일 채널), apps 4 tests 중 2 실패(플래그 false, 계정 key 누락). 사유: `OwnerAlertChannelConfiguration` 이 bean 없는 stub 이라 sender·라우팅 존재 단언이 AssertionError. 부재·검증 시나리오는 stub 에서도 통과한다.
+- GREEN: 같은 테스트 + `:apps:batch:test --tests 'io.premiumspread.config.*'` → BUILD SUCCESSFUL (exit 0). bean 3개 이동, `@Import` 추가, R8 허용 diff 두 종류만 적용(`:584`·`:607`·`:629`·`:630`·`:644` 부재 단언 무수정 통과).
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
