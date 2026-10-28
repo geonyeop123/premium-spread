@@ -40,6 +40,19 @@ class OwnerAlertChannelIndependenceWiringTest {
         "account-pnl-monitor.binance.secret-key=BINANCE-SECRET-SECRET-VALUE",
     )
 
+    private val manualProps = arrayOf(
+        "notification.email.enabled=true",
+        "account-pnl-monitor.enabled=true",
+        "account-pnl-monitor.recipient=owner@example.test",
+        "account-pnl-monitor.bithumb.access-key=BITHUMB-ACCESS-SECRET-VALUE",
+        "account-pnl-monitor.bithumb.secret-key=BITHUMB-SECRET-SECRET-VALUE",
+        "account-pnl-monitor.binance.mode=manual",
+        "account-pnl-monitor.binance.manual.short-quantity=0.2661",
+        "account-pnl-monitor.binance.manual.entry-price=83549.47",
+        "account-pnl-monitor.binance.manual.entry-fee-usdt=8.91",
+        "account-pnl-monitor.binance.manual.funding-usdt=-3.21",
+    )
+
     private val runner = ApplicationContextRunner()
         .withUserConfiguration(
             Stubs::class.java,
@@ -50,8 +63,11 @@ class OwnerAlertChannelIndependenceWiringTest {
             OwnerAlertChannelConfiguration::class.java,
         )
 
-    private fun ApplicationContextRunner.assertChannelWithoutPnl(vararg props: String) {
-        withPropertyValues(*enabledProps, *props).run { ctx ->
+    private fun ApplicationContextRunner.assertChannelWithoutPnl(vararg props: String) =
+        assertChannelWithoutPnl(enabledProps, *props)
+
+    private fun ApplicationContextRunner.assertChannelWithoutPnl(base: Array<String>, vararg props: String) {
+        withPropertyValues(*base, *props).run { ctx ->
             assertThat(ctx).hasNotFailed()
             assertThat(ctx).doesNotHaveBean(AccountPnlMonitorJob::class.java)
             assertThat(ctx).doesNotHaveBean(AccountPnlMonitorScheduler::class.java)
@@ -73,6 +89,23 @@ class OwnerAlertChannelIndependenceWiringTest {
         listOf("bithumb.access-key", "bithumb.secret-key", "binance.api-key", "binance.secret-key").forEach { key ->
             runner.assertChannelWithoutPnl("account-pnl-monitor.$key=")
         }
+    }
+
+    @Test
+    fun `manual 모드 필수값 하나가 비어도 채널 bean 은 뜬다`() {
+        listOf(
+            "bithumb.access-key",
+            "bithumb.secret-key",
+            "binance.manual.short-quantity",
+            "binance.manual.entry-price",
+        ).forEach { key ->
+            runner.assertChannelWithoutPnl(manualProps, "account-pnl-monitor.$key=")
+        }
+    }
+
+    @Test
+    fun `manual entry-price 가 공백뿐이어도 채널 bean 은 뜬다`() {
+        runner.assertChannelWithoutPnl(manualProps, "account-pnl-monitor.binance.manual.entry-price=   ")
     }
 
     @Test

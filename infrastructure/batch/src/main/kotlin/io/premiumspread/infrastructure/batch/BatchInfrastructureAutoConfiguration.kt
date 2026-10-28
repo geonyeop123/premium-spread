@@ -48,9 +48,9 @@ import io.premiumspread.infrastructure.batch.notification.NotificationDeliveryMe
 import io.premiumspread.infrastructure.batch.notification.NotificationDeliveryStartupValidator
 import io.premiumspread.infrastructure.batch.notification.ObservedNotificationDeliveryPort
 import io.premiumspread.infrastructure.batch.observability.AggregationZoneMetricProperties
-import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfiguration
 import io.premiumspread.infrastructure.batch.observability.AggregationZoneMetrics
 import io.premiumspread.infrastructure.batch.observability.BatchIngestionReadinessHealth
+import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfiguration
 import io.premiumspread.infrastructure.batch.websocket.WebSocketMetrics
 import io.premiumspread.infrastructure.batch.websocket.WebSocketTickerFlushObserver
 import io.premiumspread.infrastructure.batch.websocket.WebSocketStreamProperties

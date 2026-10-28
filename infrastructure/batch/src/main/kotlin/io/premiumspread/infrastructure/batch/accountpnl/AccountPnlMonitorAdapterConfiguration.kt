@@ -89,9 +89,9 @@ class BinanceManualModeCondition : Condition {
 }
 
 /**
- * 실계정 조회 adapter 와 owner 알림 채널(메일·Discord) sender·라우팅. 플래그·credential 이 있고 쓸 수 있는 채널이 하나 이상일 때만
- * 존재한다 — 채널 = [EmailSender bean ∧ 메일 채널 켜짐] ∨ [Discord 켜짐 ∧ webhook 설정] (design §7.2).
- * 이 설정은 `BatchInfrastructureAutoConfiguration` 이 import 하므로 EmailSender 는 (켜졌다면) 이미 등록돼 있다.
+ * 실계정 조회 adapter 만 소유한다. 플래그·credential 이 있고 owner 알림 채널이 준비됐을 때만 존재한다 — 남은
+ * [OwnerAlertChannelAvailableCondition] 은 PnL 모니터가 쓸 수 있는 채널을 요구한다는 뜻이다 (design §7.2).
+ * 채널 sender·라우팅은 `OwnerAlertChannelConfiguration` 이 PnL 과 독립으로 소유한다 (owner-ops-alerts design §9.3).
  *
  * scheduling 이 꺼지면 소비자(Job)가 없으므로 adapter 도 만들지 않는다 (dod AC11). 조건식은 apps:batch 의
  * `ConditionalOnBatchScheduling` 과 같은 키·기본값이다 — infrastructure 는 앱 타입을 import 하지 않는다.
