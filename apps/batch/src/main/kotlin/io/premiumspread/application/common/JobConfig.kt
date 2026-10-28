@@ -86,8 +86,18 @@ object DefaultJobConfigProvider : JobConfigProvider {
             Duration.ofSeconds(40),
         )
 
-        JobId.OWNER_ALERT_DELIVERY -> JobConfig(jobId, "lock:owner-alert:delivery", Duration.ofSeconds(50), Duration.ofSeconds(40))
+        JobId.OWNER_ALERT_DELIVERY -> JobConfig(
+            jobId,
+            "lock:owner-alert:delivery",
+            Duration.ofSeconds(50),
+            Duration.ofSeconds(40),
+        )
 
-        JobId.OWNER_OPS_SIGNAL -> JobConfig(jobId, "lock:owner-ops:signal", Duration.ofSeconds(20), Duration.ofSeconds(10))
+        JobId.OWNER_OPS_SIGNAL -> JobConfig(
+            jobId,
+            "lock:owner-ops:signal",
+            Duration.ofSeconds(20),
+            Duration.ofSeconds(10),
+        )
     }
 }
