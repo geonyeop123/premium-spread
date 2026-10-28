@@ -232,3 +232,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - RED: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfigurationTest' :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertChannelIndependenceWiringTest' --offline --no-daemon --continue` → exit 1, infra 5 tests 중 2 실패(PnL 꺼짐 Discord, 메일 채널), apps 4 tests 중 2 실패(플래그 false, 계정 key 누락). 사유: `OwnerAlertChannelConfiguration` 이 bean 없는 stub 이라 sender·라우팅 존재 단언이 AssertionError. 부재·검증 시나리오는 stub 에서도 통과한다.
 - GREEN: 같은 테스트 + `:apps:batch:test --tests 'io.premiumspread.config.*'` → BUILD SUCCESSFUL (exit 0). bean 3개 이동, `@Import` 추가, R8 허용 diff 두 종류만 적용(`:584`·`:607`·`:629`·`:630`·`:644` 부재 단언 무수정 통과).
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+
+### Task 11 — AC9 독립 전달 Job
+
+- RED: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDeliveryJobTest' --offline --no-daemon` → exit 1, 9 tests 중 8 실패. 사유: `run` 이 `JobResult.Success` 만 돌려주는 stub 이라 recoverStale 호출·claim/발송·Failure 단언이 AssertionError.
+- GREEN: AC9 명령(`owneralert.*` + `job.accountpnl.*`) → BUILD SUCCESSFUL (exit 0). `OwnerAlertDispatcherTest`·`AccountPnlMonitorJob*Test` 무수정 통과.
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
