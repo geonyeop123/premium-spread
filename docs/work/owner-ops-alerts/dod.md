@@ -1,0 +1,133 @@
+---
+feature: owner 운영 알림 — 환율 수집 지연·시세 수집 끊김·Job 연속 실패 + 공용 owner 알림 기반 (issue #91, 상위 #87)
+slug: owner-ops-alerts
+status: DRAFT
+frozen_at:
+verdict_commit:
+source: docs/work/owner-ops-alerts/design.md (DRAFT)
+---
+
+## 범위
+
+**포함**
+
+- `OwnerAlertKind` 4종(`FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED`)과 기본 경로, yml routes 4블록·override env 12개 (design §2)
+- 범용 enqueue port `OwnerAlertOutbox` 와 신호 상태 타입, V21 `owner_alert_signal_state`, `JdbcOwnerAlertOutbox`, outbox INSERT 단일 소유자 추출 (§3·§4)
+- 운영 신호 모델·3상태 관측·장애 정책·렌더러 (`domain.ownerops`, §5·§10)
+- `JobId` 2종, `JobFailureStreakReadPort` 와 in-memory 카운터 (§6)
+- `OwnerAlertDeliveryJob`·`OwnerOpsSignalJob`·Scheduler 2개, JobConfig·BatchJobProperties·BatchSchedulingProperties (§7·§8)
+- 채널 bean 3개를 PnL 모니터 구성에서 `OwnerAlertChannelConfiguration` 으로 이동, 앱 기동 조건·배선, `owner-alert.ops.*` (§9)
+- runbook 신규·갱신, 아키텍처·프로젝트 상태 문서 (§13)
+
+**제외** *(scope creep 차단선)*
+
+- #90 시장 알림 기능, #89 계정 알림 변경
+- 기존 Slack `OperatorAlert` 경로·문구, WebSocket 재연결 로직 변경 (사용자 합의 U5)
+- `AccountPnlMonitorJob` 관측·정책·회차 안 전달, `OwnerAlertDispatcher` 동작 변경
+- outbox 테이블·Domain 행 타입 rename, outbox 메서드의 상위 interface 승격
+- Redis key·TTL·payload, 새 메트릭, 공개 endpoint
+- FX 허용 공백 30분 값 변경, 다중 인스턴스 연속 실패 합산
+- 직전 단위 산출물(`docs/work/owner-alert-channel/**`·`docs/work/owner-account-alerts/**` 등) 수정
+
+## 사용자 합의 (③)
+
+| # | 합의 | design |
+|---|---|---|
+| U1 | 공용 기반(범용 enqueue port·독립 전달 Job·채널 bean 분리)을 #91 에서 만든다. PnL 알림 동작(이중 발송 금지, claim 1건씩, 회차 상한) 무회귀. #90 기능은 만들지 않는다 | §0, §3, §7, §9.3 |
+| U2 | 환율 = 우리 쪽 마지막 FX 수집 성공(없으면 프로세스 첫 실행) 후 30분. 시세 = 거래소별 최신 tick 나이 5분 이상. Job = 연속 Failure 3회 이상 ∧ 첫 실패 후 5분 이상, Skipped 는 세지도 리셋하지도 않음, Success 면 리셋 | §5.2, §6.2 |
+| U3 | 복구: 해소되면 1회, OPS 무음, 메일 false | §2, §5.3 |
+| U4 | 재알림: 지속 중 6시간마다 1회. 복구 뒤 재발생은 새 장애 | §5.3 |
+| U5 | 기존 Slack `OperatorAlert` 는 그대로 | §1.2, §6.3 |
+
+## 기존 gate 조사
+
+> Gate 1 필수. 작성 시점에는 문서·소스만 읽었다. 실행 기준선은 plan Task 0 이 아래 증거 로그에 남긴다.
+
+| 찾아본 것 | 있었나 | 쓸 수 있나 |
+|---|---|---|
+| architecture test | 있다 — root `architectureTest` (모듈 경계·import·bytecode·test isolation·관측 cardinality) | 회귀 방어선 R1. 신규 규칙 없음 |
+| lint 규칙 | 있다 — ktlint·detekt (CI `quality-gate.yml`). 로컬 gradle task 없음 | CI 확인 항목 R14 로만. 로컬 우회 금지 |
+| custom gradle task | 있다 — `architectureTest`, `:infrastructure:common:integrationTest`, `:apps:batch:integrationTest`, `:apps:api:integrationTest`, `:infrastructure:common:verifyMigrations`, `harnessCheck`, `jacocoTestReport`/`jacocoTestCoverageVerification` | 그대로 쓴다 |
+| 문서 검사 | 있다 — `bash docs/check-documentation.sh` (정본 문서·runbook) | AC13 · R12 |
+| 동결·직전 단위 테스트 | 있다 — 실계정 Domain·Job·adapter 테스트, #88 산출(디스패처·Discord adapter·채널 판정·Properties·렌더링·V19·E2E), #89 산출(계정 알림 정책·렌더러·V20·E2E) | R3 무수정 |
+| enum 개수 고정 단언 | 있다 — `OwnerAlertRoutingTest` 의 종류 목록 `containsExactly` 2곳(#89 R7 이후 개수 중립 이름). `OwnerAlertPropertiesTest` 는 `contains` 부분 문자열 | 허용 예외 R7 — 기대 목록 **끝에** 4개 추가만 (Task 0 이 줄 번호 확정) |
+| yml routes = enum 계약 | 있다 — `OwnerAlertYamlContractTest` (yml routes key 집합 = `OwnerAlertKind` key 집합) | AC1 이 무수정 통과로 쓴다 (routes 4블록을 enum 과 같은 커밋에 넣는다) |
+| JobId 전수 사용처 | 있다 — `DefaultJobConfigProvider`·`BatchJobProperties` 의 `when` (컴파일이 강제) | AC10. 그 밖 `JobId.entries` 단언은 Task 0 grep |
+| 채널 bean 구성을 고정하는 wiring 테스트 | 있다 — `AccountPnlMonitorWiringTest`(runner 구성 목록), 그 밖 `AccountPnlMonitorAdapterConfiguration` 을 runner 에 넣는 테스트(Task 0 grep) | 허용 예외 R8 — runner 의 configuration 목록에 `OwnerAlertChannelConfiguration::class` **추가만** |
+| batch fixture 스키마 고정 | 있다 — `AccountPnlFixtureSchemaIntegrationTest` | `account_pnl_*` 두 테이블만 단언하면 무수정(Task 0 확인). 테이블 목록을 단언하면 허용 예외 R9 |
+| migration 경로 테스트 패턴 | 있다 — `V19OwnerAlertChannelMigrationIntegrationTest`·`V20OwnerAccountAlertStateMigrationIntegrationTest` | AC6 이 같은 패턴 |
+| API Flyway 전체 적용 | 있다 — `apps/api` `FlywayOwnershipIntegrationTest` | 회귀 방어선 R13 (V21 까지 적용) |
+| owner 알림 테스트 fake | 있다 — `OwnerAlertTestFakes.kt`(`FakeOwnerAlertStore`·`FakeMailSender`·`FakeDiscordSender`·`MutableClock`) | AC8·AC9 가 **무수정 재사용** |
+| 동시 claim·fencing 통합 테스트 | 있다 — `JdbcAccountPnlAlertStoreIntegrationTest` | R10 회귀 방어선. AC12 가 두 디스패처 동시 회차를 추가로 잰다 |
+
+**결론.** T1 수용기준은 모두 `신규테스트` 또는 `기존`(확장·무수정)으로 덮는다. 새 스크립트 파일은 만들지 않는다.
+검증 명령은 모듈 task 에 `--tests` 필터를 붙인 단일 gradle 호출이다(여러 모듈이면 `:a:test --tests X :b:test --tests Y` 한 줄 — `&&` 조합 없음).
+
+## 수용기준
+
+공통 고정값: zone `Asia/Seoul`, 고정 `Clock`/`Instant`(기준 `2026-10-28T00:00:00Z`), 테스트 URL 은 `https://discord.example.test/...` 또는 MockWebServer(localhost)만,
+수신 주소는 `owner@example.test` 같은 가짜 값. 실제 webhook·API key·주소 금지.
+
+| # | 수용기준 (관찰 가능) | 근거 | 출처 | 티어 | 검증 수단 | 검증 명령 | 통과 조건 |
+|---|---|---|---|---|---|---|---|
+| AC1 | (a) `OwnerAlertKind.entries` 이름이 순서대로 기존 7개 + `FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED`, key 는 `fx-ingestion-delayed`·`market-stream-down`·`job-consecutive-failures`·`ops-recovered`. (b) 기본 경로 = `(false, OPS/SOUND)`·`(false, OPS/SOUND)`·`(true, OPS/SOUND)`·`(false, OPS/SILENT)`. (c) 메일+Discord 채널이면 4종 `resolve` = 기본 경로, `EMAIL_ONLY` 이면 4종 모두 `(true, null)`. (d) `OwnerAlertRoutingTest` 는 허용 예외(R7)만으로, `OwnerAlertPropertiesTest`·`OwnerAlertYamlContractTest` 는 무수정으로 통과 | design §2 | `요구` (#88 design §3.2 목표 표, U3) + 복구 종류 추가는 `추론` (K3) + Discord 꺼짐 메일은 `상위` (#88 D1) | T1 | `신규테스트` `io.premiumspread.domain.owneralert.OwnerOpsAlertKindTest` + `기존` | `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertPropertiesTest' :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertYamlContractTest' --offline --no-daemon` | exit 0 |
+| AC2 | `OpsSignals` 가 design §5.2 판정표 전 행을 낸다: (a) FX — 마지막 성공 `now−30m` → `Up`, `now−30m−1ns` → `Down(since)`, 성공 없음 + `firstRunAt = now−30m` → `Unknown`, `now−30m−1ns` → `Down(null)`. (b) 시세 — tick 나이 `5m−1ms` → `Up`, `5m` → `Down(observedAt)`, 미래 observedAt → `Up`, tick 없음 + `firstRunAt = now−5m` → `Down(null)`, `now−5m+1ms` → `Unknown`. (c) Job — `(3회, 첫 실패 now−5m)` → `Down(first, 3)`, `(3회, now−5m+1ms)`·`(2회, now−1h)` → 마지막 성공 있으면 `Up`·없으면 `Unknown`, streak 없음 + 성공 있음 → `Up`, 둘 다 없음 → `Unknown`. (d) 신호 key 가 `fx-ingestion.usd-krw`·`market-stream.bithumb.btc-krw`·`market-stream.binance.btc-usd`·`job-failures.fx_ingestion` 이고 `alertKind` 매핑이 §5.1 과 같다. (e) `OpsAlertSettings` 기본값 `5m·3·5m·6h`, `marketStaleAfter=0`·`jobFailureCount=0`·`jobFailureDuration=-1s`·`realertInterval=0` 은 design 메시지의 `IllegalArgumentException`. (f) `JobFailureStreak(consecutiveFailures = 0)`·`lastFailureAt < firstFailureAt` 은 `IllegalArgumentException` | design §5.1, §5.2, §6.1 | `요구` (U2 기준값·경계 "이상") + FX `>` 경계는 `추론` (K-FX) + 3상태는 `추론` (K4) | T1 | `신규테스트` `io.premiumspread.domain.ownerops.OpsSignalsTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OpsSignalsTest' --offline --no-daemon` | exit 0 |
+| AC3 | `OpsIncidentPolicy.decide` 가 design §5.3 전이표 T1~T6 대로 `next`·notice 를 낸다: (a) 정상+`Down` → `incident(now, now, 1)`·`Alert(seq 1)`, next.version = current.version. (b) 정상+`Up`/`Unknown` → `(null, null)`. (c) 장애(마지막 알림 `now−6h`)+`Down` → `notifyCount+1`·`lastNotifiedAt=now`·`startedAt` 유지·`Alert(seq n+1)`, `now−6h+1ms` → `(null, null)`. (d) 장애+`Up` → incident null·`Recovered(notifyCount)`, 장애+`Unknown` → `(null, null)`. (e) 복구 다음 회차 `Down` → 새 `startedAt` 의 `Alert(seq 1)`. (f) signalKey 불일치는 `IllegalArgumentException`. (g) `OwnerAlertSignalState`·`OwnerAlertIncident` 불변식(key `Bad Key`·`a:b`·65자·빈 문자열, version −1, notifyCount 0, lastNotified < started) 거부, `initial` 은 incident null·version 0 | design §3.2, §5.3 | `요구` (U3 복구 1회, U4 6시간·새 장애) + 간격 기준(마지막 알림)은 `추론` | T1 | `신규테스트` `io.premiumspread.domain.ownerops.OpsIncidentPolicyTest` + `io.premiumspread.domain.accountpnl.OwnerAlertSignalStateTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OpsIncidentPolicyTest' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertSignalStateTest' --offline --no-daemon` | exit 0 |
+| AC4 | `OwnerOpsAlertContent` 가 design §10.2 템플릿과 같다: (a) 메일 golden(eventKey·제목·본문 전체 `isEqualTo`) — FX 첫 알림(마지막 성공 있음), FX 첫 알림(기록 없음), 시세 빗썸 첫 알림, Job 재알림(seq 2, 4회), 복구(바이낸스 시세, 알림 2회). (b) Discord 같은 시나리오의 제목·설명·색 전체 golden, 색 상수 2개 값 `15105570`·`9807270`. (c) eventKey 가 `owner-ops.{key}.{ms}.alert-{n}`/`.recovered` 이고 `[A-Za-z0-9._-]{1,128}` 에 맞는다. (d) 표기 — `threshold(30m)`=`30분`, `threshold(6h)`=`6시간`, `threshold(90s)`=`90초`, `elapsed(6h0m30s)`=`6시간 0분`, `elapsed(4m59s)`=`4분`. (e) 모든 결과 문자열에 `example.test`·`/api/webhooks/`·`@`·`http` 가 없다 | design §10 | `요구` (알림 본문 금지 값) + 문구 세부는 `추론` | T1 | `신규테스트` `io.premiumspread.domain.ownerops.OwnerOpsAlertContentTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OwnerOpsAlertContentTest' --offline --no-daemon` | exit 0 |
+| AC5 | `RedisJobRunRecorderAdapter.findFailureStreak` 가 (a) FAILED 3회(`t0`,`t1`,`t2`) → `(3, t0, t2)`, (b) 중간 SKIPPED 는 무변경, (c) SUCCEEDED → null, 이어 FAILED → `(1, t, t)`, (d) Job 별로 독립, (e) `StringRedisTemplate` 쓰기가 예외를 던지는 SUCCEEDED `completed` 뒤에도 카운터가 갱신돼 있다, (f) 같은 Job 의 동시 FAILED 100건 → 100, (g) 기존 `infrastructure:batch` job 패키지 테스트 무수정 통과 | design §6.2 | `요구` (U2 Skipped·Success 규칙) + Redis 예외 내성·동시성은 `추론` | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.job.RedisJobRunRecorderFailureStreakTest` + `기존` | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.job.*' --offline --no-daemon` | exit 0 |
+| AC6 | (a) 빈 DB → latest 면 버전 1~21 성공, `owner_alert_signal_state` 열이 design §4.1 순서·타입·nullable 과 같고 PK 는 `signal_key`. (b) V20 스키마에 기존 `account_pnl_*` 행을 넣고 latest → 기존 행 무변경, 새 테이블 0행. (c) CHECK — `active = TRUE` + `incident_started_at` NULL, `active = FALSE` + `notify_count = 1`, `last_notified_at < incident_started_at`, `version = 0` 은 각각 거부. (d) `verifyMigrations` 통과(R5) | design §4.1 | `요구` (V21 별도 상태 테이블) + CHECK 는 `추론` | T1 | `신규테스트` `io.premiumspread.infrastructure.common.migration.V21OwnerAlertSignalStateMigrationIntegrationTest` | `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V21OwnerAlertSignalStateMigrationIntegrationTest' --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC7 | 실제 MySQL 에서 `JdbcOwnerAlertOutbox` 가 (a) 신호 2개(신규 INSERT) + 행 2개 enqueue → true, `loadSignals` 가 version 1·같은 incident 로 읽는다, 행 2개 `PENDING`. (b) version 불일치 신호가 두 번째에 있으면 false 이고 첫 신호·행 모두 미기록. (c) 이미 있는 key 를 version 0 으로 INSERT → false·무기록. (d) `signals = []` + 행 → 행만 들어가고, 같은 (eventKey, channel) 재enqueue 는 행 수 불변. (e) 복구(incident null) 저장 → `active = 0`·NULL·0. (f) 중복 signalKey 입력·256자 subject 행은 `IllegalArgumentException`, DB 무변경. (g) enqueue 한 행을 `JdbcAccountPnlAlertStore.claim` 이 집고 `markSent` 한다. (h) 기존 `JdbcAccountPnlAlertStoreIntegrationTest` 무수정 통과 | design §3.2, §4.3, §4.4 | `요구` (U1 범용 enqueue port) + 원자성·롤백은 `추론` (K1) | T1 | `신규테스트` `io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcOwnerAlertOutboxIntegrationTest` + `기존` | `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.*' --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC8 | `OwnerOpsSignalJob`(fake port·`FakeOwnerAlertOutbox`·#88 `MutableClock`, routing 메일+Discord) 이 (a) 모두 정상이면 enqueue 0회·`Success`. (b) FX 마지막 성공 `now−31m` → `FX_INGESTION_DELAYED` DISCORD(OPS/SOUND) 1행(메일 없음), 신호 상태 1개. (c) 바이낸스 tick 6분 전 → `MARKET_STREAM_DOWN` 1행, 조회한 `(exchange, quote)` 가 `BatchMarket` 의 korea·foreign 두 쌍뿐. (d) `PREMIUM_REALTIME` streak `(3, now−5m)` → `JOB_CONSECUTIVE_FAILURES` EMAIL+DISCORD 2행, `OWNER_OPS_SIGNAL`·`OWNER_ALERT_DELIVERY` streak 은 행을 만들지 않는다. (e) 6시간 뒤 같은 장애 → `alert-2` 행, 그 사이 회차는 enqueue 0회. (f) 해소 → `OPS_RECOVERED` DISCORD(OPS/SILENT) 1행. (g) 새 Job 인스턴스(재시작) + 저장된 FX 장애 + 성공 기록 없음 → 30분 동안 enqueue 0회(가짜 복구 없음). (h) `EMAIL_ONLY` → 4종 모두 EMAIL 1행. (i) JobResult — `loadSignals` 예외 `Failure`, `enqueue` 예외 `Failure`, false `Skipped("state-version-conflict")`, 저장 전 interrupt `Skipped("cancelled")`, 한 신호 관측 예외 → 나머지 신호는 판정되고 `Success`. (j) 로그에 `example.test`·수신 주소·관측 예외 메시지가 없다 | design §5, §8 | `요구` (U2·U3·U4, PnL 과 독립) + 감시 제외·관측 예외 처리는 `추론` (K7) | T1 | `신규테스트` `io.premiumspread.application.job.ownerops.OwnerOpsSignalJobTest` | `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.ownerops.*' --offline --no-daemon` | exit 0 |
+| AC9 | `OwnerAlertDeliveryJob`(#88 `FakeOwnerAlertStore`·`FakeMailSender`·`FakeDiscordSender` 재사용) 이 (a) 매 회차 `recoverStale(now, 5m)` 을 claim 보다 먼저 부르고, 예외면 claim 없이 `Failure`. (b) PENDING 행 12개면 한 회차에 claim 10회·발송 10건, 다음 회차에 2건. (c) claim owner 가 `owner-alert-delivery:` 로 시작하고 64자 이하. (d) Discord 재시도 가능 실패 행은 회차 끝 `markAttemptFailed`, 영구 실패는 즉시 `markFailed`, 결과 `Success`. (e) `claim` 예외 → `Failure`. (f) 기존 `OwnerAlertDispatcherTest`·`AccountPnlMonitorJob*Test` 무수정 통과 | design §7 | `요구` (U1 독립 전달 Job·claim 1건씩·회차 상한) | T1 | `신규테스트` `io.premiumspread.application.notification.owneralert.OwnerAlertDeliveryJobTest` + `기존` | `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.*' --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` | exit 0 |
+| AC10 | (a) `DefaultJobConfigProvider` 와 `BatchJobProperties()` 기본값이 `OWNER_ALERT_DELIVERY = (lock:owner-alert:delivery, 50s, 40s)`, `OWNER_OPS_SIGNAL = (lock:owner-ops:signal, 20s, 10s)` 이고 두 provider 가 모든 `JobId` 에서 같은 값을 낸다. (b) yml 을 읽은 `BatchJobProperties`·`BatchSchedulingProperties` 가 같은 값과 주기 15s·30s 를 낸다. (c) 기존 14개 JobId 값 무변경 | design §8.4 | `요구` (lock·lease·timeout 지정) + 값은 `추론` | T1 | `신규테스트` `io.premiumspread.config.OwnerAlertJobConfigTest` | `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertJobConfigTest' --offline --no-daemon` | exit 0 |
+| AC11 | `ApplicationContextRunner` 에서 (a) **PnL 모니터 꺼짐** + Discord 켜짐·ops webhook → bean `OwnerAlertRouting`(channels `(false, true)`)·`OwnerAlertDiscordSender`·`OwnerAlertDeliveryJob`·`OwnerOpsSignalJob`·Scheduler 2개 존재, `AccountPnlMonitorJob` 없음. (b) PnL 꺼짐 + SMTP·`EmailSender`·수신 주소 → 메일 sender 존재·Discord 없음·두 Job 존재. (c) 채널 없음(로컬 기본) → 두 Job·채널 bean 없음, WARN 없음. (d) Discord 켜짐 + webhook 없음 → 없음 + WARN `owner-alert channel not ready; owner alert delivery and ops alerts not started: missing=[], discordWebhookMissing=true`; 메일 켜짐 + 수신 주소 없음 → `missing=[ACCOUNT_PNL_ALERT_RECIPIENT], discordWebhookMissing=false`. 로그에 webhook·주소 값 없음. (e) `owner-alert.ops.enabled=false` → 전달 Job 만 있고 INFO `owner-alert ops alerts disabled by OWNER_ALERT_OPS_ENABLED`. (f) `batch.scheduling.enabled=false` → 둘 다 없음. (g) `owner-alert.ops.*` 4개 값이 bean `OwnerOpsAlertProperties.toSettings()` 에 반영되고 `realert-interval=0s` 는 기동 실패(원인에 design 메시지). (h) PnL 꺼짐 + Discord 켜짐 + `webhook.ops=http://discord.example.test/x` → 기동 실패(메시지에 값 없음). (i) app 조건 = infra `ready` 규칙 행렬(email 요청 3 × SMTP 2 × 수신 주소 2 × Discord 요청 2 × webhook 2). (j) PnL 켜짐 구성은 기존 wiring 테스트가 허용 예외(R8)만으로 통과 | design §9 | `요구` (U1(c) PnL 꺼져도 운영 알림) + 조건 이중화·로그는 `추론` + ops 기본 켜짐은 `추론` (A1) | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfigurationTest` + `io.premiumspread.config.OwnerAlertDeliveryWiringTest` + `기존` (허용 예외) | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.*' :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` | exit 0 |
+| AC12 | 실제 MySQL(batch fixture, V21 포함) + 실제 `JdbcOwnerAlertOutbox`·`JdbcAccountPnlAlertStore` + 기록용 메일·Discord sender + `MutableClock` 으로 (a) FX 마지막 성공 31분 전 → 운영 신호 회차 후 전달 회차 → `owner-ops.fx-ingestion.usd-krw.{ms}.alert-1` DISCORD 행 `SENT`, sender 1회(OPS/SOUND). (b) 시계 +6h → `alert-2` `SENT`. (c) 성공 기록 갱신 → `.recovered` DISCORD 행 `SENT`(OPS/SILENT), `owner_alert_signal_state.active = 0`. (d) 장애 중 새 Job 인스턴스(재시작) + 성공 기록 null → 29분 동안 새 행 없음, 상태 행 `active = 1`. (e) PENDING 6행에 대해 전달 Job 과 PnL owner(`account-pnl-monitor:…`) 디스패처가 동시에 dispatch → 행마다 sender 호출 정확히 1회, 모두 `SENT` | design §4, §7.3, §8 | `요구` (U1 이중 발송 금지·PnL 독립, U3, U4) | T1 | `신규테스트` `io.premiumspread.application.job.OwnerOpsAlertIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerOpsAlertIntegrationTest' --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC13 | (a) 신규 `docs/runbooks/owner-ops-alert.md` 에 design §13 첫 항목 전부(판정 기준·경계, 재알림·복구, 라우팅 표 4종과 **Discord 꺼짐 시 4종 모두 메일**(굵게), override env 12개, `owner-alert.ops.*`·주기·lock env, 기동 판정·WARN/INFO 전문, 재시작 한계, 감시 제외와 Slack 대체 경로, 정리 SQL, V21 배포, AC14 체크리스트). (b) `docs/runbooks/account-pnl-alert.md` 에 채널 bean 독립·webhook 검증 시점 변화·라우팅 표·override 목록 4종 추가. (c) `.ai/architecture/ARCHITECTURE_DESIGN.md` 운영 알림 단락, `.ai/PROJECT_STATUS.md` `Flyway V1~V21`·V21 행·기능 항목. (d) `docs/check-documentation.sh` 통과 | design §13 | `요구` (문서 갱신 대상 지정) | T3 | 기록 문서 + `기존` `docs/check-documentation.sh` | `bash docs/check-documentation.sh` | exit 0 + (a)~(c) 존재를 사람 사후 검토 |
+| AC14 | owner 가 자기 Discord ops 채널 webhook 으로 로컬 batch 를 띄웠을 때 (a) PnL 모니터를 끈 상태에서도 기동 INFO `owner-alert routes:` 에 4종이 기본 경로로 보인다. (b) FX API key 를 일부러 비워 30분 넘게 두면 ops 채널에 **소리**로 환율 수집 지연 알림이 오고(Job 연속 실패 알림도 소리 + 메일), key 를 되돌리면 **무음** 복구 알림이 1회씩 온다. (c) 네트워크를 끊어 시세가 5분 넘게 끊기면 거래소별 알림이 오고 복구 시 무음 알림이 온다(관찰 기회가 없으면 "미관찰") | design §0, §10 | `요구` (실제 Discord 수신·푸시 수준) | T4 | owner 확인 | — | PR 코멘트에 owner 확인 기록. (c) 는 미관찰 허용 |
+
+**기준 개수**: 14개
+
+**분할하지 않는 이유**: 운영 신호 Job 은 범용 enqueue port(AC7)·전달 Job(AC9)·채널 bean 분리(AC11) 없이는 PnL 모니터가 꺼진 환경에서 한 건도 보낼 수 없다 —
+사용자 합의 U1 이 셋을 #91 안에서 만들기로 정했다. 기반만 먼저 머지하면 생산자가 없어 E2E(AC12)로 검증할 수 없고, 운영 신호만 먼저 머지하면 전달 경로가 없다.
+V21(AC6)은 신호 상태의 유일한 저장소라 정책(AC3)과 떼어 낼 수 없다.
+
+**티어 강등 사유** *(T1 이 아닌 항목만. Gate 1 에서 사람이 함께 승인한다)*
+
+- AC13 → T3: runbook 설명의 충분성은 exit code 로 잴 수 없다. `check-documentation.sh` 는 형식만 본다.
+- AC14 → T4: 실 webhook·실 API key 는 테스트·CI 에 쓰지 않는다(testing 규칙). 푸시 체감과 실제 장애 재현은 사람만 확인한다.
+
+## 회귀 방어선
+
+이번 변경으로 깨질 수 있는 기존 동작. RED 면제 대상이다. base = `20a7484` (Task 0 확인).
+
+| # | 지켜야 할 동작 | 검증 명령 |
+|---|---|---|
+| R1 | 모듈 경계·import·관측 cardinality·테스트 격리 아키텍처 규칙 전체 (앱 main 에 infra import 없음, Domain 에 새 framework 의존 없음) | `./gradlew architectureTest --offline --no-daemon` |
+| R2 | 전체 unit test | `./gradlew test --offline --no-daemon` |
+| R3 | 동결·직전 단위 테스트 **무수정** — 기존 파일의 수정·삭제만 본다(같은 디렉터리의 신규 파일은 대상 아님). 대상: `domain/src/test/.../accountpnl/**`, `domain/src/test/.../owneralert/DiscordMessageTest.kt`·`OwnerAccountAlertKindTest.kt`, `apps/batch/src/test/kotlin/io/premiumspread/application/**`, `apps/batch/src/test/.../config/OwnerAlertYamlContractTest.kt`, `apps/batch/src/integrationTest/.../application/job/{AccountPnlAlertDurabilityIntegrationTest,OwnerAlertDeliveryIntegrationTest,OwnerAccountAlertIntegrationTest}.kt`, `infrastructure/batch/src/test/.../{notification,owneralert,exchange,job}/**`, `infrastructure/common/src/integrationTest/.../migration/{V19,V20}*`, `infrastructure/common/src/integrationTest/.../accountpnl/JdbcAccountPnlAlertStoreIntegrationTest.kt` | `git diff --exit-code --diff-filter=MDR 20a7484 -- <위 경로>` 를 ⑨ 리뷰가 실행(정확한 경로 목록은 Task 0 이 확정해 증거 로그에 남긴다). R7·R8·R9 허용 예외 파일은 대상에서 뺀다 |
+| R4 | 실계정·owner 알림 Domain·Job·wiring(golden 포함) | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' --tests 'io.premiumspread.domain.owneralert.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --tests 'io.premiumspread.application.notification.owneralert.*' --tests 'io.premiumspread.config.*' --offline --no-daemon` |
+| R5 | 기존 migration 파일 무변경(추가만) + 검증 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` + ⑨ 리뷰가 `git diff --name-only --diff-filter=MDR 20a7484 -- infrastructure/common/src/main/resources/db/migration` 빈 출력 확인 |
+| R6 | outbox INSERT 추출 뒤 `JdbcAccountPnlAlertStore` 의 SQL·검증 메시지·상수 무변경 | ⑨ 리뷰가 `git diff 20a7484 -- infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jdbc/accountpnl/` 의 이동 전후 문자열을 대조 (사람 판정) + R10 |
+| R7 | enum 개수 고정 단언 수정은 허용 예외뿐 — `OwnerAlertRoutingTest` 한 파일에서 종류 이름·key 기대 목록 **끝에** 4개 추가만. 다른 줄 무변경 | `git diff 20a7484 -- domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRoutingTest.kt` 를 ⑨ 리뷰가 확인 (사람 판정) |
+| R8 | 채널 bean 이동에 따른 wiring 테스트 수정은 허용 예외뿐 — Task 0 이 찾은 파일들에서 runner configuration 목록에 `OwnerAlertChannelConfiguration::class` 를 **추가**하는 줄(과 그 import)만. 단언·fixture·메서드 무변경 | `git diff 20a7484 -- <Task 0 목록>` 을 ⑨ 리뷰가 확인 (사람 판정) |
+| R9 | batch fixture 스키마 고정 테스트 수정은(필요할 때만) 테이블 목록 끝에 `owner_alert_signal_state` 추가뿐 | `git diff 20a7484 -- apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt` (사람 판정, 무수정이면 해당 없음) |
+| R10 | 공통 persistence·migration 통합 (V12·V16·V17·V19·V20, 기존 store·동시 claim·fencing) | `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` |
+| R11 | batch 통합 — 실계정 알림 재시작 내구성·#88 owner 알림 E2E·#89 계정 알림 E2E·premium durable delivery·fixture 스키마 | `./gradlew :apps:batch:integrationTest --offline --no-daemon` |
+| R12 | 정본 문서 정합성 | `bash docs/check-documentation.sh` |
+| R13 | API Flyway 전체 적용(V21 까지)과 api 통합 테스트 | `./gradlew :apps:api:integrationTest --offline --no-daemon` (Docker 필요) |
+| R14 | ktlint·detekt | CI `quality-gate.yml` 결과 (로컬 실행 불가, 우회 금지) |
+| R15 | coverage 게이트(overall 70%·Domain 85%·Application 80%) | `./gradlew jacocoTestReport jacocoTestCoverageVerification` (최종 증거는 CI artifact) |
+
+## 변경 요청
+
+| # | 날짜 | 기준 | 변경 내용 | 사유 | 승인 |
+|---|---|---|---|---|---|
+
+## 스펙 리뷰 라운드 기록 (⑥)
+
+| 라운드 | 지적 | 처리 | 반영 커밋 |
+|---|---|---|---|
+
+## 증거 로그
+
+> 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
