@@ -31,6 +31,8 @@ enum class JobId(val tag: String) {
     TRADE_PREPARATION_EVALUATION("trade_preparation_evaluation"),
     TRADE_PREPARATION_RECONCILE("trade_preparation_reconcile"),
     ACCOUNT_PNL_MONITOR("account_pnl_monitor"),
+    OWNER_ALERT_DELIVERY("owner_alert_delivery"),
+    OWNER_OPS_SIGNAL("owner_ops_signal"),
 }
 
 /**
@@ -39,6 +41,24 @@ enum class JobId(val tag: String) {
  */
 fun interface JobLastSuccessReadPort {
     fun findLastSuccess(jobId: JobId): Instant?
+}
+
+/** 한 Job 의 현재 연속 실패. Success 에서 사라지고 Skipped 는 바꾸지 않는다. */
+data class JobFailureStreak(
+    val jobId: JobId,
+    val consecutiveFailures: Int,
+    val firstFailureAt: Instant,
+    val lastFailureAt: Instant,
+) {
+    init {
+        require(consecutiveFailures >= 1) { "consecutiveFailures must be at least 1." }
+        require(!lastFailureAt.isBefore(firstFailureAt)) { "lastFailureAt must not be before firstFailureAt." }
+    }
+}
+
+/** 이 프로세스가 기록한 연속 실패. 없으면 null(실패 없음 또는 재시작 후 아직 실패 없음). */
+fun interface JobFailureStreakReadPort {
+    fun findFailureStreak(jobId: JobId): JobFailureStreak?
 }
 
 enum class JobRunOutcome {

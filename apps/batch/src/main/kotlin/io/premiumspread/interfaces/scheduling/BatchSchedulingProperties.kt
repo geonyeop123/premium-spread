@@ -27,6 +27,8 @@ data class BatchSchedulingProperties(
      * 값싸지 않은 조회가 초마다 돈다.
      */
     @field:Valid val tradePreparationReconcile: FixedRate = FixedRate(Duration.ofMinutes(1)),
+    @field:Valid val ownerAlertDelivery: FixedRate = FixedRate(Duration.ofSeconds(15)),
+    @field:Valid val ownerOpsSignal: FixedRate = FixedRate(Duration.ofSeconds(30)),
     @field:NotBlank val zone: String = "Asia/Seoul",
 ) {
     data class FixedRate(val fixedRate: Duration) {
