@@ -18,8 +18,9 @@ import java.time.Instant
 /**
  * OwnerAlertOutbox 구현 — 신호 상태(owner_alert_signal_state) + outbox 행 한 트랜잭션 (owner-ops-alerts design §4.3).
  *
- * [enqueue] 는 호출자 트랜잭션에 참여하거나 새로 연다. 신호 version 이 하나라도 맞지 않으면 rollback-only 로 표시해
- * 앞서 쓴 신호까지 되돌리고 false 를 돌려준다. 행은 모든 신호가 성공한 뒤에만 넣는다.
+ * [enqueue] 는 호출자 트랜잭션 없이 호출한다. 참여하면 version 충돌 시 setRollbackOnly 가 바깥 트랜잭션 전체를
+ * rollback-only 로 만들어 UnexpectedRollbackException 이 난다. 자체 TransactionTemplate 로 새로 연다.
+ * 신호 version 이 하나라도 맞지 않으면 rollback-only 로 표시해 앞서 쓴 신호까지 되돌리고 false 를 돌려준다. 행은 모든 신호가 성공한 뒤에만 넣는다.
  */
 @Repository
 class JdbcOwnerAlertOutbox(

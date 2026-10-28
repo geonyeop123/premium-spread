@@ -49,6 +49,7 @@ interface OwnerAlertOutbox {
      * (version 0 = INSERT, 그 밖 = `version = ?` 인 UPDATE, 저장 후 version+1)
      * 모두 성공하면 [rows] 를 넣는다. 같은 (eventKey, channel) 행은 무시한다.
      * 하나라도 version 이 맞지 않으면 아무것도 쓰지 않고 false. [signals] 의 signalKey 는 서로 달라야 한다.
+     * 호출자 트랜잭션 밖에서 호출한다 — 구현이 자체 트랜잭션을 연다.
      */
     fun enqueue(signals: List<OwnerAlertSignalState>, rows: List<AccountPnlMail>): Boolean
 }

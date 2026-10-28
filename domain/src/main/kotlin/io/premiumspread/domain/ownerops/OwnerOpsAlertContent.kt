@@ -82,11 +82,14 @@ object OwnerOpsAlertContent {
             is OpsSignal.MarketStream ->
                 "${market(signal)} 시세가 ${threshold(settings.marketStaleAfter)} 이상 들어오지 않았습니다." to
                     "마지막 시세(거래소 시각): " + (since?.let(time) ?: "기록 없음(이 batch 프로세스 시작 후 수신 없음)")
-            is OpsSignal.JobFailures ->
-                "${signal.jobId.tag} Job 이 ${notice.observation.failureCount}회 연속 실패했습니다 " +
-                    "(첫 실패 후 ${elapsed(since?.let { Duration.between(it, notice.at) } ?: Duration.ZERO)})." to
-                    "첫 실패: ${since?.let(time) ?: "기록 없음"} · " +
+            is OpsSignal.JobFailures -> {
+                val first = requireNotNull(since) { "A job failure alert requires the first failure time." }
+                val count = requireNotNull(notice.observation.failureCount) { "A job failure alert requires a failure count." }
+                "${signal.jobId.tag} Job 이 ${count}회 연속 실패했습니다 " +
+                    "(첫 실패 후 ${elapsed(Duration.between(first, notice.at))})." to
+                    "첫 실패: ${time(first)} · " +
                     "기준: ${settings.jobFailureCount}회 연속이고 ${threshold(settings.jobFailureDuration)} 이상"
+            }
         }
         val interval = threshold(settings.realertInterval)
         val guide = if (notice.sequence == 1) {

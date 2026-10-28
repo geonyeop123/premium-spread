@@ -47,6 +47,15 @@ class RedisJobRunRecorderFailureStreakTest {
     }
 
     @Test
+    fun `failure arriving out of order keeps the later last failure and does not throw`() {
+        complete(JobId.PREMIUM_REALTIME, JobRunOutcome.FAILED, t1)
+        complete(JobId.PREMIUM_REALTIME, JobRunOutcome.FAILED, t0)
+
+        assertThat(recorder.findFailureStreak(JobId.PREMIUM_REALTIME))
+            .isEqualTo(JobFailureStreak(JobId.PREMIUM_REALTIME, 2, t1, t1))
+    }
+
+    @Test
     fun `skipped leaves streak unchanged`() {
         complete(JobId.PREMIUM_REALTIME, JobRunOutcome.FAILED, t0)
         complete(JobId.PREMIUM_REALTIME, JobRunOutcome.SKIPPED, t1)

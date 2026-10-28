@@ -66,6 +66,8 @@ class OpsSignalsTest {
         assertThat(OpsSignals.job(streak(3, five.plusMillis(1)), now.minusSeconds(1), now, settings))
             .isEqualTo(OpsObservation.Up)
         assertThat(OpsSignals.job(streak(3, five.plusMillis(1)), null, now, settings)).isEqualTo(OpsObservation.Unknown)
+        assertThat(OpsSignals.job(streak(3, five), now.minus(Duration.ofHours(1)), now, settings))
+            .isEqualTo(OpsObservation.Down(five, 3))
         val hour = now.minus(Duration.ofHours(1))
         assertThat(OpsSignals.job(streak(2, hour), now.minusSeconds(1), now, settings)).isEqualTo(OpsObservation.Up)
         assertThat(OpsSignals.job(streak(2, hour), null, now, settings)).isEqualTo(OpsObservation.Unknown)

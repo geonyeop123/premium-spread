@@ -71,15 +71,18 @@ class OwnerAlertChannelConfigurationTest {
     @Test
     fun `채널 ready 면 Discord 켜짐과 무관하게 webhook 과 override 를 검증한다`() {
         val badWebhook = "owner-alert.discord.webhook.ops=http://discord.example.test/x"
+        val webhookCause = "owner-alert.discord.webhook.ops must be an https URL"
         val cases = listOf(
-            arrayOf("owner-alert.discord.enabled=true", badWebhook),
-            arrayOf(*mail, badWebhook),
-            arrayOf(*mail, "owner-alert.routes.ops-recovered.push=loud"),
+            arrayOf("owner-alert.discord.enabled=true", badWebhook) to webhookCause,
+            arrayOf(*mail, badWebhook) to webhookCause,
+            arrayOf(*mail, "owner-alert.routes.ops-recovered.push=loud") to
+                "owner-alert.routes.ops-recovered.push must be silent, sound or here",
         )
-        cases.forEach { props ->
+        cases.forEach { (props, expectedCause) ->
             runner.withPropertyValues(*props).run { ctx ->
                 assertThat(ctx).hasFailed()
                 val messages = generateSequence(ctx.startupFailure) { it.cause }.mapNotNull { it.message }.toList()
+                assertThat(messages).anyMatch { it.contains(expectedCause) }
                 assertThat(messages).noneMatch { it.contains("discord.example.test/x") || it.contains("loud") }
             }
         }

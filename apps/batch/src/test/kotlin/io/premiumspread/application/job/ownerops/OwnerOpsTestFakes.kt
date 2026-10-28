@@ -83,11 +83,14 @@ class FakeTicks(private val clock: Clock) : LatestMarketTickReadPort {
     val calls = mutableListOf<Pair<Exchange, Quote>>()
     val failures = mutableMapOf<Pair<Exchange, Quote>, Exception>()
 
+    /** 요청 쌍 대신 이 quote 의 tick 을 돌려준다 (다른 MarketPair 의 tick 이 섞인 경우). */
+    val answerQuotes = mutableMapOf<Pair<Exchange, Quote>, Quote>()
+
     override fun findLatest(exchange: Exchange, quote: Quote): MarketTick? {
         val key = exchange to quote
         calls += key
         failures[key]?.let { throw it }
         val observedAt = if (key in overrides) overrides[key] else clock.instant().minus(Duration.ofSeconds(1))
-        return observedAt?.let { MarketTick(exchange, quote, BigDecimal("100"), it) }
+        return observedAt?.let { MarketTick(exchange, answerQuotes[key] ?: quote, BigDecimal("100"), it) }
     }
 }

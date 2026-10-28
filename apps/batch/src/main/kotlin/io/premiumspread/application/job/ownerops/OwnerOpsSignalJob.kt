@@ -13,6 +13,7 @@ import io.premiumspread.domain.job.JobFailureStreakReadPort
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.LatestMarketTickReadPort
+import io.premiumspread.domain.market.MarketTick
 import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import io.premiumspread.domain.ownerops.OpsAlertSettings
 import io.premiumspread.domain.ownerops.OpsIncidentDecision
@@ -112,8 +113,7 @@ class OwnerOpsSignalJob(
     private fun observe(signal: OpsSignal, startedAt: Instant, now: Instant): OpsObservation = try {
         when (signal) {
             is OpsSignal.FxIngestion -> OpsSignals.fx(lastSuccess.findLastSuccess(JobId.FX_INGESTION), startedAt, now)
-            is OpsSignal.MarketStream ->
-                OpsSignals.market(ticks.findLatest(signal.exchange, signal.quote), startedAt, now, settings)
+            is OpsSignal.MarketStream -> OpsSignals.market(latestTick(signal), startedAt, now, settings)
             is OpsSignal.JobFailures -> OpsSignals.job(
                 failureStreaks.findFailureStreak(signal.jobId),
                 lastSuccess.findLastSuccess(signal.jobId),
@@ -131,6 +131,11 @@ class OwnerOpsSignalJob(
         log.warn("Owner ops signal observation failed: signal={}, error={}", signal.key, exception.javaClass.simpleName)
         OpsObservation.Unknown
     }
+
+    /** 요청한 거래소·quote 와 다른 tick 은 근거로 쓰지 않는다 — 다른 MarketPair 의 tick 으로 보정하지 않는다. */
+    private fun latestTick(signal: OpsSignal.MarketStream): MarketTick? =
+        ticks.findLatest(signal.exchange, signal.quote)
+            ?.takeIf { it.exchange == signal.exchange && it.quote == signal.quote }
 
     private fun logDecided(notice: OpsNotice) {
         val (kind, sequence) = when (notice) {

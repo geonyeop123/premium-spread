@@ -198,6 +198,56 @@ class OwnerOpsSignalJobTest {
         assertThat(outbox.states.getValue("fx-ingestion.usd-krw").incident).isNotNull()
     }
 
+    /** 같은 인스턴스를 [start] 로부터 [seconds] 초 시점에 실행한다. */
+    private fun OwnerOpsSignalJob.runAfter(seconds: Long): JobResult {
+        val target = start.plusSeconds(seconds)
+        clock.advance(Duration.between(clock.instant(), target))
+        return run()
+    }
+
+    @Test
+    fun `(g) 시세 tick 이 계속 없으면 첫 실행 시각이 유지되어 4분 59초까지 0회이고 5분 회차에 1건이다`() {
+        ticks.overrides[Exchange.BINANCE to foreignQuote] = null
+        val job = job()
+
+        (0L..270L step 30L).forEach { assertThat(job.runAfter(it)).isEqualTo(JobResult.Success) }
+        assertThat(job.runAfter(299)).isEqualTo(JobResult.Success)
+        assertThat(outbox.enqueueCalls).isZero()
+
+        assertThat(job.runAfter(300)).isEqualTo(JobResult.Success)
+
+        assertThat(outbox.enqueueCalls).isEqualTo(1)
+        assertThat(outbox.rows.single().eventKey).startsWith("owner-ops.market-stream.binance.btc-usd.")
+    }
+
+    @Test
+    fun `(g) FX 성공 기록이 계속 없으면 첫 실행 시각이 유지되어 30분까지 0회이고 30분 30초 회차에 1건이다`() {
+        lastSuccess.overrides[JobId.FX_INGESTION] = null
+        val job = job()
+
+        (0L..1800L step 30L).forEach { assertThat(job.runAfter(it)).isEqualTo(JobResult.Success) }
+        assertThat(outbox.enqueueCalls).isZero()
+
+        assertThat(job.runAfter(1830)).isEqualTo(JobResult.Success)
+
+        assertThat(outbox.enqueueCalls).isEqualTo(1)
+        assertThat(outbox.rows.single().eventKey).startsWith("owner-ops.fx-ingestion.usd-krw.")
+    }
+
+    @Test
+    fun `(g) 요청과 다른 quote 의 tick 은 근거로 쓰지 않아 tick 없음과 같이 5분 뒤 Down 이다`() {
+        ticks.answerQuotes[Exchange.BINANCE to foreignQuote] = Quote.coin(btc, Currency.KRW)
+        val job = job()
+
+        assertThat(job.runAfter(0)).isEqualTo(JobResult.Success)
+        assertThat(job.runAfter(299)).isEqualTo(JobResult.Success)
+        assertThat(outbox.enqueueCalls).isZero()
+
+        assertThat(job.runAfter(300)).isEqualTo(JobResult.Success)
+
+        assertThat(outbox.rows.single().eventKey).startsWith("owner-ops.market-stream.binance.btc-usd.")
+    }
+
     @Test
     fun `(h) EMAIL_ONLY 면 운영 알림 4종 모두 EMAIL 1행이다`() {
         routing = OwnerAlertRouting(OwnerAlertChannels(email = true, discord = false))
