@@ -264,3 +264,11 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - 신규 `docs/runbooks/owner-ops-alert.md`(절 순서: 무엇을 알리나 → 재알림과 복구 → 라우팅 → 환경변수 → 기동 판정과 로그 → 한계 → 이 경로로 알릴 수 없는 장애 → 알림 메시지 예 → 상태 확인과 정리 → 배포 → Discord 수신 체크리스트). 메시지 예는 `OwnerOpsAlertContentTest` golden 과 같은 값.
 - 갱신: `docs/runbooks/account-pnl-alert.md`(채널 bean 독립·검증 시점·라우팅 표·override 11종·전달 Job), `.ai/architecture/ARCHITECTURE_DESIGN.md`(운영 알림 단락), `.ai/PROJECT_STATUS.md`(`Flyway V1~V21`·V21 행·기능 항목). Task 0 (g10)(g11) 파일은 모두 위 목록에 포함(env 예시 파일 없음, job tag 목록 문서 없음).
 - 검증: `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)`, exit 0. 기존 문서 CR 개수 0 → 변경 후에도 0.
+
+### ⑨ fix wave
+
+- Task 5 RED 정정: 재발생·notice kind 두 테스트는 assertion 이 아니라 `!!` NPE 로 실패했다(stub 이 null 반환).
+- A (전달 주기 60s): `OwnerAlertJobConfigTest` 기대값을 60s 로 먼저 바꾸고 `./gradlew :apps:batch:test --tests '*OwnerAlertJobConfigTest' --offline --no-daemon` → `yml 의 jobs 와 scheduling 값()` FAILED(assertion). yml·`BatchSchedulingProperties`·Scheduler fallback 을 60s/60000 으로 바꾼 뒤 BUILD SUCCESSFUL. `application.yml` diff 1/1, CR 개수 47 유지.
+- B (firstRunAt 유지): `OwnerOpsSignalJobTest` 에 시세·FX 대기 테스트 추가. 변이 `compareAndSet(null, now)` → `set(now)` 에서 같은 명령 FAILED 3건(시세 5분·FX 30분 30초·다른 quote) 확인 후 원복(`git diff --stat -- apps/batch/src/main` 빈 출력).
+- F (MarketPair guard): 다른 quote tick 테스트가 guard 전 FAILED(assertion: enqueue 없음 → `single()` 실패), `OwnerOpsSignalJob.latestTick` 추가 후 BUILD SUCCESSFUL.
+- C·D·E·G: KDoc 변경, `RedisJobRunRecorderFailureStreakTest` 역순 FAILED 케이스(기존 `maxOf` 로 통과 — 회귀 방지), `OwnerAlertChannelConfigurationTest` 원인 메시지 단언(검증 강화라 RED 없음), `OpsSignalsTest` Down-before-Up 행, `OwnerOpsAlertContent` requireNotNull. `:domain:test :infrastructure:batch:test :apps:batch:test` BUILD SUCCESSFUL.
