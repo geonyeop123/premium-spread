@@ -183,3 +183,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0). 값을 전문(50s/40s, 20s/10s, 주기 15s/30s)으로 교체. yml 테스트는 `PropertySourcesPlaceholdersResolver` 로 `${ENV:default}` 를 풀어 바인딩.
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
 - application.yml: 추가 6줄만, CR 개수 47 (base 와 동일).
+
+### Task 3 — AC3-g 범용 enqueue port 와 신호 상태 타입
+
+- RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.OwnerAlertSignalStateTest' --offline --no-daemon` → exit 1, 7 tests 중 4 실패 (init 을 비운 stub 이라 signalKey 정규식·version 음수·notifyCount·lastNotifiedAt 거부 단언이 예외 미발생으로 실패).
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0, 7 tests 통과). init 을 전문으로 교체.
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
