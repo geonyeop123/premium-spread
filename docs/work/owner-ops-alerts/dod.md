@@ -189,3 +189,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.OwnerAlertSignalStateTest' --offline --no-daemon` → exit 1, 7 tests 중 4 실패 (init 을 비운 stub 이라 signalKey 정규식·version 음수·notifyCount·lastNotifiedAt 거부 단언이 예외 미발생으로 실패).
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0, 7 tests 통과). init 을 전문으로 교체.
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+
+### Task 4 — AC2 운영 신호와 3상태 관측
+
+- RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OpsSignalsTest' --offline --no-daemon` → exit 1, 10 tests 중 6 실패 (FX·시세·Job 판정 단언). 사유: 세 관측 함수가 항상 `Unknown` 인 stub 이라 Up/Down 단언 실패. key·설정·불변식 테스트는 초록.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0, 10 tests 통과). 판정표 순서대로 구현.
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
