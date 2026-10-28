@@ -257,3 +257,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - RED: `OwnerOpsSignalJob` 의 `outbox.enqueue(changed, rows)` 를 `enqueue(changed, emptyList())` 로 임시 변이 후 `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerOpsAlertIntegrationTest' --offline --no-daemon` → BUILD FAILED, 3 tests 중 2 실패 ((a)(b)(c) 시나리오 행 개수 assertion :116, (d) 사전 행 assertion). (e) 는 enqueue 를 직접 호출하므로 통과.
 - 변이 되돌림: `git checkout -- apps/batch/src/main` 후 `git diff --stat -- apps/batch/src/main` 빈 출력.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (3 tests). R11 `./gradlew :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL (109 tests / 실패 0). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 15 — AC13 문서
+
+- 신규 `docs/runbooks/owner-ops-alert.md`(절 순서: 무엇을 알리나 → 재알림과 복구 → 라우팅 → 환경변수 → 기동 판정과 로그 → 한계 → 이 경로로 알릴 수 없는 장애 → 알림 메시지 예 → 상태 확인과 정리 → 배포 → Discord 수신 체크리스트). 메시지 예는 `OwnerOpsAlertContentTest` golden 과 같은 값.
+- 갱신: `docs/runbooks/account-pnl-alert.md`(채널 bean 독립·검증 시점·라우팅 표·override 11종·전달 Job), `.ai/architecture/ARCHITECTURE_DESIGN.md`(운영 알림 단락), `.ai/PROJECT_STATUS.md`(`Flyway V1~V21`·V21 행·기능 항목). Task 0 (g10)(g11) 파일은 모두 위 목록에 포함(env 예시 파일 없음, job tag 목록 문서 없음).
+- 검증: `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)`, exit 0. 기존 문서 CR 개수 0 → 변경 후에도 0.
