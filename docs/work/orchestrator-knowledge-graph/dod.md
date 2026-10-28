@@ -1,8 +1,8 @@
 ---
 feature: orchestrator ①② 에 선택 지식 그래프(graphify) 경로 추가 — `SKILL.md` 3 줄 + `references/knowledge-graph.md` 신설 + 하네스 변경 이력 1 행
 slug: orchestrator-knowledge-graph
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-28T10:03:34+09:00
 verdict_commit:
 source: 요구 U1–U4 (`docs/work/orchestrator-knowledge-graph/design.md` §3), 설계 판단 A1–A7 (§4), 최종 문면 §5. 하네스 파일 변경이며 코드 변경 없음
 ---
