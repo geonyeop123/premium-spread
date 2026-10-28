@@ -201,3 +201,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OpsIncidentPolicyTest' --offline --no-daemon` → exit 1, 9 tests 중 6 실패 (T1·T3·T5·재발생·notice kind 단언 실패, signalKey 불일치는 예외 미발생). 사유: `decide` 가 항상 `(null, null)` 인 stub.
 - GREEN: 같은 명령(+ `OwnerAlertSignalStateTest`) → BUILD SUCCESSFUL (exit 0). 전이표 T1~T6 구현, 재알림 경계는 `now − lastNotifiedAt ≥ realertInterval`.
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+
+### Task 6 — AC4 알림 본문
+
+- RED: `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.OwnerOpsAlertContentTest' --offline --no-daemon` → exit 1, 15 tests 중 10 실패 (메일·Discord golden 각 5건). 사유: `mail`/`discord` 가 `"x"` stub 이라 제목·본문·색 단언 실패. eventKey·표기·금지 문자열·EMAIL 채널·색 상수 5건은 초록.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0, 15 tests 통과). design §10.2 템플릿 구현.
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0). 첫 실행은 `RedisRefreshSessionStoreIntegrationTest initializationError`(Testcontainers 초기화, 무관 모듈)로 실패했고 clean 재실행에서 통과.
