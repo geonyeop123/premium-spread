@@ -238,3 +238,10 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - RED: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.OwnerAlertDeliveryJobTest' --offline --no-daemon` → exit 1, 9 tests 중 8 실패. 사유: `run` 이 `JobResult.Success` 만 돌려주는 stub 이라 recoverStale 호출·claim/발송·Failure 단언이 AssertionError.
 - GREEN: AC9 명령(`owneralert.*` + `job.accountpnl.*`) → BUILD SUCCESSFUL (exit 0). `OwnerAlertDispatcherTest`·`AccountPnlMonitorJob*Test` 무수정 통과.
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+
+### Task 12 — AC8 운영 신호 Job
+
+- RED: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.ownerops.*' --offline --no-daemon` → exit 1, 18 tests 중 16 실패. 사유: `run` 이 `JobResult.Success` 만 돌려주는 stub 이라 행·상태·Failure/Skipped 분기·취소 재전파 단언이 AssertionError. (a) 모두 정상·(g) 재시작 가짜 복구 없음은 쓰지 않는 stub 에서도 통과한다.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0), 18 tests 0 failures.
+- `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+- (b) 의 "다른 통화쌍" 은 `Currency` enum 에 KRW·USD 만 있어 `EUR/KRW` 대신 base·quote 를 뒤바꾼 `KRW/USD` → `fx-ingestion.krw-usd` 로 확인했다.
