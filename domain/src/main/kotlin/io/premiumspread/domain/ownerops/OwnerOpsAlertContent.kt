@@ -48,6 +48,7 @@ object OwnerOpsAlertContent {
     private fun titleCore(notice: OpsNotice): String = when (notice) {
         is OpsNotice.Alert ->
             if (notice.sequence == 1) headline(notice.signal) else "${headline(notice.signal)} (계속, ${notice.sequence}번째 알림)"
+
         is OpsNotice.Recovered -> "복구 — ${headline(notice.signal)}"
     }
 
@@ -65,6 +66,7 @@ object OwnerOpsAlertContent {
     private fun body(notice: OpsNotice, settings: OpsAlertSettings, time: (Instant) -> String): String =
         when (notice) {
             is OpsNotice.Alert -> alertBody(notice, settings, time)
+
             is OpsNotice.Recovered -> listOf(
                 "${headline(notice.signal)} 상태가 해소되었습니다.",
                 "장애 감지: ${time(notice.incidentStartedAt)}",
@@ -79,9 +81,11 @@ object OwnerOpsAlertContent {
             is OpsSignal.FxIngestion ->
                 "환율(${fx(signal)}) 수집이 ${threshold(FxIngestionFreshness.MAX_INGESTION_GAP)} 넘게 성공하지 않았습니다." to
                     "마지막 수집 성공: " + (since?.let(time) ?: "기록 없음(이 batch 프로세스 시작 후 성공 없음)")
+
             is OpsSignal.MarketStream ->
                 "${market(signal)} 시세가 ${threshold(settings.marketStaleAfter)} 이상 들어오지 않았습니다." to
                     "마지막 시세(거래소 시각): " + (since?.let(time) ?: "기록 없음(이 batch 프로세스 시작 후 수신 없음)")
+
             is OpsSignal.JobFailures -> {
                 val first = requireNotNull(since) { "A job failure alert requires the first failure time." }
                 val count = requireNotNull(notice.observation.failureCount) { "A job failure alert requires a failure count." }

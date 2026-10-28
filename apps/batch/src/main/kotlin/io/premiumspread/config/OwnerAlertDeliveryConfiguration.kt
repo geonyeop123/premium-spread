@@ -96,6 +96,7 @@ private object OwnerAlertReadiness {
                         "missing={}, discordWebhookMissing=true",
                     missing,
                 )
+
                 recipientMissing -> log.info(
                     "owner-alert email channel has no owner recipient; " +
                         "owner alert delivery and ops alerts not started: missing={}",

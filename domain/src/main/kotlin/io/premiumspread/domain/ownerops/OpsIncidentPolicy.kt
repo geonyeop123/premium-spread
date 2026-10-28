@@ -59,11 +59,14 @@ object OpsIncidentPolicy {
         val incident = current.incident
         return when {
             incident == null -> openOrKeep(signal, current, observation, now)
+
             observation is OpsObservation.Down -> realertOrKeep(signal, current, incident, observation, now, settings)
+
             observation is OpsObservation.Up -> OpsIncidentDecision(
                 next = stateOf(signal, current, null),
                 notice = OpsNotice.Recovered(signal, incident.startedAt, now, incident.notifyCount),
             )
+
             else -> KEEP
         }
     }

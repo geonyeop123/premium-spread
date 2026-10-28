@@ -54,7 +54,9 @@ class RedisJobRunRecorderAdapter(
                     )
                 }
             }
+
             JobRunOutcome.SUCCEEDED -> failureStreaks.remove(jobId)
+
             JobRunOutcome.SKIPPED -> Unit
         }
     }

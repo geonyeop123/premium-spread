@@ -113,7 +113,9 @@ class OwnerOpsSignalJob(
     private fun observe(signal: OpsSignal, startedAt: Instant, now: Instant): OpsObservation = try {
         when (signal) {
             is OpsSignal.FxIngestion -> OpsSignals.fx(lastSuccess.findLastSuccess(JobId.FX_INGESTION), startedAt, now)
+
             is OpsSignal.MarketStream -> OpsSignals.market(latestTick(signal), startedAt, now, settings)
+
             is OpsSignal.JobFailures -> OpsSignals.job(
                 failureStreaks.findFailureStreak(signal.jobId),
                 lastSuccess.findLastSuccess(signal.jobId),

@@ -93,7 +93,9 @@ object OpsSignals {
             streak.consecutiveFailures >= settings.jobFailureCount &&
             Duration.between(streak.firstFailureAt, now) >= settings.jobFailureDuration ->
             OpsObservation.Down(streak.firstFailureAt, streak.consecutiveFailures)
+
         lastSuccessAt != null -> OpsObservation.Up
+
         else -> OpsObservation.Unknown
     }
 
