@@ -1,8 +1,8 @@
 ---
 feature: owner 운영 알림 — 환율 수집 지연·시세 수집 끊김·Job 연속 실패 + 공용 owner 알림 기반 (issue #91, 상위 #87)
 slug: owner-ops-alerts
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-28
 verdict_commit:
 source: docs/work/owner-ops-alerts/design.md (DRAFT)
 ---
