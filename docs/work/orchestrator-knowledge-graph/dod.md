@@ -65,6 +65,35 @@ $ ./gradlew harnessCheck -q
 하네스 검사 통과: 파일 22개
 ```
 
+### AC6 — RED (편집 1·2·3 직후, references 생성 전)
+
+```
+[RED] 2026-10-28 60ee3ab + SKILL.md 3 줄
+$ ./gradlew harnessCheck -q
+.claude/skills/orchestrator/SKILL.md:53: 죽은 참조 — .claude/skills/orchestrator/references/knowledge-graph.md
+.claude/skills/orchestrator/SKILL.md:215: 죽은 참조 — .claude/skills/orchestrator/references/knowledge-graph.md
+.claude/skills/orchestrator/SKILL.md:226: 죽은 참조 — .claude/skills/orchestrator/references/knowledge-graph.md
+하네스 검사 실패: 위반 3건
+```
+
+### AC1–AC8 · R1–R4 — GREEN (`b1e1646`)
+
+```
+[GREEN] 2026-10-28 b1e1646
+AC1 53:| 지식 그래프 — … references/knowledge-graph.md |                rc=0
+AC2 215:- **지식 그래프(선택).** … 알리지도 않는다.                        rc=0
+AC3 226:- ①에서 지식 그래프를 쓰기로 판정했으면 … §4 … 기존과 같다.            rc=0
+AC4 sha256 5369caf6d47c1503c7ef6d8467e416ec73b1c6d143620543d31e7ca524ebfbcf
+AC5 grep -c 'refresh.sh "<worktree 절대경로>" origin/{base}' → 1
+AC6 ./gradlew harnessCheck harnessCheckTest → 하네스 검사 통과: 파일 22개 · == 모든 케이스 통과 ==  exit 0
+AC7 git diff --numstat 20a7484 -- SKILL.md → 3	0
+AC8 11:| 2026-10-28 | orchestrator ①② 에 선택 지식 그래프 …   (헤더 구분선 10행 바로 다음)
+R1  harnessCheckTest exit 0 (위 AC6 과 같은 실행)
+R2  bash docs/check-documentation.sh exit 0
+R3  git diff --quiet 20a7484 -- CLAUDE.md .claude/agents docs/check-harness.sh docs/test-check-harness.sh  rc=0
+R4  grep -c $'\r$' docs/harness-changelog.md → 15
+```
+
 ## 사람 확인 (T4)
 
 | # | 확인 사항 | 확인자 | 날짜 | 앵커 |
@@ -79,9 +108,10 @@ $ ./gradlew harnessCheck -q
 ## 최종 판정
 
 ```
-DoD VERDICT: orchestrator-knowledge-graph @ <commit SHA>
+DoD VERDICT: orchestrator-knowledge-graph @ b1e1646
   수용기준 표:     9개  (T1 1 · T2 7 · T3 0 · T4 1)
-  T1/T2 자동:      8개 중 <p>개 PASS
-  T4 사람 확인:    1개 중 <r>건 완료
-  =>
+  T1/T2 자동:      8개 중 8개 PASS (회귀 방어선 R1–R4 PASS)
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기
+  변경 요청:       0건
+  => AWAITING_HUMAN
 ```
