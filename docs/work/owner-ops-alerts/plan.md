@@ -5,13 +5,13 @@
 **Goal:** batch 가 환율 수집 지연·시세 수집 끊김·Job 연속 실패를 지속 상태로 감지해 owner Discord ops 채널(·메일)로 알리고, 6시간마다 재알림·해소 시 무음 복구를 보낸다. PnL 모니터가 꺼져 있어도 동작한다.
 
 **Architecture:** Domain `ownerops` 가 신호 모델·3상태 관측 함수·장애 정책·렌더러를 소유하고, Domain `accountpnl` 의 범용 port `OwnerAlertOutbox` 가 신호 상태(V21 `owner_alert_signal_state`)와
-outbox 행(`account_pnl_mail`)을 한 트랜잭션에 쓴다(infra:common `JdbcOwnerAlertOutbox`). Job 연속 실패는 infra:batch `RedisJobRunRecorderAdapter` 의 in-memory 카운터를
-`JobFailureStreakReadPort` 로 읽는다. 새 `OwnerOpsSignalJob`(30s)이 판정·enqueue 하고 새 `OwnerAlertDeliveryJob`(15s)이 기존 `OwnerAlertDispatcher` 로 보낸다.
+outbox 행(`account_pnl_mail`)을 한 트랜잭션에 쓴다(infra:common `JdbcOwnerAlertOutbox`, `CommonJdbcConfiguration` `@Import` 등록). Job 연속 실패는 infra:batch `RedisJobRunRecorderAdapter` 의
+in-memory 카운터를 `JobFailureStreakReadPort` 로 읽는다. 새 `OwnerOpsSignalJob`(30s)이 판정·enqueue 하고 새 `OwnerAlertDeliveryJob`(15s)이 기존 `OwnerAlertDispatcher` 로 보낸다.
 채널 bean 3개는 PnL 모니터 구성에서 `OwnerAlertChannelConfiguration` 으로 옮긴다.
 
 **Tech Stack:** Kotlin 2.x, Spring Boot 3.5 (`@ConfigurationProperties`, `Condition`, `ObjectProvider`, `@Scheduled`), JDBC `TransactionTemplate`, Flyway·MySQL 8 (Testcontainers), JUnit5 + AssertJ + MockK, `ApplicationContextRunner` + `OutputCaptureExtension`.
 
-**Spec:** `docs/work/owner-ops-alerts/design.md` · **DoD:** `docs/work/owner-ops-alerts/dod.md`
+**Spec:** `docs/work/owner-ops-alerts/design.md` · **DoD:** `docs/work/owner-ops-alerts/dod.md` · ⑥ R1 반영 내역은 design §15·dod `## 스펙 리뷰 라운드 기록`
 
 ## Global Constraints
 
@@ -20,12 +20,14 @@ outbox 행(`account_pnl_mail`)을 한 트랜잭션에 쓴다(infra:common `JdbcO
   - `AccountPnlAlertStore` interface 무변경. `AccountPnlMonitorJob`·`OwnerAlertDispatcher` main 소스 무변경.
   - `AccountPnlMail`·`ClaimedAccountPnlMail` 생성자·프로퍼티 무변경.
   - `JdbcAccountPnlAlertStore` 의 SQL 문자열·검증 메시지·상수 값 무변경(위치만 옮긴다, dod R6).
-- 허용 예외는 dod R7(`OwnerAlertRoutingTest` 기대 목록 끝 4개)·R8(runner configuration 목록에 `OwnerAlertChannelConfiguration::class` 추가)·R9(필요할 때만 fixture 테이블 목록) 뿐.
-  그 밖의 기존 테스트를 고쳐야 하면 **멈추고 보고**한다.
+- 허용 예외는 dod R7(`OwnerAlertRoutingTest` 기대 목록 끝 4개)·R8·R9 뿐. **R8 의 diff 는 `AccountPnlMonitorWiringTest.kt` 한 파일에서 정확히 둘** — (1) runner 목록(`:72-79`)에
+  `OwnerAlertChannelConfiguration::class.java` 추가(+import), (2) `assertNoBeans()`(`:81-91`)에서 옮겨진 채널 bean 부재 단언(`:89` `AccountPnlEmailSenderAdapter` 및 같은 함수 안의 다른 채널 bean
+  부재 단언) 삭제(+미사용 import 삭제). PnL 전용 부재 단언(`:83-88`)·다른 메서드·fixture 무변경. 그 밖의 기존 테스트를 고쳐야 하면 **멈추고 보고**한다.
 - `OwnerAlertKind`·`JobId` 새 값은 enum **끝에** 추가. `OwnerAlertKind` 전체 `when` 금지(`OwnerAlertRouting.kt:18`).
 - Domain 에 Spring/JDBC/Redis 의존 추가 금지(`ownerops` 는 `java.time` + 기존 domain 타입만). 앱 main 은 infrastructure 타입을 import 하지 않는다. 앱에 `infrastructure`·`cache`·`repository` 패키지 금지.
 - webhook URL·token·수신 주소·API key·예외 메시지를 알림 본문·로그·예외 메시지·`toString`·DB 에 남기지 않는다. 새 로그는 design §7.2·§8.2·§9.2 의 문구·키만.
 - 테스트: 고정 `Clock`(기준 `2026-10-28T00:00:00Z`)·`ZoneId.of("Asia/Seoul")`, URL 은 `https://discord.example.test/...` 또는 MockWebServer, 주소는 `owner@example.test`. 실 webhook·실 key 금지(`TestIsolationArchitectureTest`).
+  시간을 전진시키는 테스트의 fake port(마지막 성공·tick·streak)는 **`MutableClock` 기준 상대 시각**(예 `clock.instant() − 1분`)을 돌려준다 — 고정 절대 시각을 쓰면 시계를 6시간 전진할 때 다른 신호가 장애로 오염된다.
 - migration 은 V21 **추가만**. Redis key·TTL·payload, `PublicEndpointPolicy`, Slack `OperatorAlert` 경로 무변경.
 - 컴파일 실패를 RED 로 쓰지 않는다. RED 는 stub 또는 변이에서의 **assertion 실패**다. RED·GREEN 로그를 dod `## 증거 로그` 에 append 한다.
 - 각 태스크 커밋 시점에 `./gradlew test architectureTest --offline --no-daemon` 이 초록이어야 한다. integrationTest 소스도 컴파일이 깨진 채로 두지 않는다.
@@ -35,11 +37,11 @@ outbox 행(`account_pnl_mail`)을 한 트랜잭션에 쓴다(infra:common `JdbcO
 
 1. **3상태 관측과 재시작** — 재시작 직후 `Unknown` 이 DB 의 장애를 가짜로 닫지 않는가, `firstRunAt` 대기 후에만 `Down` 이 되는가(Task 4·12·14).
 2. **경계값** — FX `>` 30분(정확히 30분 미발동), 시세·Job·재알림 `≥`(정확히 5분·6시간 발동). 모든 시각이 주입 `Clock`(Task 4·5).
-3. **원자성** — 신호 상태 + outbox 행이 한 트랜잭션이고 두 번째 신호 충돌이 첫 신호까지 되돌리는가(Task 8).
+3. **원자성** — 신호 상태 + outbox 행이 한 트랜잭션이고 두 번째 신호 충돌이 첫 신호까지 되돌리는가(Task 8). bean 이 실제 auto-configuration 으로 해석되는가(Task 8 AC7-i).
 4. **이중 발송 없음** — 전달 Job 과 PnL 회차 디스패처가 동시에 돌 때 행당 발송 1회(Task 14). `OwnerAlertDispatcher` 무변경.
-5. **채널 bean 이동** — PnL 꺼짐에도 라우팅·sender 가 뜨고, PnL 켜짐 구성은 runner 목록 추가 외 무수정으로 초록인가. app 조건 = infra 조건(Task 10·13).
+5. **채널 bean 이동** — PnL 꺼짐에도 ready 로만 뜨는가(AC15), R8 diff 가 위 두 종류뿐인가, app 조건 = infra 조건인가(Task 10·13).
 6. **카운터 내성** — Redis 쓰기 예외에도 카운트가 남고 Skipped 가 무변경인가(Task 9).
-7. **비노출** — 본문·로그에 예외 메시지·URL·주소 없음(Task 6·12·13).
+7. **취소·비노출** — 관측 중 취소가 삼켜지지 않는가(Task 12), 본문·로그에 예외 메시지·URL·주소 없음(Task 6·12·13).
 
 ---
 
@@ -58,10 +60,11 @@ outbox 행(`account_pnl_mail`)을 한 트랜잭션에 쓴다(infra:common `JdbcO
 | `domain/src/main/kotlin/io/premiumspread/domain/ownerops/OpsIncidentPolicy.kt` (신규) | `OpsNotice`·`OpsIncidentDecision`·`OpsIncidentPolicy` | 5 |
 | `domain/src/main/kotlin/io/premiumspread/domain/ownerops/OwnerOpsAlertContent.kt` (신규) | eventKey·메일·Discord 렌더링 | 6 |
 | `infrastructure/common/src/main/resources/db/migration/V21__create_owner_alert_signal_state.sql` (신규) | DDL | 7 |
-| `apps/batch/src/integrationTest/resources/batch-schema.sql` | V21 테이블 | 7 |
+| `apps/batch/src/integrationTest/resources/batch-schema.sql` | V21 테이블(`IF NOT EXISTS`) | 7 |
 | `infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jdbc/accountpnl/OwnerAlertOutboxRows.kt` (신규) | outbox INSERT·검증 단일 소유자 | 8 |
 | `infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jdbc/accountpnl/JdbcAccountPnlAlertStore.kt` | `insertMail`·`validate` 를 `OwnerAlertOutboxRows` 위임 | 8 |
 | `infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jdbc/accountpnl/JdbcOwnerAlertOutbox.kt` (신규) | port 구현 | 8 |
+| `infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/CommonInfrastructureAutoConfiguration.kt` | `CommonJdbcConfiguration` `@Import` 에 `JdbcOwnerAlertOutbox::class` 추가 | 8 |
 | `infrastructure/batch/src/main/kotlin/io/premiumspread/infrastructure/batch/job/RedisJobRunRecorderAdapter.kt` | 연속 실패 카운터 | 9 |
 | `infrastructure/batch/src/main/kotlin/io/premiumspread/infrastructure/batch/owneralert/OwnerAlertChannelConfiguration.kt` (신규) | 채널 bean 3개·`OwnerAlertChannelReadyCondition` | 10 |
 | `infrastructure/batch/src/main/kotlin/io/premiumspread/infrastructure/batch/accountpnl/AccountPnlMonitorAdapterConfiguration.kt` | bean 3개·`describeRoutes`·`OwnerAlertProperties` 바인딩 제거 | 10 |
@@ -72,7 +75,7 @@ outbox 행(`account_pnl_mail`)을 한 트랜잭션에 쓴다(infra:common `JdbcO
 | `apps/batch/src/main/kotlin/io/premiumspread/config/OwnerOpsAlertProperties.kt` (신규) | `owner-alert.ops.*` 바인딩 | 13 |
 | `apps/batch/src/main/kotlin/io/premiumspread/interfaces/scheduling/OwnerAlertDeliveryScheduler.kt`·`OwnerOpsSignalScheduler.kt` (신규) | trigger | 13 |
 | `docs/runbooks/owner-ops-alert.md` (신규), `docs/runbooks/account-pnl-alert.md`, `.ai/architecture/ARCHITECTURE_DESIGN.md`, `.ai/PROJECT_STATUS.md`, (Task 0 이 찾은 env 예시 파일) | 문서 | 15 |
-| tests — domain: `OwnerOpsAlertKindTest`(owneralert), `OwnerAlertSignalStateTest`(accountpnl), `OpsSignalsTest`·`OpsIncidentPolicyTest`·`OwnerOpsAlertContentTest`(ownerops), 허용 예외 `OwnerAlertRoutingTest`; infra:common: `V21OwnerAlertSignalStateMigrationIntegrationTest`·`JdbcOwnerAlertOutboxIntegrationTest`; infra:batch: `RedisJobRunRecorderFailureStreakTest`·`OwnerAlertChannelConfigurationTest`; apps:batch: `OwnerAlertJobConfigTest`·`OwnerAlertDeliveryJobTest`·`OwnerOpsSignalJobTest`(+ `OwnerOpsTestFakes.kt`)·`OwnerAlertDeliveryWiringTest`·허용 예외 runner 목록(R8)·`OwnerOpsAlertIntegrationTest` | | 1~14 |
+| tests — domain: `OwnerOpsAlertKindTest`(owneralert), `OwnerAlertSignalStateTest`(accountpnl), `OpsSignalsTest`·`OpsIncidentPolicyTest`·`OwnerOpsAlertContentTest`(ownerops), 허용 예외 `OwnerAlertRoutingTest`; infra:common: `V21OwnerAlertSignalStateMigrationIntegrationTest`·`JdbcOwnerAlertOutboxIntegrationTest`; infra:batch: `RedisJobRunRecorderFailureStreakTest`·`OwnerAlertChannelConfigurationTest`; apps:batch: `OwnerAlertJobConfigTest`·`OwnerAlertDeliveryJobTest`·`OwnerOpsSignalJobTest`(+ `OwnerOpsTestFakes.kt`)·`OwnerAlertChannelIndependenceWiringTest`·`OwnerAlertDeliveryWiringTest`·허용 예외 `AccountPnlMonitorWiringTest`(R8)·`OwnerOpsAlertIntegrationTest` | | 1~14 |
 
 ---
 
@@ -89,24 +92,24 @@ outbox 행(`account_pnl_mail`)을 한 트랜잭션에 쓴다(infra:common `JdbcO
   ./gradlew :apps:batch:integrationTest --offline --no-daemon                               # R11 (Docker)
   ./gradlew :apps:api:integrationTest --offline --no-daemon                                 # R13 (Docker)
   ls infrastructure/common/src/main/resources/db/migration | sort -V | tail -1              # (g1) V21 번호 근거
-  ls infrastructure/common/src/main/resources/db/migration | grep '^V18__'                  # (g2) A2 — V18 CREATE TABLE 관례(파일을 열어 테이블 옵션 확인)
-  grep -rn "findLatest(" --include=*.kt apps/batch/src/main                                 # (g3) A3 — TickerFlushJob 의 (exchange, quote)
+  grep -rn "findLatest(" --include=*.kt apps/batch/src/main                                 # (g3) TickerFlushJob 의 (exchange, quote) — 확인된 사실 A3 재확인
   grep -rln "AccountPnlMonitorAdapterConfiguration" --include=*.kt apps/batch/src/test apps/batch/src/integrationTest infrastructure/batch/src/test  # (g4) R8 대상 목록
   grep -n "containsExactly" domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRoutingTest.kt   # (g5) R7 줄 번호
   grep -rn "JobId.entries\|JobId.values()" --include=*.kt apps domain infrastructure architecture-tests          # (g6) JobId 개수 단언
   grep -rn "information_schema.tables\|TABLE_NAME" apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt  # (g7) R9 필요 여부
   grep -rn "OwnerAlertProperties" --include=*.kt apps/batch/src/test infrastructure/batch/src/test               # (g8) A5 — PnL 꺼짐 미바인딩 단언 여부
-  grep -rln "class EmailAutoConfiguration" --include=*.kt supports                          # (g9) A6 — 파일을 열어 EmailSender 등록 조건 확인
   grep -rln "OWNER_ALERT_DISCORD_ENABLED" .env.example deploy docker docs/runbooks          # (g10) env 예시 갱신 대상
   grep -rn "account_pnl_monitor" docs/runbooks .ai                                          # (g11) job tag 목록 갱신 대상
   grep -rn "fixedRateString" --include=*.kt apps/batch/src/main                             # (g12) Scheduler trigger 패턴
   grep -rn "JobExecutor(" --include=*.kt apps/batch/src/test/kotlin/io/premiumspread/application  # (g13) 단위 테스트의 executor 구성
+  grep -rn "doesNotHaveBean(" --include=*.kt apps/batch/src/test infrastructure/batch/src/test | grep -E "EmailSenderAdapter|OwnerAlertRouting|OwnerAlertDiscordSender|DiscordWebhookSenderAdapter"  # (g14) R8 — 채널 bean 부재 단언 위치
+  grep -rln "CommonInfrastructureAutoConfiguration" --include=*.kt infrastructure/common/src/integrationTest   # (g15) AC7-i — auto-configuration 을 띄우는 기존 통합 테스트 패턴
   ```
 - [ ] **Step 2: 예상 결과.** merge-base `20a7484`. gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지). (g1) `V20__add_owner_account_alert_state.sql`.
-  (g3) `TickerFlushJob` 이 `BatchMarket` 의 `pair.koreaExchange`/`koreaQuote`, `pair.foreignExchange`/`foreignQuote` 로 조회. (g5) `containsExactly` 2곳. (g6) `when` 외 개수 단언 없음.
-  (g8) PnL 꺼짐에서 `OwnerAlertProperties` 미바인딩을 단언하는 테스트 없음. (g9) `notification.email.enabled=true` 이면 `EmailSender` 등록.
-  **다르면 멈추고 보고한다** — (g1) 이 V20 이 아니면 V21 번호·dod AC6, (g3) 가 다르면 design §5.1, (g4)/(g7) 결과로 dod R8·R9 대상 확정, (g8)·(g9) 가 다르면 design §9.3·A6 을 Gate 1 에서 다시 정한다.
-  (g4)·(g5)·(g7)·(g10)·(g11)·(g12)·(g13) 결과와 R3 의 정확한 경로 목록을 증거 로그에 남긴다.
+  (g3) `BatchMarket` 의 korea/foreign 두 쌍으로 조회. (g4) `AccountPnlMonitorWiringTest.kt` 하나. (g5) `containsExactly` 2곳. (g6) `when` 외 개수 단언 없음.
+  (g8) PnL 꺼짐에서 `OwnerAlertProperties` 미바인딩을 단언하는 테스트 없음. (g14) `AccountPnlMonitorWiringTest.kt:89` 한 줄(같은 파일의 `assertNoBeans()` 안)뿐.
+  **다르면 멈추고 보고한다** — (g1) 이 V20 이 아니면 V21 번호·dod AC6, (g4)/(g14) 가 다른 파일·줄을 보이면 dod R8 범위를 Gate 1 에서 다시 정한다, (g7) 결과로 R9 필요 여부 확정,
+  (g8) 이 다르면 design §9.3·A5 를 다시 정한다. (g5)·(g7)·(g10)·(g11)·(g12)·(g13)·(g14)·(g15) 결과와 R3 의 정확한 경로 목록을 증거 로그에 남긴다.
 - [ ] **Step 3: Commit** — `docs: owner 운영 알림 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: `OwnerAlertKind` 4종과 yml routes (AC1)
@@ -517,7 +520,7 @@ object OwnerOpsAlertContent {
 ### Task 7: V21 migration (AC6)
 
 **Files:** Create `infrastructure/common/src/main/resources/db/migration/V21__create_owner_alert_signal_state.sql`;
-Modify `apps/batch/src/integrationTest/resources/batch-schema.sql`(같은 DDL 추가);
+Modify `apps/batch/src/integrationTest/resources/batch-schema.sql`(아래 fixture DDL 추가);
 Test Create `infrastructure/common/src/integrationTest/kotlin/io/premiumspread/infrastructure/common/migration/V21OwnerAlertSignalStateMigrationIntegrationTest.kt`
 
 **Interfaces — Produces (DDL 전문):**
@@ -543,13 +546,14 @@ CREATE TABLE owner_alert_signal_state (
             AND notify_count >= 1 AND last_notified_at >= incident_started_at)
     ),
     CONSTRAINT ck_owner_alert_signal_state_version CHECK (version >= 1)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-V18 `CREATE TABLE` 이 테이블 옵션(엔진·문자셋)을 적는 관례면 같은 옵션을 `)` 뒤에 붙인다(Task 0 (g2), design A2). 다른 줄은 위 전문 그대로.
+batch fixture(`batch-schema.sql`)는 위 DDL 과 열·제약·테이블 옵션이 같고 첫 줄만 `CREATE TABLE IF NOT EXISTS owner_alert_signal_state (` 다(주석 4줄은 생략 가능).
+테이블 옵션은 V18(`V18__create_account_pnl_alert.sql:13`, `:30`)과 같다 — 확인된 사실.
 
 **테스트가 재는 것** (`V21OwnerAlertSignalStateMigrationIntegrationTest`, V19/V20 migration 테스트와 같은 패턴):
-- `빈 DB 에서 latest 는 V21 까지 성공하고 열이 설계와 같다` — `flyway_schema_history` 버전 1~21, `information_schema.columns` 의 이름·타입·nullable·순서, PK (AC6-a)
+- `빈 DB 에서 latest 는 V21 까지 성공하고 열이 설계와 같다` — `flyway_schema_history` 버전 1~21, `information_schema.columns` 의 이름·타입·nullable·순서, PK, `information_schema.tables.TABLE_COLLATION = utf8mb4_unicode_ci` (AC6-a)
 - `V20 에서 V21 로 올려도 기존 행이 그대로다` — V20 까지 적용 후 `account_pnl_monitor_state`·`account_pnl_mail` 행 INSERT → latest → 값 동일, 새 테이블 0행 (AC6-b)
 - `CHECK 가 어긋난 행을 거부한다` — dod AC6-c 4건 각각 예외 (AC6-c)
 
@@ -561,7 +565,7 @@ V18 `CREATE TABLE` 이 테이블 옵션(엔진·문자셋)을 적는 관례면 �
 ### Task 8: `JdbcOwnerAlertOutbox` 와 outbox INSERT 단일 소유자 (AC7)
 
 **Files:** Create `.../persistence/jdbc/accountpnl/OwnerAlertOutboxRows.kt`, `.../persistence/jdbc/accountpnl/JdbcOwnerAlertOutbox.kt`;
-Modify `.../persistence/jdbc/accountpnl/JdbcAccountPnlAlertStore.kt`(`insertMail`·`validate` 위임만);
+Modify `.../persistence/jdbc/accountpnl/JdbcAccountPnlAlertStore.kt`(`insertMail`·`validate` 위임만), `.../CommonInfrastructureAutoConfiguration.kt`(`CommonJdbcConfiguration` `@Import` 한 줄);
 Test Create `infrastructure/common/src/integrationTest/kotlin/io/premiumspread/infrastructure/common/persistence/jdbc/accountpnl/JdbcOwnerAlertOutboxIntegrationTest.kt`
 (main 경로 접두사 `infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common`)
 
@@ -595,6 +599,11 @@ class JdbcOwnerAlertOutbox(
 }
 ```
 
+```kotlin
+// CommonInfrastructureAutoConfiguration.kt — CommonJdbcConfiguration 의 @Import 목록, JdbcAccountPnlAlertStore::class(:74) 바로 뒤
+    JdbcOwnerAlertOutbox::class,
+```
+
 SQL 요건 (컬럼 물리명 = design §4.1):
 - SELECT: `SELECT signal_key, alert_kind, active, incident_started_at, last_notified_at, notify_count, version FROM owner_alert_signal_state WHERE signal_key IN (…)`.
 - INSERT: `INSERT INTO owner_alert_signal_state (signal_key, alert_kind, active, incident_started_at, last_notified_at, notify_count, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)` — `DuplicateKeyException` = 충돌.
@@ -603,11 +612,14 @@ SQL 요건 (컬럼 물리명 = design §4.1):
 - `alert_kind` 를 읽을 때 모르는 값 → `IllegalStateException("unknown owner alert kind in owner_alert_signal_state")`.
 - `JdbcAccountPnlAlertStore` 는 `OwnerAlertOutboxRows.validate`·`insert` 를 부르고 자기 사본(`MAX_EVENT_KEY_LENGTH`·`MAX_SUBJECT_LENGTH`·`MAX_BODY_BYTES` 상수, `insertMail`, `validate`)을 지운다. 다른 줄 무변경.
 
-**테스트가 재는 것** (`JdbcOwnerAlertOutboxIntegrationTest`, 실제 MySQL, 고정 Clock): dod AC7 (a)~(g) 각각 한 메서드. (b) 는 `[신규 A(version 0), 기존 B(틀린 version)]` 입력 후 A 행 부재·`account_pnl_mail` 0행. (g) 는 `JdbcAccountPnlAlertStore(...).claim("owner-alert-delivery:test", 1, now)` 가 enqueue 한 행을 돌려주고 `markSent` true.
+**테스트가 재는 것** (`JdbcOwnerAlertOutboxIntegrationTest`, 실제 MySQL, 고정 Clock): dod AC7 (a)~(g)·(i) 각각 한 메서드. (b) 는 `[신규 A(version 0), 기존 B(틀린 version)]` 입력 후 A 행 부재·`account_pnl_mail` 0행.
+(g) 는 `JdbcAccountPnlAlertStore(...).claim("owner-alert-delivery:test", 1, now)` 가 enqueue 한 행을 돌려주고 `markSent` true.
+(i) 는 Task 0 (g15) 의 기존 패턴대로 `ApplicationContextRunner` 에 Testcontainers DataSource + JDBC·트랜잭션 auto-configuration + `CommonInfrastructureAutoConfiguration` 을 올려
+`getBeansOfType(OwnerAlertOutbox::class.java)` 가 1개이고 `JdbcOwnerAlertOutbox` 임을 단언.
 
-- [ ] **Step 1:** `JdbcOwnerAlertOutbox` 를 **stub**(`loadSignals = emptyMap()`, `enqueue = true` 무기록)으로, `OwnerAlertOutboxRows` 추출은 실제로. 테스트 작성.
-- [ ] **Step 2:** dod AC7 명령 → RED(새 테스트의 기록·읽기 단언 실패. 기존 `JdbcAccountPnlAlertStoreIntegrationTest` 는 추출 뒤에도 초록이어야 한다 — 빨간색이면 추출이 동작을 바꾼 것이므로 멈춘다). 증거 로그 AC7.
-- [ ] **Step 3:** 구현. dod AC7 명령 → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon`(R10) → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [ ] **Step 1:** `JdbcOwnerAlertOutbox` 를 **stub**(`loadSignals = emptyMap()`, `enqueue = true` 무기록)으로 만들되 `@Import` 는 아직 추가하지 않는다. `OwnerAlertOutboxRows` 추출은 실제로. 테스트 작성.
+- [ ] **Step 2:** dod AC7 명령 → RED(새 테스트의 기록·읽기 단언 실패, (i) bean 0개 단언 실패. 기존 `JdbcAccountPnlAlertStoreIntegrationTest` 는 추출 뒤에도 초록이어야 한다 — 빨간색이면 추출이 동작을 바꾼 것이므로 멈춘다). 증거 로그 AC7.
+- [ ] **Step 3:** 구현과 `@Import` 추가. dod AC7 명령 → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon`(R10) → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
 - [ ] **Step 4: Commit** — `feat: owner 알림 범용 enqueue JDBC 구현`
 
 ### Task 9: Job 연속 실패 카운터 (AC5)
@@ -642,12 +654,13 @@ bean 등록은 기존 `@Import(RedisJobRunRecorderAdapter::class)`(`BatchJobSupp
 - [ ] **Step 3:** 구현. 같은 명령 → PASS(기존 `infrastructure/batch/.../job` 테스트 무수정 통과). `./gradlew test architectureTest --offline --no-daemon` → PASS.
 - [ ] **Step 4: Commit** — `feat: batch Job 연속 실패 카운터`
 
-### Task 10: 채널 bean 을 PnL 모니터 구성에서 분리 (AC11-a·b·c·d·f·h·j)
+### Task 10: 채널 bean 을 PnL 모니터 구성에서 분리 (AC11-a·b·c·d·f·h·j, AC15)
 
 **Files:** Create `infrastructure/batch/src/main/kotlin/io/premiumspread/infrastructure/batch/owneralert/OwnerAlertChannelConfiguration.kt`;
 Modify `.../accountpnl/AccountPnlMonitorAdapterConfiguration.kt`, `.../BatchInfrastructureAutoConfiguration.kt`;
-Test Create `infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/owneralert/OwnerAlertChannelConfigurationTest.kt`;
-허용 예외(R8) Modify Task 0 (g4) 목록의 runner configuration 목록
+Test Create `infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/owneralert/OwnerAlertChannelConfigurationTest.kt`,
+`apps/batch/src/test/kotlin/io/premiumspread/config/OwnerAlertChannelIndependenceWiringTest.kt`;
+허용 예외(R8) Modify `apps/batch/src/test/kotlin/io/premiumspread/config/AccountPnlMonitorWiringTest.kt`(아래 두 종류 diff 만)
 
 **Interfaces — Produces (전문):**
 
@@ -686,16 +699,25 @@ class OwnerAlertChannelConfiguration {
 요건: 세 bean 본문·로그 문구(`owner-alert discord webhooks: …`, `owner-alert routes: …`)·`describeRoutes` 를 `AccountPnlMonitorAdapterConfiguration.kt:170-214` 에서 **그대로** 옮긴다(log 는 새 클래스의 logger).
 `AccountPnlMonitorAdapterConfiguration` 의 `@EnableConfigurationProperties` 는 `AccountPnlMonitorProperties` 하나로 줄인다. `BatchInfrastructureAutoConfiguration` 의 `@Import` 첫 줄에 `OwnerAlertChannelConfiguration::class` 를 더한다.
 
-**테스트가 재는 것** (`OwnerAlertChannelConfigurationTest`, `ApplicationContextRunner` + 기존 owneralert 테스트가 쓰는 `EmailSender` fake 구성):
-- `PnL 모니터가 꺼져 있어도 Discord 채널이면 라우팅과 Discord sender 가 뜬다` — `account-pnl-monitor.enabled=false` + Discord + `webhook.ops=https://discord.example.test/api/webhooks/1/x` → `OwnerAlertRouting.channels == (false, true)` (AC11-a)
-- `메일 채널만이면 메일 sender 와 라우팅` — SMTP·`EmailSender`·`owner@example.test` (AC11-b)
-- `채널이 준비되지 않으면 bean 이 없다` — 아무것도 없음 / Discord + webhook 없음 / 메일 + 수신 주소 없음 (AC11-c·d)
-- `scheduling 이 꺼지면 bean 이 없다` (AC11-f)
-- `PnL 꺼짐에서도 잘못된 webhook 은 기동 실패` — `http://discord.example.test/x` → 실패, 원인 메시지에 값 없음 (AC11-h)
+허용 예외(R8) diff (전문 — 이 둘 외 금지):
+1. `AccountPnlMonitorWiringTest` runner `withUserConfiguration(...)`(`:72-79`)에 `OwnerAlertChannelConfiguration::class.java,` 한 줄 추가와 그 import.
+2. `assertNoBeans()`(`:81-91`)에서 `assertThat(ctx).doesNotHaveBean(AccountPnlEmailSenderAdapter::class.java)`(`:89`)와, Task 0 (g14) 가 같은 함수 안에서 찾은 다른 채널 bean
+   (`OwnerAlertRouting`·`OwnerAlertDiscordSender`·`DiscordWebhookSenderAdapter`) 부재 단언을 지우고, 그 결과 쓰이지 않는 import 를 지운다. `:83-88` 은 그대로.
 
-- [ ] **Step 1:** `OwnerAlertChannelConfiguration` 을 위 클래스 조건·`@EnableConfigurationProperties` 만 있고 **bean 이 없는 stub** 으로, `OwnerAlertChannelReadyCondition` 은 전문으로 만든다(아직 import 에 넣지 않는다). 새 테스트를 runner = 이 구성으로 작성.
-- [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfigurationTest' --offline --no-daemon` → RED((a)(b) bean 존재 assertion 실패). 증거 로그 AC11.
-- [ ] **Step 3:** bean 3개 이동, `@Import` 추가, 허용 예외(R8) 적용. 같은 명령 → PASS. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` → PASS(기존 wiring 테스트는 runner 목록 추가 외 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+**테스트가 재는 것:**
+- `OwnerAlertChannelConfigurationTest`(infra:batch, `ApplicationContextRunner` + 기존 owneralert 테스트가 쓰는 `EmailSender` fake 구성):
+  - `PnL 모니터가 꺼져 있어도 Discord 채널이면 라우팅과 Discord sender 가 뜬다` — `account-pnl-monitor.enabled=false` + Discord + `webhook.ops=https://discord.example.test/api/webhooks/1/x` → `OwnerAlertRouting.channels == (false, true)` (AC11-a)
+  - `메일 채널만이면 메일 sender 와 라우팅` — SMTP·`EmailSender`·`owner@example.test` (AC11-b)
+  - `채널이 준비되지 않으면 bean 이 없다` — 아무것도 없음 / Discord + webhook 없음 / 메일 + 수신 주소 없음 (AC11-c·d)
+  - `scheduling 이 꺼지면 bean 이 없다` (AC11-f)
+  - `채널 ready 면 Discord 켜짐과 무관하게 webhook·override 를 검증한다` — PnL 꺼짐 + Discord 켜짐 + `webhook.ops=http://discord.example.test/x` → 실패, PnL 꺼짐 + **Discord 꺼짐** + 메일 ready + 같은 http webhook → 실패, 메일 ready + `owner-alert.routes.ops-recovered.push=loud` → 실패. 원인 메시지에 값 없음 (AC11-h)
+- `OwnerAlertChannelIndependenceWiringTest`(apps:batch, runner = `AccountPnlMonitorWiringTest` 와 같은 5개 구성 + `OwnerAlertChannelConfiguration`, 같은 `Stubs`·`enabledProps` 값을 이 클래스 안에 복제): dod AC15 —
+  R8 로 부재 단언을 뺀 시나리오(`:98-101` 플래그 false, `:103-108` 의 계정 key 4개 각각 누락, `:337-398` 의 PnL 꺼짐 시나리오들과 같은 property)에서 `AccountPnlMonitorJob`·계정 adapter 3개는 없고
+  `AccountPnlEmailSenderAdapter`·`OwnerAlertRouting` 은 있다. `account-pnl-monitor.recipient=` 이면 채널 bean 도 없다. `batch.scheduling.enabled=false` 면 채널 bean 도 없다.
+
+- [ ] **Step 1:** `OwnerAlertChannelConfiguration` 을 위 클래스 조건·`@EnableConfigurationProperties` 만 있고 **bean 이 없는 stub** 으로, `OwnerAlertChannelReadyCondition` 은 전문으로 만든다(아직 import 에 넣지 않는다). 두 새 테스트를 작성.
+- [ ] **Step 2:** `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfigurationTest' :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertChannelIndependenceWiringTest' --offline --no-daemon` → RED(채널 bean 존재 assertion 실패). 증거 로그 AC11·AC15.
+- [ ] **Step 3:** bean 3개 이동, `@Import` 추가, 허용 예외(R8) 적용. 같은 명령 → PASS. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
 - [ ] **Step 4: Commit** — `refactor: owner 알림 채널 bean 을 PnL 모니터 구성에서 분리`
 
 ### Task 11: 독립 전달 Job (AC9)
@@ -772,17 +794,26 @@ class OwnerOpsSignalJob(
 }
 ```
 
-회차 순서 = design §8.2 1~9 전문, `JobResult` 분기·로그 문구 = 같은 절 표 전문. 행 생성은 `OwnerAlertRows.expand(OwnerOpsAlertContent.mail(n, settings, zone), routing.resolve(n.kind)) { OwnerOpsAlertContent.discord(n, settings, zone) }`.
+회차 순서 = design §8.2 1~9 전문 — 2단계 FX 신호는 `OpsSignal.FxIngestion(market.fxBase, market.fxQuote)`(`defaultMarket()` 결과, `FxIngestionJob.kt:29-30` 과 같은 출처),
+4단계 관측 예외는 원인 체인(자기 자신 포함, 깊이 16)에 `InterruptedException`·`CancellationException` 이 있으면 `Thread.currentThread().interrupt()` 후 **그대로 다시 던지고**, 그 밖이면
+그 신호를 `Unknown` 으로 본다(`AccountPnlMonitorJob.kt:176-180`·`:369-374` 와 같은 규칙). `JobResult` 분기·로그 문구 = 같은 절 표 전문.
+행 생성은 `OwnerAlertRows.expand(OwnerOpsAlertContent.mail(n, settings, zone), routing.resolve(n.kind)) { OwnerOpsAlertContent.discord(n, settings, zone) }`.
 `firstRunAt` 는 인스턴스 필드 `AtomicReference<Instant?>`. 관측 예외 WARN 의 `error` 는 예외 단순 클래스 이름(메시지 금지).
 
-테스트 fake 요건(`OwnerOpsTestFakes.kt`): `FakeOwnerAlertOutbox`(저장 map·누적 행·`enqueue` 호출 수·다음 호출 예외/false 주입, `enqueue` 가 version 을 +1 해 저장), 가변 `JobLastSuccessReadPort`·`JobFailureStreakReadPort`·`LatestMarketTickReadPort` fake(조회 인자 기록·호출 시 예외 주입).
+테스트 fake 요건(`OwnerOpsTestFakes.kt`):
+- `FakeOwnerAlertOutbox`(저장 map·누적 행·`enqueue` 호출 수·다음 호출 예외/false 주입, `enqueue` 가 version 을 +1 해 저장).
+- 가변 `JobLastSuccessReadPort`·`JobFailureStreakReadPort`·`LatestMarketTickReadPort` fake(조회 인자 기록·호출 시 예외 주입). **시각은 `MutableClock` 을 받아 호출 시점의
+  `clock.instant()` 기준 상대값**으로 돌려준다(예 정상 = 마지막 성공 `clock.instant() − 1분`, tick `clock.instant() − 1초`). 장애로 만들 신호만 고정 절대 시각 또는 null 로 덮어쓴다 —
+  시계를 6시간 전진해도 나머지 신호가 장애로 오염되지 않게.
 
-**테스트가 재는 것** (`OwnerOpsSignalJobTest`, `MutableClock(2026-10-28T00:00:00Z)`, routing `OwnerAlertRouting(OwnerAlertChannels(true, true))`, BatchMarket = BTC·BITHUMB/KRW·BINANCE/USD·USD/KRW, 정상 fixture = 모든 Job·FX 마지막 성공 1분 전·두 거래소 tick 1초 전): dod AC8 (a)~(j) 각각.
-(c) 는 tick fake 의 조회 인자 집합 = `{(BITHUMB, BTC/KRW), (BINANCE, BTC/USD)}`. (e) 는 시계를 30초씩 6시간 전진시키며 enqueue 호출 수 = 첫 회 1 + 6시간 시점 1. (g) 는 FakeOutbox 에 FX 장애 상태(`lastNotifiedAt = now`)를 넣은 채 FX 성공 기록 null 인 새 Job 인스턴스로 0~30분을 30초 간격으로 돌려 enqueue 0회.
+**테스트가 재는 것** (`OwnerOpsSignalJobTest`, `MutableClock(2026-10-28T00:00:00Z)`, routing `OwnerAlertRouting(OwnerAlertChannels(true, true))`, BatchMarket = BTC·BITHUMB/KRW·BINANCE/USD·USD/KRW): dod AC8 (a)~(k) 각각.
+(b) 는 FX 신호 key 가 `fx-ingestion.usd-krw` 이고 BatchMarket 의 fxBase/fxQuote 를 다른 값(예 `EUR`/`KRW`)으로 바꾸면 key 도 따라 바뀜. (c) 는 tick fake 의 조회 인자 집합 = `{(BITHUMB, BTC/KRW), (BINANCE, BTC/USD)}`.
+(e) 는 시계를 30초씩 6시간 전진시키며 enqueue 호출 수 = 첫 회 1 + 6시간 시점 1. (g) 는 FakeOutbox 에 FX 장애 상태(`lastNotifiedAt = now`)를 넣은 채 FX 성공 기록 null 인 새 Job 인스턴스로 0~30분을 30초 간격으로 돌려 enqueue 0회.
 (i) 저장 전 interrupt 는 마지막 관측 fake 가 호출될 때 `Thread.currentThread().interrupt()` 를 건다. (j) 는 `OutputCaptureExtension` 으로 로그에 `example.test`·`owner@`·주입한 관측 예외 메시지 문자열이 없음.
+(k) 는 tick fake 가 `RuntimeException(InterruptedException())` 을 던지게 하고 action 을 executor 없이 직접 부르는 경로(또는 executor 결과가 `Failure` 이고 원인이 그 예외)로 재전파·interrupt 플래그 true·enqueue 0회를 확인한다 — 테스트 끝에 `Thread.interrupted()` 로 플래그를 지운다.
 
 - [ ] **Step 1:** **stub** `run = executor.execute(jobConfigs.get(JobId.OWNER_OPS_SIGNAL)) { JobResult.Success }`. fake·테스트 작성.
-- [ ] **Step 2:** dod AC8 명령 → RED(행·상태·분기 단언 실패. (a) 는 초록일 수 있다). 증거 로그 AC8.
+- [ ] **Step 2:** dod AC8 명령 → RED(행·상태·분기·재전파 단언 실패. (a) 는 초록일 수 있다). 증거 로그 AC8.
 - [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
 - [ ] **Step 4: Commit** — `feat: owner 운영 신호 Job`
 
@@ -798,7 +829,7 @@ Test Create `apps/batch/src/test/kotlin/io/premiumspread/config/OwnerAlertDelive
 ```kotlin
 package io.premiumspread.config
 
-/** design §9.2 ready 규칙의 app 사본 + WARN(className = OwnerAlertDeliveryConfiguration 일 때만). infra OwnerAlertChannelRequirements.ready 와 같은 답을 낸다. */
+/** design §9.2 ready 규칙의 app 사본 + WARN/INFO(className = OwnerAlertDeliveryConfiguration 일 때만). infra OwnerAlertChannelRequirements.ready 와 같은 답을 낸다. */
 class OwnerAlertDeliveryEnabledCondition : Condition {
     override fun matches(context: ConditionContext, metadata: AnnotatedTypeMetadata): Boolean
 }
@@ -898,16 +929,17 @@ yml (전문, `owner-alert` 블록 안 `routes` 앞):
     realert-interval: ${OWNER_ALERT_OPS_REALERT_INTERVAL:6h}
 ```
 
-조건·로그 문구 = design §9.2 전문. WARN 의 `missing` 은 env 이름 목록, `discordWebhookMissing` 은 boolean — 값을 싣지 않는다.
+조건·로그 문구·등급 = design §9.2 전문(위에서부터 먼저 맞는 행 하나): Discord 켜짐 + webhook 없음 → WARN, SMTP 켜짐 + 수신 주소 없음 → **INFO**, 그 밖 미준비 → 로그 없음, ops 꺼짐 → INFO.
+로그에는 env 이름 목록과 boolean 만 — 값을 싣지 않는다.
 
 **테스트가 재는 것** (`OwnerAlertDeliveryWiringTest`, `ApplicationContextRunner` + `OutputCaptureExtension`, runner 구성 = 기존 `AccountPnlMonitorWiringTest` 의 구성 + `OwnerAlertChannelConfiguration` + 새 구성 2개 + Scheduler 2개, 필요한 port 는 fake bean):
-dod AC11 (a)~(i) 각각.
+dod AC11 (a)~(g)·(i) 각각((h) 는 Task 10 의 infra 테스트가 잰다).
+- (d) 는 두 경우 각각 로그 등급(WARN / INFO)과 문구 전문, 그리고 수신 주소 누락 경우 출력에 `WARN` 행이 없음, 출력에 `discord.example.test`·`owner@example.test` 가 없음.
 - (i) 는 email 요청(빈 값/true/false) × SMTP(true/false) × 수신 주소(있음/없음) × Discord 요청(true/false) × webhook(있음/없음) 48조합에서 `OwnerAlertDeliveryJob` bean 존재 여부 == 기대표(design §9.2 `ready` 규칙을 테스트 안 표로 적는다 — infra 함수는 `internal`). SMTP true 조합은 runner 에 `EmailSender` fake 를 둔다.
 - (g) 는 `owner-alert.ops.market-stale-after=7m`·`job-failure-count=4`·`job-failure-duration=10m`·`realert-interval=3h` 에서 bean `OwnerOpsAlertProperties.toSettings() == OpsAlertSettings(7m, 4, 10m, 3h)`, 그리고 `realert-interval=0s` 는 기동 실패이고 원인 체인에 `realertInterval must be positive.`.
-- (d) 는 출력에 `discord.example.test`·`owner@example.test` 가 없음.
 
 - [ ] **Step 1:** 조건 2개를 **stub**(항상 false)으로, 나머지 전문. 테스트 작성.
-- [ ] **Step 2:** dod AC11 명령 → RED((a)(b)(e)(g) bean 존재·WARN 단언 실패). 증거 로그 AC11.
+- [ ] **Step 2:** dod AC11 명령 → RED((a)(b)(e)(g) bean 존재·로그 단언 실패). 증거 로그 AC11.
 - [ ] **Step 3:** 조건 구현. dod AC11 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS(앱 main 이 infra 를 import 하지 않음 포함).
 - [ ] **Step 4: Commit** — `feat: owner 운영 알림 앱 배선과 Scheduler`
 
@@ -916,9 +948,9 @@ dod AC11 (a)~(i) 각각.
 **Files:** Test Create `apps/batch/src/integrationTest/kotlin/io/premiumspread/application/job/OwnerOpsAlertIntegrationTest.kt`
 
 **테스트가 재는 것** (구성은 기존 `OwnerAlertDeliveryIntegrationTest` 의 MySQL fixture·executor·기록용 sender 를 따른다. 실제 `JdbcOwnerAlertOutbox`·`JdbcAccountPnlAlertStore`, `MutableClock(2026-10-28T00:00:00Z)`,
-fake `JobLastSuccessReadPort`·`JobFailureStreakReadPort`·`LatestMarketTickReadPort`(모두 정상 값으로 시작), routing `(email=true, discord=true)`): dod AC12 (a)~(e).
-- (a)(b)(c) 는 한 시나리오 메서드: FX 마지막 성공을 31분 전으로 → 신호 회차 → 전달 회차 → `account_pnl_mail` 에서 eventKey·channel·`SENT`, Discord sender 호출 route `(OPS, SOUND)` 1회 → 시계 +6h·두 회차 → `alert-2` → 성공 시각을 now 로 → 두 회차 → `.recovered` `(OPS, SILENT)`, `owner_alert_signal_state` 의 `active = 0`.
-- (d) 장애 상태에서 새 `OwnerOpsSignalJob` 인스턴스 + 성공 기록 null → 29분 동안 30초 간격 회차 → `account_pnl_mail` 행 수 불변, 상태 행 `active = 1`.
+fake `JobLastSuccessReadPort`·`JobFailureStreakReadPort`·`LatestMarketTickReadPort` — Task 12 와 같은 규칙으로 **`MutableClock` 기준 상대 시각**(정상 = 마지막 성공 `now − 1분`, tick `now − 1초`)을 돌려준다 —, routing `(email=true, discord=true)`): dod AC12 (a)~(e).
+- (a)(b)(c) 는 한 시나리오 메서드: FX 마지막 성공만 고정 절대 시각 `2026-10-27T23:29:00Z`(31분 전)로 덮어씀 → 신호 회차 → 전달 회차 → `account_pnl_mail` 에서 eventKey·channel·`SENT`, Discord sender 호출 route `(OPS, SOUND)` 1회 → 시계 +6h·두 회차 → `alert-2` 와 그 밖 신호의 행 없음 → FX 마지막 성공을 상대 시각으로 되돌림 → 두 회차 → `.recovered` `(OPS, SILENT)`, `owner_alert_signal_state` 의 `active = 0`.
+- (d) 장애 상태에서 새 `OwnerOpsSignalJob` 인스턴스 + FX 성공 기록 null → 29분 동안 30초 간격 회차 → `account_pnl_mail` 행 수 불변, 상태 행 `active = 1`.
 - (e) PENDING EMAIL 6행을 `JdbcOwnerAlertOutbox.enqueue(emptyList(), rows)` 로 넣고 → 전달 Job 의 `run()` 과 owner `account-pnl-monitor:e2e` 의 `OwnerAlertDispatcher.dispatch()` 를 두 스레드에서 동시에 → 기록용 sender 의 eventKey 별 호출 수가 모두 1, 6행 모두 `SENT`.
 
 - [ ] **Step 1:** 테스트 작성.
@@ -933,9 +965,11 @@ Task 0 (g10)·(g11) 이 찾은 파일
 
 요건 (design §13 전문을 따른다):
 - `owner-ops-alert.md` 절 순서: `## 무엇을 알리나`(신호 3종·경계 표) → `## 재알림과 복구` → `## 라우팅`(4종 표, **Discord 가 꺼져 있으면 4종 모두 메일로 온다**, override env 12개) → `## 환경변수`(design §9.1 표 전문) →
-  `## 기동 판정과 로그`(§9.2 규칙·WARN/INFO 전문) → `## 한계`(재시작·카운터·`Unknown` 대기·다중 인스턴스) → `## 이 경로로 알릴 수 없는 장애`(§6.3 표, Slack `BATCH_JOB_FAILED` 와의 관계) →
+  `## 기동 판정과 로그`(§9.2 규칙·로그 표 전문 — Discord webhook 누락은 WARN, **SMTP 는 켜졌지만 owner 수신 주소가 없으면 INFO 이고 그 이유는 SMTP 가 회원 김프 구독 알림과 공유되기 때문**,
+  그리고 **채널 구성이 ready 면 Discord 켜짐 여부와 무관하게 webhook 형식과 `OWNER_ALERT_*_EMAIL/_DISCORD/_PUSH` override 값을 검증해 틀리면 기동 실패**) →
+  `## 한계`(재시작·카운터·`Unknown` 대기·다중 인스턴스) → `## 이 경로로 알릴 수 없는 장애`(§6.3 표, Slack `BATCH_JOB_FAILED` 와의 관계) →
   `## 상태 확인과 정리`(§13 SQL 2개 전문) → `## 배포`(V21 additive, 롤백 SQL 없음, API 먼저) → `## Discord 수신 체크리스트 (owner-ops-alerts AC14)`. 알림 메시지 예 3종(design §10.2 golden 과 같은 값).
-- `account-pnl-alert.md`: 채널 bean 이 PnL 모니터와 독립(PnL 을 꺼도 채널은 운영 알림용으로 뜬다), webhook 형식 검증 시점 변화, 라우팅 표·override `{KIND}` 목록에 4종, 전달 Job 이 같은 outbox 를 비운다.
+- `account-pnl-alert.md`: 채널 bean 이 PnL 모니터와 독립(PnL 을 꺼도 채널은 운영 알림용으로 뜬다), 위 검증 시점 변화(채널 ready 면 Discord 켜짐과 무관하게 webhook·override 검증), 라우팅 표·override `{KIND}` 목록에 4종, 전달 Job 이 같은 outbox 를 비운다.
 - `ARCHITECTURE_DESIGN.md`: `### 실계정 순손익 알림` 절 뒤에 운영 알림 흐름 한 단락.
 - `PROJECT_STATUS.md`: `:13` `Flyway V1~V21`, migration 표 V21 행, 기능 상태 한 항목(AC14 owner 확인 대기 명시).
 
@@ -947,7 +981,7 @@ Task 0 (g10)·(g11) 이 찾은 파일
 
 **Files:** 없음 (dod 증거 로그)
 
-- [ ] **Step 1:** dod 회귀 방어선 R1·R2·R4·R5·R10·R11·R12·R13·R15 명령과 AC1~AC13 검증 명령을 각각 실행해 exit code·테스트 수를 기록한다. Task 0 대비 테스트 수 증가를 적는다.
+- [ ] **Step 1:** dod 회귀 방어선 R1·R2·R4·R5·R10·R11·R12·R13·R15 명령과 AC1~AC13·AC15 검증 명령을 각각 실행해 exit code·테스트 수를 기록한다. Task 0 대비 테스트 수 증가를 적는다.
 - [ ] **Step 2:** 경계면 대조 — V21 SQL ↔ `batch-schema.sql` ↔ `JdbcOwnerAlertOutbox` SQL 컬럼, yml env ↔ runbook env 표, routes 기본값 ↔ runbook 라우팅 표, JobConfig ↔ yml jobs ↔ runbook.
-- [ ] **Step 3:** R3·R5·R6·R7·R8·R9 diff 를 실행해 사람 판정용 출력으로 남긴다. ktlint·detekt 는 CI(R14).
+- [ ] **Step 3:** R3·R5·R6·R7·R8·R9 diff 를 실행해 사람 판정용 출력으로 남긴다(R8 은 dod 의 두 종류 diff 외 줄이 없는지). ktlint·detekt 는 CI(R14).
 - [ ] **Step 4:** dod 판정 블록을 표에서 세어 출력한다(AC13 T3 기록 제출, AC14 T4 → `AWAITING_HUMAN`).

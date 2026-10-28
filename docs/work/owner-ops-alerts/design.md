@@ -3,7 +3,7 @@
 - slug: `owner-ops-alerts` · base `origin/dev` `20a7484`(Task 0 확인) · branch `feat/issue-91-owner-ops-alerts`
 - 입력: issue #91 · ③ 사용자 합의(아래 §0.1) · `docs/work/owner-alert-channel/design.md`(#88, 라우팅 §3·outbox §4·전달 §5·연결 경로 §9) ·
   `docs/work/owner-account-alerts/*`(#89) · `.ai/rules/{architecture,batch,testing,naming}.md`
-- 상태: DRAFT — ⑥ 스펙 리뷰 전
+- 상태: DRAFT — ⑥ R1 REQUEST_CHANGES 9건 반영(§15)
 
 ## 0. 요약
 
@@ -43,7 +43,7 @@ batch 가 스스로 "지속되는 운영 장애"를 감지해 owner 에게 Disco
 | K5 | Job 연속 실패 카운터는 `infrastructure:batch` `RedisJobRunRecorderAdapter` 의 **in-memory** 맵이다(Redis 무변경). 재시작하면 0 부터 다시 센다 — 한계로 명시 | §6 |
 | K6 | 전달은 새 `OwnerAlertDeliveryJob`(15초, `OwnerAlertDispatcher` 재사용)이 한다. `AccountPnlMonitorJob` 의 회차 안 전달은 그대로 둔다 — 두 디스패처가 같은 outbox 를 claim 해도 `FOR UPDATE SKIP LOCKED` + `PENDING` 조건 claim 이라 한 행은 한 번만 집힌다 | §7 |
 | K7 | 운영 신호 Job 과 전달 Job 자신은 Job 연속 실패 감시 대상에서 **뺀다** — 자기 실패를 자기 경로로 알릴 수 없다. 두 Job 의 실패는 기존 Slack `BATCH_JOB_FAILED` 가 맡는다 | §6.3 |
-| K8 | 운영 알림은 기본 **켜짐**(`OWNER_ALERT_OPS_ENABLED=true`). 쓸 수 있는 owner 채널이 없으면 조용히 기동하지 않는다 | §9 · `[ASSUMPTION]` A1 |
+| K8 | 운영 알림은 기본 **켜짐**(`OWNER_ALERT_OPS_ENABLED=true`). 쓸 수 있는 owner 채널이 없으면 기동하지 않는다 | §9 · `[ASSUMPTION]` A1 |
 
 ## 1. 범위
 
@@ -51,7 +51,7 @@ batch 가 스스로 "지속되는 운영 장애"를 감지해 owner 에게 Disco
 
 - Domain: `OwnerAlertKind` 4종, 범용 port `OwnerAlertOutbox` 와 신호 상태 타입, 운영 신호 모델·관측 함수·장애 정책·렌더러(`domain.ownerops`),
   `JobId` 2종, `JobFailureStreakReadPort`
-- infrastructure:common: V21, `JdbcOwnerAlertOutbox`, outbox INSERT SQL 의 단일 소유자 추출(`JdbcAccountPnlAlertStore` 동작 무변경)
+- infrastructure:common: V21, `JdbcOwnerAlertOutbox`(+ `CommonJdbcConfiguration` 의 `@Import` 등록), outbox INSERT SQL 의 단일 소유자 추출(`JdbcAccountPnlAlertStore` 동작 무변경)
 - infrastructure:batch: 연속 실패 카운터(`RedisJobRunRecorderAdapter`), 채널 bean 이동(`OwnerAlertChannelConfiguration`)
 - apps:batch: `OwnerOpsSignalJob`·`OwnerAlertDeliveryJob`·Scheduler 2개, `JobConfig`·`BatchJobProperties`·`BatchSchedulingProperties` 항목, 앱 기동 조건·배선,
   `application.yml`(routes 4블록·`owner-alert.ops`·jobs·scheduling)
@@ -185,12 +185,13 @@ CREATE TABLE owner_alert_signal_state (
             AND notify_count >= 1 AND last_notified_at >= incident_started_at)
     ),
     CONSTRAINT ck_owner_alert_signal_state_version CHECK (version >= 1)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-- 문자셋·엔진은 테이블 옵션을 적지 않는다 — 기존 migration 의 관례를 Task 7 이 V18(`account_pnl_*` 생성)과 대조해 같게 맞춘다(옵션을 적는 관례면 같은 옵션을 붙인다). `[ASSUMPTION]` A2.
+- 테이블 옵션은 V18 과 같다(`V18__create_account_pnl_alert.sql:13`, `:30` — 확인된 사실).
 - 순수 `CREATE TABLE` 이므로 `verifyMigrations` 금지 목록과 무관하고 구 binary 와 호환된다(구 binary 는 이 테이블을 모른다). 롤백 SQL 은 없다.
-- batch 는 Flyway 를 쓰지 않으므로 `apps/batch/src/integrationTest/resources/batch-schema.sql` 에 같은 DDL 을 추가한다.
+- batch 는 Flyway 를 쓰지 않으므로 `apps/batch/src/integrationTest/resources/batch-schema.sql` 에 같은 DDL 을 **`CREATE TABLE IF NOT EXISTS`** 로, 같은
+  테이블 옵션(`ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`)과 함께 추가한다.
 
 ### 4.2 컬럼 ↔ Domain
 
@@ -206,7 +207,11 @@ CREATE TABLE owner_alert_signal_state (
 ### 4.3 `JdbcOwnerAlertOutbox` (infrastructure:common)
 
 위치 `infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/persistence/jdbc/accountpnl/JdbcOwnerAlertOutbox.kt`,
-등록 방식은 `JdbcAccountPnlAlertStore` 와 같다(`@Repository` + 같은 생성자 `(JdbcTemplate, PlatformTransactionManager, Clock)`).
+생성자는 `JdbcAccountPnlAlertStore` 와 같다(`(JdbcTemplate, PlatformTransactionManager, Clock)`, `@Repository`).
+
+**등록.** component scan 이 아니라 `CommonInfrastructureAutoConfiguration.kt:67-81` 의 `CommonJdbcConfiguration`(`@ConditionalOnBean(JdbcTemplate)`) `@Import` 목록에
+`JdbcAccountPnlAlertStore::class`(`:74`) 바로 뒤로 `JdbcOwnerAlertOutbox::class` 를 추가해 등록한다. 실제 auto-configuration 으로 `OwnerAlertOutbox` bean 이
+해석되는지는 테스트가 고정한다(dod AC7-i). API 도 같은 auto-configuration 을 쓰므로 bean 이 생기지만 소비자가 없어 무해하다(`JdbcAccountPnlAlertStore` 와 같다).
 
 - `loadSignals`: `SELECT … FROM owner_alert_signal_state WHERE signal_key IN (…)`. 빈 입력이면 쿼리 없이 빈 map.
 - `enqueue`: 입력 검증(중복 signalKey → `IllegalArgumentException("signal keys must be distinct.")`, 행 검증은 §4.4) → `TransactionTemplate`(REQUIRED)
@@ -258,8 +263,9 @@ key 는 모두 `OwnerAlertSignalState.SIGNAL_KEY_PATTERN` 에 맞는다(Currency
 
 **MarketPair identity.** 시세 신호의 identity 는 `(Exchange, Quote)` 다. 운영 신호 Job 은 `BatchMarketProvider.defaultMarket()` 의
 `(pair.koreaExchange, koreaQuote)` 와 `(pair.foreignExchange, foreignQuote)` 두 개만 본다 — 기본값으로 `market-stream.bithumb.btc-krw`,
-`market-stream.binance.btc-usd`. 이 두 값은 `TickerFlushJob` 이 `LatestMarketTickReadPort.findLatest` 에 넘기는 값과 같아야 한다(`[ASSUMPTION]` A3, Task 0 확인).
-- 설정된 quote 의 tick 이 없으면 다른 quote(예 USDT)의 tick 으로 보정하지 않는다 — 없음으로 판정한다(architecture "요청 pair 와 payload pair 가 다르면 miss").
+`market-stream.binance.btc-usd`. 확인된 사실: 바이낸스 USDT stream 은 수집 시 USD quote 로 정규화되고(`infrastructure/batch/.../exchange/MarketData.kt:41`),
+`LatestMarketTickReaderAdapter.kt:18` 은 요청 quote 와 일치하는 tick 만 돌려준다 — 이 두 쌍으로 조회하면 실제 tick 이 나온다.
+- 설정된 quote 의 tick 이 없으면 다른 quote 의 tick 으로 보정하지 않는다 — 없음으로 판정한다(architecture "요청 pair 와 payload pair 가 다르면 miss").
 - Premium/Position/Notification identity 를 만들지 않는다. eventKey 와 상태 key 는 거래소 + quote 를 담는다.
 - `batch.market` 을 바꿔 관측 대상에서 빠진 신호 행은 그대로 남는다(장애 중이었으면 복구 알림이 오지 않는다). runbook 에 확인·정리 SQL 을 둔다(§13).
 
@@ -557,9 +563,13 @@ class OwnerOpsSignalJob(
 ### 8.2 회차 순서
 
 1. `now = clock.instant()`, `firstRunAt.compareAndSet(null, now)`(인스턴스 필드 `AtomicReference<Instant?>` — PnL 모니터와 같은 패턴).
-2. 신호 목록(§5.1 순서)을 만든다. `market.defaultMarket()` 예외 → `Failure`.
+2. `val market = market.defaultMarket()` — 예외 → `Failure`. 신호 목록(§5.1 순서)을 만든다: `FxIngestion(market.fxBase, market.fxQuote)`(FX 수집 Job 이 쓰는 것과 같은
+   출처 — `FxIngestionJob.kt:29-30`), `MarketStream(market.pair.koreaExchange, market.koreaQuote)`, `MarketStream(market.pair.foreignExchange, market.foreignQuote)`,
+   `MONITORED_JOBS.map(::JobFailures)`.
 3. `outbox.loadSignals(keys)` — 예외 → `Failure`.
-4. 신호마다 관측(§5.2). 관측 중 예외(port 가 던짐)는 그 신호만 `Unknown` 으로 보고 WARN 후 계속한다.
+4. 신호마다 관측(§5.2). 관측 중 예외(port 가 던짐)는 그 신호만 `Unknown` 으로 보고 WARN 후 계속한다. **단 취소는 삼키지 않는다** — 예외의 원인 체인(자기 자신 포함,
+   깊이 16)에 `InterruptedException`·`CancellationException` 이 있으면 interrupt 플래그를 복구하고 그 예외를 다시 던진다(`AccountPnlMonitorJob.kt:176-180` 과 같은 규칙.
+   결과 없음, `JobExecutor` 로 전파 — 저장 없음).
 5. 신호마다 `OpsIncidentPolicy.decide(signal, loaded[key] ?: initial(key, kind), observation, now, settings)`.
 6. notice 마다 `OwnerAlertRows.expand(OwnerOpsAlertContent.mail(notice, settings, zone), routing.resolve(notice.kind)) { OwnerOpsAlertContent.discord(notice, settings, zone) }`.
 7. 바뀐 상태가 없으면 쓰지 않고 `Success`.
@@ -571,7 +581,8 @@ class OwnerOpsSignalJob(
 | 상황 | 결과 | 로그 |
 |---|---|---|
 | `defaultMarket`·`loadSignals` 예외 | `Failure` | ERROR `Owner ops signal store failed during {}` (operation = `defaultMarket`/`loadSignals`, 예외 stack) |
-| 신호 관측 예외 | 그 신호 `Unknown`, 계속 | WARN `Owner ops signal observation failed: signal={}, error={}` (error = 예외 단순 클래스 이름) |
+| 신호 관측 예외(취소 아님) | 그 신호 `Unknown`, 계속 | WARN `Owner ops signal observation failed: signal={}, error={}` (error = 예외 단순 클래스 이름) |
+| 신호 관측 예외의 원인 체인에 `InterruptedException`·`CancellationException` | interrupt 플래그 복구 후 **예외를 다시 던진다**(결과 없음, 저장 없음) | 없음 |
 | 바뀐 상태 없음 | `Success` | 없음 |
 | 저장 전 interrupt | `Skipped("cancelled")` | WARN `Owner ops signal was cancelled before saving state` |
 | `enqueue` 예외 | `Failure` | ERROR `Owner ops signal store failed during enqueue` |
@@ -647,7 +658,7 @@ FX 임계값은 env 가 없다(K-FX). 채널 env(`OWNER_ALERT_EMAIL_ENABLED`·`O
 
 `owner-alert.ops.*`(enabled 제외 4개)는 apps:batch `OwnerOpsAlertProperties`(`@ConfigurationProperties("owner-alert.ops")`, data class, `toSettings(): OpsAlertSettings`)가
 바인딩한다. `enabled` 는 조건만 읽는다(빈 값을 Boolean 바인딩 실패로 만들지 않으려고 properties 에 두지 않는다). 같은 prefix 트리의 infra `OwnerAlertProperties` 는
-constructor binding 의 unknown field 무시로 `ops` 를 읽지 않는다(`[ASSUMPTION]` A4, Task 13 테스트). `toString` = 네 값(비밀 없음). 잘못된 값(`0s`, `0` 등)은
+constructor binding 의 unknown field 무시로 `ops` 를 읽지 않는다(확인된 사실). `toString` = 네 값(비밀 없음). 잘못된 값(`0s`, `0` 등)은
 `OpsAlertSettings` init 메시지로 기동 실패.
 
 ### 9.2 기동 판정 (전문)
@@ -661,7 +672,8 @@ discordRequested  = owner-alert.discord.enabled trim 후 equalsIgnoreCase "true"
 webhookConfigured = webhook.pnl / .market / .ops 중 하나라도 공백 아님
 discordEffective  = discordRequested ∧ webhookConfigured
 recipientMissing  = emailEffective ∧ account-pnl-monitor.recipient 공백
-ready             = ¬recipientMissing ∧ ¬(discordRequested ∧ ¬webhookConfigured) ∧ (emailEffective ∨ discordEffective)
+discordMisconfigured = discordRequested ∧ ¬webhookConfigured
+ready             = ¬recipientMissing ∧ ¬discordMisconfigured ∧ (emailEffective ∨ discordEffective)
 
 opsEnabled        = owner-alert.ops.enabled 가 비었거나 없으면 true, 아니면 trim 후 equalsIgnoreCase("true")
 
@@ -674,13 +686,17 @@ PnL 모니터                                       ⇔ 기존 그대로 (그 �
 app 은 infra 를 import 하지 않으므로 app `OwnerAlertDeliveryEnabledCondition` 이 같은 규칙을 다시 적는다(#88 이 PnL 조건에서 한 것과 같은 이중화).
 일치는 wiring 행렬 테스트(dod AC11)가 고정한다. 기존 `AccountPnlMonitorEnabledCondition` 은 바꾸지 않는다 — 규칙 사본이 셋이 되는 부채는 별도 리팩터링 후보로 남긴다.
 
-app 조건 로그 (className 가드 — 해당 구성 클래스 평가 때만, **env 이름과 boolean 만**):
+app 조건 로그 (className 가드 — 해당 구성 클래스 평가 때만, **env 이름과 boolean 만**, 위에서부터 먼저 맞는 행 하나):
 
 | 조건 | 로그 (문구 전문) |
 |---|---|
-| `¬ready ∧ (emailEffective ∨ discordRequested)` — owner 가 채널을 켜려다 실패 (`OwnerAlertDeliveryConfiguration` 평가 때) | WARN `owner-alert channel not ready; owner alert delivery and ops alerts not started: missing={}, discordWebhookMissing={}` (`missing` = `[ACCOUNT_PNL_ALERT_RECIPIENT]` 또는 `[]`) |
+| `¬ready ∧ discordMisconfigured` — owner 가 Discord 를 켰는데 webhook 이 없음 (`OwnerAlertDeliveryConfiguration` 평가 때) | WARN `owner-alert channel not ready; owner alert delivery and ops alerts not started: missing={}, discordWebhookMissing=true` (`missing` = `[ACCOUNT_PNL_ALERT_RECIPIENT]` 또는 `[]`) |
+| `¬ready ∧ recipientMissing` — SMTP 는 켜졌지만 owner 수신 주소가 없음 (같은 평가 때) | INFO `owner-alert email channel has no owner recipient; owner alert delivery and ops alerts not started: missing=[ACCOUNT_PNL_ALERT_RECIPIENT]` |
 | `¬ready` 그 밖 (채널을 아무것도 켜지 않음 — 로컬 기본) | 없음 |
 | `ready ∧ ¬opsEnabled` (`OwnerOpsAlertConfiguration` 평가 때) | INFO `owner-alert ops alerts disabled by OWNER_ALERT_OPS_ENABLED` |
+
+수신 주소 누락이 WARN 이 아니라 INFO 인 이유(오케스트레이터 판정): SMTP(`NOTIFICATION_EMAIL_ENABLED`)는 회원 김프 구독 알림과 공유된다 — SMTP 를 켰다고 owner 알림을
+의도한 것은 아니므로 정상 구성일 수 있다. runbook 에 적는다.
 
 ### 9.3 채널 bean 이동 (사용자 합의 U1(c))
 
@@ -702,9 +718,15 @@ class OwnerAlertChannelReadyCondition : Condition
 
 - `BatchInfrastructureAutoConfiguration` 의 `@Import` 에 `OwnerAlertChannelConfiguration` 을 더한다(`EmailAutoConfiguration` 뒤에 평가되는 같은 auto-configuration).
 - `AccountPnlMonitorAdapterConfiguration` 은 클래스 조건·나머지 bean(계정 조회 adapter 3개)·`AccountPnlMonitorProperties` 바인딩을 그대로 둔다.
-- **바인딩 시점 변화.** `OwnerAlertProperties`(webhook 형식·route 값 검증)는 이제 "PnL 모니터 구성이 켜질 때"가 아니라 "채널 구성이 켜질 때" 바인딩·검증된다.
-  PnL 모니터를 끈 채 Discord 를 켰는데 webhook 값이 잘못돼 있으면 이제 기동 실패다(#88 §7.3 의 "잘못된 비밀값을 둔 채 늦게 실패하지 않는다" 원칙과 같은 방향).
-  runbook 에 적는다. 이 변화를 반대로 단언하는 기존 테스트가 있으면 Task 0 에서 멈추고 보고한다(`[ASSUMPTION]` A5).
+- **바인딩·검증 시점 변화.** `OwnerAlertProperties` 는 이제 "PnL 모니터 구성이 켜질 때"가 아니라 "채널 구성이 켜질 때(scheduling ∧ ready)" 바인딩된다. 바인딩되면
+  **Discord 켜짐 여부와 무관하게** webhook 3개의 형식(https)과 `OWNER_ALERT_*_EMAIL/_DISCORD/_PUSH` override 값을 검증하고, 틀리면 기동 실패다
+  (`OwnerAlertProperties.kt:15`, `:82-118`; 기존 테스트 `:809-822`, `:824-828` 가 같은 규칙을 고정). 즉 PnL 을 끄고 메일 채널만 ready 여도 `http://` webhook 값이
+  남아 있으면 기동하지 않는다. runbook 에 적는다(dod AC11-h).
+- **wiring 테스트 영향(허용 예외 R8).** `AccountPnlMonitorWiringTest.kt:81-91` `assertNoBeans()` 의 `:89` `doesNotHaveBean(AccountPnlEmailSenderAdapter)` 는 이동 뒤
+  "PnL 꺼짐 + 채널 ready"(`:98-101`, `:103-108`, `:337-361`, `:363-370`, `:372-388`, `:390-398`)에서 깨진다 — 메일 sender 는 이제 PnL 과 무관하게 ready 로 뜬다.
+  R8 은 이 파일에서 (1) runner 에 `OwnerAlertChannelConfiguration::class` 추가, (2) `assertNoBeans()` 의 옮겨진 채널 bean 부재 단언(`:89` 및 같은 함수 안의 다른 채널 bean
+  부재 단언)을 지우고 PnL 전용 bean 부재 단언(`:83-88`)만 남기는 것으로 한정한다. 대신 "채널 bean 은 PnL 과 무관하게 ready 조건으로만 뜬다"는 양성 단언을 새 테스트가
+  추가한다(dod AC15). 이런 부재 단언은 이 파일 하나뿐이다(확인된 사실 — infrastructure/batch 테스트에는 없다).
 - 메일 sender 가 없고(Discord 만) PnL 이 꺼진 기동에서도 `ownerAlertRouting` 은 bean 존재에서 채널 플래그를 만든다(#88 §7.2 그대로).
 
 ### 9.4 앱 배선 (`apps/batch/.../config/OwnerAlertDeliveryConfiguration.kt`)
@@ -748,15 +770,14 @@ class OwnerOpsAlertConfiguration {
     ): OwnerOpsSignalJob
 }
 
-/** §9.2 ready 규칙의 app 사본 + WARN. */
+/** §9.2 ready 규칙의 app 사본 + WARN/INFO. */
 class OwnerAlertDeliveryEnabledCondition : Condition
 /** OwnerAlertDeliveryEnabledCondition ∧ opsEnabled. */
 class OwnerOpsAlertEnabledCondition : Condition
 ```
 
 `OwnerAlertDeliveryJob` 이 `discordSender` 를 받지 않았는데 `routing.channels.discord` 가 참인 일은 없다 — 두 Job 이 같은 bean 존재에서 만들어진다.
-`[ASSUMPTION]` A6: `EmailAutoConfiguration` 은 `notification.email.enabled=true` 일 때 `EmailSender` 를 항상 등록한다(그래야 app 조건과 infra 조건이 같다).
-아니면(속성 켜짐 + bean 없음) 채널 bean 이 없어 app Job bean 생성이 실패한다 — PnL 모니터의 기존 동작과 같다. Task 0 이 `EmailAutoConfiguration` 을 읽어 확인한다.
+확인된 사실: `EmailAutoConfiguration` 은 `notification.email.enabled=true` 일 때 `EmailSender` 를 등록한다 — app 조건(속성만 본다)과 infra 조건(bean 존재)이 같은 답을 낸다.
 
 ## 10. 알림 본문 (Domain `ownerops/OwnerOpsAlertContent`)
 
@@ -852,11 +873,11 @@ object OwnerOpsAlertContent {
 | 항목 | 결정 |
 |---|---|
 | Facade 이름·주입 | **N/A** — batch 전용, REST 없음. 단일 진입: `OwnerAlertDeliveryScheduler → OwnerAlertDeliveryJob.run()`, `OwnerOpsSignalScheduler → OwnerOpsSignalJob.run()` |
-| Domain port · 구현 모듈 | `OwnerAlertOutbox`(신규) ← infrastructure:common `JdbcOwnerAlertOutbox`. `JobFailureStreakReadPort`(신규) ← infrastructure:batch `RedisJobRunRecorderAdapter`. 기존 재사용: `JobLastSuccessReadPort`(같은 adapter), `LatestMarketTickReadPort`(infra:batch ingestion), `BatchMarketProvider`, `AccountPnlAlertStore`·`AccountPnlMailSender`·`OwnerAlertDiscordSender`. `OwnerAlertOutbox` 는 #90 이 재사용할 경계이고 `JobFailureStreakReadPort` 는 Application 이 infrastructure 의 in-memory 맵을 몰라야 해서 port 다 |
+| Domain port · 구현 모듈 | `OwnerAlertOutbox`(신규) ← infrastructure:common `JdbcOwnerAlertOutbox`(`CommonJdbcConfiguration` `@Import` 등록). `JobFailureStreakReadPort`(신규) ← infrastructure:batch `RedisJobRunRecorderAdapter`. 기존 재사용: `JobLastSuccessReadPort`(같은 adapter), `LatestMarketTickReadPort`(infra:batch ingestion), `BatchMarketProvider`, `AccountPnlAlertStore`·`AccountPnlMailSender`·`OwnerAlertDiscordSender`. `OwnerAlertOutbox` 는 #90 이 재사용할 경계이고 `JobFailureStreakReadPort` 는 Application 이 infrastructure 의 in-memory 맵을 몰라야 해서 port 다 |
 | MarketPair identity | 시세 신호 identity = `(Exchange, Quote)`, `BatchMarket` 의 korea/foreign 두 쌍만(§5.1). 다른 quote 로 보정하지 않는다. Premium/Position identity 를 만들지 않는다 |
 | 시간·범위 | 모든 시각 `Instant` + 주입 `Clock`. 표시 zone = `aggregation.zone`(기본 `Asia/Seoul`). 경계값 §5.2 표. 새 범위 질의 없음(범위 계약 N/A) |
 | DB·cache 순서 | DB 만. 신호 상태 + outbox 행 = 한 트랜잭션(DB-first, §4.3). 외부 발송은 전달 Job 의 claim commit 뒤. cache 없음 |
-| Flyway | 필요. `V21__create_owner_alert_signal_state.sql`(번호는 Task 0 `ls … \| sort -V \| tail -1` + 1), DDL §4.1, batch fixture 동기화. 롤백 SQL 없음 |
+| Flyway | 필요. `V21__create_owner_alert_signal_state.sql`(번호는 Task 0 `ls … \| sort -V \| tail -1` + 1), DDL §4.1, batch fixture 동기화(`IF NOT EXISTS`). 롤백 SQL 없음 |
 | batch lock·lease·timeout·JobResult | §8.4 표, 분기 §7.2·§8.2 |
 | 알림 event identity | owner 알림은 구독이 없다 — identity = `(event_key, channel)`, eventKey = 신호 key + 장애 감지 시각 + 회차/복구(§10.1). cooldown = 재알림 간격(정책 소유, §5.3). claim/fencing 경로 기존 그대로(§7.3) |
 | 공개 endpoint | 변경 없음 — `PublicEndpointPolicy`·`docs/runbooks/auth-security.md` 무변경 |
@@ -868,10 +889,10 @@ object OwnerOpsAlertContent {
 | 계층 | 무엇을 | 어디서 |
 |---|---|---|
 | Domain | enum 4종 기본 경로·key, 신호 key 형식, 관측 판정표 전 행과 경계값(30분/+1ns, 5분−1ms/5분, 3회·5분), 정책 전이표 T1~T6·6시간 경계·복구 후 재발생, 렌더러 golden(장애·재알림·복구)·eventKey·금지 문자열, 상태 타입 불변식 | `domain` unit (고정 `Instant`, `ZoneId.of("Asia/Seoul")`) |
-| adapter | V21 두 경로(빈 DB, V20→V21)·CHECK·version CHECK, `JdbcOwnerAlertOutbox` round-trip·INSERT/UPDATE·충돌 롤백(앞 신호 포함)·행만 enqueue·중복 무시·검증, enqueue 한 행을 `JdbcAccountPnlAlertStore.claim` 이 집음 | `infrastructure:common` integration (MySQL Testcontainers) |
+| adapter | V21 두 경로(빈 DB, V20→V21)·CHECK·version CHECK, `JdbcOwnerAlertOutbox` round-trip·INSERT/UPDATE·충돌 롤백(앞 신호 포함)·행만 enqueue·중복 무시·검증, enqueue 한 행을 `JdbcAccountPnlAlertStore.claim` 이 집음, 실제 auto-configuration 으로 `OwnerAlertOutbox` bean 해석 | `infrastructure:common` integration (MySQL Testcontainers) |
 | adapter | 연속 실패 카운터 FAILED/SKIPPED/SUCCEEDED, Redis 쓰기 예외에도 카운트, 동시 갱신 | `infrastructure:batch` unit (Redis·MeterRegistry fake/mock) |
-| application | 운영 신호 Job 의 신호 목록·순서·감시 제외 Job·quote, JobResult 분기 전부, 라우팅(메일+Discord / `EMAIL_ONLY`), 재시작(새 인스턴스) 후 `Unknown`; 전달 Job 의 recoverStale·디스패처 위임·owner 접두사·JobResult | `apps:batch` unit (fake port·store·sender, `MutableClock`) |
-| wiring | 채널 bean 이 PnL 꺼짐에도 존재, 조건 행렬(app = infra), WARN·INFO 문구, ops off, scheduling off, `OwnerOpsAlertProperties` 바인딩·실패, JobConfig 기본값·yml, yml routes key = enum key | `infrastructure:batch`·`apps:batch` unit (`ApplicationContextRunner`, `OutputCaptureExtension`) |
+| application | 운영 신호 Job 의 신호 목록·순서·감시 제외 Job·quote·FX 통화쌍 출처, JobResult 분기 전부(관측 중 취소 재전파 포함), 라우팅(메일+Discord / `EMAIL_ONLY`), 재시작(새 인스턴스) 후 `Unknown`; 전달 Job 의 recoverStale·디스패처 위임·owner 접두사·JobResult | `apps:batch` unit (fake port·store·sender, `MutableClock` — fake 는 clock 기준 상대 시각) |
+| wiring | 채널 bean 이 PnL 꺼짐에도 ready 로만 뜸(AC15), 조건 행렬(app = infra), WARN·INFO 문구, ops off, scheduling off, Discord 꺼짐에도 webhook·override 형식 검증, `OwnerOpsAlertProperties` 바인딩·실패, JobConfig 기본값·yml, yml routes key = enum key | `infrastructure:batch`·`apps:batch` unit (`ApplicationContextRunner`, `OutputCaptureExtension`) |
 | E2E | 실제 MySQL fixture + 실제 store 2개 + 기록용 sender: FX 지연 → OPS 행 SENT, 6시간 재알림, 복구 SILENT, 재시작 지속, PnL 디스패처와 동시 claim 시 행당 발송 1회 | `apps:batch` integration |
 | 경계 | 모듈·import·관측 cardinality·test isolation | root `architectureTest`(기존 규칙, 신규 규칙 없음) |
 | 사람 | 실제 Discord ops 채널 수신·소리/무음 체감 | T4 owner |
@@ -879,12 +900,14 @@ object OwnerOpsAlertContent {
 ## 13. 문서 갱신 대상
 
 - **신규** `docs/runbooks/owner-ops-alert.md` — 신호 3종 판정 기준·경계(FX 30분 초과, 시세 5분 이상, Job 3회 ∧ 5분), 재알림 6시간·복구 1회·재발생=새 장애,
-  기본 라우팅 표 4종과 **Discord 가 꺼져 있으면 4종 모두 메일로 온다**(굵게), override env 12개, `owner-alert.ops.*`·주기·lock env, 기동 판정·WARN/INFO 전문,
+  기본 라우팅 표 4종과 **Discord 가 꺼져 있으면 4종 모두 메일로 온다**(굵게), override env 12개, `owner-alert.ops.*`·주기·lock env, 기동 판정·WARN/INFO 전문
+  (수신 주소 누락은 SMTP 가 회원 알림과 공유되기 때문에 INFO 라는 것 포함), **채널 구성이 ready 면 Discord 켜짐 여부와 무관하게 webhook 형식과
+  `OWNER_ALERT_*_EMAIL/_DISCORD/_PUSH` override 값을 검증해 틀리면 기동 실패**,
   재시작 한계(카운터 0 부터, `Unknown` 대기 FX 30분·시세 5분), 감시 제외 Job 과 Slack 대체 경로(§6.3), Slack `BATCH_JOB_FAILED` 와의 관계(U5),
   `batch.market` 변경 뒤 남은 신호 행 확인·정리 SQL(`SELECT signal_key, alert_kind, active, incident_started_at FROM owner_alert_signal_state;` 와
   `UPDATE owner_alert_signal_state SET active = FALSE, incident_started_at = NULL, last_notified_at = NULL, notify_count = 0, version = version + 1, updated_at = UTC_TIMESTAMP(6) WHERE signal_key = '<key>';`),
   V21 배포(additive, 롤백 SQL 없음), Discord 수신 체크리스트(dod AC14)
-- `docs/runbooks/account-pnl-alert.md` — 채널 bean 이 PnL 모니터와 독립이 됐다는 것(PnL 을 꺼도 채널은 운영 알림용으로 뜬다, webhook 형식 검증 시점 변화 §9.3),
+- `docs/runbooks/account-pnl-alert.md` — 채널 bean 이 PnL 모니터와 독립이 됐다는 것(PnL 을 꺼도 채널은 운영 알림용으로 뜬다), 위 검증 시점 변화(§9.3),
   기본 라우팅 표·override `{KIND}` 목록에 4종 추가, 전달 Job 이 같은 outbox 를 비운다는 것, owner 알림 공용 outbox 에 운영 행이 섞인다는 것
 - `.ai/architecture/ARCHITECTURE_DESIGN.md` — 실계정 알림 절 뒤에 운영 알림 흐름 한 단락(`OwnerOpsSignalJob` → `owner_alert_signal_state` + outbox → `OwnerAlertDeliveryJob`)
 - `.ai/PROJECT_STATUS.md` — 모듈 표 `Flyway V1~V21`(`:13`), migration 표 V21 행, 기능 상태 한 항목
@@ -899,20 +922,33 @@ object OwnerOpsAlertContent {
 | # | 가정 | 확인 방법·시점 |
 |---|---|---|
 | A1 | 운영 알림 기본 켜짐이 owner 의도와 맞다(채널이 준비된 배포에서 기동 즉시 감시 시작). 기존에 Discord/메일 채널을 켜 둔 환경은 배포 후 운영 알림을 받기 시작한다 | ⑦ owner 승인에서 확인 — 아니면 기본값 `false` 로 바꾼다(yml 한 줄·조건 한 줄·runbook) |
-| A2 | 기존 migration(V18)의 `CREATE TABLE` 관례(테이블 옵션 유무)를 V21 이 그대로 따르면 충분하다 | Task 7 — V18 파일과 대조 |
-| A3 | `TickerFlushJob` 이 `findLatest` 에 `BatchMarket` 의 `(pair.koreaExchange, koreaQuote)`·`(pair.foreignExchange, foreignQuote)` 를 넘기고, ingestion buffer 가 같은 quote 로 tick 을 저장한다(바이낸스 USDT stream 은 USD quote 로 정규화 — `BatchMarketStreamConsistencyValidator`) | Task 0 grep `findLatest(`. 다르면 멈추고 보고 |
-| A4 | infra `OwnerAlertProperties`(prefix `owner-alert`) constructor binding 이 `owner-alert.ops.*` 를 unknown field 로 무시한다 | Task 13 wiring 테스트(ops 값을 넣고 채널 구성이 뜬다) |
 | A5 | PnL 모니터가 꺼졌을 때 `OwnerAlertProperties` 가 바인딩되지 않는다는 것을 단언하는 기존 테스트가 없다 | Task 0 grep. 있으면 멈추고 보고(허용 예외 여부를 Gate 1 에서 정한다) |
-| A6 | `EmailAutoConfiguration` 은 `notification.email.enabled=true` 이면 `EmailSender` 를 항상 등록한다 | Task 0 — 해당 auto-configuration 소스 확인 |
 | A7 | 운영 신호 Job 30초 주기·전달 Job 15초 주기가 Redis lock·MySQL 부하에서 무시할 수준이다(회차당 SELECT 1 + 변화 있을 때만 트랜잭션 1, 전달은 빈 claim 1) | 운영 관찰 |
+
+### 확인된 사실 (⑥ R1 에서 가정 → 사실)
+
+| # | 사실 | 근거 |
+|---|---|---|
+| A2 | V18 `CREATE TABLE` 은 `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci` 를 붙인다 — V21 과 fixture 가 같은 옵션을 쓴다 | `V18__create_account_pnl_alert.sql:13`, `:30` |
+| A3 | 바이낸스 USDT stream 은 USD quote 로 정규화되고, 최신 tick 조회는 quote 가 일치하는 것만 돌려준다 | `infrastructure/batch/.../exchange/MarketData.kt:41`, `LatestMarketTickReaderAdapter.kt:18` |
+| A4 | infra `OwnerAlertProperties` 바인딩은 `owner-alert.ops.*` 를 읽지 않는다 | ⑥ R1 확인 |
+| A6 | `EmailAutoConfiguration` 은 `notification.email.enabled=true` 면 `EmailSender` 를 등록한다 | ⑥ R1 확인 |
 
 ### [DECISION_NEEDED]
 
 없음. 사용자 합의(U1~U5) 범위 안에서 설계가 정한 판단(K3 복구 종류 추가, K7 감시 제외, A1 기본 켜짐, 임계값 env 노출, FX 임계값 env 없음)은
-⑦ 승인에서 함께 확인받는다.
+⑦ 승인에서 함께 확인받는다. 수신 주소 누락 INFO(§9.2)는 오케스트레이터 판정이다.
 
 ## 15. 변경 이력
 
 | 라운드 | 변경 | 사유 |
 |---|---|---|
 | 초안 | 최초 작성 | ④ |
+| ⑥ R1 | §9.3 — R8 허용 예외에 `assertNoBeans()` 채널 bean 부재 단언 축소 추가, 양성 단언 AC15 | Critical 1 |
+| ⑥ R1 | §1.1·§4.3·§11 — `JdbcOwnerAlertOutbox` 를 `CommonJdbcConfiguration` `@Import` 로 등록, auto-configuration 해석 테스트 | Critical 2 |
+| ⑥ R1 | §9.3·§13 — 채널 ready 면 Discord 켜짐과 무관하게 webhook·override 검증 | Major 3 |
+| ⑥ R1 | §8.2 2단계 — FX 신호 통화쌍 출처 `market.fxBase/fxQuote` | Minor 4 |
+| ⑥ R1 | §8.2 4단계·분기표 — 관측 중 취소는 interrupt 복구 후 재던짐 | Minor 5 |
+| ⑥ R1 | §4.1 — V21·fixture 테이블 옵션, fixture `IF NOT EXISTS` | Minor 7 |
+| ⑥ R1 | §9.2·§13 — 수신 주소 누락은 INFO(오케스트레이터 판정), `discordMisconfigured` 명시 | Minor 8 |
+| ⑥ R1 | §5.1·§9.1·§9.4·§14 — A2·A3·A4·A6 를 확인된 사실로 | 추가 확인 사실 |
