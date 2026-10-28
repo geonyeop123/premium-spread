@@ -107,6 +107,13 @@ owner-alert:
       pnl: ${OWNER_ALERT_DISCORD_WEBHOOK_PNL:}
       market: ${OWNER_ALERT_DISCORD_WEBHOOK_MARKET:}
       ops: ${OWNER_ALERT_DISCORD_WEBHOOK_OPS:}
+  # owner 운영 알림 (환율 수집 지연·시세 수집 끊김·Job 연속 실패). 쓸 수 있는 owner 채널이 없으면 기동하지 않는다.
+  ops:
+    enabled: ${OWNER_ALERT_OPS_ENABLED:true}
+    market-stale-after: ${OWNER_ALERT_OPS_MARKET_STALE_AFTER:5m}
+    job-failure-count: ${OWNER_ALERT_OPS_JOB_FAILURE_COUNT:3}
+    job-failure-duration: ${OWNER_ALERT_OPS_JOB_FAILURE_DURATION:5m}
+    realert-interval: ${OWNER_ALERT_OPS_REALERT_INTERVAL:6h}
   # 알림 종류별 경로 덮어쓰기. 빈 값이면 Domain OwnerAlertKind 기본값. 종류를 추가하면 여기 세 줄과 runbook 을 함께 추가한다.
   routes:
     profit:

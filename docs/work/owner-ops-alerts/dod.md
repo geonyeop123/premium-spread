@@ -245,3 +245,9 @@ R3 경로 목록(확정, 기존 파일 수정·삭제·rename 만 대상): dod R
 - GREEN: 같은 명령 → BUILD SUCCESSFUL (exit 0), 18 tests 0 failures.
 - `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
 - (b) 의 "다른 통화쌍" 은 `Currency` enum 에 KRW·USD 만 있어 `EUR/KRW` 대신 base·quote 를 뒤바꾼 `KRW/USD` → `fx-ingestion.krw-usd` 로 확인했다.
+
+### Task 13 — AC11 앱 배선·기동 조건·Scheduler
+
+- RED: 조건의 `ready` 반환을 임시로 `false && ready` 로 막고 `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerAlertDeliveryWiringTest' --offline --no-daemon` → exit 1, 10 tests 중 6 실패 (a·b·e·g 2건·i). 사유: Job/Scheduler bean 부재·INFO 로그 부재·48조합 기대 불일치 assertion 실패.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL (10 tests). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (exit 0).
+- 환경 메모: 중간에 `--offline` 이 build-logic 의존성 해석을 거부(`No cached version ... opentest4j`)해 한 번 `--offline` 없이 `:build-logic:compileJava` 를 실행해 캐시를 복구한 뒤 `--offline` 로 재개했다.
