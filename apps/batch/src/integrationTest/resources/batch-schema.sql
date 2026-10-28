@@ -245,3 +245,20 @@ CREATE TABLE IF NOT EXISTS account_pnl_mail (
     ),
     INDEX idx_account_pnl_mail_status_id (status, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS owner_alert_signal_state (
+    signal_key          VARCHAR(64) NOT NULL,
+    alert_kind          VARCHAR(32) NOT NULL,
+    active              BOOLEAN     NOT NULL,
+    incident_started_at DATETIME(6) NULL,
+    last_notified_at    DATETIME(6) NULL,
+    notify_count        INT         NOT NULL DEFAULT 0,
+    version             BIGINT      NOT NULL,
+    updated_at          DATETIME(6) NOT NULL,
+    CONSTRAINT pk_owner_alert_signal_state PRIMARY KEY (signal_key),
+    CONSTRAINT ck_owner_alert_signal_state_incident CHECK (
+        (active = FALSE AND incident_started_at IS NULL AND last_notified_at IS NULL AND notify_count = 0)
+        OR (active = TRUE AND incident_started_at IS NOT NULL AND last_notified_at IS NOT NULL
+            AND notify_count >= 1 AND last_notified_at >= incident_started_at)
+    ),
+    CONSTRAINT ck_owner_alert_signal_state_version CHECK (version >= 1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

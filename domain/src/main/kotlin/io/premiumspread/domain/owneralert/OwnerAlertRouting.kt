@@ -25,6 +25,10 @@ enum class OwnerAlertKind(val defaultRoute: OwnerAlertRoute) {
     POSITION_CHANGED(OwnerAlertRoute(email = true, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.HERE))),
     NET_PERCENT_SWING(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.SOUND))),
     UNRECOVERED_REMINDER(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.SILENT))),
+    FX_INGESTION_DELAYED(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.OPS, DiscordPush.SOUND))),
+    MARKET_STREAM_DOWN(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.OPS, DiscordPush.SOUND))),
+    JOB_CONSECUTIVE_FAILURES(OwnerAlertRoute(email = true, discord = DiscordRoute(DiscordTarget.OPS, DiscordPush.SOUND))),
+    OPS_RECOVERED(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.OPS, DiscordPush.SILENT))),
     ;
 
     /** 설정 key — `HOURLY_REPORT` → `hourly-report`. */

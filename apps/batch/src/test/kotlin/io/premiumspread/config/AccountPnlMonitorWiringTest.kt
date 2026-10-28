@@ -35,6 +35,7 @@ import io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAcco
 import io.premiumspread.infrastructure.batch.job.RedisJobRunRecorderAdapter
 import io.premiumspread.infrastructure.batch.notification.AccountPnlEmailSenderAdapter
 import io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapter
+import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfiguration
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertProperties
 import io.premiumspread.interfaces.scheduling.AccountPnlMonitorScheduler
 import io.premiumspread.monitoring.AlertService
@@ -76,6 +77,7 @@ class AccountPnlMonitorWiringTest {
             AccountPnlMonitorAdapterConfiguration::class.java,
             AccountPnlMonitorConfiguration::class.java,
             AccountPnlMonitorScheduler::class.java,
+            OwnerAlertChannelConfiguration::class.java,
         )
 
     private fun ApplicationContextRunner.assertNoBeans(): ApplicationContextRunner = also {
@@ -86,7 +88,6 @@ class AccountPnlMonitorWiringTest {
             assertThat(ctx).doesNotHaveBean(BithumbPrivateAccountAdapter::class.java)
             assertThat(ctx).doesNotHaveBean(BinanceFuturesPrivateAccountAdapter::class.java)
             assertThat(ctx).doesNotHaveBean(BinanceFuturesManualAccountAdapter::class.java)
-            assertThat(ctx).doesNotHaveBean(AccountPnlEmailSenderAdapter::class.java)
         }
     }
 

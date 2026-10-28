@@ -1,25 +1,11 @@
 package io.premiumspread.infrastructure.batch.accountpnl
 
-import io.premiumspread.domain.accountpnl.AccountPnlMailSender
-import io.premiumspread.domain.owneralert.DiscordTarget
-import io.premiumspread.domain.owneralert.OwnerAlertChannels
-import io.premiumspread.domain.owneralert.OwnerAlertDiscordSender
-import io.premiumspread.domain.owneralert.OwnerAlertKind
-import io.premiumspread.domain.owneralert.OwnerAlertRouting
-import io.premiumspread.email.EmailSender
 import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapter
 import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapter
-import io.premiumspread.infrastructure.batch.notification.AccountPnlEmailSenderAdapter
-import io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapter
-import io.premiumspread.infrastructure.batch.owneralert.DiscordWebhookConfiguredCondition
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelAvailableCondition
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirements
-import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertEmailRequestedCondition
-import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertProperties
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.ObjectProvider
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -28,7 +14,6 @@ import org.springframework.context.annotation.Condition
 import org.springframework.context.annotation.ConditionContext
 import org.springframework.context.annotation.Conditional
 import org.springframework.context.annotation.Configuration
-import org.springframework.core.env.Environment
 import org.springframework.core.env.PropertyResolver
 import org.springframework.core.type.AnnotatedTypeMetadata
 import org.springframework.web.reactive.function.client.WebClient
@@ -104,9 +89,9 @@ class BinanceManualModeCondition : Condition {
 }
 
 /**
- * 실계정 조회 adapter 와 owner 알림 채널(메일·Discord) sender·라우팅. 플래그·credential 이 있고 쓸 수 있는 채널이 하나 이상일 때만
- * 존재한다 — 채널 = [EmailSender bean ∧ 메일 채널 켜짐] ∨ [Discord 켜짐 ∧ webhook 설정] (design §7.2).
- * 이 설정은 `BatchInfrastructureAutoConfiguration` 이 import 하므로 EmailSender 는 (켜졌다면) 이미 등록돼 있다.
+ * 실계정 조회 adapter 만 소유한다. 플래그·credential 이 있고 owner 알림 채널이 준비됐을 때만 존재한다 — 남은
+ * [OwnerAlertChannelAvailableCondition] 은 PnL 모니터가 쓸 수 있는 채널을 요구한다는 뜻이다 (design §7.2).
+ * 채널 sender·라우팅은 `OwnerAlertChannelConfiguration` 이 PnL 과 독립으로 소유한다 (owner-ops-alerts design §9.3).
  *
  * scheduling 이 꺼지면 소비자(Job)가 없으므로 adapter 도 만들지 않는다 (dod AC11). 조건식은 apps:batch 의
  * `ConditionalOnBatchScheduling` 과 같은 키·기본값이다 — infrastructure 는 앱 타입을 import 하지 않는다.
@@ -115,7 +100,7 @@ class BinanceManualModeCondition : Condition {
 @ConditionalOnExpression("\${batch.scheduling.enabled:true} and \${scheduling.enabled:true}")
 @ConditionalOnProperty(prefix = "account-pnl-monitor", name = ["enabled"], havingValue = "true")
 @Conditional(AccountPnlCredentialsPresentCondition::class, OwnerAlertChannelAvailableCondition::class)
-@EnableConfigurationProperties(AccountPnlMonitorProperties::class, OwnerAlertProperties::class)
+@EnableConfigurationProperties(AccountPnlMonitorProperties::class)
 class AccountPnlMonitorAdapterConfiguration {
     @Bean
     fun bithumbPrivateAccountAdapter(
@@ -165,52 +150,6 @@ class AccountPnlMonitorAdapterConfiguration {
             if (manual.takerFeeRate.isNullOrBlank()) "default" else "set",
         )
         return adapter
-    }
-
-    /** owner 메일 채널. 수신 주소는 [OwnerAlertChannelRequirements.recipient] 가 읽는다 (design §7.2 I-3). */
-    @Bean
-    @ConditionalOnBean(EmailSender::class)
-    @Conditional(OwnerAlertEmailRequestedCondition::class)
-    fun accountPnlMailSender(emailSender: EmailSender, environment: Environment): AccountPnlMailSender =
-        AccountPnlEmailSenderAdapter(emailSender, OwnerAlertChannelRequirements.recipient(environment))
-
-    /** owner Discord 채널. 기동 INFO 는 대상별 `set`/`fallback(…)` 만 남기고 URL 은 남기지 않는다. */
-    @Bean
-    @Conditional(DiscordWebhookConfiguredCondition::class)
-    fun ownerAlertDiscordSender(ownerAlert: OwnerAlertProperties): DiscordWebhookSenderAdapter {
-        val webhooks = ownerAlert.discord.webhook.toDiscordWebhooks()
-        log.info(
-            "owner-alert discord webhooks: pnl={}, market={}, ops={}",
-            webhooks.describe(DiscordTarget.PNL),
-            webhooks.describe(DiscordTarget.MARKET),
-            webhooks.describe(DiscordTarget.OPS),
-        )
-        return DiscordWebhookSenderAdapter(webhooks)
-    }
-
-    /** 채널 플래그를 sender bean 존재에서 만든다 — 라우팅과 sender 가 어긋날 수 없다 (design §7.2). */
-    @Bean
-    fun ownerAlertRouting(
-        ownerAlert: OwnerAlertProperties,
-        mailSender: ObjectProvider<AccountPnlMailSender>,
-        discordSender: ObjectProvider<OwnerAlertDiscordSender>,
-    ): OwnerAlertRouting {
-        val routing = OwnerAlertRouting(
-            OwnerAlertChannels(email = mailSender.ifAvailable != null, discord = discordSender.ifAvailable != null),
-            ownerAlert.resolvedOverrides(),
-        )
-        log.info("owner-alert routes: {}", describeRoutes(routing))
-        return routing
-    }
-
-    /** 종류별 해석된 경로 요약. URL·수신 주소는 담지 않는다. */
-    private fun describeRoutes(routing: OwnerAlertRouting): String = OwnerAlertKind.entries.joinToString(", ") { kind ->
-        val route = routing.resolve(kind)
-        val parts = listOfNotNull(
-            "email".takeIf { route.email },
-            route.discord?.let { "discord(${it.target},${it.push})" },
-        )
-        "${kind.key}=${parts.joinToString("+").ifEmpty { "off" }}"
     }
 
     private fun client(baseUrl: String): WebClient = WebClient.builder().baseUrl(baseUrl.removeSuffix("/")).build()

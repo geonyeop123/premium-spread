@@ -10,7 +10,7 @@
 | `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
 | `apps:web` | Active | Next.js 대시보드, 인증, position UI |
 | `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
-| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V20 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V21 |
 | `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
 | `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
 | `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
@@ -84,6 +84,16 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   저장하고 [runbook](../docs/runbooks/account-pnl-alert.md)에 체크리스트가 있다. 후속 후보:
   - 계정 알림이 켜진 상태의 Job save 예외·interrupt 분기 테스트
   - 평단 1원 미만 변경 시 알림 본문에서 before와 after가 같게 보이는 표시 개선
+- owner 운영 알림(#91, 구현·검증 완료, PR 예정, owner 확인 대기: AC13 runbook 검토·AC14 Discord 수신): 환율 수집 지연·시세 수집
+  끊김·Job 연속 실패를 장애 시작 1회, 6시간 재알림, 복구 1회로 메일 및/또는 Discord 알림. `OwnerOpsSignalJob`(30초)이 상태
+  `owner_alert_signal_state`(V21)와 outbox 를 함께 저장하고 독립 `OwnerAlertDeliveryJob`(60초)이 전달한다. PnL 모니터와
+  독립이다. [runbook](../docs/runbooks/owner-ops-alert.md)에 Discord 수신 체크리스트가 있다. 상위 #87 은 #88·#89·#91 완료,
+  #90 남음. 후속 후보:
+  - E2E 에서 전달 Job 과 PnL 회차 디스패처의 동시 전달 경합을 강제로 만드는 테스트
+  - `isCancellation()` 공용화(`AccountPnlMonitorJob` 동결 해제 후)
+  - MarketPair guard 의 exchange 불일치 테스트
+  - infrastructure:api `RedisRefreshSessionStoreIntegrationTest` initializationError 간헐 실패 조사
+  - 재시도 백오프(시도 간 최소 간격) 검토
 - 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, PR #99, AC8 로컬 운영 실기동 관찰 완료 — 주말 동작 미관찰):
   수집 5분·허용 공백 30분(`FxIngestionFreshness`)·캐시 TTL 40분을 테스트와 기동 검증으로 묶었다.
   [설계](../docs/work/fx-provider-twelve-data/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다. 후속 후보:
@@ -103,6 +113,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 | V18 | `account_pnl_monitor_state`, `account_pnl_mail` | 실계정 손익 알림 전용 상태·outbox |
 | V19 | `account_pnl_mail` 에 `channel`·Discord 컬럼, `UNIQUE(event_key, channel)` | owner 알림 채널(메일·Discord) 확장 |
 | V20 | account_pnl_monitor_state 에 owner 계정 알림 상태 12열 | 포지션 변경·순수익률 급변·미반영 리마인더 상태 |
+| V21 | `owner_alert_signal_state` 신규 | owner 운영 알림 신호별 장애 상태(additive, 롤백 SQL 없음) |
 
 - migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
 - Batch Flyway는 항상 비활성이다.

@@ -15,6 +15,7 @@ import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheWriter
 import io.premiumspread.infrastructure.common.config.AggregationInfrastructureProperties
 import io.premiumspread.infrastructure.common.persistence.CommonPersistenceMarker
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStore
+import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcOwnerAlertOutbox
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.ExchangeRateQueryRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
@@ -72,6 +73,7 @@ class CommonInfrastructureAutoConfiguration
     JdbcExchangeRateWriteRepository::class,
     ActiveSubscriptionReadRepository::class,
     JdbcAccountPnlAlertStore::class,
+    JdbcOwnerAlertOutbox::class,
     JdbcNotificationDeliveryRepository::class,
     PremiumAggregationQueryRepository::class,
     PremiumAggregationRepository::class,

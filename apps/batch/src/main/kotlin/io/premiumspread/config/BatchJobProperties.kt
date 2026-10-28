@@ -34,6 +34,10 @@ data class BatchJobProperties(
     LockSpec("lock:trade-preparation:reconcile", Duration.ofSeconds(30), Duration.ofSeconds(20)),
     @field:Valid val accountPnlMonitor: LockSpec =
     LockSpec("lock:account-pnl:monitor", Duration.ofSeconds(50), Duration.ofSeconds(40)),
+    @field:Valid val ownerAlertDelivery: LockSpec =
+    LockSpec("lock:owner-alert:delivery", Duration.ofSeconds(50), Duration.ofSeconds(40)),
+    @field:Valid val ownerOpsSignal: LockSpec =
+    LockSpec("lock:owner-ops:signal", Duration.ofSeconds(20), Duration.ofSeconds(10)),
 ) : JobConfigProvider {
     override fun get(jobId: JobId): JobConfig = when (jobId) {
         JobId.FX_INGESTION -> fxIngestion
@@ -50,6 +54,8 @@ data class BatchJobProperties(
         JobId.TRADE_PREPARATION_EVALUATION -> tradePreparationEvaluation
         JobId.TRADE_PREPARATION_RECONCILE -> tradePreparationReconcile
         JobId.ACCOUNT_PNL_MONITOR -> accountPnlMonitor
+        JobId.OWNER_ALERT_DELIVERY -> ownerAlertDelivery
+        JobId.OWNER_OPS_SIGNAL -> ownerOpsSignal
     }.toJobConfig(jobId)
 
     data class LockSpec(@field:NotBlank val lockKey: String, val lease: Duration, val executionTimeout: Duration) {
