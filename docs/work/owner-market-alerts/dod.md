@@ -1,7 +1,8 @@
 ---
 feature: owner 시장 알림 — 김프 급변·기준선 돌파·신고가/신저가·일일 요약 (issue #90, 상위 #87)
 slug: owner-market-alerts
-status: DRAFT
+status: FROZEN
+frozen_at: 2026-10-29
 source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ---
 
