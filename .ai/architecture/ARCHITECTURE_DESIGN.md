@@ -134,6 +134,18 @@ OwnerAlertDeliveryScheduler (60초) → OwnerAlertDeliveryJob → OwnerAlertDisp
 
 환율 수집 지연·시세 수집 끊김·Job 연속 실패를 장애 시작 1회, 6시간 재알림, 복구 1회로 알린다. 채널 bean 과 전달 Job 은 PnL 모니터와 독립이며 같은 outbox 를 PnL 회차 안 디스패처와 함께 비운다(`SKIP LOCKED`·claim token). 운영 절차는 [`docs/runbooks/owner-ops-alert.md`](../../docs/runbooks/owner-ops-alert.md)를 따른다.
 
+### 시장 알림 (owner, 기본 켜짐·채널 준비 시)
+
+```text
+OwnerMarketSignalScheduler (30초) → OwnerMarketSignalJob (JobExecutor)
+  → PremiumAggregationReadPort(분·시·일 집계) · 현재 김프 · 환율 · account_pnl_latest 읽기
+  → Domain PremiumSwing/Threshold/Extreme/DailySummary 정책
+  → owner_market_alert_state(version, V22) + account_pnl_mail outbox (한 트랜잭션, OwnerMarketAlertStore port)
+OwnerAlertDeliveryJob (60초, 위와 공용) → 메일·Discord(market 대상)
+```
+
+김프 급변·기준선 돌파·신고가/신저가·일일 요약 4종을 판정한다. 근거 데이터가 부족하면 그 판정은 쉬고 상태를 바꾸지 않는다. 실계정 순수익률은 PnL 모니터가 매 회차 `account_pnl_latest`(V22, 단일 행)에 남긴 값을 요약이 읽는다. 운영 절차는 [`docs/runbooks/owner-market-alert.md`](../../docs/runbooks/owner-market-alert.md)를 따른다.
+
 ### 알림 구독과 전달
 
 ```text

@@ -1,5 +1,8 @@
 package io.premiumspread.infrastructure.common.persistence.jpa.premium
 
+import io.premiumspread.domain.aggregation.AggregationUnit
+import io.premiumspread.domain.aggregation.AggregationWindow
+import io.premiumspread.domain.aggregation.PremiumAggregationReadPort
 import io.premiumspread.infrastructure.common.cache.premium.PremiumAggregationCacheReader
 import io.premiumspread.infrastructure.common.cache.premium.PremiumCacheReader
 import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationQueryRepository
@@ -18,7 +21,8 @@ class JpaPremiumRepositoryAdapter(
     private val premiumCacheReader: PremiumCacheReader? = null,
     private val premiumAggregationCacheReader: PremiumAggregationCacheReader? = null,
     private val premiumAggregationQueryRepository: PremiumAggregationQueryRepository,
-) : PremiumRepository {
+) : PremiumRepository,
+    PremiumAggregationReadPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -96,5 +100,25 @@ class JpaPremiumRepositoryAdapter(
             .associateBy(PremiumAggregationSnapshot::observedAt)
             .values
             .sortedBy(PremiumAggregationSnapshot::observedAt)
+    }
+
+    /**
+     * [window] 의 [from, to) 를 [unit] interval 로 findAggregationByPair 에 위임한다.
+     * [window] 의 zone 은 쓰지 않는다 — DAY 의 날짜 변환은 infra AggregationInfrastructureProperties.aggregationZone(= aggregation.zone)이 한다.
+     * pair 불일치 검사는 방어적 이중 확인이다(현재 원천은 요청 pair 로만 snapshot 을 만든다 — design §2.2).
+     */
+    override fun read(
+        pair: MarketPair,
+        window: AggregationWindow,
+        unit: AggregationUnit,
+    ): List<PremiumAggregationSnapshot> {
+        val interval = when (unit) {
+            AggregationUnit.MINUTE -> "1m"
+            AggregationUnit.HOUR -> "1h"
+            AggregationUnit.DAY -> "1d"
+        }
+        val snapshots = findAggregationByPair(pair, interval, window.from, window.to)
+        check(snapshots.none { it.pair != pair }) { "premium aggregation pair mismatch" }
+        return snapshots
     }
 }

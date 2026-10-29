@@ -95,7 +95,7 @@ owner 알림(실계정 순손익 4종, 계정 알림 3종, 운영 알림 4종)�
 ### webhook 만들기
 
 1. Discord 서버에서 채널 설정 → 연동 → 웹후크 → 새 웹후크 → **웹후크 URL 복사**.
-2. 용도별 채널 3개(pnl·market·ops)를 권장한다. 지금 쓰는 것은 pnl·ops 이고 market 은 후속 이슈용이다.
+2. 용도별 채널 3개(pnl·market·ops)를 권장한다. pnl 은 계정 알림, ops 는 운영 알림, market 은 시장 알림 4종([owner-market-alert.md](owner-market-alert.md))이 쓴다.
 3. env 에 넣는다(`OWNER_ALERT_DISCORD_ENABLED=true` + 아래 webhook). 설정하지 않은 대상은 `PNL → MARKET → OPS` 순서의 **첫 설정 대상**으로 간다.
    - 하나만 만들면 모든 알림이 그 채널로 온다.
    - 두 개만 만들면(예: pnl·ops) 빠진 대상(market)은 그 순서의 첫 설정 대상(pnl)으로 간다.
@@ -118,16 +118,21 @@ owner 알림(실계정 순손익 4종, 계정 알림 3종, 운영 알림 4종)�
 | 시세 수집 끊김(`MARKET_STREAM_DOWN`) | ops | 소리 | **아니오** |
 | Job 연속 실패(`JOB_CONSECUTIVE_FAILURES`) | ops | 소리 | 예 |
 | 운영 복구(`OPS_RECOVERED`) | ops | 무음 | **아니오** |
+| 김프 급변(`PREMIUM_SWING`) | market | 소리 | **아니오** |
+| 기준선 돌파(`PREMIUM_THRESHOLD_CROSSED`) | market | 소리 | **아니오** |
+| 신고가·신저가(`PREMIUM_NEW_EXTREME`) | market | 무음 | **아니오** |
+| 일일 요약(`DAILY_SUMMARY`) | market | 무음 | 예 |
 
 - **Discord 를 켜면 정시 보고·복구 메일은 더 이상 오지 않는다(Discord 로만 온다).** 수익·중단은 메일도 계속 온다.
 - 운영 알림 4종은 [#91](https://github.com/geonyeop123/premium-spread/issues/91) 에서 추가됐다. Discord 가 꺼져 있으면 4종 모두 메일로 온다.
 - Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 3종(포지션 변경·순수익률 급변·미반영 리마인더)도 Discord 가 꺼져 있으면 메일로 온다.**
-- 계정 알림 3종은 [#89](https://github.com/geonyeop123/premium-spread/issues/89) 에서 추가됐다. 나머지 후속 알림은 [#90](https://github.com/geonyeop123/premium-spread/issues/90) 에서 이 표에 추가된다.
+- 계정 알림 3종은 [#89](https://github.com/geonyeop123/premium-spread/issues/89) 에서 추가됐다. 시장 알림 4종은 [#90](https://github.com/geonyeop123/premium-spread/issues/90) 에서 이 표에 추가됐다. Discord 가 꺼져 있으면 시장 알림 4종도 모두 메일로 온다([owner-market-alert.md](owner-market-alert.md)).
+- PnL 모니터는 매 회차 최신 순수익률을 `account_pnl_latest`(단일 행, V22)에 남긴다. 일일 요약 전용이며 이 저장이 실패해도 모니터 결과·알림에는 영향이 없다.
 - **무음** = 알림 소리·배지 없이 채널에만 쌓인다. **`@here`** = 채널 멤버 전원에게 알림이 간다. **소리** = 일반 알림.
 
 ### 종류별 override env
 
-기본 라우팅을 종류별로 바꾼다. `{KIND}` 는 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED`·`POSITION_CHANGED`·`NET_PERCENT_SWING`·`UNRECOVERED_REMINDER`·`FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED` 11개. 값은 앞뒤 공백·대소문자를 무시하고 빈 값 = 지정 안 함.
+기본 라우팅을 종류별로 바꾼다. `{KIND}` 는 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED`·`POSITION_CHANGED`·`NET_PERCENT_SWING`·`UNRECOVERED_REMINDER`·`FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED`·`PREMIUM_SWING`·`PREMIUM_THRESHOLD_CROSSED`·`PREMIUM_NEW_EXTREME`·`DAILY_SUMMARY` 15개. 값은 앞뒤 공백·대소문자를 무시하고 빈 값 = 지정 안 함.
 잘못된 값이면 기동이 실패한다(오류에는 key 만 찍히고 값은 찍히지 않는다).
 
 | env | 값 | 의미 |
@@ -166,7 +171,7 @@ gross +1,500,000원 · 예상 청산 수수료 -20,000원
 - 채널을 끄면 그 채널로 쌓여 있던 행은 다음 회차에 1회 시도 후 `FAILED` 가 된다(보낼 수단이 없다).
 - 발송은 at-least-once 다. 드물게(성공 직후 프로세스 종료 등) 같은 알림이 두 번 올 수 있다.
 - 기동 INFO(Discord 가 켜졌을 때): `owner-alert discord webhooks: pnl=set, market=fallback(PNL), ops=set` — URL 이 아니라 `set` 또는 `fallback(대상)` 만 나온다.
-- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND), position-changed=email+discord(PNL,HERE), net-percent-swing=discord(PNL,SOUND), unrecovered-reminder=discord(PNL,SILENT), fx-ingestion-delayed=discord(OPS,SOUND), market-stream-down=discord(OPS,SOUND), job-consecutive-failures=email+discord(OPS,SOUND), ops-recovered=discord(OPS,SILENT)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
+- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND), position-changed=email+discord(PNL,HERE), net-percent-swing=discord(PNL,SOUND), unrecovered-reminder=discord(PNL,SILENT), fx-ingestion-delayed=discord(OPS,SOUND), market-stream-down=discord(OPS,SOUND), job-consecutive-failures=email+discord(OPS,SOUND), ops-recovered=discord(OPS,SILENT), premium-swing=discord(MARKET,SOUND), premium-threshold-crossed=discord(MARKET,SOUND), premium-new-extreme=discord(MARKET,SILENT), daily-summary=email+discord(MARKET,SILENT)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
 - **Discord 를 꺼 둔 상태여도 webhook env 에 잘못된 값(`http://` 또는 URL 이 아닌 값)이 있으면 기동이 실패한다.** 비우거나 https URL 로 고친다.
 - **검증 시점(#91):** 채널 구성이 ready 이면 PnL 모니터 켜짐 여부와 Discord 켜짐 여부에 무관하게 webhook 형식과 `OWNER_ALERT_*_EMAIL/_DISCORD/_PUSH` override 값을 검증하고 틀리면 기동이 실패한다. 이전에는 PnL 모니터가 뜰 때만 검증했다.
   오류 메시지에는 `owner-alert.discord.webhook.pnl must be an https URL` 처럼 key 만 찍히고 값은 찍히지 않는다.

@@ -14,3 +14,4 @@
 - [apps/web npm audit 취약점 해소](issue-82-web-npm-audit/README.md)
 - [환율 제공자 Twelve Data 교체와 FX 캐시 TTL 여유](fx-provider-twelve-data/README.md)
 - [owner 운영 알림 — 환율 지연·시세 끊김·Job 연속 실패](owner-ops-alerts/README.md)
+- [owner 시장 알림 — 김프 급변·기준선 돌파·신고가/신저가·일일 요약](owner-market-alerts/README.md)

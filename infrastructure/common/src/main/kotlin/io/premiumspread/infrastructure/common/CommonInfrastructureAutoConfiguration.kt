@@ -15,12 +15,14 @@ import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheWriter
 import io.premiumspread.infrastructure.common.config.AggregationInfrastructureProperties
 import io.premiumspread.infrastructure.common.persistence.CommonPersistenceMarker
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStore
+import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlLatestStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcOwnerAlertOutbox
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.ExchangeRateQueryRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.notification.ActiveSubscriptionReadRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.notification.JdbcNotificationDeliveryRepository
+import io.premiumspread.infrastructure.common.persistence.jdbc.ownermarket.JdbcOwnerMarketAlertStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationQueryRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.premium.PremiumAggregationRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.ticker.TickerAggregationQueryRepository
@@ -74,6 +76,8 @@ class CommonInfrastructureAutoConfiguration
     ActiveSubscriptionReadRepository::class,
     JdbcAccountPnlAlertStore::class,
     JdbcOwnerAlertOutbox::class,
+    JdbcOwnerMarketAlertStore::class,
+    JdbcAccountPnlLatestStore::class,
     JdbcNotificationDeliveryRepository::class,
     PremiumAggregationQueryRepository::class,
     PremiumAggregationRepository::class,

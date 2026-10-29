@@ -63,7 +63,7 @@ class OwnerOpsAlertEnabledCondition : Condition {
     }
 }
 
-private object OwnerAlertReadiness {
+internal object OwnerAlertReadiness {
     private const val EMAIL_ENABLED_KEY = "owner-alert.email.enabled"
     private const val SMTP_ENABLED_KEY = "notification.email.enabled"
     private const val DISCORD_ENABLED_KEY = "owner-alert.discord.enabled"

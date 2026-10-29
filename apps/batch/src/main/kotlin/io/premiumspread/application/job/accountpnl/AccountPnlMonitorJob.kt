@@ -15,6 +15,8 @@ import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlDiscordContent
+import io.premiumspread.domain.accountpnl.AccountPnlLatest
+import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
 import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMailContent
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
@@ -88,6 +90,8 @@ class AccountPnlMonitorJob(
     private val discordSender: OwnerAlertDiscordSender? = null,
     /** owner 계정 알림 설정(#89). null 이면 판정하지 않고 account 상태를 그대로 저장한다. production 배선은 항상 넘긴다. */
     private val accountAlerts: AccountAlertSettings? = null,
+    /** 실계정 최신 순수익률 기록(#90 일일 요약용). null 이면 기록하지 않는다. */
+    private val latestPnl: AccountPnlLatestStore? = null,
 ) {
     init {
         require(!routing.channels.discord || discordSender != null) {
@@ -143,7 +147,28 @@ class AccountPnlMonitorJob(
             return JobResult.Skipped(VERSION_CONFLICT)
         }
 
+        recordLatest(observed)
+
         return deliver()
+    }
+
+    /** 성공 회차(Computed·NoPosition)의 최신 순수익률을 기록한다. 실패해도 회차 결과·전달은 바뀌지 않는다 (design §6.3). */
+    private fun recordLatest(observed: Observed) {
+        val store = latestPnl ?: return
+        val latest = when (val observation = observed.observation) {
+            is PnlObservation.Computed -> AccountPnlLatest.computed(observation.pnl)
+            PnlObservation.NoPosition -> observed.round?.observedAt?.let { AccountPnlLatest.noPosition(it) }
+            PnlObservation.Failed -> null
+        } ?: return
+        try {
+            store.record(latest)
+        } catch (exception: Exception) {
+            if (exception.isCancellation()) {
+                Thread.currentThread().interrupt()
+            } else {
+                log.warn("Account PnL latest record failed: error={}", exception.javaClass.simpleName)
+            }
+        }
     }
 
     // ---- 관측 ----

@@ -99,5 +99,12 @@ object DefaultJobConfigProvider : JobConfigProvider {
             Duration.ofSeconds(20),
             Duration.ofSeconds(10),
         )
+
+        JobId.OWNER_MARKET_SIGNAL -> JobConfig(
+            jobId,
+            "lock:owner-market:signal",
+            Duration.ofSeconds(20),
+            Duration.ofSeconds(10),
+        )
     }
 }
