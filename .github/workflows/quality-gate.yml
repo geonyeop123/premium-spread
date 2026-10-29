@@ -34,6 +34,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
         with:
           cache-disabled: ${{ steps.bootstrap-request.outputs.requested == 'true' }}
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' }}
       - name: Generate dependency locks and SHA-256 metadata for review
         if: steps.bootstrap-request.outputs.requested == 'true'
         run: bash ci/generate-dependency-bootstrap.sh build/reports/dependency-bootstrap-review
@@ -61,7 +62,6 @@ jobs:
 
   unit-coverage:
     name: 2. Unit + coverage
-    needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -71,8 +71,10 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' }}
       - name: Run unit tests and enforce coverage thresholds
-        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification --dependency-verification strict --no-daemon
+        run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification --parallel --dependency-verification strict --no-daemon
       - name: Publish unit and coverage evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -86,7 +88,6 @@ jobs:
 
   api-integration:
     name: 3. API integration
-    needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -96,24 +97,23 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' }}
       - name: Run API integration tests in an isolated runner
         env:
           TESTCONTAINERS_REUSE_ENABLE: 'false'
-        run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest --dependency-verification strict --no-daemon
+        run: ./gradlew :apps:api:integrationTest --dependency-verification strict --no-daemon
       - name: Publish API integration evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: api-integration-${{ github.sha }}
-          path: |
-            infrastructure/common/build/reports/tests/integrationTest/**
-            apps/api/build/reports/tests/integrationTest/**
+          path: apps/api/build/reports/tests/integrationTest/**
           if-no-files-found: warn
           retention-days: 14
 
   batch-integration:
     name: 4. Batch integration
-    needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -123,6 +123,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' }}
       - name: Run Batch integration tests in an isolated runner
         env:
           TESTCONTAINERS_REUSE_ENABLE: 'false'
@@ -138,7 +140,6 @@ jobs:
 
   static-analysis:
     name: 5. ktlint + detekt
-    needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -179,7 +180,6 @@ jobs:
 
   dependency-security:
     name: 6. Dependency + security scan
-    needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -200,7 +200,6 @@ jobs:
 
   docker-build:
     name: 7. Docker image build
-    needs: compile-architecture
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -259,3 +258,29 @@ jobs:
             echo "commit=${GITHUB_SHA}"
             echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"
           } >> "${GITHUB_STEP_SUMMARY}"
+
+  common-integration:
+    name: 8. Common integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/dev' }}
+      - name: Run common migration and integration tests in an isolated runner
+        env:
+          TESTCONTAINERS_REUSE_ENABLE: 'false'
+        run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest --dependency-verification strict --no-daemon
+      - name: Publish common integration evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: common-integration-${{ github.sha }}
+          path: infrastructure/common/build/reports/tests/integrationTest/**
+          if-no-files-found: warn
+          retention-days: 14
