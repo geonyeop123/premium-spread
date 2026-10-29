@@ -21,8 +21,7 @@ class JpaPremiumRepositoryAdapter(
     private val premiumCacheReader: PremiumCacheReader? = null,
     private val premiumAggregationCacheReader: PremiumAggregationCacheReader? = null,
     private val premiumAggregationQueryRepository: PremiumAggregationQueryRepository,
-) :
-    PremiumRepository,
+) : PremiumRepository,
     PremiumAggregationReadPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
