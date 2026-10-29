@@ -201,3 +201,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC5 (Task 6)
 - RED (stub `decide = NONE`): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumExtremePolicyTest' --offline --no-daemon` → `14 tests completed, 10 failed`, BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### AC6 (Task 7)
+- RED (stub `due = false`, `decide = NONE`, `summaryPnl = Unavailable`, `computed` 반올림 없음): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.DailySummaryPolicyTest' --tests 'io.premiumspread.domain.accountpnl.AccountPnlLatestTest' --offline --no-daemon` → `16 tests completed, 11 failed`, BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
