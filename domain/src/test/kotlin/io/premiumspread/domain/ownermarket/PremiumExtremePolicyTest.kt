@@ -39,7 +39,13 @@ class PremiumExtremePolicyTest {
     )
 
     private fun current(rate: String) = PremiumSnapshot(
-        pair, BigDecimal(rate), BigDecimal("100"), BigDecimal("1"), BigDecimal("100"), BigDecimal("1400"), now,
+        pair,
+        BigDecimal(rate),
+        BigDecimal("100"),
+        BigDecimal("1"),
+        BigDecimal("100"),
+        BigDecimal("1400"),
+        now,
     )
 
     private fun bucket(at: Instant, high: String, low: String, close: String = "2.00") = PremiumAggregationSnapshot(
@@ -88,8 +94,13 @@ class PremiumExtremePolicyTest {
 
         assertThat(decision.notices).containsExactly(
             MarketNotice.NewExtreme(
-                pair, now, ExtremeWindow.ONE_DAY, MarketDirection.UP,
-                BigDecimal("2.50"), BigDecimal("2.60"), now,
+                pair,
+                now,
+                ExtremeWindow.ONE_DAY,
+                MarketDirection.UP,
+                BigDecimal("2.50"),
+                BigDecimal("2.60"),
+                now,
             ),
         )
         assertThat(decision.next).containsExactlyInAnyOrder(
@@ -115,8 +126,13 @@ class PremiumExtremePolicyTest {
 
         assertThat(decision.notices).containsExactly(
             MarketNotice.NewExtreme(
-                pair, now, ExtremeWindow.ONE_HOUR, MarketDirection.UP,
-                BigDecimal("2.00"), BigDecimal("2.10"), now,
+                pair,
+                now,
+                ExtremeWindow.ONE_HOUR,
+                MarketDirection.UP,
+                BigDecimal("2.00"),
+                BigDecimal("2.10"),
+                now,
             ),
         )
         assertThat(decision.next).containsExactly(state(ExtremeWindow.ONE_HOUR, MarketDirection.UP, now))
@@ -178,8 +194,13 @@ class PremiumExtremePolicyTest {
 
         assertThat(decision.notices).containsExactly(
             MarketNotice.NewExtreme(
-                pair, now, ExtremeWindow.ONE_DAY, MarketDirection.DOWN,
-                BigDecimal("1.50"), BigDecimal("1.40"), now,
+                pair,
+                now,
+                ExtremeWindow.ONE_DAY,
+                MarketDirection.DOWN,
+                BigDecimal("1.50"),
+                BigDecimal("1.40"),
+                now,
             ),
         )
         assertThat(decision.next).containsExactlyInAnyOrder(

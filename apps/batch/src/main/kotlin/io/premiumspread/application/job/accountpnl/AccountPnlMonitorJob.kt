@@ -157,9 +157,7 @@ class AccountPnlMonitorJob(
         val store = latestPnl ?: return
         val latest = when (val observation = observed.observation) {
             is PnlObservation.Computed -> AccountPnlLatest.computed(observation.pnl)
-
             PnlObservation.NoPosition -> observed.round?.observedAt?.let { AccountPnlLatest.noPosition(it) }
-
             PnlObservation.Failed -> null
         } ?: return
         try {

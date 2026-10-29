@@ -12,10 +12,24 @@ class AccountPnlLatestTest {
     private fun pnl(netKrw: String, netPercent: String): AccountNetPnl {
         val zero = BigDecimal.ZERO
         val korea = KoreaSpotAccountSnapshot(
-            BigDecimal("1"), BigDecimal("100"), false, zero, zero, emptyList(), BigDecimal("100"), at,
+            BigDecimal("1"),
+            BigDecimal("100"),
+            false,
+            zero,
+            zero,
+            emptyList(),
+            BigDecimal("100"),
+            at,
         )
         val foreign = ForeignPerpAccountSnapshot(
-            BigDecimal("-1"), BigDecimal("100"), zero, zero, zero, emptyList(), BigDecimal("100"), at,
+            BigDecimal("-1"),
+            BigDecimal("100"),
+            zero,
+            zero,
+            zero,
+            emptyList(),
+            BigDecimal("100"),
+            at,
         )
         return AccountNetPnl(
             zero, zero, zero, zero, BigDecimal(netKrw), BigDecimal(netPercent),

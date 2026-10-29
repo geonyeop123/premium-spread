@@ -78,8 +78,12 @@ class OwnerMarketAlertIntegrationTest : BatchIntegrationTestBase() {
     @BeforeEach
     fun cleanMarketAlertState() {
         listOf(
-            "owner_market_alert_state", "account_pnl_latest", "account_pnl_mail",
-            "premium_minute", "premium_hour", "premium_day",
+            "owner_market_alert_state",
+            "account_pnl_latest",
+            "account_pnl_mail",
+            "premium_minute",
+            "premium_hour",
+            "premium_day",
         ).forEach { jdbcTemplate.execute("TRUNCATE TABLE `$it`") }
         // PremiumAggregationCacheReader 는 기본 pair 의 legacy key 까지 읽어 DB 결과와 병합한다 - 둘 다 비운다
         val keys = listOf(AggregationTimeUnit.MINUTES, AggregationTimeUnit.HOURS, AggregationTimeUnit.DAYS).flatMap {
@@ -244,7 +248,13 @@ class OwnerMarketAlertIntegrationTest : BatchIntegrationTestBase() {
             jdbcTemplate.update(
                 "INSERT INTO $table (symbol, korea_exchange, foreign_exchange, $column, high, low, open, close, avg, " +
                     "count, created_at, fx_rate) VALUES ('BTC', 'BITHUMB', 'BINANCE', ?, ?, ?, ?, ?, ?, 60, ?, 1400.0000)",
-                at, BigDecimal(high), BigDecimal(low), BigDecimal(close), BigDecimal(close), BigDecimal(close), at,
+                at,
+                BigDecimal(high),
+                BigDecimal(low),
+                BigDecimal(close),
+                BigDecimal(close),
+                BigDecimal(close),
+                at,
             )
         }
     }
@@ -307,8 +317,13 @@ class OwnerMarketAlertIntegrationTest : BatchIntegrationTestBase() {
         override fun findLatest(pair: MarketPair): PremiumSnapshot {
             val observed = clock.instant().minus(Duration.ofSeconds(1))
             return PremiumSnapshot(
-                pair, rate, BigDecimal("140000000"), BigDecimal("100000"), BigDecimal("140000000"),
-                BigDecimal("1400.00"), observed,
+                pair,
+                rate,
+                BigDecimal("140000000"),
+                BigDecimal("100000"),
+                BigDecimal("140000000"),
+                BigDecimal("1400.00"),
+                observed,
             )
         }
     }

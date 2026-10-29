@@ -9,10 +9,7 @@ import java.time.Clock
 
 /** 실계정 최신 순수익률 단일 행(account_pnl_latest, id = 1) upsert (owner-market-alerts design §6.2). 금액은 로그에 남기지 않는다. */
 @Repository
-class JdbcAccountPnlLatestStore(
-    private val jdbcTemplate: JdbcTemplate,
-    private val clock: Clock,
-) : AccountPnlLatestStore {
+class JdbcAccountPnlLatestStore(private val jdbcTemplate: JdbcTemplate, private val clock: Clock) : AccountPnlLatestStore {
 
     override fun record(latest: AccountPnlLatest) {
         val calculatedAt = Timestamp.from(latest.calculatedAt)

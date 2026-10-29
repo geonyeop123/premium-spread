@@ -29,7 +29,13 @@ class PremiumSwingPolicyTest {
         MarketAlertState(downKey, OwnerAlertKind.PREMIUM_SWING, lastNotifiedAt, null, null, null, version)
 
     private fun current(rate: String) = PremiumSnapshot(
-        pair, BigDecimal(rate), BigDecimal("100"), BigDecimal("1"), BigDecimal("100"), BigDecimal("1400"), now,
+        pair,
+        BigDecimal(rate),
+        BigDecimal("100"),
+        BigDecimal("1"),
+        BigDecimal("100"),
+        BigDecimal("1400"),
+        now,
     )
 
     private fun bucket(minutesAgo: Long, close: String, high: String = close, low: String = close) =
@@ -49,9 +55,7 @@ class PremiumSwingPolicyTest {
         (1L..10L).map { k ->
             val close = when {
                 k == 3L && lowClose != null -> lowClose
-
                 k == 5L && highClose != null -> highClose
-
                 else -> "2.50"
             }
             bucket(k, close)

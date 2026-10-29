@@ -21,7 +21,9 @@ class JpaPremiumRepositoryAdapter(
     private val premiumCacheReader: PremiumCacheReader? = null,
     private val premiumAggregationCacheReader: PremiumAggregationCacheReader? = null,
     private val premiumAggregationQueryRepository: PremiumAggregationQueryRepository,
-) : PremiumRepository, PremiumAggregationReadPort {
+) :
+    PremiumRepository,
+    PremiumAggregationReadPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -113,9 +115,7 @@ class JpaPremiumRepositoryAdapter(
     ): List<PremiumAggregationSnapshot> {
         val interval = when (unit) {
             AggregationUnit.MINUTE -> "1m"
-
             AggregationUnit.HOUR -> "1h"
-
             AggregationUnit.DAY -> "1d"
         }
         val snapshots = findAggregationByPair(pair, interval, window.from, window.to)

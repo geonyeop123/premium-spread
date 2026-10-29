@@ -10,13 +10,9 @@ object PremiumThresholdPolicy {
         val lower = baseline.lower
         return when {
             upper != null && rate >= upper -> PremiumZone.ABOVE
-
             lower != null && rate <= lower -> PremiumZone.BELOW
-
             prev == PremiumZone.ABOVE && upper != null && rate > upper - baseline.hysteresis -> PremiumZone.ABOVE
-
             prev == PremiumZone.BELOW && lower != null && rate < lower + baseline.hysteresis -> PremiumZone.BELOW
-
             else -> PremiumZone.BETWEEN
         }
     }

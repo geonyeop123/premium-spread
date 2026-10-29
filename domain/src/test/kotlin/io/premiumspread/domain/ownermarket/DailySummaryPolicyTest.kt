@@ -30,7 +30,13 @@ class DailySummaryPolicyTest {
         DailySummaryPolicy.due(state(date), s, Instant.parse(at), zone)
 
     private val day = PremiumAggregationSnapshot(
-        pair, BigDecimal("3"), BigDecimal("1"), BigDecimal("2"), BigDecimal("2.5"), BigDecimal("2"), 1440,
+        pair,
+        BigDecimal("3"),
+        BigDecimal("1"),
+        BigDecimal("2"),
+        BigDecimal("2.5"),
+        BigDecimal("2"),
+        1440,
         Instant.parse("2026-10-27T15:00:00Z"),
     )
     private val fx = ExchangeRateSnapshot("USD", "KRW", BigDecimal("1400"), now)
@@ -78,7 +84,13 @@ class DailySummaryPolicyTest {
         )
         assertThat(result.notices).containsExactly(
             MarketNotice.DailySummary(
-                pair, now, LocalDate.of(2026, 10, 28), day, Currency.USD, Currency.KRW, fx,
+                pair,
+                now,
+                LocalDate.of(2026, 10, 28),
+                day,
+                Currency.USD,
+                Currency.KRW,
+                fx,
                 SummaryPnl.Value(BigDecimal("1.23"), BigDecimal("4567"), now.minusSeconds(60)),
             ),
         )

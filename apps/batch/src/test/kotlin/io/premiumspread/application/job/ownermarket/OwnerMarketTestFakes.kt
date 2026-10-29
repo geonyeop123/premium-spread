@@ -35,9 +35,7 @@ class FakeAggregationRead(
         calls += unit
         return when (unit) {
             AggregationUnit.MINUTE -> minutes()
-
             AggregationUnit.HOUR -> hours()
-
             AggregationUnit.DAY -> day()
         }
     }

@@ -41,7 +41,13 @@ object DailySummaryPolicy {
         MarketKeys.requireKey(state, MarketKeys.dailySummary(MarketKeys.pairKey(pair)))
         val today = now.atZone(zone).toLocalDate()
         val notice = MarketNotice.DailySummary(
-            pair, now, today.minusDays(1), input.day, input.fxBase, input.fxQuote, input.fx,
+            pair,
+            now,
+            today.minusDays(1),
+            input.day,
+            input.fxBase,
+            input.fxQuote,
+            input.fx,
             summaryPnl(input.pnl, settings, now),
         )
         return MarketDecision(listOf(state.copy(summaryDate = today, lastNotifiedAt = now)), listOf(notice))
@@ -50,11 +56,8 @@ object DailySummaryPolicy {
     /** 정확히 maxAge 는 유효. calculatedAt 이 미래면 나이 0. */
     fun summaryPnl(pnl: AccountPnlLatest?, settings: MarketAlertSettings, now: Instant): SummaryPnl = when {
         pnl == null -> SummaryPnl.Unavailable
-
         Duration.between(pnl.calculatedAt, now) > settings.summaryPnlMaxAge -> SummaryPnl.Unavailable
-
         !pnl.position -> SummaryPnl.NoPosition(pnl.calculatedAt)
-
         else -> SummaryPnl.Value(pnl.netPercent!!, pnl.netKrw!!, pnl.calculatedAt)
     }
 }

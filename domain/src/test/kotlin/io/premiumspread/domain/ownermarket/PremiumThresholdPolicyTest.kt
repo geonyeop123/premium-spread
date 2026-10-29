@@ -25,7 +25,13 @@ class PremiumThresholdPolicyTest {
         pair,
         rate?.let {
             PremiumSnapshot(
-                pair, BigDecimal(it), BigDecimal("100"), BigDecimal("1"), BigDecimal("100"), BigDecimal("1400"), now,
+                pair,
+                BigDecimal(it),
+                BigDecimal("100"),
+                BigDecimal("1"),
+                BigDecimal("100"),
+                BigDecimal("1400"),
+                now,
             )
         },
         null,
@@ -39,7 +45,13 @@ class PremiumThresholdPolicyTest {
     ) = PremiumThresholdPolicy.decide(observation(rate), state, s, now)
 
     private fun crossed(line: ThresholdLine, threshold: String, rate: String) = MarketNotice.ThresholdCrossed(
-        pair, now, line, BigDecimal(threshold), BigDecimal("0.1"), BigDecimal(rate), now,
+        pair,
+        now,
+        line,
+        BigDecimal(threshold),
+        BigDecimal("0.1"),
+        BigDecimal(rate),
+        now,
     )
 
     @Test

@@ -63,21 +63,15 @@ object OwnerMarketAlertContent {
 
     private fun emoji(notice: MarketNotice): String = when (notice) {
         is MarketNotice.Swing -> if (notice.direction == MarketDirection.UP) CHART_UP else CHART_DOWN
-
         is MarketNotice.ThresholdCrossed -> if (notice.line == ThresholdLine.UPPER) TRIANGLE_UP else TRIANGLE_DOWN
-
         is MarketNotice.NewExtreme -> if (notice.direction == MarketDirection.UP) ARROW_UP else ARROW_DOWN
-
         is MarketNotice.DailySummary -> CALENDAR
     }
 
     private fun color(notice: MarketNotice): Int = when (notice) {
         is MarketNotice.Swing -> directionColor(notice.direction)
-
         is MarketNotice.ThresholdCrossed -> if (notice.line == ThresholdLine.UPPER) UP_COLOR else DOWN_COLOR
-
         is MarketNotice.NewExtreme -> directionColor(notice.direction)
-
         is MarketNotice.DailySummary -> SUMMARY_COLOR
     }
 
@@ -123,11 +117,8 @@ object OwnerMarketAlertContent {
     ): String {
         val lines = when (notice) {
             is MarketNotice.Swing -> swingLines(notice, settings, t)
-
             is MarketNotice.ThresholdCrossed -> thresholdLines(notice, t)
-
             is MarketNotice.NewExtreme -> extremeLines(notice, settings, t)
-
             is MarketNotice.DailySummary -> summaryLines(notice, settings, zone, t)
         }
         return (lines + "조치 안내: $RUNBOOK").joinToString("\n")
