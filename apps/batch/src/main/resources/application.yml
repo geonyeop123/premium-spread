@@ -117,6 +117,21 @@ owner-alert:
     job-failure-count: ${OWNER_ALERT_OPS_JOB_FAILURE_COUNT:3}
     job-failure-duration: ${OWNER_ALERT_OPS_JOB_FAILURE_DURATION:5m}
     realert-interval: ${OWNER_ALERT_OPS_REALERT_INTERVAL:6h}
+  # owner 시장 알림 (김프 급변·기준선 돌파·신고가/신저가·일일 요약). 쓸 수 있는 owner 채널이 없으면 기동하지 않는다.
+  # 단위 %p = 김프 퍼센트 포인트. 기준선은 upper-threshold·lower-threshold 중 하나 이상 설정해야 동작한다(기본 꺼짐).
+  market:
+    enabled: ${OWNER_ALERT_MARKET_ENABLED:true}
+    swing-window: ${OWNER_ALERT_MARKET_SWING_WINDOW:10m}
+    swing-threshold: ${OWNER_ALERT_MARKET_SWING_THRESHOLD:0.5}
+    swing-cooldown: ${OWNER_ALERT_MARKET_SWING_COOLDOWN:30m}
+    upper-threshold: ${OWNER_ALERT_MARKET_UPPER_THRESHOLD:}
+    lower-threshold: ${OWNER_ALERT_MARKET_LOWER_THRESHOLD:}
+    threshold-hysteresis: ${OWNER_ALERT_MARKET_THRESHOLD_HYSTERESIS:0.1}
+    extreme-min-delta: ${OWNER_ALERT_MARKET_EXTREME_MIN_DELTA:0.1}
+    extreme-hour-cooldown: ${OWNER_ALERT_MARKET_EXTREME_HOUR_COOLDOWN:30m}
+    extreme-day-cooldown: ${OWNER_ALERT_MARKET_EXTREME_DAY_COOLDOWN:2h}
+    summary-hour: ${OWNER_ALERT_MARKET_SUMMARY_HOUR:9}
+    summary-pnl-max-age: ${OWNER_ALERT_MARKET_SUMMARY_PNL_MAX_AGE:10m}
   # 알림 종류별 경로 덮어쓰기. 빈 값이면 Domain OwnerAlertKind 기본값. 종류를 추가하면 여기 세 줄과 runbook 을 함께 추가한다.
   routes:
     profit:
