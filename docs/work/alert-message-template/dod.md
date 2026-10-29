@@ -1,0 +1,155 @@
+---
+feature: 알림 문구 템플릿화와 문구 정리 (issue #102)
+slug: alert-message-template
+status: DRAFT
+source: docs/work/alert-message-template/design.md (DRAFT)
+---
+
+## 범위
+
+**포함**
+
+- domain `alertmessage` 템플릿 계층(`AlertFormat`·`MailDocument`·`EmbedDocument`·`OwnerAlertMessage`)과 렌더 규칙 (design §3)
+- `DiscordField`·`DiscordLayout`·`DiscordMessage.layout`, `AccountPnlMail.discordLayout`, `OwnerAlertRows.expand(message, route)` (§3.4, §4)
+- `AccountPnlBreakdown` 순수 계산 (§6.1)
+- 22종 문구 전환 — 실계정 순손익 5·계정 알림 5·운영 4·시장 7·회원 1 (message-spec.md, design §6)
+- V23 `account_pnl_mail.discord_layout`, `DiscordLayoutJson`, outbox insert·claim, 옛 행·손상 행 처리 (§5)
+- `DiscordWebhookSenderAdapter` payload, `OwnerAlertDispatcher` 한 줄, 세 Job 호출 줄, `PremiumThresholdDeliveryService` zone 주입 (§4, §6.6, §7)
+- runbook 3개·`.ai/PROJECT_STATUS.md`·`.ai/architecture/ARCHITECTURE_DESIGN.md` (§14)
+
+**제외** *(scope creep 차단선)*
+
+- 총 자산·잔여 금액·증거금+손익·USDT 원화가, HTML 메일, 리소스 파일 외부화
+- 발송 조건·쿨다운·라우팅·`OwnerAlertKind`·eventKey·재시도·Message-ID, 회원 Discord
+- `AccountNetPnl` 필드·공식, 관측·정책·상태 저장, Redis, 공개 endpoint, 새 메트릭
+- outbox rename, 과거 `docs/work/*` 산출물, `message-spec.md`
+
+## 사용자 합의 (③)
+
+design §0.1 U1~U8 그대로. 문구 정본은 `docs/work/alert-message-template/message-spec.md` — **숫자·시각은 예시, 구조가 계약**이다.
+"구조" = 제목 형식(이모지·접두어·핵심 순서), Discord author·칸 이름·칸 배치(행별 칸 수와 순서)·footer, 메일 섹션 제목·항목 라벨과 순서·안내 문장·기준 시각 줄 유무.
+공백 개수는 design §3.2 정렬 규칙(A1)이 정한다. 열린 결정 D1(jackson-databind 선언)·D2(평단 수정 표시)는 design §13 — Gate 1 에서 확정한다.
+
+## 기존 gate 조사
+
+> 작성 시점은 소스만 읽었다. 실행 기준선은 plan Task 0 이 증거 로그에 남긴다.
+
+| 찾아본 것 | 있었나 | 쓸 수 있나 |
+|---|---|---|
+| architecture test | 있다 — root `architectureTest`(domain 외부 의존 allowlist, 앱 main infra import 금지, `gradle-dependency-graph.snapshot`) | R1. 새 규칙 없음. domain 에 의존 추가 없음 |
+| lint | ktlint·detekt (CI `quality-gate.yml`), 로컬 gradle task 없음 | R11 CI 확인만 |
+| golden 테스트 | 있다 — `AccountPnlMailContentTest`·`AccountPnlDiscordContentTest`·`AccountAlertContentTest`·`OwnerOpsAlertContentTest`·`OwnerMarketAlertContentTest`·`DiscordMessageTest`·`OwnerAlertRowsTest` | A단계 무수정 통과가 동작 보존 증거(R14). B단계에서 family 별로 교체 |
+| 회원 메일 문구 단정 | **없다** — `PremiumThresholdDeliveryServiceTest` 는 eventKey·수신자만 | AC9(a) 특성화 테스트를 먼저 만든다 |
+| Discord payload 테스트 | 있다 — `DiscordWebhookSenderAdapterTest:72-96`(title/description/color, push 3종) | layout 없는 행의 회귀 방어선(R13) — 무수정 |
+| outbox 컬럼 고정 단언 | 있다 — `V19OwnerAlertChannelMigrationIntegrationTest:34-50`(latest 까지 migrate 후 `containsExactly`), `AccountPnlFixtureSchemaIntegrationTest:44-61` | 허용 예외 — 목록 끝에 `discord_layout:text:YES` 추가만 |
+| migration 버전 단언 | `V22…IntegrationTest:28` 은 `containsAll((1..22))` | V23 추가로 깨지지 않음 |
+| Job 문구 단정 | 있다 — `AccountPnlMonitorJobTest`(:87,:198,:247,:344,:404,:543,:623-633), `AccountPnlMonitorJobHourlyReportTest:52`, `AccountPnlMonitorJobOwnerAlertTest:115-132,:145-172`, `OwnerMarketSignalJobTest:235` | 허용 예외 — 문구 단정 줄과 기대 행 구성 줄만 |
+| E2E 문구 단정 | `OwnerMarketAlertIntegrationTest:189-200`, `OwnerAccountAlertIntegrationTest:111`(제목 `헤지 불일치` — 새 제목도 포함) | 앞의 것만 허용 예외 |
+| mock Discord 서버 E2E | 있다 — `OwnerAlertDeliveryIntegrationTest`(MockWebServer, payload `readTree`) | AC16 이 같은 기반 |
+| migration 검사 | `:infrastructure:common:verifyMigrations` | R4 |
+| 문서 검사 | `bash docs/check-documentation.sh` (TBD/TODO 금지, 링크 실재) | AC17 |
+
+**결론.** 새 스크립트·gradle task 를 만들지 않는다. 검증 명령은 아래 5개 task 와 그 `--tests` 필터 변형뿐이다:
+`./gradlew test architectureTest --offline --no-daemon`, `./gradlew :infrastructure:common:integrationTest --offline --no-daemon`,
+`./gradlew :apps:batch:integrationTest --offline --no-daemon`, `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon`, `bash docs/check-documentation.sh`.
+회귀 방어선은 여기에 기존 gate(`:apps:api:integrationTest`·`harnessCheck`·jacoco)를 더한다.
+
+## 수용기준
+
+공통 고정값: zone `Asia/Seoul`, 고정 `Instant`(실계정 `2026-10-20T00:00:00Z` = 09:00 KST, 운영 `2026-10-28T00:00:00Z`, 시장 `2026-10-29T00:00:00Z`, 회원 `2026-07-15T00:30:00Z`),
+기본 pair `BTC/BITHUMB/BINANCE`, fx `USD/KRW`. 테스트 URL `https://discord.example.test/...`, 주소 `owner@example.test`·`member@example.com`(기존 fixture). 실 webhook·key 금지.
+**golden** = 메일 `subject`·`body()` 와 Discord `author`·`title`·`color`·`fields`(name·value·inline 전부)·`footer`·`timestamp` 를 `isEqualTo` 로 단정한다.
+기대 문자열은 message-spec 해당 절에서 옮기고 숫자·시각만 테스트 입력의 값으로 바꾼다.
+
+| # | 수용기준 (관찰 가능) | 근거 | 출처 | 티어 | 검증 수단 | 검증 명령 | 통과 조건 |
+|---|---|---|---|---|---|---|---|
+| AC1 | (a) `DiscordField` — name 0자·공백만·257자, value 0자·1025자 거부, 256·1024 통과. (b) `DiscordLayout` — 칸 26개 거부·25 통과, footer 2049 거부, author 257 거부, author/footer null 통과. (c) `DiscordMessage(layout != null)` — title+author+footer+칸 합계 6001 거부·6000 통과, description 길이는 합계에 넣지 않는다. layout null 이면 기존 검증 그대로(`DiscordMessageTest` 무수정 통과). (d) `AccountPnlMail` — EMAIL 행에 `discordLayout` 이 있으면 `IllegalArgumentException("discordLayout must be set only for DISCORD rows.")`, DISCORD 행은 null·non-null 모두 허용 | design §4 | `요구`(U3) + 한도는 `상위`(Discord API) | T1 | `신규테스트` `io.premiumspread.domain.owneralert.DiscordLayoutTest` + `기존` `DiscordMessageTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` | exit 0 |
+| AC2 | `AlertFormat` 이 design §3.5 표와 같다: `stamp(2026-10-20T00:00:00Z)` = `2026-10-20 09:00 KST`; `clock` 같은 날 `09:30`·전날 `10-17 09:30`(zone 날짜 기준 — UTC 날짜가 달라도 KST 같은 날이면 `HH:mm`); `duration` 0→`0분`, 음수→`0분`, 59m→`59분`, 60m→`1시간`, 365m→`6시간 5분`, 720m→`12시간`; `threshold` 30m→`30분`, 6h→`6시간`, 90s→`90초`; `exchange` 4개 값 전부; `premium(1.775)`=`1.78%`·`premium(-0.5)`=`-0.50%`·`premium(0)`=`0.00%`; `usdtPrice(70000.5)`=`70,000.5 USDT`; `usdt2(14.7896)`=`14.79 USDT`; `signedUsdt2(-851.2)`=`-851.20 USDT`·`(0)`=`0.00 USDT`; `displayWidth("마지막 성공")`=11·`("10분 저점")`=7. `AccountPnlFormat` 과 같은 동작이어야 하는 함수(`percent`·`percentPoint`·`krw`·`krwOrZero`·`cost`·`plain`·`signedUsdt`)는 `0`·`-0.4`·`0.5`·`-0.5`·`1234567.5` 에서 `AccountPnlFormat` 과 같은 출력. A단계 동안 기존 golden 무수정 통과 | design §3.5 | `요구`(U4 KST·UTC 제거, U5 한글 거래소) + 규칙은 `추론`(A2) | T1 | `신규테스트` `io.premiumspread.domain.alertmessage.AlertFormatTest` + `기존` 5개 Content golden | `./gradlew :domain:test --tests 'io.premiumspread.domain.alertmessage.*' --tests 'io.premiumspread.domain.accountpnl.*' --tests 'io.premiumspread.domain.ownerops.*' --tests 'io.premiumspread.domain.ownermarket.*' --offline --no-daemon` | exit 0 |
+| AC3 | (a) `MailDocument.body()` 가 design §3.2 규칙 1~5 대로 — 최상위 블록 사이 빈 줄 1개, Section 안 빈 줄 없음, Pairs 정렬(표시 폭 최댓값+2), children `  - ` 정렬, basis 줄, signature `--`, 끝 개행 없음. (b) `EmbedDocument.toDiscordMessage()` 가 §3.3 규칙 1~5 대로 — 1칸 행 inline false, 2~3칸 inline true, 2칸 행 뒤에 2칸 이상 행이 올 때만 `​` 채움 칸, 값 1025자는 1024자(… 포함)로 절단, 대체 평문 description(`**` 제거, `\n` → ` / `, footer 마지막 줄), 칸 1~3개가 아닌 행·빈 rows 는 `IllegalArgumentException`. (c) `OwnerAlertRows.expand(message, route)` — (메일, Discord) 경로별 0·1·2행, 메일 먼저, 같은 eventKey, DISCORD 행 `subject`=title·`body`=대체 평문·`discordLayout`=layout, `route.discord == null` 이면 Discord 렌더를 하지 않는다 | design §3.2~§3.4 | `요구`(U3·U4) + 규칙은 `추론`(A1) | T1 | `신규테스트` `io.premiumspread.domain.alertmessage.MailDocumentTest`·`EmbedDocumentTest` + `io.premiumspread.domain.accountpnl.OwnerAlertRowsMessageTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.alertmessage.*' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsMessageTest' --offline --no-daemon` | exit 0 |
+| AC4 | `AccountPnlBreakdown.of(pnl)` — 입력(빗썸 0.266 BTC·평단 152,000,000·매수호가 158,500,000·진입 수수료 16,173원·sellFeeRate 0.0004, 바이낸스 −0.266·진입가 108,000·매도호가 111,200·수수료 14.36 USDT·펀딩 4.2 USDT·taker 0.0005, 환율 1400)에서 현김프 1.78, 매수김프 0.53, 차이 1.25, 빗썸 손익 1,729,000·평가액 42,161,000, 바이낸스 손익 −851.2 USDT·−1,191,680원·평가액 29,579.2 USDT·41,410,880원, 정리 수수료 16,864.4원·14.7896 USDT·20,705.44원, 수수료 합계 73,846.84원, 펀딩 5,880원. 불변식 3개(design §6.1)가 `compareTo == 0`. 진입 수수료·펀딩 null 이면 해당 값 null·합계는 0 으로. 음수 김프(빗썸 < 바이낸스×환율)도 부호 그대로. `toString` 에 금액·수량 문자열 없음 | design §6.1 | `요구`(U6 공식) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.AccountPnlBreakdownTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlBreakdownTest' --offline --no-daemon` | exit 0 |
+| AC5 | 실계정 순손익 golden 5종이 message-spec "실계정 순손익" 절의 구조와 같다 — 수익, 정시, 중단(빗썸 인증 실패, 마지막 성공 없음), 중단(환율 수집 지연, 마지막 성공 있음), 복구. AC4 입력의 수익 제목은 `💰 수익 알림 +1.11% +469,353원`(A4 — spec 예시 `469,354` 와 1원 차), 메일 `수수료` `-73,847원`. 변형: 진입 수수료·펀딩 미반영(A5, 수동 입력 모드면 `수동 미입력`), 다른 실패 범주 6개의 제목 label(A6). eventKey 는 기존 형식 그대로(`account-pnl-profit-{ms}`·`-hourly-{정시 ms}`·`-outage-`·`-recovered-`). 복구 메일에 `기준 시각` 줄이 없다 | message-spec §실계정 순손익, design §6.2 | `요구`(U2·U6) + 결측 표기는 `추론`(A5·A6) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.AccountPnlAlertContentTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlAlertContentTest' --offline --no-daemon` | exit 0 |
+| AC6 | 계정 알림 golden 5종(포지션 변경 바이낸스→없음, 헤지 불일치, 급등, 급락, 리마인더 4건)이 message-spec "계정 알림" 절의 구조와 같다. 변형: 빗썸·바이낸스 둘 다 변경(제목 `빗썸·바이낸스`), 바이낸스 롱(A7), 리마인더에 오래된 항목만·빠진 항목만(칸·섹션 생략). eventKey 형식 무변경 | message-spec §계정 알림, design §6.3 | `요구`(U2) + 변형은 `추론`(A7·A8) | T1 | `신규테스트`(교체) `io.premiumspread.domain.accountpnl.AccountAlertContentTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertContentTest' --offline --no-daemon` | exit 0 |
+| AC7 | 운영 golden 4종(환율 수집 지연 첫 알림, 시세 끊김 빗썸 BTC/KRW, Job 연속 실패 2번째 알림, 시세 끊김 바이낸스 BTC/USD 해소)이 message-spec "운영 알림" 절의 구조와 같다. 변형: `since == null` → `없음`, Job 첫 알림(접미사 없음), 환율 2번째 알림(접미사 있음), 환율·Job 해소 첫 줄(A10). eventKey 형식 무변경 | message-spec §운영 알림, design §6.4 | `요구`(U2) + 변형은 `추론`(A9·A10) | T1 | `신규테스트`(교체) `io.premiumspread.domain.ownerops.OwnerOpsAlertContentTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.*' --offline --no-daemon` | exit 0 |
+| AC8 | 시장 golden 7종(급등, 급락, 상단 돌파, 하단 이탈, 24시간 신고가, 1시간 신저가, 일일 요약 전부 있음)이 message-spec "시장 알림" 절의 구조와 같다. 변형: 요약 일 집계 없음 + 환율 없음 + 실계정 `Unavailable`, 실계정 `NoPosition`(A11). author 는 `notice.pair` 에서 만든다 — `UPBIT` pair notice 면 `시장 · BTC 업비트/바이낸스`. eventKey 형식 무변경 | message-spec §시장 알림, design §6.5, §8 | `요구`(U2·U5) + 결측은 `추론`(A11) + pair 출처는 `상위`(architecture MarketPair) | T1 | `신규테스트`(교체) `io.premiumspread.domain.ownermarket.OwnerMarketAlertContentTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.OwnerMarketAlertContentTest' --offline --no-daemon` | exit 0 |
+| AC9 | (a) **A단계 특성화**: 현재 서비스가 만드는 `subject`·`payload` 를 rate 6·threshold 5.00·ABOVE, rate −1.5·threshold −1·BELOW 두 경우로 `isEqualTo` 고정(현재 문구 그대로, 관측 시각 UTC 원문 포함). (b) **B단계**: 같은 두 경우가 message-spec "회원 알림" 구조 — 제목 `[김프 알림] BTC 김프 6.00% 도달`, 조건 `김프 5.00% 이상`/`이하`, 관측 시각 `2026-07-15 09:30 KST`, 끝 `--`·`premium-spread`, `기준 시각` 줄 없음. (c) 서비스가 zone 인자 `"UTC"` 로 만든 인스턴스면 `2026-07-15 00:30 UTC` — 시스템 zone 무관. (d) 기존 `PremiumThresholdDeliveryServiceTest` 무수정 통과 | design §6.6, §7 | `요구`(U1·U4) + 특성화 선행은 `상위`(testing 규칙) | T1 | `신규테스트` `io.premiumspread.application.notification.PremiumThresholdDeliveryServiceMailTest` + `io.premiumspread.domain.notification.PremiumThresholdMailContentTest` + `기존` | `./gradlew :domain:test --tests 'io.premiumspread.domain.notification.*' :apps:batch:test --tests 'io.premiumspread.application.notification.*' --offline --no-daemon` | exit 0 |
+| AC10 | **22종 전수 적합성**: 아래 표의 22개 시나리오를 각각 dynamic test 로 돌려 (a) 메일 제목 접두어가 표의 값, (b) 메일 본문에 `기준 시각 yyyy-MM-dd HH:mm KST` 줄이 표의 유무대로 마지막(서명 앞) 줄, (c) Discord author 가 표의 값(회원은 Discord 없음), footer 유무가 표대로, timestamp = 기준 시각, 행별 칸 수가 표와 같다, (d) 메일·Discord 모든 문자열에 금지어가 없다 — 정규식 `청산\|gross\|\bBITHUMB\b\|\bBINANCE\b\|docs/runbooks\|조치 안내\|VWAP\|체결가\|대조용\|UTC\|거래소 API\|수동 입력\(env\)\|Exception\|http\|example\.test`, (e) Discord 한도(AC1) 안 | message-spec 전체, design §0.1 U4·U5 | `요구`(U2·U4·U5) | T1 | `신규테스트` `io.premiumspread.domain.alertmessage.AlertMessageSpecConformanceTest` | `./gradlew :domain:test --tests 'io.premiumspread.domain.alertmessage.AlertMessageSpecConformanceTest' --offline --no-daemon` | exit 0, 22개 dynamic test 모두 실행 |
+| AC11 | (a) 빈 DB → latest 성공, 버전 1~23, `account_pnl_mail` 마지막 열 `discord_layout` `text` nullable. (b) V22 스키마에 EMAIL·DISCORD 행 → V23 → 기존 행 `discord_layout` NULL·그 밖 열 무변경. (c) CHECK — EMAIL 행에 `discord_layout` 값 거부, DISCORD 행 NULL·값 허용. (d) `verifyMigrations` 통과, 기존 migration 파일 무변경(R4) | design §5.2 | `요구`(합의 결정 V23 append-only) + CHECK 는 `추론` | T1 | `신규테스트` `io.premiumspread.infrastructure.common.migration.V23OwnerAlertDiscordLayoutMigrationIntegrationTest` | `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V23OwnerAlertDiscordLayoutMigrationIntegrationTest' :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC12 | (a) `DiscordLayoutJson` — write 결과가 design §5.2 키 순서·`"v":1`, read(write(x)) == x(null author·footer·timestamp 포함, 한글·이모지·`"`·`\`·개행 값), 깨진 JSON → reason `json`, `v` 2 → `version`, `fields` 누락·칸 이름 빈 문자열 → `shape`; 예외 메시지에 입력 내용 없음·cause 없음. (b) 실제 MySQL: layout 있는 DISCORD 행 enqueue(세 store 모두 — `JdbcAccountPnlAlertStore.save`·`JdbcOwnerAlertOutbox`·`JdbcOwnerMarketAlertStore`) → `claim` 결과 `discordLayout` 이 같다. (c) SQL 로 넣은 `discord_layout` NULL DISCORD 행 → claim 결과 layout null. (d) `discord_layout = '{bad'` 행 → claim 이 예외 없이 그 행을 layout null 로 돌려주고 WARN `Owner alert discord layout unreadable; sending plain description: id=…, reason=json`, 로그에 `{bad` 없음, 같은 claim 의 다른 행은 정상. (e) 직렬화 결과가 65,535 바이트를 넘는 행은 `IllegalArgumentException("discordLayout must be at most 65535 bytes in UTF-8.")`, DB 무변경. (f) 기존 `JdbcAccountPnlAlertStoreIntegrationTest`·`JdbcOwnerAlertOutboxIntegrationTest`·`JdbcOwnerMarketAlertStoreIntegrationTest` 무수정 통과 | design §5 | `요구`(합의 결정 — 옛 행 처리) + 손상 행 처리는 `추론`(K5) | T1 | `신규테스트` `io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.DiscordLayoutJsonTest`(test) + `…accountpnl.OwnerAlertDiscordLayoutStoreIntegrationTest`(integrationTest) + `기존` | `./gradlew :infrastructure:common:test --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.*' :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.*' --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC13 | `DiscordWebhookSenderAdapter` 가 (a) layout 있는 메시지를 `{"embeds":[{"author":{"name":…},"title":…,"color":…,"fields":[…],"footer":{"text":…},"timestamp":"…Z"}]…}` 로 보낸다 — `description` 키 없음, author·footer·timestamp null 이면 그 키 없음, 칸 순서·inline 보존. (b) push SOUND·SILENT(`flags` 4096)·HERE(`content` @here, `allowed_mentions`) 규칙이 layout 유무와 무관. (c) 기존 `DiscordWebhookSenderAdapterTest` 무수정 통과(layout 없는 payload 무변경) | design §4 | `요구`(U3) | T1 | `신규테스트` `io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterLayoutTest` + `기존` | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.*' --offline --no-daemon` | exit 0 |
+| AC14 | `OwnerAlertDispatcher` 가 DISCORD 행의 `discordLayout` 을 `DiscordMessage.layout` 으로 그대로 넘기고(null 은 null), EMAIL 행 전달·전이표는 무변경. 기존 `OwnerAlertDispatcherTest` 무수정 통과 | design §4 | `추론` | T1 | `신규테스트` `io.premiumspread.application.notification.owneralert.OwnerAlertDispatcherLayoutTest` + `기존` | `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.*' --offline --no-daemon` | exit 0 |
+| AC15 | 세 Job(`AccountPnlMonitorJob`·`OwnerOpsSignalJob`·`OwnerMarketSignalJob`)이 만드는 행이 (a) 행 수·채널·순서·eventKey·라우팅·`JobResult` 가 base 와 같고(기존 테스트의 해당 단정 무수정), (b) DISCORD 행은 `discordLayout != null`, EMAIL 행 body 는 그 family 템플릿의 `mail.body()` 와 같다. 허용 예외(R3) 밖 테스트 무수정 | design §3.4, §9 | `요구`(U7 발송 조건 무변경) | T1 | `기존`(허용 예외 줄만 수정) + 신규 단정 | `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.*' --tests 'io.premiumspread.config.*' --offline --no-daemon` | exit 0 |
+| AC16 | 실제 MySQL(batch fixture, V23 열 포함) + mock Discord 서버로 (a) 시장 급등 회차 → 전달 Job → 요청 payload `embeds[0]` 에 author `시장 · BTC 빗썸/바이낸스`, 칸 3개, footer, timestamp, `description` 없음, 행 `SENT`. (b) SQL 로 넣은 `discord_layout` NULL DISCORD 행 → payload embed 키가 `title`·`description`·`color` 뿐. (c) 같은 회차 메일 행 body 에 `[시장] ` 접두 제목과 `기준 시각 ` 줄. (d) 기존 batch integrationTest 는 허용 예외(`OwnerMarketAlertIntegrationTest:189-200`·`AccountPnlFixtureSchemaIntegrationTest` 열 목록) 외 무수정 통과 | design §5.3, §11 | `요구`(U3 실제 embed) | T1 | `신규테스트` `io.premiumspread.application.job.OwnerAlertDiscordLayoutIntegrationTest` + `기존` | `./gradlew :apps:batch:integrationTest --offline --no-daemon` | exit 0 (Docker 필요) |
+| AC17 | runbook 3개의 알림 예시가 새 형식(접두어·KST·런북 줄 없음·한글 거래소)이고 message-spec 링크가 있다; `account-pnl-alert.md` 에 V23 배포 순서(API 먼저)와 옛 행·손상 행 동작; `.ai/PROJECT_STATUS.md` `Flyway V1~V23`·V23 행; `ARCHITECTURE_DESIGN.md` 템플릿 계층 단락; `docs/check-documentation.sh` 통과 | design §14 | `요구`(문서 갱신) | T3 | 기록 문서 + `기존` 스크립트 | `bash docs/check-documentation.sh` | exit 0 + 사람 사후 검토 |
+| AC18 | owner 가 자기 webhook·메일로 로컬 batch 를 띄워 (a) 수익 또는 정시 보고 1통이 Discord 데스크톱·모바일에서 칸이 spec 배치(5행)대로 보이고, (b) 같은 알림 메일이 plain text 로 섹션·정렬이 읽히며, (c) 운영 또는 시장 알림 1통이 author·footer·현지 시각 timestamp 로 보인다 | design §0, §3.3 | `요구`(U3 실제 표시) | T4 | owner 확인 | — | PR 코멘트에 owner 확인 기록 |
+
+### AC10 시나리오 표 (22종)
+
+| # | 알림 | 메일 접두어 | 기준 시각 줄 | Discord author | footer | 행별 칸 수 |
+|---|---|---|---|---|---|---|
+| 1 | 수익 | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 3·2·3·2·1 |
+| 2 | 정시 보고 | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 3·2·3·2·1 |
+| 3 | 중단(빗썸 인증) | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 2·1 |
+| 4 | 중단(환율 지연) | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 2 |
+| 5 | 복구 | `[실계정]` | **없음** | `실계정 · BTC` | 없음 | 1 |
+| 6 | 포지션 변경 | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 2 |
+| 7 | 포지션 변경(헤지 불일치) | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 2·1 |
+| 8 | 순수익률 급등 | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 3·1 |
+| 9 | 순수익률 급락 | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 3·1 |
+| 10 | 미반영 리마인더 | `[실계정]` | 있음 | `실계정 · BTC` | 있음 | 1·1 |
+| 11 | 환율 수집 지연 | `[운영]` | 있음 | `운영` | 있음 | 3 |
+| 12 | 시세 끊김 | `[운영]` | 있음 | `운영` | 있음 | 3 |
+| 13 | Job 연속 실패(재알림) | `[운영]` | 있음 | `운영` | 있음 | 3 |
+| 14 | 운영 장애 해소 | `[운영]` | 있음 | `운영` | 없음 | 3·1 |
+| 15 | 김프 급등 | `[시장]` | 있음 | `시장 · BTC 빗썸/바이낸스` | 있음 | 3 |
+| 16 | 김프 급락 | `[시장]` | 있음 | `시장 · BTC 빗썸/바이낸스` | 있음 | 3 |
+| 17 | 상단 기준선 돌파 | `[시장]` | 있음 | `시장 · BTC 빗썸/바이낸스` | 있음 | 2 |
+| 18 | 하단 기준선 이탈 | `[시장]` | 있음 | `시장 · BTC 빗썸/바이낸스` | 있음 | 2 |
+| 19 | 24시간 신고가 | `[시장]` | 있음 | `시장 · BTC 빗썸/바이낸스` | 있음 | 3 |
+| 20 | 1시간 신저가 | `[시장]` | 있음 | `시장 · BTC 빗썸/바이낸스` | 있음 | 3 |
+| 21 | 일일 요약 | `[시장]` | 있음 | `시장 · BTC 빗썸/바이낸스` | 있음 | 3·2·2·1 |
+| 22 | 회원 임계값 도달 | `[김프 알림]` | **없음**(서명 `premium-spread`) | — (Discord 없음) | — | — |
+
+**기준 개수**: 18개
+
+**분할하지 않는 이유**: outbox 레이아웃(V23·직렬화·adapter)은 Discord 칸을 쓰는 첫 family 가 생기는 순간 전부 필요하고, 템플릿 계층·공용 서식은 모든 family 가 공유한다.
+family 별로 PR 을 나누면 A단계 공통 기반을 첫 PR 이 다 짊어지고 나머지는 작은 문구 PR 이 된다 — 같은 리뷰 효과를 한 PR 안 family 별 커밋(design §12)으로 얻는다.
+
+**티어 강등 사유**
+
+- AC17 → T3: runbook 설명의 충분성은 exit code 로 잴 수 없다.
+- AC18 → T4: 실 webhook·메일은 테스트·CI 에 쓰지 않는다(testing 규칙). Discord 클라이언트별 칸 배치는 사람만 본다.
+
+## 회귀 방어선
+
+base = `3d179e7` (Task 0 확인). RED 면제 대상.
+
+| # | 지켜야 할 동작 | 검증 명령 |
+|---|---|---|
+| R1 | 모듈 경계·domain 의존 allowlist·앱 main infra import 금지·테스트 격리 | `./gradlew architectureTest --offline --no-daemon` |
+| R2 | 전체 unit test | `./gradlew test --offline --no-daemon` |
+| R3 | 기존 테스트 **무수정**, 단 아래 허용 예외만. 허용 예외 파일도 문구 단정 줄·기대 행 구성 줄·호출 줄·import 만 바뀐다. 삭제 허용: `domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountPnlMailContentTest.kt`·`AccountPnlDiscordContentTest.kt`·`OwnerAlertRowsTest.kt`. 교체 허용: `domain/src/test/kotlin/io/premiumspread/domain/accountpnl/AccountAlertContentTest.kt`, `domain/src/test/kotlin/io/premiumspread/domain/ownerops/OwnerOpsAlertContentTest.kt`, `domain/src/test/kotlin/io/premiumspread/domain/ownermarket/OwnerMarketAlertContentTest.kt`. 수정 허용: `apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl/{AccountPnlMonitorJobTest,AccountPnlMonitorJobHourlyReportTest,AccountPnlMonitorJobOwnerAlertTest}.kt`, `apps/batch/src/test/kotlin/io/premiumspread/application/job/ownermarket/OwnerMarketSignalJobTest.kt`, `infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/notification/AccountPnlEmailSenderAdapterTest.kt`, `infrastructure/common/src/integrationTest/kotlin/io/premiumspread/infrastructure/common/migration/V19OwnerAlertChannelMigrationIntegrationTest.kt`(:34-50 목록 끝 1줄), `apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt`(:45-61 목록 끝 1줄), `apps/batch/src/integrationTest/kotlin/io/premiumspread/application/job/OwnerMarketAlertIntegrationTest.kt`(:189-200) | `git diff --name-status 3d179e7 -- '*/src/test/*' '*/src/integrationTest/*'` 의 M·D·R 행이 위 목록 안인지 ⑨ 리뷰가 확인 (사람 판정). 이번 작업의 신규 파일(Task 1 의 `PremiumThresholdDeliveryServiceMailTest.kt` 등)은 대상 아님. 목록 밖 기존 테스트를 고쳐야 하면 구현자는 멈추고 보고 |
+| R4 | 기존 migration 무변경(추가만) + 검증 | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` + `git diff --name-only --diff-filter=MDR 3d179e7 -- infrastructure/common/src/main/resources/db/migration` 빈 출력 |
+| R5 | 공통 persistence·migration 통합(V12·V16~V22, 기존 store·동시 claim·fencing) | `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` |
+| R6 | batch 통합 — #88~#91 E2E·fixture 스키마 | `./gradlew :apps:batch:integrationTest --offline --no-daemon` |
+| R7 | API Flyway 전체 적용(V23 까지) | `./gradlew :apps:api:integrationTest --offline --no-daemon` (Docker 필요) |
+| R8 | 정본 문서 정합성 | `bash docs/check-documentation.sh` |
+| R9 | 하네스 무변경 확인 | `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` |
+| R10 | coverage 게이트(overall 70%·Domain 85%·Application 80%) | `./gradlew jacocoTestReport jacocoTestCoverageVerification --offline --no-daemon` (최종 증거 CI artifact) |
+| R11 | ktlint·detekt | CI `quality-gate.yml` (로컬 실행 불가, 우회 금지) |
+| R12 | eventKey 형식 무변경 | AC5~AC8 golden 의 eventKey 단정 + `git diff 3d179e7 -- domain/src/main` 에서 eventKey 를 만드는 식(`account-pnl-…`·`owner-ops.…`·`owner-market.…`) 무변경을 ⑨ 리뷰가 확인 |
+| R13 | layout 없는 Discord payload 무변경 | `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.DiscordWebhookSenderAdapterTest' --offline --no-daemon` (파일 무수정) |
+| R14 | A단계 동작 보존 — plan Task 7 커밋 시점에 기존 golden 5개·`OwnerAlertRowsTest`·`DiscordMessageTest` 가 base 와 같은 파일로 통과 | Task 7 커밋에서 `git diff --name-status 3d179e7 -- domain/src/test infrastructure/batch/src/test apps/batch/src/test` 에 M·D 행 없음 + `./gradlew test --offline --no-daemon` |
+
+## 변경 요청
+
+| # | 날짜 | 기준 | 변경 내용 | 사유 | 승인 |
+|---|---|---|---|---|---|
+
+## 스펙 리뷰 라운드 기록 (⑥)
+
+| 라운드 | 지적 | 처리 | 반영 커밋 |
+|---|---|---|---|
+
+## 증거 로그
+
+> 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
