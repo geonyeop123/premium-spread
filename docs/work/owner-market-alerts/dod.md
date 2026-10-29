@@ -233,3 +233,8 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 - RED (조건 `matches` = false stub): `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerMarketAlertWiringTest' --offline --no-daemon` → `9 tests completed, 4 failed` (a·b·e 2건: bean 존재·INFO 단언).
 - GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` → BUILD SUCCESSFUL(기존 wiring 무수정). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
 - 메모: R8(`OwnerAlertReadiness` private→internal) 적용. application.yml `git diff --numstat` 15 추가·0 삭제. 빈 env 값은 `BigDecimal?` null 로 바인딩됨(테스트로 고정).
+
+### AC15 (Task 15)
+- RED (임시 변이 `store.enqueue(changed, emptyList())`): `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerMarketAlertIntegrationTest' --offline --no-daemon` → `3 tests completed, 3 failed` (모두 outbox 행 수 단언: `Expected size: 1/1/2 but was: 0`). 변이 되돌림 후 `git diff --stat -- apps/batch/src/main` 빈 출력.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL(3 tests). `./gradlew :apps:batch:integrationTest --offline --no-daemon`(R11) → BUILD SUCCESSFUL, 112 tests / 0 failed (기준선 109 + 3). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+- 메모: summary eventKey 의 `{date}` 는 대상일(10-28)이고 `summary_date` 상태는 오늘(10-29)이다. 시작 시각이 09:00 KST 라 (a)~(c) 는 `summaryHour=23` 설정으로 요약을 끈다.
