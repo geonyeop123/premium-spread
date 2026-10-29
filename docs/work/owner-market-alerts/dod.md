@@ -185,3 +185,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC13 (Task 2)
 - RED (stub lease 5s/timeout 3s/주기 15s): `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerMarketJobConfigTest' --offline --no-daemon` → `3 tests completed, 2 failed` (lock 값·yml 바인딩), (c) 감시 편입은 stub 에서도 초록, BUILD FAILED.
 - GREEN: dod AC13 명령(OwnerMarketJobConfigTest·OwnerAlertJobConfigTest·`application.job.ownerops.*`) → BUILD SUCCESSFUL, 기존 테스트 무수정. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### AC2 (Task 3)
+- RED (stub: pairKey="x", requireKey 무동작, sufficient=true, 고정 창, settings init 비움): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.MarketAlertModelTest' --offline --no-daemon` → `18 tests completed, 15 failed` (값·예외 단언), BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (첫 실행에서 무관한 `WebSocketConnectionManagerRegressionTest > stop prevents pending reconnect and watchdog alert()` 1건 실패, clean 재실행 초록 — 수정 없음).
