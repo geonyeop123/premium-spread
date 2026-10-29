@@ -1,8 +1,8 @@
 ---
 feature: 테스트 실행 시간 단축 (issue #104)
 slug: test-time-reduction
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-10-29T17:12:51+09:00
 verdict_commit:
 source: design.md
 ---
