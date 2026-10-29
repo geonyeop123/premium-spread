@@ -193,3 +193,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC3 (Task 4)
 - RED (stub `decide = MarketDecision.NONE`): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumSwingPolicyTest' --offline --no-daemon` → `10 tests completed, 6 failed` (UP·DOWN·양방향·쿨다운 경계·bucket 8개 충분·key 불일치 예외; 미발동·null·창 밖·high 9.99 는 stub 에서도 초록).
 - GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### AC4 (Task 5)
+- RED (stub `classify = BETWEEN`, `decide = NONE`): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumThresholdPolicyTest' --offline --no-daemon` → `11 tests completed, 9 failed`, BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
