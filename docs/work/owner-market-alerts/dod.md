@@ -219,3 +219,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 - RED (stub: load=빈 map, enqueue=true 무기록, record 무동작, find=null, `@Import` 미추가): `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.*' --offline --no-daemon` → `53 tests completed, 11 failed` (신규 12개 중 11개 — 기록·읽기·예외·bean 해석 단언 실패; 상태·행 모두 없는 d2 만 stub 에서도 통과), BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL. R10 `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL, 통합 테스트 79개. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
 - 메모: 첫 전체 실행에서 f3(모르는 zone) 1건 실패 — 테스트가 `ck_owner_market_alert_state_zone` CHECK 에 막힌 것. 테스트 DB 에서만 제약을 DROP 한 뒤 손상을 만들도록 테스트를 고쳤다(구현 무변경).
+
+### AC10 (Task 11)
+- RED (stub `read = emptyList()`): `./gradlew :infrastructure:common:test --tests 'io.premiumspread.infrastructure.common.persistence.jpa.premium.*' --offline --no-daemon` → `4 tests completed, 4 failed`, BUILD FAILED.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest :infrastructure:common:compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
