@@ -6,6 +6,7 @@ import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJob
 import io.premiumspread.application.notification.owneralert.OwnerAlertDispatcher
 import io.premiumspread.domain.accountpnl.AccountAlertSettings
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
+import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
@@ -183,6 +184,7 @@ class AccountPnlMonitorConfiguration {
         routing: OwnerAlertRouting,
         discordSender: ObjectProvider<OwnerAlertDiscordSender>,
         accountAlerts: AccountAlertSettings,
+        latestPnl: ObjectProvider<AccountPnlLatestStore>,
     ): AccountPnlMonitorJob = AccountPnlMonitorJob(
         korea,
         foreign,
@@ -197,5 +199,6 @@ class AccountPnlMonitorConfiguration {
         routing = routing,
         discordSender = discordSender.ifAvailable,
         accountAlerts = accountAlerts,
+        latestPnl = latestPnl.ifAvailable,
     )
 }

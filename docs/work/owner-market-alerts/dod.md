@@ -223,3 +223,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC10 (Task 11)
 - RED (stub `read = emptyList()`): `./gradlew :infrastructure:common:test --tests 'io.premiumspread.infrastructure.common.persistence.jpa.premium.*' --offline --no-daemon` → `4 tests completed, 4 failed`, BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest :infrastructure:common:compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### AC11 (Task 12)
+- RED (stub: 생성자·배선만): `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorLatestRecordTest' --offline --no-daemon` → `9 tests completed, 4 failed` (Computed·NoPosition 기록 횟수, record 예외 WARN, 취소 interrupt 복구; 0회 시나리오는 초록).
+- GREEN: AC11 명령(`job.accountpnl.*` + `AccountPnlMonitorWiringTest`) → BUILD SUCCESSFUL, 무수정. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
