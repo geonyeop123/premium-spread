@@ -181,3 +181,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC1 (Task 1)
 - RED (stub 경로 `email=true, discord=null`): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → `34 tests completed, 2 failed` (`OwnerMarketAlertKindTest` 기본 경로·일일 요약만 메일 단언 실패), BUILD FAILED.
 - GREEN: dod AC1 명령 → BUILD SUCCESSFUL (OwnerAlertPropertiesTest·OwnerAlertYamlContractTest 무수정 통과). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### AC13 (Task 2)
+- RED (stub lease 5s/timeout 3s/주기 15s): `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerMarketJobConfigTest' --offline --no-daemon` → `3 tests completed, 2 failed` (lock 값·yml 바인딩), (c) 감시 편입은 stub 에서도 초록, BUILD FAILED.
+- GREEN: dod AC13 명령(OwnerMarketJobConfigTest·OwnerAlertJobConfigTest·`application.job.ownerops.*`) → BUILD SUCCESSFUL, 기존 테스트 무수정. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.

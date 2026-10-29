@@ -33,6 +33,7 @@ enum class JobId(val tag: String) {
     ACCOUNT_PNL_MONITOR("account_pnl_monitor"),
     OWNER_ALERT_DELIVERY("owner_alert_delivery"),
     OWNER_OPS_SIGNAL("owner_ops_signal"),
+    OWNER_MARKET_SIGNAL("owner_market_signal"),
 }
 
 /**

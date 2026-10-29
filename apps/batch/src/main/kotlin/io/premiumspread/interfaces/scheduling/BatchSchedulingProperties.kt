@@ -29,6 +29,7 @@ data class BatchSchedulingProperties(
     @field:Valid val tradePreparationReconcile: FixedRate = FixedRate(Duration.ofMinutes(1)),
     @field:Valid val ownerAlertDelivery: FixedRate = FixedRate(Duration.ofSeconds(60)),
     @field:Valid val ownerOpsSignal: FixedRate = FixedRate(Duration.ofSeconds(30)),
+    @field:Valid val ownerMarketSignal: FixedRate = FixedRate(Duration.ofSeconds(30)),
     @field:NotBlank val zone: String = "Asia/Seoul",
 ) {
     data class FixedRate(val fixedRate: Duration) {
