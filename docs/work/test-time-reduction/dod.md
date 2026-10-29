@@ -114,19 +114,20 @@ T1 검증한다. 시간·개수는 환경 의존 실측값이라 T2/T3 다.
 ### 기준선 (Task 0)
 
 ```
-[BASELINE] <날짜> origin/dev <SHA> — 콜드 worktree
-B_unit   = 
-B_common = 
-B_api    = 
-B_batch  = 
-B_ctx    = 
-B_wall   =  (test+architectureTest / common IT / api IT / batch IT / verifyMigrations)
-unit 클래스 tests: BithumbPrivateAccountAdapterTest= · ExchangeRateClientTest= · BinanceFuturesManualAccountAdapterTest(time 포함)=
+[BASELINE] 2026-10-29 origin/dev 3d179e7 — 콜드 스냅샷(git archive, 빌드 산출물 없음)
+B_unit   = tests=1303 skipped=0 failures=0 errors=0 (B_infra_batch_unit = 215)
+B_common = tests=81 skipped=0 failures=0 errors=0
+B_api    = tests=174 skipped=0 failures=0 errors=0
+B_batch  = tests=112 skipped=0 failures=0 errors=0
+B_ctx    = 35
+B_wall   = 1516s (test+architectureTest 144s / common IT 889s / api IT 256s / batch IT 221s / verifyMigrations 6s)
+unit 클래스 tests: BithumbPrivateAccountAdapterTest=33 · ExchangeRateClientTest=19 · BinanceFuturesManualAccountAdapterTest=16 (time 1.657s)
 지연 메서드 testcase time:
-  Bithumb `네트워크 실패와 타임아웃 예외에도 secret 이 없다` =
-  Bithumb `응답 시간이 초과되면 NETWORK` =
-  ExchangeRate `read timeout 은 설정한 횟수까지만 재시도한다` =
-  ExchangeRate `응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다` =
+  Bithumb `네트워크 실패와 타임아웃 예외에도 secret 이 없다` = 2.008
+  Bithumb `응답 시간이 초과되면 NETWORK` = 2.004
+  ExchangeRate `read timeout 은 설정한 횟수까지만 재시도한다` = 2.222
+  ExchangeRate `응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다` = 3.436
+비고: 측정 후반에 Task 5·6 subagent의 경량 작업(bash 계약 테스트·harnessCheck)이 겹쳤다.
 ```
 
 ### AC1
