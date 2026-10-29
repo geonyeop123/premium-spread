@@ -227,3 +227,4 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC11 (Task 12)
 - RED (stub: 생성자·배선만): `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorLatestRecordTest' --offline --no-daemon` → `9 tests completed, 4 failed` (Computed·NoPosition 기록 횟수, record 예외 WARN, 취소 interrupt 복구; 0회 시나리오는 초록).
 - GREEN: AC11 명령(`job.accountpnl.*` + `AccountPnlMonitorWiringTest`) → BUILD SUCCESSFUL, 무수정. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+- Task 13 AC12 (OwnerMarketSignalJob): RED `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` → stub 에서 24 tests 중 21 failed (행·상태·Failure/Skipped·취소 단언). GREEN 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
