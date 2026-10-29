@@ -284,6 +284,7 @@ CREATE TABLE IF NOT EXISTS owner_market_alert_state (
     CONSTRAINT ck_owner_market_alert_state_version CHECK (version >= 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- 실계정 순손익 모니터가 회차마다 남기는 최신 순수익률(단일 행). 일일 요약(#90)이 읽는다.
+-- has_position = FALSE 면 포지션 없음 관측이고 금액 열은 NULL 이다. 수량·가격·수수료·credential 은 저장하지 않는다.
 CREATE TABLE IF NOT EXISTS account_pnl_latest (
     id            TINYINT       NOT NULL PRIMARY KEY,
     has_position  BOOLEAN       NOT NULL,

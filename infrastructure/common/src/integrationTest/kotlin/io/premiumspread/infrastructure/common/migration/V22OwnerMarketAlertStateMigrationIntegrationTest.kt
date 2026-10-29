@@ -93,6 +93,7 @@ class V22OwnerMarketAlertStateMigrationIntegrationTest {
         assertThat(stateRows()).isEqualTo(stateBefore)
         assertThat(mailRows()).isEqualTo(mailBefore)
         assertThat(signalRows()).isEqualTo(signalBefore)
+        assertThat(newTables()).containsExactlyInAnyOrder("owner_market_alert_state", "account_pnl_latest")
         assertThat(query("SELECT COUNT(*) FROM owner_market_alert_state") { it.getLong(1) }).containsExactly(0L)
         assertThat(query("SELECT COUNT(*) FROM account_pnl_latest") { it.getLong(1) }).containsExactly(0L)
     }
