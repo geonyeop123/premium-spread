@@ -8,17 +8,25 @@ import io.premiumspread.application.common.JobExecutor
 import io.premiumspread.application.job.ownermarket.OwnerMarketSignalJob
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
+import io.premiumspread.domain.accountpnl.OwnerAlertOutbox
 import io.premiumspread.domain.aggregation.PremiumAggregationReadPort
 import io.premiumspread.domain.batch.BatchMarketProvider
+import io.premiumspread.domain.job.JobFailureStreakReadPort
+import io.premiumspread.domain.job.JobLastSuccessReadPort
 import io.premiumspread.domain.market.FxRateReadPort
+import io.premiumspread.domain.market.LatestMarketTickReadPort
 import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import io.premiumspread.domain.ownermarket.MarketAlertSettings
 import io.premiumspread.domain.ownermarket.OwnerMarketAlertStore
 import io.premiumspread.domain.premium.PremiumReadPort
 import io.premiumspread.infrastructure.batch.BatchJobSupportConfiguration
+import io.premiumspread.infrastructure.batch.accountpnl.AccountPnlMonitorAdapterConfiguration
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelConfiguration
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertProperties
+import io.premiumspread.interfaces.scheduling.AccountPnlMonitorScheduler
 import io.premiumspread.interfaces.scheduling.BatchSchedulingProperties
+import io.premiumspread.interfaces.scheduling.OwnerAlertDeliveryScheduler
+import io.premiumspread.interfaces.scheduling.OwnerOpsSignalScheduler
 import io.premiumspread.interfaces.scheduling.OwnerMarketSignalScheduler
 import io.premiumspread.monitoring.AlertService
 import org.assertj.core.api.Assertions.assertThat
@@ -48,21 +56,32 @@ class OwnerMarketAlertWiringTest {
     private val recipient = "owner@example.test"
     private val disabledLog = "owner-alert market alerts disabled by OWNER_ALERT_MARKET_ENABLED"
 
+    private fun baseRunner(): ApplicationContextRunner {
+        val configs = listOf(
+            Stubs::class.java,
+            BatchJobSupportConfiguration::class.java,
+            AccountPnlMonitorAdapterConfiguration::class.java,
+            AccountPnlMonitorConfiguration::class.java,
+            AccountPnlMonitorScheduler::class.java,
+            OwnerAlertChannelConfiguration::class.java,
+            OwnerAlertDeliveryConfiguration::class.java,
+            OwnerOpsAlertConfiguration::class.java,
+            OwnerMarketAlertConfiguration::class.java,
+            OwnerAlertDeliveryScheduler::class.java,
+            OwnerOpsSignalScheduler::class.java,
+            OwnerMarketSignalScheduler::class.java,
+        )
+        return ApplicationContextRunner().withUserConfiguration(*configs.toTypedArray())
+    }
+
     private fun runner(vararg extra: String): ApplicationContextRunner =
-        ApplicationContextRunner()
-            .withUserConfiguration(
-                Stubs::class.java,
-                BatchJobSupportConfiguration::class.java,
-                OwnerAlertChannelConfiguration::class.java,
-                OwnerMarketAlertConfiguration::class.java,
-                OwnerMarketSignalScheduler::class.java,
-            ).withPropertyValues(
-                "owner-alert.discord.enabled=true",
-                "owner-alert.discord.webhook.market=$webhook",
-                "owner-alert.email.enabled=false",
-                "account-pnl-monitor.enabled=false",
-                *extra,
-            )
+        baseRunner().withPropertyValues(
+            "owner-alert.discord.enabled=true",
+            "owner-alert.discord.webhook.market=$webhook",
+            "owner-alert.email.enabled=false",
+            "account-pnl-monitor.enabled=false",
+            *extra,
+        )
 
     private fun causes(t: Throwable?): List<String> =
         generateSequence(t) { it.cause }.mapNotNull { it.message }.toList()
@@ -97,14 +116,7 @@ class OwnerMarketAlertWiringTest {
 
     @Test
     fun `c 채널이 없으면 없고 이 조건의 로그도 없다`(output: CapturedOutput) {
-        ApplicationContextRunner()
-            .withUserConfiguration(
-                Stubs::class.java,
-                BatchJobSupportConfiguration::class.java,
-                OwnerAlertChannelConfiguration::class.java,
-                OwnerMarketAlertConfiguration::class.java,
-                OwnerMarketSignalScheduler::class.java,
-            ).withPropertyValues("owner-alert.market.enabled=false")
+        baseRunner().withPropertyValues("owner-alert.market.enabled=false")
             .run { ctx ->
                 assertThat(ctx).hasNotFailed()
                 assertThat(ctx).doesNotHaveBean(OwnerMarketSignalJob::class.java)
@@ -249,6 +261,14 @@ class OwnerMarketAlertWiringTest {
         @Bean fun fxRateReadPort(): FxRateReadPort = mockk(relaxed = true)
 
         @Bean fun pnlLatest(): AccountPnlLatestStore = mockk(relaxed = true)
+
+        @Bean fun lastSuccess(): JobLastSuccessReadPort = mockk(relaxed = true)
+
+        @Bean fun failureStreaks(): JobFailureStreakReadPort = mockk(relaxed = true)
+
+        @Bean fun ticks(): LatestMarketTickReadPort = mockk(relaxed = true)
+
+        @Bean fun outbox(): OwnerAlertOutbox = mockk(relaxed = true)
 
         @Bean fun market(): BatchMarketProvider = mockk(relaxed = true)
 

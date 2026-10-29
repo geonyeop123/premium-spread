@@ -36,6 +36,9 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @Tag("integration")
 @Testcontainers
@@ -188,6 +191,47 @@ class JdbcOwnerMarketAlertStoreIntegrationTest {
 
         assertThat(claimed).hasSize(1)
         assertThat(claimed.single().mail.eventKey).isEqualTo("owner-market:1")
+    }
+
+    @Test
+    fun `j 같은 기존 상태를 두 스레드가 동시에 enqueue 하면 하나만 성공하고 행 1벌 version N+1 이다`() {
+        store.enqueue(listOf(cooldown("market.race.swing-up")), emptyList())
+        val existing = store.load(listOf("market.race.swing-up")).getValue("market.race.swing-up")
+        assertThat(existing.version).isEqualTo(1)
+
+        val results = enqueueConcurrently { index -> store.enqueue(listOf(existing), listOf(mail("race-existing-$index"))) }
+
+        assertThat(results.count { it }).isEqualTo(1)
+        assertThat(mailCount()).isEqualTo(1)
+        assertThat(store.load(listOf(existing.signalKey)).getValue(existing.signalKey).version).isEqualTo(2)
+    }
+
+    @Test
+    fun `k 새 key 를 두 스레드가 동시에 enqueue 하면 하나만 성공하고 행 1벌이다`() {
+        val fresh = cooldown("market.race.fresh")
+
+        val results = enqueueConcurrently { index -> store.enqueue(listOf(fresh), listOf(mail("race-fresh-$index"))) }
+
+        assertThat(results.count { it }).isEqualTo(1)
+        assertThat(mailCount()).isEqualTo(1)
+        assertThat(store.load(listOf(fresh.signalKey)).getValue(fresh.signalKey).version).isEqualTo(1)
+    }
+
+    private fun enqueueConcurrently(action: (Int) -> Boolean): List<Boolean> {
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val barrier = CyclicBarrier(2)
+            val futures = (0 until 2).map { index ->
+                executor.submit<Boolean> {
+                    barrier.await(30, TimeUnit.SECONDS)
+                    action(index)
+                }
+            }
+            return futures.map { it.get(60, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue()
+        }
     }
 
     @Test

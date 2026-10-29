@@ -101,8 +101,8 @@ class OwnerMarketSignalJob(
         val decisions = mutableListOf<MarketDecision>()
         decisions += PremiumSwingPolicy.decide(
             observation,
-            state(keys[0], OwnerAlertKind.PREMIUM_SWING),
-            state(keys[1], OwnerAlertKind.PREMIUM_SWING),
+            state(MarketKeys.swing(pairKey, MarketDirection.UP), OwnerAlertKind.PREMIUM_SWING),
+            state(MarketKeys.swing(pairKey, MarketDirection.DOWN), OwnerAlertKind.PREMIUM_SWING),
             settings,
             now,
         )

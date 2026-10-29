@@ -67,11 +67,22 @@ batch 가 이미 수집·집계하는 김프 데이터만 쓰고 거래소 API �
 | 일일 요약(`DAILY_SUMMARY`) | market | 무음 | 예 |
 
 - **Discord 가 꺼져 있으면(기본) 4종 모두 메일로 온다.** 급변·기준선·신고가도 메일이 된다. owner 가 `OWNER_ALERT_{KIND}_EMAIL=false` 를 명시했을 때만 빠진다.
-  급변 메일은 최대 30분마다 올 수 있으므로 Discord 없이 쓴다면 줄이는 것을 권장한다.
+  Discord 없이 메일만 쓰면 알림이 많아질 수 있다. 기본값 기준 실제 메일 상한은 다음과 같다.
+
+  | 알림 | 메일 상한 |
+  |---|---|
+  | 급변 | 방향별 30분마다 |
+  | 1시간 신고가·신저가 | 방향별 30분마다 |
+  | 24시간 신고가·신저가 | 방향별 2시간마다 |
+  | 기준선 돌파 | 쿨다운 없음. 히스테리시스 폭을 넘게 출렁이면 그때마다 반복 |
+  | 일일 요약 | 하루 1통 |
+
+  메일만 쓴다면 급변·신고가·기준선 메일을 `OWNER_ALERT_{KIND}_EMAIL=false` 로 줄이는 것을 권장한다.
 - 급변 메일 끄기 예(Discord 를 쓰는 경우 Discord 알림은 그대로, 메일만 끈다):
 
   ```text
   OWNER_ALERT_PREMIUM_SWING_EMAIL=false
+  OWNER_ALERT_PREMIUM_NEW_EXTREME_EMAIL=false
   ```
 
   Discord 도 꺼져 있으면 급변은 어느 채널로도 가지 않아 행이 만들어지지 않는다(기동 INFO `owner-alert routes:` 에 `premium-swing=off`).
@@ -103,6 +114,9 @@ batch 가 이미 수집·집계하는 김프 데이터만 쓰고 거래소 API �
 채널 env(`OWNER_ALERT_EMAIL_ENABLED`·`OWNER_ALERT_DISCORD_ENABLED`·`OWNER_ALERT_DISCORD_WEBHOOK_*`·`ACCOUNT_PNL_ALERT_RECIPIENT`·SMTP)는
 [account-pnl-alert.md](account-pnl-alert.md)와 같다. `owner-alert.market.*` 잘못된 값(`0s`, 음수, 정밀도 초과, 요약 시각 0 등)은 기동 실패다. 실제 webhook URL·수신 주소는 이 문서에 쓰지 않는다.
 기준선 설정 예(가짜 값): `OWNER_ALERT_MARKET_UPPER_THRESHOLD=3.5`, `OWNER_ALERT_MARKET_LOWER_THRESHOLD=1.2`.
+
+**기준선 히스테리시스 주의:** `OWNER_ALERT_MARKET_THRESHOLD_HYSTERESIS` 를 0 이나 아주 작게 두면 김프가 기준선 근처에서 흔들릴 때 진입·이탈이 반복돼
+**소리 알림이 회차(30초)마다 날 수 있다.** 기본 0.1%p 이상을 권장하고, 변동이 큰 구간에서는 더 크게 둔다.
 
 ## 기동 판정과 로그
 

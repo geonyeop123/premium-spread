@@ -227,6 +227,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC11 (Task 12)
 - RED (stub: 생성자·배선만): `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorLatestRecordTest' --offline --no-daemon` → `9 tests completed, 4 failed` (Computed·NoPosition 기록 횟수, record 예외 WARN, 취소 interrupt 복구; 0회 시나리오는 초록).
 - GREEN: AC11 명령(`job.accountpnl.*` + `AccountPnlMonitorWiringTest`) → BUILD SUCCESSFUL, 무수정. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+### AC12 (Task 13)
 - Task 13 AC12 (OwnerMarketSignalJob): RED `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` → stub 에서 24 tests 중 21 failed (행·상태·Failure/Skipped·취소 단언). GREEN 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
 
 ### AC14 (Task 14)
@@ -260,3 +261,11 @@ HEAD ce1b118, 작업 트리 깨끗, Docker 사용 가능. 전 게이트를 `--of
 | R3 | `git diff --exit-code --diff-filter=MDR 4f8727c -- <확정 목록>` | 0 | 빈 출력 |
 
 flaky 재실행 없음(실패 0). R6·R7·R8 은 ⑨ 리뷰 판정, R14 는 CI.
+
+### ⑨ fix wave 1
+
+- AC14 runner 복원: `OwnerMarketAlertWiringTest.runner()` 가 `OwnerAlertDeliveryWiringTest` 의 user configuration 집합(`AccountPnlMonitorAdapterConfiguration`·`AccountPnlMonitorConfiguration`·`AccountPnlMonitorScheduler`·`OwnerAlertDeliveryConfiguration`·`OwnerOpsAlertConfiguration`·`OwnerAlertDeliveryScheduler`·`OwnerOpsSignalScheduler`)에 `OwnerMarketAlertConfiguration`·`OwnerMarketSignalScheduler` 를 더한 구성을 쓴다. Stubs 에 `lastSuccess`·`failureStreaks`·`ticks`·`outbox` 추가. 빈 충돌 없음, (b)·(c) 로그 단언 그대로 통과. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` -> BUILD SUCCESSFUL (OwnerMarketAlertWiringTest 9, OwnerMarketSignalJobTest 24 무수정, 0 failed).
+- 동시 enqueue IT 2개 추가(`JdbcOwnerMarketAlertStoreIntegrationTest` j·k): 같은 version-1 상태 동시 enqueue -> 정확히 하나 true·행 1벌·version 2, 새 key 동시 enqueue -> 하나 true·행 1벌·version 1. `:infrastructure:common:integrationTest --tests '*JdbcOwnerMarketAlertStoreIntegrationTest'` -> 13 tests / 0 failed. common IT 전체 81 tests / 0 failed(기준 79 + 2).
+- `OwnerMarketSignalJob` swing 상태를 `MarketKeys.swing(pairKey, UP/DOWN)` 직접 조회로 정리(동작 무변경).
+- runbook: 메일만 쓰는 환경의 실제 상한 표, `OWNER_ALERT_PREMIUM_NEW_EXTREME_EMAIL=false` 예시, 히스테리시스 0·소값 경고. PROJECT_STATUS #90/#91 문구 정합·Last updated 2026-10-29.
+- `./gradlew test architectureTest --offline --no-daemon` -> exit 0. `bash docs/check-documentation.sh` -> 통과. flaky 재실행 없음.

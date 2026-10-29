@@ -1,6 +1,6 @@
 # Project Status
 
-> Last updated: 2026-07-27, PRIVATE LIVE master specification 재작성 후 사용자 승인 대기
+> Last updated: 2026-10-29, PRIVATE LIVE master specification 재작성 후 사용자 승인 대기
 
 ## Current State
 
@@ -88,7 +88,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   끊김·Job 연속 실패를 장애 시작 1회, 6시간 재알림, 복구 1회로 메일 및/또는 Discord 알림. `OwnerOpsSignalJob`(30초)이 상태
   `owner_alert_signal_state`(V21)와 outbox 를 함께 저장하고 독립 `OwnerAlertDeliveryJob`(60초)이 전달한다. PnL 모니터와
   독립이다. [runbook](../docs/runbooks/owner-ops-alert.md)에 Discord 수신 체크리스트가 있다. 상위 #87 은 #88·#89·#91 완료,
-  #90 구현 중. 후속 후보:
+  #90 구현·검증 완료, owner 확인(AC17) 대기. 후속 후보:
   - E2E 에서 전달 Job 과 PnL 회차 디스패처의 동시 전달 경합을 강제로 만드는 테스트
   - `isCancellation()` 공용화(`AccountPnlMonitorJob` 동결 해제 후)
   - MarketPair guard 의 exchange 불일치 테스트
@@ -97,7 +97,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - owner 시장 알림(#90, 구현·검증 완료, PR 예정, owner 확인 대기: AC17 Discord 수신): 김프 급변·기준선 돌파·신고가/신저가·일일
   요약을 메일 및/또는 Discord(market 대상)로 알림. `OwnerMarketSignalJob`(30초)이 상태 `owner_market_alert_state`(V22)와
   outbox 를 함께 저장하고 `OwnerAlertDeliveryJob`이 전달한다. 요약은 PnL 모니터가 남기는 `account_pnl_latest`(V22)를 읽는다.
-  [runbook](../docs/runbooks/owner-market-alert.md)에 체크리스트가 있다. 상위 #87 은 #88~#91 구현 완료, #90 owner 확인 대기.
+  [runbook](../docs/runbooks/owner-market-alert.md)에 체크리스트가 있다. 상위 #87 은 #88~#91 구현·검증 완료, #90 owner 확인(AC17) 대기.
   후속 후보:
   - `AccountPnlMonitorWiringTest.kt:387` 타임스탬프 부분 일치로 인한 기존 flaky
   - `WebSocketConnectionManagerRegressionTest` stop/reconnect 기존 flaky
