@@ -138,7 +138,10 @@ MockWebServer 는 지연을 응답 스레드의 sleep 으로 구현하고 `shutd
 - 값 1초의 근거: timeout 200ms 의 5배라 지연이 timeout 보다 먼저 끝날 수 없다(지연은 하한이다). 같은 모듈의
   `BinanceFuturesManualAccountAdapterTest.kt:189`, `DiscordWebhookSenderAdapterTest.kt:237·262·318` 이 이미 1초
   지연 + 짧은 timeout 조합을 쓴다 — 저장소 선례와 같은 값이다.
-- 기대 절감: Bithumb 2건 × 1s, ExchangeRate 4응답 × 1s ≈ 6s(직렬 기준).
+- 기대 절감은 **지연을 쓰는 메서드 4개 각각 약 1초**다. 응답 2개를 enqueue 하는 ExchangeRate 두 테스트도 메서드당 약
+  1초만 준다 — `maxRetries=1` 의 재시도는 첫 응답 지연이 끝나기 전에 새 연결에서 시작되어 두 응답의 지연이 서로 겹치므로,
+  메서드 시간은 지연 2회의 합이 아니라 대략 지연 1회분이 줄어든다. Bithumb 두 테스트도 각 1회분이다. 판정은 클래스 합계가
+  아니라 메서드별 testcase time 으로 한다(dod AC10: 각 메서드 기준선 대비 ≥ 0.8s 감소).
 - `BinanceFuturesManualAccountAdapterTest`(4.9s 케이스)는 변경하지 않고 D9 측정에서 클래스 시간만 기록한다.
 
 ### D5. batch 통합 테스트 context 재사용 (P2)
@@ -152,8 +155,9 @@ MockWebServer 는 지연을 응답 스레드의 sleep 으로 구현하고 `shutd
      기본 dispatcher 가 `QueueDispatcher` 이므로 새 인스턴스는 기동 직후 상태와 같다.
    - recorded request: `takeRequest(0, TimeUnit.MILLISECONDS)` 가 `null` 이 될 때까지 비운다(4.12 에 큐를 비우는
      API 가 없다. `ExchangeRateSchedulerE2ETest.kt:35-39` 가 같은 방식을 이미 쓴다).
-   - `requestCount` 는 누적값이라 되돌릴 수 없다. 배치 통합 테스트 중 이를 읽는 곳은 없다(`grep requestCount`
-     결과 0건) — 이후에도 공용 서버의 `requestCount` 를 단언하지 않는다는 제약을 base KDoc 에 적는다.
+   - `requestCount` 는 누적값이라 되돌릴 수 없다. 공용 `exchangeRateMockServer` 의 `requestCount` 를 읽는 곳은 0건이다
+     (`OwnerAlertDeliveryIntegrationTest` 의 `requestCount` 4건은 그 클래스의 자체 private `MockWebServer` 를 읽는다) —
+     이후에도 공용 서버의 `requestCount` 를 단언하지 않는다는 제약을 base KDoc 에 적는다.
    - 하위 클래스 `ExchangeRateSchedulerE2ETest` 가 이미 `exchangeRateMockServer` 라는 public 프로퍼티를 가지므로,
      base 의 필드는 **이름이 다른 private** 필드로 둔다(같은 이름이면 "hides member of supertype" 컴파일 오류).
 3. **FixedClock 설정 통합.** `ExchangeRateRepositoryTest.FixedClockConfig`(:23-28)와
@@ -298,14 +302,14 @@ bash docs/check-documentation.sh
   "모든 결과를 본다" 성질을 유지).
 - 검증 범위(전 모듈 전 테스트 + verifyMigrations + 문서 검사)는 그대로다.
 - 결과 보고는 한 호출이라도 task 별(unit 합계, common/api/batch integration, verifyMigrations)로 실행 수·실패 수를
-  나눠 적는다.
+  나눠 적는다. 실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌린다 — 이 문구를 모든 갱신 대상에서 통일한다.
 
 갱신 대상 — 같은 명령을 적던 곳은 전부 바꾼다. 옮겨 적은 곳이 갈리지 않게 한다.
 
 | 파일 | 현재 위치 | 변경 |
 |---|---|---|
 | `.claude/skills/orchestrator/SKILL.md` | ⑩ 블록 463-467 | 위 명령 + 설명 2문장 |
-| `.claude/agents/qa-agent.md` | 실행 명령 21, 23-26 | 위 명령 한 줄. 점진 검증 22행 유지 |
+| `.claude/agents/qa-agent.md` | 실행 명령 21, 23-26 · 에러 핸들링 79 "전체 실행이 오래 걸리면 모듈별로 나눠 돌리고 소요 시간을 함께 보고한다." | 실행 명령은 위 명령 한 줄(점진 검증 22행 유지). 79행은 실패 task 개별 재실행 문구로 교체 |
 | `.claude/skills/qa-verification/SKILL.md` | 실행 순서 13-17 | 위 명령 한 줄 + task 별 보고 규칙 |
 | `.claude/skills/test-strategy/SKILL.md` | 태스크 구분 19-23 | 위 명령 한 줄 + 실패 task 개별 재실행 안내 |
 | `.claude/agents/code-reviewer.md` | 15행 `./gradlew test architectureTest --offline --no-daemon` | `--parallel` 추가 |
@@ -315,7 +319,7 @@ bash docs/check-documentation.sh
 | `docs/harness-changelog.md` | 표 맨 위 | 한 행 |
 
 `docs/check-harness.sh`·`docs/check-documentation.sh` 는 이 명령 문자열을 단언하지 않는다(grep 확인) — 문서만 바꾸면
-게이트는 변하지 않는다.
+게이트는 변하지 않는다. `docs/harness-changelog.md`·`CLAUDE.md` 는 CRLF 줄바꿈이다 — 편집 시 기존 줄바꿈을 유지한다.
 
 ### D9. 측정 방법
 
@@ -323,12 +327,14 @@ bash docs/check-documentation.sh
 |---|---|
 | 집계 C(dir) | `awk -F'"' '/<testsuite /{for(i=1;i<NF;i++){if($i~/ tests=$/)t+=$(i+1);if($i~/ skipped=$/)s+=$(i+1);if($i~/ failures=$/)f+=$(i+1);if($i~/ errors=$/)e+=$(i+1)}} END{printf "tests=%d skipped=%d failures=%d errors=%d\n",t,s,f,e}' <dir>/TEST-*.xml` |
 | context 기동 수 K | `grep -ho 'Started [^ ]* in [0-9.]* seconds' apps/batch/build/test-results/integrationTest/TEST-*.xml \| wc -l` (test profile root INFO 라 Spring Boot 기동 로그가 XML system-out 에 남는다) |
+| 메서드 시간 | 결과 XML 의 `<testcase name=... classname=... time=...>` 속성. 지연을 쓰는 4개 메서드(Bithumb `네트워크 실패와 타임아웃 예외에도 secret 이 없다`·`응답 시간이 초과되면 NETWORK`, ExchangeRate `read timeout 은 설정한 횟수까지만 재시도한다`·`응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다`) |
 | 콜드 worktree | 새로 만든 `git worktree`(빌드 산출물 없음). Gradle 의존성 cache(`~/.gradle`)와 Docker 이미지는 공유한다 |
 | ⑩ wall-clock | 콜드 worktree 에서 ⑩ 명령(D8)을 `time` 으로 1회. 기준선은 같은 방식으로 `origin/dev` 콜드 worktree 에서 직렬 5개 명령 |
 | common IT 시간 | ⑩ 직후 같은 worktree 에서 `time ./gradlew :infrastructure:common:integrationTest --rerun --offline --no-daemon`(컴파일은 up-to-date, 테스트 task 만 재실행) |
 | CI wall-clock | 최종 SHA 의 PR Quality Gate run 에서 `min(job.startedAt)` ~ `max(job.completedAt)` (`gh run view <run-id> --json jobs`). 큐 대기 제외 |
 
-기준선 기호(Task 0 이 기록): `B_unit`·`B_common`·`B_api`·`B_batch`(각 C 결과), `B_ctx`(K, 측정 근거상 23), `B_wall`(직렬 5개 합).
+기준선 기호(Task 0 이 기록): `B_unit`·`B_common`·`B_api`·`B_batch`(각 C 결과), `B_ctx`(K, 측정 근거상 23), `B_wall`(직렬 5개 합),
+지연 메서드 4개의 기준선 time.
 
 ## 4. 위험
 
@@ -353,7 +359,7 @@ bash docs/check-documentation.sh
 | `LatestSchemaFixture` | (a) 데이터를 넣은 뒤 `reset()` 하면 `flyway_schema_history` 를 뺀 **모든** base table 이 0행, history 행 수 불변, AUTO_INCREMENT 가 1부터 (b) CHECK 제약을 지운 뒤 `reset()` 하면 제약이 복구된다 (c) 첫 `reset()` 이 빈 database 를 최신 schema 로 만든다 | `LatestSchemaFixtureIntegrationTest` 3건 |
 | batch context 재사용 | 같은 수·같은 결과, 기동 수 ≤ 9 | `:apps:batch:integrationTest` (tests = `B_batch` + 2) |
 | 공용 MockWebServer 초기화 | 순서 고정 2건: 1번이 응답 2개 enqueue·1개 소비·요청 기록을 남김 → 2번에서 새 응답이 그대로 오고, recorded request 가 2번 요청 하나뿐 | `SharedContextIsolationIntegrationTest` 2건 |
-| unit 지연 단축 | 같은 수 green, 두 클래스 실행 시간 감소 | `:infrastructure:batch:test` |
+| unit 지연 단축 | 같은 수 green, 지연을 쓰는 메서드 4개 각각 기준선 대비 ≥ 0.8s 감소 | `:infrastructure:batch:test` |
 | CI 구조 | needs 0, common job 분리, cache-read-only, 정확한 명령 문자열 | `bash ci/quality-gate-contract-test.sh`, `bash docker/deploy-contract-test.sh` |
 | 정책 | 격리 정책·leak·하네스 무결성 | `verifyTestIsolationPolicy`, 각 IT 세션 종료의 `NonDaemonThreadLeakListener`, `harnessCheck harnessCheckTest`, `check-documentation.sh` |
 
@@ -368,3 +374,9 @@ bash docs/check-documentation.sh
 - [DECISION_NEEDED] N1 — required status check 에 `8. Common integration` 추가(저장소 설정, PR 밖).
 - [DECISION_NEEDED] N2 — dod 의 시간·개수 기준(AC1~AC5, AC9, AC10)을 T2/T3 로 두는 강등 승인(Gate 1). 대안: 결과 XML 을
   집계하는 `신규스크립트` 를 만들어 T1 로 올린다.
+
+## 7. 개정 이력
+
+| 시점 | 변경 | 사유 |
+|---|---|---|
+| ⑥ spec-reviewer 1R (7건 ACCEPT) | D4 기대 절감을 메서드별 ~1s 로 정정, AC10 을 메서드별 ≥ 0.8s 로 / D5 `requestCount` 근거 정정 / AC9 둘째 grep 에 test-strategy 포함 / qa-agent 79행 갱신 대상 추가 / plan 라벨 "시그니처 계약" / CRLF 유지 지시 / testing.md bullet 에 Ryuk 정리 명시 | ExchangeRate 재시도가 새 연결에서 돌아 두 지연이 겹친다 — 클래스 합계 4s 단축 가정이 틀렸다. 나머지는 근거 정확도·문서 일관성 |

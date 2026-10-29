@@ -27,14 +27,21 @@ count_tests() {
 count_contexts() {
   grep -ho 'Started [^ ]* in [0-9.]* seconds' apps/batch/build/test-results/integrationTest/TEST-*.xml | wc -l
 }
-suite_attrs() {  # 사용: suite_attrs <모듈경로> <클래스 단순이름>
+suite_attrs() {  # 사용: suite_attrs <모듈경로> <클래스 단순이름> — 클래스 tests·time
   grep -ho "<testsuite name=\"[^\"]*\.$2\" [^>]*" "$1"/build/test-results/test/TEST-*"$2".xml
+}
+case_times() {   # 사용: case_times <모듈경로> <클래스 단순이름> — 메서드별 name·time
+  grep -ho '<testcase name="[^"]*" classname="[^"]*" time="[0-9.]*"' "$1"/build/test-results/test/TEST-*"$2".xml
 }
 ```
 
+AC10 대상 메서드(지연을 쓰는 4개):
+- `BithumbPrivateAccountAdapterTest` — `네트워크 실패와 타임아웃 예외에도 secret 이 없다`, `응답 시간이 초과되면 NETWORK`
+- `ExchangeRateClientTest` — `read timeout 은 설정한 횟수까지만 재시도한다`, `응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다`
+
 기준선 기호(Task 0 이 dod 증거 로그 `### 기준선` 에 기록): `B_unit`, `B_infra_batch_unit`, `B_common`, `B_api`, `B_batch`,
-`B_ctx`, `B_wall`, 그리고 `BithumbPrivateAccountAdapterTest`·`ExchangeRateClientTest`·`BinanceFuturesManualAccountAdapterTest`
-의 `tests`·`time`.
+`B_ctx`, `B_wall`, 위 4개 메서드의 testcase time, 그리고 `BithumbPrivateAccountAdapterTest`·`ExchangeRateClientTest` 의 `tests`·
+`BinanceFuturesManualAccountAdapterTest` 의 `tests`·`time`.
 
 태스크 순서와 의존:
 
@@ -90,14 +97,18 @@ count_contexts                                                                  
 예상: failures=0 errors=0. `B_common` ≥ 64, `B_api` ≥ 174, `B_batch` ≥ 109(issue 기준값, dev 에는 V22·OwnerMarketAlert 로 더 많을 수 있다).
 `B_ctx` ≈ 23. `count_contexts` 가 0 이면 Spring Boot 기동 로그가 XML 에 없는 것이다 — 멈추고 보고한다(AC5 측정 수단 재결정 필요).
 
-- [ ] **Step 4: unit 클래스 시간 기준선**
+- [ ] **Step 4: unit 클래스·메서드 시간 기준선**
 
 ```bash
 ./gradlew :infrastructure:batch:test --rerun --offline --no-daemon
 suite_attrs infrastructure/batch BithumbPrivateAccountAdapterTest
 suite_attrs infrastructure/batch ExchangeRateClientTest
 suite_attrs infrastructure/batch BinanceFuturesManualAccountAdapterTest
+case_times infrastructure/batch BithumbPrivateAccountAdapterTest
+case_times infrastructure/batch ExchangeRateClientTest
 ```
+
+`case_times` 출력에서 공통 정의의 AC10 대상 메서드 4개 행의 `time` 을 기준선으로 기록한다.
 
 - [ ] **Step 5: dod `### 기준선` 블록에 SHA·값 전부 기록, worktree 제거**
 
@@ -135,10 +146,13 @@ count_tests infrastructure/batch/build/test-results/test/TEST-*.xml
 suite_attrs infrastructure/batch BithumbPrivateAccountAdapterTest
 suite_attrs infrastructure/batch ExchangeRateClientTest
 suite_attrs infrastructure/batch BinanceFuturesManualAccountAdapterTest
+case_times infrastructure/batch BithumbPrivateAccountAdapterTest
+case_times infrastructure/batch ExchangeRateClientTest
 ```
 
-예상: `BUILD SUCCESSFUL`. tests = `B_infra_batch_unit`, failures=0 errors=0. Bithumb `time` ≤ 기준선 − 2s, ExchangeRate `time` ≤ 기준선 − 4s
-(AC10). Binance 는 값만 기록.
+예상: `BUILD SUCCESSFUL`. tests = `B_infra_batch_unit`, failures=0 errors=0. 두 클래스의 `tests` 는 기준선과 같다. AC10 대상 메서드 4개
+각각의 `time` ≤ 기준선 − 0.8s. ExchangeRate 두 메서드는 재시도가 새 연결에서 돌아 두 응답 지연이 겹치므로 메서드당 절감은 약 1s 다
+(design D4). Binance 는 값만 기록.
 
 - [ ] **Step 3: 커밋** — `test: MockWebServer timeout 테스트 지연을 2초에서 1초로 단축`
 
@@ -152,7 +166,7 @@ suite_attrs infrastructure/batch BinanceFuturesManualAccountAdapterTest
   `persistence/jdbc/accountpnl/` 3개, `persistence/jdbc/notification/` 1개, `persistence/jpa/notification/` 1개,
   `persistence/jdbc/ownermarket/` 1개, `cache/premium/` 1개, `migration/` 9개)
 
-**코드 계약 (전문):**
+**시그니처 계약:**
 
 ```kotlin
 package io.premiumspread.infrastructure.common.support
@@ -241,7 +255,7 @@ count_tests infrastructure/common/build/test-results/integrationTest/TEST-*.xml
   `NotificationSubscriptionOptimisticLockIntegrationTest`(`persistence/jpa/notification/`), `JdbcOwnerMarketAlertStoreIntegrationTest`
   (`persistence/jdbc/ownermarket/`)
 
-**코드 계약 (전문):**
+**시그니처 계약:**
 
 ```kotlin
 package io.premiumspread.infrastructure.common.support
@@ -331,7 +345,7 @@ grep -ho '<testsuite name="[^"]*JdbcAccountPnlAlertStoreIntegrationTest" [^>]*' 
 - Modify: `apps/batch/src/integrationTest/kotlin/io/premiumspread/cache/TickerCacheServiceScoreTest.kt`
 - Modify: `apps/batch/build.gradle.kts` (`integrationTest` task)
 
-**코드 계약 (전문):**
+**시그니처 계약:**
 
 ```kotlin
 package io.premiumspread.support
@@ -442,7 +456,7 @@ count_contexts
 
 ### 5-A. 계약 테스트 갱신 (먼저)
 
-`ci/quality-gate-contract-test.sh` 변경(전문):
+`ci/quality-gate-contract-test.sh` 변경(전문 — 계약 테스트가 단언할 문자열이라 그대로 쓴다):
 
 1. 197-204행:
 
@@ -561,7 +575,7 @@ bash docker/deploy-contract-test.sh
 
 ### 5-B. workflow 변경
 
-`.github/workflows/quality-gate.yml` 변경(전문). `(변경 없음)` 으로 표시한 step 은 그대로 둔다.
+`.github/workflows/quality-gate.yml` 변경(전문 — 계약 테스트가 문자열로 단언한다). `(변경 없음)` 으로 표시한 step 은 그대로 둔다.
 
 compile-architecture 의 setup-gradle step(34-36행):
 
@@ -692,7 +706,7 @@ count_tests $(find . -path '*/build/test-results/test/TEST-*.xml')
 
 **Files:**
 - Modify: `.claude/skills/orchestrator/SKILL.md` (⑩ 블록 462-469)
-- Modify: `.claude/agents/qa-agent.md` (실행 명령 20-28)
+- Modify: `.claude/agents/qa-agent.md` (실행 명령 20-28, 에러 핸들링 79)
 - Modify: `.claude/skills/qa-verification/SKILL.md` (실행 순서 12-23)
 - Modify: `.claude/skills/test-strategy/SKILL.md` (18-24)
 - Modify: `.claude/agents/code-reviewer.md` (15)
@@ -706,6 +720,8 @@ count_tests $(find . -path '*/build/test-results/test/TEST-*.xml')
 ```text
 ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
 ```
+
+**재실행 문구(모든 문서 공통):** "실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌린다."
 
 **변경 전문:**
 
@@ -732,6 +748,12 @@ Gradle 은 **한 번만** 부른다. `--parallel` 로 모듈 task 가 동시에 
 bash docs/check-documentation.sh
 ```
 
+`.claude/agents/qa-agent.md` 79행(에러 핸들링) "- 전체 실행이 오래 걸리면 모듈별로 나눠 돌리고 소요 시간을 함께 보고한다." 를 아래로:
+
+```markdown
+- 전체 검증은 한 번에 돌린다. 실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌리고 소요 시간을 함께 보고한다.
+```
+
 `.claude/skills/qa-verification/SKILL.md` 실행 순서 블록과 첫 bullet 추가:
 
 ```bash
@@ -753,7 +775,7 @@ bash docs/check-documentation.sh
 ```
 
 ```markdown
-실패한 task 만 다시 돌리는 개별 명령은 `.ai/rules/testing.md` 가 소유한다.
+실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌린다.
 ```
 
 `.claude/agents/code-reviewer.md` 15행: `./gradlew test architectureTest --parallel --offline --no-daemon`
@@ -789,8 +811,9 @@ bash docs/check-documentation.sh
 `.ai/rules/testing.md` "## 격리 규칙" 절 끝에 두 bullet 추가:
 
 ```markdown
-- 같은 테스트 JVM 안의 Testcontainers singleton(모듈 공용 컨테이너)은 허용한다. run 사이의 reuse(`testcontainers.reuse.enable`)는
-  금지다. common 통합 테스트 클래스는 공용 MySQL에서 `SharedMySqlContainer.database(...)`로 자기 database를 따로 받는다.
+- 같은 테스트 JVM 안의 Testcontainers singleton(모듈 공용 컨테이너)은 허용한다. 정리는 JVM 종료 시 Ryuk가 맡는다(명시적 stop 없음).
+  run 사이의 reuse(`testcontainers.reuse.enable`)는 금지다. common 통합 테스트 클래스는 공용 MySQL에서
+  `SharedMySqlContainer.database(...)`로 자기 database를 따로 받는다.
 - 공용 Spring context를 쓰는 batch 통합 테스트는 매 테스트 전에 base가 공용 상태(DB·Redis·MockWebServer)를 초기화한다.
   상태를 남기는 공용 bean을 새로 추가하면 base 초기화에 넣는다.
 ```
@@ -801,21 +824,21 @@ bash docs/check-documentation.sh
 `docs/harness-changelog.md` 표 헤더 바로 아래(최신 행이 위). 첫 칸 날짜는 커밋하는 날의 `date +%F` 값이다:
 
 ```markdown
-| YYYY-MM-DD | 검증 명령을 Gradle 한 번 호출(`--parallel --continue`)로 통합 — orchestrator ⑩·qa-agent·qa-verification·test-strategy 의 직렬 5개 명령을 한 줄로 교체, code-reviewer unit 게이트에 `--parallel` 추가 | `.claude/skills/orchestrator/SKILL.md`, `.claude/agents/qa-agent.md`, `.claude/skills/qa-verification/SKILL.md`, `.claude/skills/test-strategy/SKILL.md`, `.claude/agents/code-reviewer.md` | issue #104 — 직렬 5회 호출 합 ~17m. 같은 검증 범위를 병렬 한 번 호출로 돌린다. `--continue` 로 실패 전체를 한 번에 본다. 정본(`.ai/rules/testing.md`·`AGENTS.md`·`.ai/instructions.md`)도 같은 명령으로 맞췄다. 전후 측정은 `docs/work/test-time-reduction/dod.md` 증거 로그 |
+| YYYY-MM-DD | 검증 명령을 Gradle 한 번 호출(`--parallel --continue`)로 통합 — orchestrator ⑩·qa-agent·qa-verification·test-strategy 의 직렬 5개 명령을 한 줄로 교체, qa-agent 의 "모듈별로 나눠 돌리기" 문구를 실패 task 개별 재실행으로 통일, code-reviewer unit 게이트에 `--parallel` 추가 | `.claude/skills/orchestrator/SKILL.md`, `.claude/agents/qa-agent.md`, `.claude/skills/qa-verification/SKILL.md`, `.claude/skills/test-strategy/SKILL.md`, `.claude/agents/code-reviewer.md` | issue #104 — 직렬 5회 호출 합 ~17m. 같은 검증 범위를 병렬 한 번 호출로 돌린다. `--continue` 로 실패 전체를 한 번에 본다. 정본(`.ai/rules/testing.md`·`AGENTS.md`·`.ai/instructions.md`)도 같은 명령으로 맞췄다. 전후 측정은 `docs/work/test-time-reduction/dod.md` 증거 로그 |
 ```
 
-- [ ] **Step 1: 9개 파일 수정**
+- [ ] **Step 1: 9개 파일 수정** — `docs/harness-changelog.md`·`CLAUDE.md` 는 CRLF 다. 기존 줄바꿈을 유지한다(LF 로 바꾸면 행 끝 앵커 검사가 달라진다).
 - [ ] **Step 2: 게이트**
 
 ```bash
 ./gradlew harnessCheck harnessCheckTest --offline --no-daemon
 bash docs/check-documentation.sh
 grep -rnF ':apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon' .claude AGENTS.md .ai/rules/testing.md .ai/instructions.md
-grep -rnE '^\./gradlew :infrastructure:common:integrationTest --offline --no-daemon$' .claude/skills/orchestrator .claude/agents/qa-agent.md .claude/skills/qa-verification AGENTS.md .ai/instructions.md
+grep -rnE '^\./gradlew :infrastructure:common:integrationTest --offline --no-daemon$' .claude/skills/orchestrator .claude/agents/qa-agent.md .claude/skills/qa-verification .claude/skills/test-strategy AGENTS.md .ai/instructions.md
 ```
 
 예상: 첫 두 명령 exit 0(`documentation check passed (...)`). 셋째 grep 이 7개 파일(orchestrator SKILL, qa-agent, qa-verification, test-strategy,
-testing.md, AGENTS.md, instructions.md)에서 각 1건 이상. 넷째 grep 출력 없음(exit 1). (AC9)
+testing.md, AGENTS.md, instructions.md)에서 각 1건 이상. 넷째 grep 출력 없음(exit 1) — 개별 명령은 `.ai/rules/testing.md` 에만 남는다. (AC9)
 
 - [ ] **Step 3: 커밋** — `docs: 검증 명령을 Gradle 한 번 호출과 --parallel 로 통합`
 
@@ -868,16 +891,18 @@ time ./gradlew :infrastructure:common:integrationTest --rerun --offline --no-dae
 
 예상: `BUILD SUCCESSFUL`, `real` ≤ 4m00s.
 
-- [ ] **Step 5: unit 클래스 시간 (AC10)**
+- [ ] **Step 5: unit 메서드 시간 (AC10)**
 
 ```bash
 ./gradlew :infrastructure:batch:test --rerun --offline --no-daemon
 suite_attrs infrastructure/batch BithumbPrivateAccountAdapterTest
 suite_attrs infrastructure/batch ExchangeRateClientTest
 suite_attrs infrastructure/batch BinanceFuturesManualAccountAdapterTest
+case_times infrastructure/batch BithumbPrivateAccountAdapterTest
+case_times infrastructure/batch ExchangeRateClientTest
 ```
 
-예상: Bithumb·ExchangeRate `tests` 기준선과 같고 `time` 이 각각 2s·4s 이상 짧다. Binance 는 기록만.
+예상: Bithumb·ExchangeRate `tests` 기준선과 같고, AC10 대상 메서드 4개 각각의 `time` ≤ 기준선 − 0.8s. Binance 는 기록만.
 
 - [ ] **Step 6: 측정 worktree 제거, 증거 기록**
 
@@ -897,3 +922,8 @@ gh run view <databaseId> --json jobs --jq '{start: ([.jobs[].startedAt] | min), 
 
 `<databaseId>` 는 바로 위 명령 출력의 값이다. 예상: `headSha` = 최종 SHA, 8 job 전부 `success`, `end − start` ≤ 6m00s. run URL 을 AC3 증거
 앵커로 기록한다. 초과하면 job 별 시간을 기록하고 FAILED 로 판정한다(재실행으로 좋은 값을 고르지 않는다).
+
+---
+
+> 개정: ⑥ spec-reviewer 1R 7건 반영 — AC10 메서드별 기준(`case_times` 추가, Task 0·1·7), Task 2·3·4 라벨 "시그니처 계약",
+> Task 6 에 qa-agent 79행·재실행 문구 통일·CRLF 유지·Ryuk 정리 문장, AC9 둘째 grep 에 test-strategy 포함.

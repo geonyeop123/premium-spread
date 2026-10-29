@@ -60,8 +60,8 @@ T1 검증한다. 시간·개수는 환경 의존 실측값이라 T2/T3 다.
 | AC6 | `LatestSchemaFixture.reset()` 이 (a) `flyway_schema_history` 를 뺀 모든 base table 을 0행으로, history 행 수는 그대로, AUTO_INCREMENT 를 1부터로 되돌리고 (b) 스키마에서 CHECK 제약을 지운 뒤 호출되면 그 제약을 복구하며 (c) 빈 database 에서 첫 호출이 최신 schema 를 만든다 | design D7 | `리뷰` 사용자 합의 ③-4 "TRUNCATE 대상을 동적으로 조회 — 누락 위험 차단" + 설계 검토(DROP CHECK 테스트) | T1 | `신규테스트` `io.premiumspread.infrastructure.common.support.LatestSchemaFixtureIntegrationTest` | `./gradlew :infrastructure:common:integrationTest --tests '*LatestSchemaFixtureIntegrationTest' --offline --no-daemon` | exit 0 |
 | AC7 | 공유 context 에서 앞 테스트가 공용 MockWebServer 에 남긴 enqueue 응답과 recorded request 가 다음 테스트에 보이지 않는다 | design D5-2 | `요구` 사용자 합의 ③-2 "enqueue 응답·recorded request 가 다음 클래스로 넘어가지 않도록 매 테스트 초기화" | T1 | `신규테스트` `io.premiumspread.support.SharedContextIsolationIntegrationTest` | `./gradlew :apps:batch:integrationTest --tests '*SharedContextIsolationIntegrationTest' --offline --no-daemon` | exit 0 |
 | AC8 | Quality Gate workflow 에 `needs:` 가 없고, `common-integration` job 이 `:infrastructure:common:verifyMigrations :infrastructure:common:integrationTest` 를, `api-integration` 이 `:apps:api:integrationTest` 만 실행하며, Gradle job 5개의 setup-gradle 이 모두 `cache-read-only: ${{ github.ref != 'refs/heads/dev' }}` 를 갖고, unit 명령이 `--parallel` 을 포함한다 | design D1·D2·D3 | `요구` 사용자 합의 ③-1 | T1 | `기존` `ci/quality-gate-contract-test.sh` (이번에 단언 갱신) | `bash ci/quality-gate-contract-test.sh` | exit 0 |
-| AC9 | orchestrator ⑩ 블록·`qa-agent`·`qa-verification`·`test-strategy`·`.ai/rules/testing.md`·`AGENTS.md`·`.ai/instructions.md` 가 전체 검증을 design D8 의 단일 명령 한 줄로 적고, 직렬 5개 명령 형태가 남아 있지 않다 | design D8 | `요구` 사용자 합의 ③-5 | T2 | `기존` 해당 문서 | `grep -rnF ':apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon' .claude AGENTS.md .ai/rules/testing.md .ai/instructions.md` 과 `grep -rnE '^\./gradlew :infrastructure:common:integrationTest --offline --no-daemon$' .claude/skills/orchestrator .claude/agents/qa-agent.md .claude/skills/qa-verification AGENTS.md .ai/instructions.md` | 첫 명령이 7개 파일 각 1건 이상, 둘째 명령 0건 |
-| AC10 | `BithumbPrivateAccountAdapterTest`·`ExchangeRateClientTest` 의 2초 MockWebServer 지연이 1초로 바뀌고, 두 클래스의 테스트 수는 같으며 클래스 실행 시간이 기준선보다 각각 2초·4초 이상 짧다 | design D4 | `요구` 사용자 합의 ③-3 | T2 | `기존` `:infrastructure:batch:test` 결과 XML | `./gradlew :infrastructure:batch:test --rerun --offline --no-daemon` 후 두 클래스 `TEST-*.xml` 의 `tests`·`time` 속성 | 수 동일, 시간 차이 조건 충족 |
+| AC9 | orchestrator ⑩ 블록·`qa-agent`·`qa-verification`·`test-strategy`·`.ai/rules/testing.md`·`AGENTS.md`·`.ai/instructions.md` 가 전체 검증을 design D8 의 단일 명령 한 줄로 적고, `.ai/rules/testing.md`(개별 재실행 명령의 소유자) 밖에는 직렬 개별 명령 형태가 남아 있지 않다 | design D8 | `요구` 사용자 합의 ③-5 | T2 | `기존` 해당 문서 | `grep -rnF ':apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon' .claude AGENTS.md .ai/rules/testing.md .ai/instructions.md` 과 `grep -rnE '^\./gradlew :infrastructure:common:integrationTest --offline --no-daemon$' .claude/skills/orchestrator .claude/agents/qa-agent.md .claude/skills/qa-verification .claude/skills/test-strategy AGENTS.md .ai/instructions.md` | 첫 명령이 7개 파일 각 1건 이상, 둘째 명령 0건 |
+| AC10 | `BithumbPrivateAccountAdapterTest`·`ExchangeRateClientTest` 의 2초 MockWebServer 지연이 1초로 바뀌고, 두 클래스의 테스트 수는 같으며, 지연을 쓰는 메서드 4개(Bithumb `네트워크 실패와 타임아웃 예외에도 secret 이 없다`·`응답 시간이 초과되면 NETWORK`, ExchangeRate `read timeout 은 설정한 횟수까지만 재시도한다`·`응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다`) 각각의 testcase time 이 기준선보다 0.8초 이상 짧다 | design D4·D9 메서드 시간 | `요구` 사용자 합의 ③-3 | T2 | `기존` `:infrastructure:batch:test` 결과 XML | `./gradlew :infrastructure:batch:test --rerun --offline --no-daemon` 후 두 클래스 `TEST-*.xml` 의 `<testsuite tests>` 와 4개 `<testcase time>` 속성 (plan `case_times`) | 수 동일, 4개 메서드 각각 기준선 − 0.8s 이하 |
 
 **`출처`** — `요구`(사용자 요구 원문) / `상위`(상위 동결 문서의 ID) /
 `리뷰`(리뷰에서 파생) / `추론`(근거 없음).
@@ -121,7 +121,12 @@ B_api    =
 B_batch  = 
 B_ctx    = 
 B_wall   =  (test+architectureTest / common IT / api IT / batch IT / verifyMigrations)
-unit 클래스 시간: BithumbPrivateAccountAdapterTest= · ExchangeRateClientTest= · BinanceFuturesManualAccountAdapterTest=
+unit 클래스 tests: BithumbPrivateAccountAdapterTest= · ExchangeRateClientTest= · BinanceFuturesManualAccountAdapterTest(time 포함)=
+지연 메서드 testcase time:
+  Bithumb `네트워크 실패와 타임아웃 예외에도 secret 이 없다` =
+  Bithumb `응답 시간이 초과되면 NETWORK` =
+  ExchangeRate `read timeout 은 설정한 횟수까지만 재시도한다` =
+  ExchangeRate `응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다` =
 ```
 
 ### AC1
@@ -177,3 +182,6 @@ DoD VERDICT: test-time-reduction @ <commit SHA>
 **사람 확인이 필요한 항목**
 
 - (없음 — AC3 은 PR run 이 생긴 뒤 T3 기록으로 제출한다)
+
+> DRAFT 개정: ⑥ spec-reviewer 1R 반영 — AC10 을 클래스 합계(2s·4s)에서 지연 메서드 4개 각각 ≥ 0.8s 감소로 변경,
+> AC9 둘째 grep 대상에 `.claude/skills/test-strategy` 추가. 기준선 블록에 메서드 time 칸 추가.
