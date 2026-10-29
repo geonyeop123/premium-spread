@@ -49,11 +49,7 @@ Gradle 검증은 기존 cache를 사용해 `--offline --no-daemon`으로 실행�
 
 ```bash
 ./gradlew compileKotlin --offline --no-daemon
-./gradlew test architectureTest --offline --no-daemon
-./gradlew :infrastructure:common:integrationTest --offline --no-daemon
-./gradlew :apps:api:integrationTest --offline --no-daemon
-./gradlew :apps:batch:integrationTest --offline --no-daemon
-./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
+./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
 
 docker compose -f docker/infra-compose.yml up -d
 SPRING_PROFILES_ACTIVE=local ./gradlew :apps:api:bootRun --offline --no-daemon

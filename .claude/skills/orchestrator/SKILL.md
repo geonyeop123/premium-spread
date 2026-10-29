@@ -460,13 +460,13 @@ git diff origin/{base}...HEAD
 `definition-of-done`
 
 ```bash
-./gradlew test architectureTest --offline --no-daemon
-./gradlew :infrastructure:common:integrationTest --offline --no-daemon
-./gradlew :apps:api:integrationTest --offline --no-daemon
-./gradlew :apps:batch:integrationTest --offline --no-daemon
-./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
+./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
 bash docs/check-documentation.sh
 ```
+
+Gradle 은 **한 번만** 부른다. `--parallel` 로 모듈 task 가 동시에 돌고, `--continue` 로 한 task 가 실패해도 나머지를
+끝까지 돌려 실패 전체를 한 번에 본다. 결과는 task 별(unit 합계 · common/api/batch integration · verifyMigrations)로
+실행 수와 실패 수를 나눠 보고하고, 실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌린다.
 
 **`./gradlew lint`은 이 저장소에 없다.** 정적 경계는 `architectureTest`가 본다. 커버리지 게이트는
 `./gradlew jacocoTestReport jacocoTestCoverageVerification`이며 최종 증거는 해당 SHA의 CI artifact다.

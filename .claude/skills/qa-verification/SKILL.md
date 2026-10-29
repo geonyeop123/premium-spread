@@ -10,14 +10,12 @@ description: "QA 검증 스킬. 빌드·테스트·마이그레이션·문서 �
 명령을 **실제로 돌린다.** 돌리지 않은 것을 통과로 적지 않는다.
 
 ```bash
-./gradlew test architectureTest --offline --no-daemon
-./gradlew :infrastructure:common:integrationTest --offline --no-daemon
-./gradlew :apps:api:integrationTest --offline --no-daemon
-./gradlew :apps:batch:integrationTest --offline --no-daemon
-./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
+./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
 bash docs/check-documentation.sh
 ```
 
+- 한 번의 호출이라도 결과는 task 별(unit 합계, common/api/batch integration, verifyMigrations)로 실행 수·실패 수를 나눠
+  적는다. 실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌린다.
 - `lint` 태스크는 이 저장소에 없다. 정적 경계는 `architectureTest`가 본다.
 - integration 계열은 Docker가 필요하다. Docker가 없으면 `[ENV_ISSUE]`로 보고하고 **green으로 기록하지
   않는다.**
