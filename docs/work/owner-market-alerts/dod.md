@@ -189,3 +189,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC2 (Task 3)
 - RED (stub: pairKey="x", requireKey 무동작, sufficient=true, 고정 창, settings init 비움): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.MarketAlertModelTest' --offline --no-daemon` → `18 tests completed, 15 failed` (값·예외 단언), BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL (첫 실행에서 무관한 `WebSocketConnectionManagerRegressionTest > stop prevents pending reconnect and watchdog alert()` 1건 실패, clean 재실행 초록 — 수정 없음).
+
+### AC3 (Task 4)
+- RED (stub `decide = MarketDecision.NONE`): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumSwingPolicyTest' --offline --no-daemon` → `10 tests completed, 6 failed` (UP·DOWN·양방향·쿨다운 경계·bucket 8개 충분·key 불일치 예외; 미발동·null·창 밖·high 9.99 는 stub 에서도 초록).
+- GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
