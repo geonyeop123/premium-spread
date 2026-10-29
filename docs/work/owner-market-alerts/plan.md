@@ -87,7 +87,7 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
 
 **Files:** 없음 (dod `## 증거 로그` 에 append)
 
-- [ ] **Step 1:** 기준선 실행·기록.
+- [x] **Step 1:** 기준선 실행·기록.
   ```bash
   git rev-parse --short HEAD && git merge-base HEAD origin/dev | cut -c1-7                    # base 4f8727c 확인
   ./gradlew test architectureTest --offline --no-daemon                                     # R1·R2 — 테스트 수 기록(build/test-results XML 집계)
@@ -116,7 +116,7 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
   grep -n "internal fun threshold" domain/src/main/kotlin/io/premiumspread/domain/ownerops/OwnerOpsAlertContent.kt   # (g19) {d} 재사용 대상
   ls -d domain/src/test/kotlin/io/premiumspread/domain/accountpnl domain/src/test/kotlin/io/premiumspread/domain/ownerops domain/src/test/kotlin/io/premiumspread/domain/owneralert apps/batch/src/test/kotlin/io/premiumspread/application apps/batch/src/test/kotlin/io/premiumspread/config apps/batch/src/integrationTest/kotlin infrastructure/batch/src/test infrastructure/common/src/integrationTest infrastructure/common/src/test   # (g20) R3 경로 존재
   ```
-- [ ] **Step 2: 예상 결과.** merge-base `4f8727c`. gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지). (g1) `V21__create_owner_alert_signal_state.sql`.
+- [x] **Step 2: 예상 결과.** merge-base `4f8727c`. gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지). (g1) `V21__create_owner_alert_signal_state.sql`.
   (g2) 2곳. (g4) `MONITORED_JOBS` 는 `OwnerOpsSignalJob` 정의와 테스트의 **참조**뿐(고정 목록 단언 없음).
   (g5a) `JpaPremiumRepositoryAdapter` 의 import 줄과 `CommonJpaConfiguration` `@Import` 목록 안의 줄(`:85-98` 범위) 두 곳. (g5b) `- jpa.yml` 한 줄(`:9`).
   (g6) `aggregation.zone`. (g7) 최신 버전 숫자 단언 없음. (g10) MockK 있음. (g12) pair 를 요청 pair 로 채우거나 검사함. (g13) 목록 단언 아님. (g14) 이 파일 하나.
@@ -124,7 +124,7 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
   **다르면 멈추고 보고한다** — (g1) 이 V21 이 아니면 V22 번호·AC8, (g4) 가 고정 목록 단언이면 dod 허용 예외를 Gate 1 에서 다시 정한다, (g5a)/(g5b) 가 위 두 줄을 보이지 않으면 design K1·A6 을 다시 정한다,
   (g7) 가 숫자 단언을 보이면 R13 허용 예외 결정, (g10) 이 없으면 AC10 을 integrationTest 로 옮기는 변경 요청, (g15)·(g19) 가 다르면 design §6.3·§8.2 를 다시 정한다.
   (g2)·(g8)·(g9)·(g11)·(g13)·(g16)·(g17)·(g18)·(g20) 결과를 증거 로그에 남긴다.
-- [ ] **Step 3: Commit** — `docs: owner 시장 알림 Gate 1 기준선 기록` (dod 증거 로그만)
+- [x] **Step 3: Commit** — `docs: owner 시장 알림 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: `OwnerAlertKind` 4종과 yml routes (AC1)
 
@@ -170,10 +170,10 @@ yml (전문, `owner-alert.routes.ops-recovered` 블록 뒤):
 - `메일과 Discord 를 모두 쓰면 기본 경로` / `Discord 가 꺼져 있으면 네 종류 모두 메일만` — `OwnerAlertChannels(true, true)`·`EMAIL_ONLY` → `(true, null)` (AC1-c)
 - `일일 요약만 메일을 쓴다` — both 채널 해석에서 `DAILY_SUMMARY.email` true, 나머지 false
 
-- [ ] **Step 1:** enum 값 4개를 **stub 경로** `OwnerAlertRoute(email = true, discord = null)` 로 추가, 허용 예외 수정, yml routes 4블록, 새 테스트 작성.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → RED(기본 경로·both 해석 단언 실패). 증거 로그 AC1.
-- [ ] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 알림 종류 네 개와 기본 경로`
+- [x] **Step 1:** enum 값 4개를 **stub 경로** `OwnerAlertRoute(email = true, discord = null)` 로 추가, 허용 예외 수정, yml routes 4블록, 새 테스트 작성.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → RED(기본 경로·both 해석 단언 실패). 증거 로그 AC1.
+- [x] **Step 3:** 경로를 위 전문으로. dod AC1 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 알림 종류 네 개와 기본 경로`
 
 ### Task 2: `JobId.OWNER_MARKET_SIGNAL`·JobConfig·주기 (AC13)
 
@@ -214,10 +214,10 @@ yml (전문):
 - `yml 바인딩도 같은 값과 30초 주기` — #91 `OwnerAlertJobConfigTest` 와 같은 방식(`PropertySourcesPlaceholdersResolver` 로 `${ENV:default}` 해석)으로 `BatchJobProperties`·`BatchSchedulingProperties` (AC13-b)
 - `운영 신호 Job 이 시장 신호 Job 을 감시한다` — `OwnerOpsSignalJob.MONITORED_JOBS` 에 `OWNER_MARKET_SIGNAL` 포함 (AC13-c). 신호 key 는 `job-failures.owner_market_signal`(`OpsSignal.kt:34`)
 
-- [ ] **Step 1:** 값을 stub(`Duration.ofSeconds(5)`/`3`, 주기 15s, yml 같은 stub)으로 추가하고 테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerMarketJobConfigTest' --offline --no-daemon` → RED(lease·timeout·주기 단언 실패; (c) 는 stub 에서도 초록). 증거 로그 AC13.
-- [ ] **Step 3:** 전문 값으로. dod AC13 명령 → PASS(기존 `OwnerAlertJobConfigTest`·`application.job.ownerops.*` 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 신호 Job 식별자와 lock·주기`
+- [x] **Step 1:** 값을 stub(`Duration.ofSeconds(5)`/`3`, 주기 15s, yml 같은 stub)으로 추가하고 테스트 작성.
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerMarketJobConfigTest' --offline --no-daemon` → RED(lease·timeout·주기 단언 실패; (c) 는 stub 에서도 초록). 증거 로그 AC13.
+- [x] **Step 3:** 전문 값으로. dod AC13 명령 → PASS(기존 `OwnerAlertJobConfigTest`·`application.job.ownerops.*` 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 신호 Job 식별자와 lock·주기`
 
 ### Task 3: 시장 알림 모델 — key·설정·상태·port·창·근거 (AC2)
 
@@ -333,10 +333,10 @@ object MarketEvidence {
 설정 기본값·각 검증 경계(2h 정확히 거부·2.21 통과, **`3.12345`·`-1000000`·`0.00001` 거부, `3.1234`·`-999999.9999` 통과, `summaryHour` 0·24 거부·1·23 통과**), 상태 불변식 5종, `sameAs`(scale 무관·null),
 창 3개(`2026-10-29T00:30:15Z` 입력의 정확한 `Instant`), current 나이 10s/10s+1ms/미래/다른 pair, `sufficient` 경계 5개.
 
-- [ ] **Step 1:** 타입 선언·시그니처와 테스트 작성. 함수 본문은 stub(`pairKey` = `"x"`, `requireKey` 무동작, `sufficient` = true, `current` = snapshot, `of` 는 고정 창, settings init 비움).
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.MarketAlertModelTest' --offline --no-daemon` → RED(값·예외 단언 실패). 증거 로그 AC2.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 알림 상태·설정·관측 창 모델`
+- [x] **Step 1:** 타입 선언·시그니처와 테스트 작성. 함수 본문은 stub(`pairKey` = `"x"`, `requireKey` 무동작, `sufficient` = true, `current` = snapshot, `of` 는 고정 창, settings init 비움).
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.MarketAlertModelTest' --offline --no-daemon` → RED(값·예외 단언 실패). 증거 로그 AC2.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 알림 상태·설정·관측 창 모델`
 
 ### Task 4: 알림 타입과 급변 정책 (AC3)
 
@@ -408,10 +408,10 @@ object PremiumSwingPolicy {
 양방향 동시, 쿨다운 `now−30m` 발동·`now−30m+1ms` 미발동(next 없음), 11분 전 bucket 무시·bucket 7개 W1, high 9.99 무시(종가만), current/minutes null → `NONE`, `up` 자리에 `swing-down` 상태 → key 불일치 예외.
 next 의 version 이 입력 version 과 같음.
 
-- [ ] **Step 1:** 타입·시그니처·테스트 작성, `decide` 는 `MarketDecision.NONE` stub.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumSwingPolicyTest' --offline --no-daemon` → RED(발동·예외 단언 실패; 미발동·null 은 stub 에서도 초록). 증거 로그 AC3.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 김프 급변 판정 정책`
+- [x] **Step 1:** 타입·시그니처·테스트 작성, `decide` 는 `MarketDecision.NONE` stub.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumSwingPolicyTest' --offline --no-daemon` → RED(발동·예외 단언 실패; 미발동·null 은 stub 에서도 초록). 증거 로그 AC3.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 김프 급변 판정 정책`
 
 ### Task 5: 기준선 돌파 정책 (AC4)
 
@@ -436,10 +436,10 @@ object PremiumThresholdPolicy {
 ABOVE→BELOW 직행 LOWER, baseline 변경(U 3.0→3.2) 재분류 무알림, U 만 설정, current null, 저장 baseline `3.0000`/설정 `3.0` → H3(재분류 없음), 꺼짐 설정 예외·key 불일치 예외.
 `classify` 단독 경계(`rate == U`, `rate == U − h` with prev ABOVE).
 
-- [ ] **Step 1:** 시그니처·테스트, 본문 stub(`classify` = `BETWEEN`, `decide` = `NONE`).
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumThresholdPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC4.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 김프 기준선 돌파 판정 정책(히스테리시스)`
+- [x] **Step 1:** 시그니처·테스트, 본문 stub(`classify` = `BETWEEN`, `decide` = `NONE`).
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumThresholdPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC4.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 김프 기준선 돌파 판정 정책(히스테리시스)`
 
 ### Task 6: 신고가·신저가 정책 (AC5)
 
@@ -468,10 +468,10 @@ object PremiumExtremePolicy {
 24h 쿨다운 중 1h 억제·`now−2h` 재발동, 1h 쿨다운 경계, 시 bucket 18개 → 24h 무판정·1h 판정, **`hours = null` → 24h 무판정·1h 판정**, 분 1h 구간 47개 → 1h 무판정, 신저가 대칭,
 고가·저가 사용(종가와 다르게 둔 fixture), `hourHigh`·`dayHigh` 자리 바꿈 → key 불일치 예외.
 
-- [ ] **Step 1:** 시그니처·테스트, `decide` = `NONE` stub.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumExtremePolicyTest' --offline --no-daemon` → RED. 증거 로그 AC5.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 김프 1시간·24시간 신고가 신저가 판정 정책`
+- [x] **Step 1:** 시그니처·테스트, `decide` = `NONE` stub.
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumExtremePolicyTest' --offline --no-daemon` → RED. 증거 로그 AC5.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 김프 1시간·24시간 신고가 신저가 판정 정책`
 
 ### Task 7: 실계정 최신값 타입과 일일 요약 정책 (AC6)
 
@@ -528,10 +528,10 @@ object DailySummaryPolicy {
 notice `date = 2026-10-28`·`fxBase = USD`·`fxQuote = KRW`(input 그대로), `summaryPnl` 4분기(null·10m·10m+1ms·position false), `AccountPnlLatest` 불변식·`computed` 반올림(`123456.5` → `123457`)·`toString` 에
 `123457`·`12.34` 문자열 없음, swing key 상태로 `decide` → key 불일치 예외. `computed` 테스트의 `AccountNetPnl` 은 `AccountNetPnl` 생성자에 가짜 값으로 만든다(실계정 값 금지).
 
-- [ ] **Step 1:** 시그니처·테스트, 본문 stub(`due` = false, `decide` = `NONE`, `summaryPnl` = `Unavailable`, `computed` 는 반올림 없이).
-- [ ] **Step 2:** dod AC6 명령 → RED. 증거 로그 AC6.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 실계정 최신 순수익률 타입과 일일 요약 판정`
+- [x] **Step 1:** 시그니처·테스트, 본문 stub(`due` = false, `decide` = `NONE`, `summaryPnl` = `Unavailable`, `computed` 는 반올림 없이).
+- [x] **Step 2:** dod AC6 명령 → RED. 증거 로그 AC6.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 실계정 최신 순수익률 타입과 일일 요약 판정`
 
 ### Task 8: 시장 알림 본문 (AC7)
 
@@ -559,10 +559,10 @@ eventKey·제목·이모지·색·본문·대체 줄은 design §8.1~§8.4 표·
 **테스트가 재는 것** (`OwnerMarketAlertContentTest`): dod AC7 (a)~(f) — 메일 golden 9건·Discord golden 9건(전체 문자열 `isEqualTo`, "일 집계 없음 + fx 없음 + `Unavailable`" golden 은 `김프: 전일 집계 없음` 한 줄과 `환율(USD/KRW) 현재: 없음` 줄로 구성 — design §8.4 대체 줄 표 그대로),
 색 상수 3개 정수값, eventKey 4형식·정규식, 금지 문자열 5종, 급변·기준선·신고가 결과에 `원` 없음, `{d}` 결과가 `OwnerOpsAlertContent.threshold` 와 같음(`30m`·`2h`). 시각 `2026-10-29T00:00:00Z`, zone `Asia/Seoul`.
 
-- [ ] **Step 1:** 시그니처·테스트, 본문 stub(`mail`·`discord` = `"x"` 고정, `eventKey` 는 전문 구현 — eventKey 테스트는 stub 에서 초록).
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.OwnerMarketAlertContentTest' --offline --no-daemon` → RED(golden 실패). 증거 로그 AC7.
-- [ ] **Step 3:** 템플릿 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 알림 메일·Discord 본문`
+- [x] **Step 1:** 시그니처·테스트, 본문 stub(`mail`·`discord` = `"x"` 고정, `eventKey` 는 전문 구현 — eventKey 테스트는 stub 에서 초록).
+- [x] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.OwnerMarketAlertContentTest' --offline --no-daemon` → RED(golden 실패). 증거 로그 AC7.
+- [x] **Step 3:** 템플릿 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 알림 메일·Discord 본문`
 
 ### Task 9: V22 migration 과 batch fixture (AC8)
 
@@ -617,10 +617,10 @@ fixture: 같은 두 DDL 을 `CREATE TABLE IF NOT EXISTS` 로, 앞에 주석 `-- 
 **테스트가 재는 것** (`V22…MigrationIntegrationTest`, `V21OwnerAlertSignalStateMigrationIntegrationTest` 와 같은 패턴): dod AC8 (a)~(c) — 빈 DB 1~22 성공·열 순서/`data_type`/nullable·PK·collation
 (`has_position` 의 `data_type` 기대값은 **`tinyint`** — MySQL `BOOLEAN` = `tinyint(1)`), V21 target 에 기존 행 넣고 latest → 기존 행 무변경·새 테이블 0행, CHECK 거부 8종.
 
-- [ ] **Step 1:** 테스트 작성(V22 파일 없음 상태).
-- [ ] **Step 2:** AC8 명령 → RED(버전 22 부재·테이블 부재 assertion — 테스트가 테이블 부재를 `assertThat(...).isEmpty()` 류로 먼저 확인하도록 써서 SQL 예외가 아닌 assertion 실패로 둔다). 증거 로그 AC8.
-- [ ] **Step 3:** V22·fixture 추가. AC8 명령 → PASS. `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon` → PASS(R9 확인). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 알림 상태·실계정 최신값 테이블 V22`
+- [x] **Step 1:** 테스트 작성(V22 파일 없음 상태).
+- [x] **Step 2:** AC8 명령 → RED(버전 22 부재·테이블 부재 assertion — 테스트가 테이블 부재를 `assertThat(...).isEmpty()` 류로 먼저 확인하도록 써서 SQL 예외가 아닌 assertion 실패로 둔다). 증거 로그 AC8.
+- [x] **Step 3:** V22·fixture 추가. AC8 명령 → PASS. `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon` → PASS(R9 확인). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 알림 상태·실계정 최신값 테이블 V22`
 
 ### Task 10: `JdbcOwnerMarketAlertStore`·`JdbcAccountPnlLatestStore` (AC9)
 
@@ -657,10 +657,10 @@ class JdbcAccountPnlLatestStore(
 두 번째 충돌 전체 롤백, version 0 중복 INSERT 충돌, 행만·상태만, 중복 key·256자 subject 거부 + DB 무변경, `JdbcAccountPnlAlertStore.claim` 호환, latest upsert 3단계,
 `ApplicationContextRunner`(DataSource/JdbcTemplate/TransactionManager auto-configuration + `CommonInfrastructureAutoConfiguration` + 고정 `Clock`)로 bean 2개 해석.
 
-- [ ] **Step 1:** 클래스를 stub(`load` = 빈 map, `enqueue` = true 무기록, `record` 무동작, `find` = null)으로 만들고 `@Import` 는 **아직 추가하지 않는다**. 테스트 작성.
-- [ ] **Step 2:** AC9 명령 → RED(기록·읽기·예외·bean 해석 단언 실패). 증거 로그 AC9.
-- [ ] **Step 3:** 구현 + `@Import` 2줄. AC9 명령 → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` (R10) → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 알림 상태 저장소와 실계정 최신값 저장소`
+- [x] **Step 1:** 클래스를 stub(`load` = 빈 map, `enqueue` = true 무기록, `record` 무동작, `find` = null)으로 만들고 `@Import` 는 **아직 추가하지 않는다**. 테스트 작성.
+- [x] **Step 2:** AC9 명령 → RED(기록·읽기·예외·bean 해석 단언 실패). 증거 로그 AC9.
+- [x] **Step 3:** 구현 + `@Import` 2줄. AC9 명령 → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` (R10) → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 알림 상태 저장소와 실계정 최신값 저장소`
 
 ### Task 11: `PremiumAggregationReadPort` 구현 (AC10)
 
@@ -691,10 +691,10 @@ class JpaPremiumRepositoryAdapter(
 **테스트가 재는 것** (MockK, `SpringDataPremiumRepository`·cache reader·query repository mock): dod AC10 (a)~(d) — interval 3종·from/to 전달(`verify`), 같은 `observedAt` 이면 DB 값,
 pair 다른 snapshot → 예외 메시지 정확히(**mock 이 다른 pair 를 돌려주게 해서만 재현 가능한 방어 경로** — 테스트 이름에 "방어" 를 넣는다), cache reader null → DB 결과.
 
-- [ ] **Step 1:** `read` 를 `emptyList()` stub 으로 추가, 테스트 작성.
-- [ ] **Step 2:** AC10 명령 → RED(위임·예외 단언 실패). 증거 로그 AC10.
-- [ ] **Step 3:** 구현. AC10 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 김프 집계 범위 읽기 port 구현`
+- [x] **Step 1:** `read` 를 `emptyList()` stub 으로 추가, 테스트 작성.
+- [x] **Step 2:** AC10 명령 → RED(위임·예외 단언 실패). 증거 로그 AC10.
+- [x] **Step 3:** 구현. AC10 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 김프 집계 범위 읽기 port 구현`
 
 ### Task 12: PnL 모니터의 최신값 기록 (AC11)
 
@@ -726,10 +726,10 @@ Failed·save false/예외·저장 전 취소는 기록 없음, `record` 예외�
 dod AC11 (a)~(e) — Computed → `computed(pnl)` 1회(값 비교), NoPosition → `noPosition(t)` 이고 `t` = 조회 뒤 fake clock 시각, Failed·save false·save 예외·사전 interrupt → 0회, record 예외 → `JobResult`·발송 수가
 예외 없는 회차와 같고 WARN 줄이 `error=IllegalStateException` 로 끝남(메시지 없음), `latestPnl` 미지정 → 기존 결과.
 
-- [ ] **Step 1:** 생성자 인자와 배선만 추가(기록 블록 없음 = stub). 테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorLatestRecordTest' --offline --no-daemon` → RED(record 횟수 단언 실패; 0회 시나리오는 초록). 증거 로그 AC11.
-- [ ] **Step 3:** 기록 블록 구현. dod AC11 명령 → PASS(기존 `job.accountpnl.*`·`AccountPnlMonitorWiringTest` 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: 실계정 모니터가 최신 순수익률을 기록`
+- [x] **Step 1:** 생성자 인자와 배선만 추가(기록 블록 없음 = stub). 테스트 작성.
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.AccountPnlMonitorLatestRecordTest' --offline --no-daemon` → RED(record 횟수 단언 실패; 0회 시나리오는 초록). 증거 로그 AC11.
+- [x] **Step 3:** 기록 블록 구현. dod AC11 명령 → PASS(기존 `job.accountpnl.*`·`AccountPnlMonitorWiringTest` 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: 실계정 모니터가 최신 순수익률을 기록`
 
 ### Task 13: 시장 신호 Job (AC12)
 
@@ -788,10 +788,10 @@ class FakeOwnerMarketAlertStore : OwnerMarketAlertStore {
 요약 09:00/08:59:59(`FakeAggregationRead.calls` 에 DAY 없음·`FakeFxRead.calls == 0`)·요약 notice 의 `fxBase/fxQuote` = `BatchMarket` 값, 요약 입력 예외 후 다음 회차 1통, 원천별 모름 조합, 새 인스턴스 쿨다운 유지, JobResult 4분기,
 취소 재전파(`assertThrows` + `Thread.interrupted()` true + `enqueueCalls == 0`), `EMAIL_ONLY`, `OutputCaptureExtension` 로그 금지 문자열(`example.test`·`@`·fake 예외 메시지 `secret-detail`·`2.50`·`원`).
 
-- [ ] **Step 1:** Job 을 `run() = executor.execute(...) { JobResult.Success }` stub 으로, fake·테스트 작성.
-- [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` → RED(행·상태·Failure/Skipped·취소 단언 실패; (a)·(h)·(i) 무기록 시나리오는 stub 에서도 초록). 증거 로그 AC12.
-- [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 신호 Job`
+- [x] **Step 1:** Job 을 `run() = executor.execute(...) { JobResult.Success }` stub 으로, fake·테스트 작성.
+- [x] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` → RED(행·상태·Failure/Skipped·취소 단언 실패; (a)·(h)·(i) 무기록 시나리오는 stub 에서도 초록). 증거 로그 AC12.
+- [x] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 신호 Job`
 
 ### Task 14: 앱 배선·기동 조건·Scheduler·`owner-alert.market` (AC14)
 
@@ -890,10 +890,10 @@ yml (전문, `owner-alert.ops` 블록 뒤):
 채널 없음 → 없음·INFO 없음, scheduling off → 없음, 11개 값 바인딩(`upper-threshold=3.0` 등)과 빈 기준선 null, `swing-threshold=0`·`upper-threshold=3.12345`·`summary-hour=0` 기동 실패 원인 메시지,
 infra `OwnerAlertProperties` 를 같은 environment 로 바인딩해도 예외 없음, yml 원문을 읽어 `owner-alert.market` 12키 기본값 문자열 비교, 출력에 `discord.example.test`·`owner@example.test` 없음.
 
-- [ ] **Step 1:** 조건의 `matches` 를 `false` stub 으로, 나머지 전문 작성 + 테스트.
-- [ ] **Step 2:** AC14 명령 → RED(bean 존재·INFO 단언 실패). 증거 로그 AC14.
-- [ ] **Step 3:** 조건 구현. AC14 명령 → PASS. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` → PASS(기존 wiring 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
-- [ ] **Step 4: Commit** — `feat: owner 시장 알림 기동 조건과 배선`
+- [x] **Step 1:** 조건의 `matches` 를 `false` stub 으로, 나머지 전문 작성 + 테스트.
+- [x] **Step 2:** AC14 명령 → RED(bean 존재·INFO 단언 실패). 증거 로그 AC14.
+- [x] **Step 3:** 조건 구현. AC14 명령 → PASS. `./gradlew :apps:batch:test --tests 'io.premiumspread.config.*' --offline --no-daemon` → PASS(기존 wiring 무수정). `./gradlew test architectureTest --offline --no-daemon` → PASS.
+- [x] **Step 4: Commit** — `feat: owner 시장 알림 기동 조건과 배선`
 
 ### Task 15: E2E 통합 (AC15)
 
@@ -912,10 +912,10 @@ infra `OwnerAlertProperties` 를 같은 environment 로 바인딩해도 예외 �
 - (b) 시계 +10분 → **새 clock 기준으로 분 bucket 을 다시 INSERT**(저점 2.00 유지, 급변 창 10개 모두 존재) + 현재 2.60 → 새 행 없음, 그리고 `SELECT last_notified_at FROM owner_market_alert_state WHERE signal_key = 'market.btc-bithumb-binance.swing-up'` 이 (a) 회차 시각과 같다(근거는 충분했고 쿨다운이 억제했음을 직접 확인).
 - (c) 24h 신고가 SILENT. (d) 09:00 요약 메일+Discord SENT·본문 줄(`환율(USD/KRW)` 포함)·`summary_date`. (e) 새 인스턴스 재회차 무행. (f) `day_at` 2026-10-29 행이 있어도 요약 값은 10-28 행.
 
-- [ ] **Step 1:** 테스트 작성.
-- [ ] **Step 2:** RED — `OwnerMarketSignalJob` 의 `store.enqueue(next, rows)` 를 `enqueue(next, emptyList())` 로 **임시 변이**하고 AC15 명령 → assertion 실패(행 수). 증거 로그 AC15. 변이 되돌림 후 `git diff --stat -- apps/batch/src/main` 빈 출력 확인.
-- [ ] **Step 3:** AC15 명령 → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon` (R11) → PASS.
-- [ ] **Step 4: Commit** — `test: owner 시장 알림 E2E 통합`
+- [x] **Step 1:** 테스트 작성.
+- [x] **Step 2:** RED — `OwnerMarketSignalJob` 의 `store.enqueue(next, rows)` 를 `enqueue(next, emptyList())` 로 **임시 변이**하고 AC15 명령 → assertion 실패(행 수). 증거 로그 AC15. 변이 되돌림 후 `git diff --stat -- apps/batch/src/main` 빈 출력 확인.
+- [x] **Step 3:** AC15 명령 → PASS. `./gradlew :apps:batch:integrationTest --offline --no-daemon` (R11) → PASS.
+- [x] **Step 4: Commit** — `test: owner 시장 알림 E2E 통합`
 
 ### Task 16: 문서 (AC16)
 
@@ -925,15 +925,15 @@ infra `OwnerAlertProperties` 를 같은 environment 로 바인딩해도 예외 �
 요건: design §13 항목 전부. runbook 의 env 표는 design §9.1 env 전부(이름·기본값·의미, 기준선 소수 넷째 자리까지·`OWNER_ALERT_MARKET_SUMMARY_HOUR` 1~23 명시), 라우팅 표 4종, 정리 SQL 두 문장 전문, V22 배포(additive·롤백 SQL 없음), AC17 체크리스트
 ((a) 기동 INFO 4종 (b) 09:00 무음 요약 + 메일 (c) 상단 기준선 소리 (d) 급변·신고가 관찰 여부). 문서에 실제 webhook·주소·key 를 쓰지 않는다(`https://discord.example.test/...` 예시만).
 
-- [ ] **Step 1:** 문서 작성.
-- [ ] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` (R16) → PASS.
-- [ ] **Step 3: Commit** — `docs: owner 시장 알림 runbook 과 상태 문서`
+- [x] **Step 1:** 문서 작성.
+- [x] **Step 2:** `bash docs/check-documentation.sh` → exit 0. `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` (R16) → PASS.
+- [x] **Step 3: Commit** — `docs: owner 시장 알림 runbook 과 상태 문서`
 
 ### Task 17: 최종 게이트
 
 **Files:** 없음 (dod 증거 로그 append)
 
-- [ ] **Step 1:** 실행·기록.
+- [x] **Step 1:** 실행·기록.
   ```bash
   ./gradlew test architectureTest --offline --no-daemon                               # R1·R2
   ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon             # R5
@@ -945,5 +945,5 @@ infra `OwnerAlertProperties` 를 같은 environment 로 바인딩해도 예외 �
   bash docs/check-documentation.sh                                                    # R12
   git diff --exit-code --diff-filter=MDR 4f8727c -- domain/src/test/kotlin/io/premiumspread/domain/accountpnl domain/src/test/kotlin/io/premiumspread/domain/ownerops domain/src/test/kotlin/io/premiumspread/domain/owneralert ':(exclude)domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRoutingTest.kt' apps/batch/src/test/kotlin/io/premiumspread/application apps/batch/src/test/kotlin/io/premiumspread/config apps/batch/src/integrationTest/kotlin infrastructure/batch/src/test infrastructure/common/src/integrationTest infrastructure/common/src/test   # R3 (dod R3 확정 목록, ⑨ 리뷰가 재실행)
   ```
-- [ ] **Step 2: 예상 결과.** 전부 exit 0. Docker 부재 항목은 "미실행"(green 금지). R6·R7·R8 diff 는 ⑨ 리뷰가 사람 판정. R14 는 CI.
-- [ ] **Step 3: Commit** — `docs: owner 시장 알림 최종 게이트 기록`
+- [x] **Step 2: 예상 결과.** 전부 exit 0. Docker 부재 항목은 "미실행"(green 금지). R6·R7·R8 diff 는 ⑨ 리뷰가 사람 판정. R14 는 CI.
+- [x] **Step 3: Commit** — `docs: owner 시장 알림 최종 게이트 기록`

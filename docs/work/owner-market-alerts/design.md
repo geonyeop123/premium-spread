@@ -3,7 +3,7 @@
 - slug: `owner-market-alerts` · base `origin/dev` `4f8727c`(Task 0 확인) · branch `feat/issue-90-owner-market-alerts`
 - 입력: issue #90 · ③ owner 합의(§0.1) · `docs/work/owner-alert-channel/design.md`(#88 §3.2 목표 표·§9 연결 경로) ·
   `docs/work/owner-ops-alerts/*`(#91 공용 기반) · `.ai/rules/{architecture,batch,testing,naming}.md` · `.claude/skills/module-layout`
-- 상태: DRAFT (⑥ R1 반영 — §15)
+- 상태: 구현 완료(PR 대기) (⑥ R1 반영·구현 중 확정 사항 — §15)
 
 ## 0. 요약
 
@@ -424,10 +424,11 @@ last-write-wins 인 이유: 쓰는 쪽은 lock 을 잡은 PnL 모니터 하나�
 | 관측 | 기록 |
 |---|---|
 | `PnlObservation.Computed(pnl)` | `AccountPnlLatest.computed(pnl)` |
-| `PnlObservation.NoPosition` | `AccountPnlLatest.noPosition(observed.round.observedAt)` — 성공 회차의 `AccountRound.observedAt` 은 관측 완료 시각 `completedAt` 이다(`AccountPnlMonitorJob.kt:169,173,191-197`). `Observed` 는 바꾸지 않는다 |
+| `PnlObservation.NoPosition` | `AccountPnlLatest.noPosition(observed.round?.observedAt)` — 안전 호출이며 null 이면 기록을 생략한다. 성공 회차의 `AccountRound.observedAt` 은 관측 완료 시각 `completedAt` 이다(`AccountPnlMonitorJob.kt:169,173,191-197`). `Observed` 는 바꾸지 않는다 |
 | `PnlObservation.Failed` | 기록 안 함 (이전 값이 늙어 요약에서 "없음"이 된다) |
 | save false·save 예외·저장 전 취소 | 기록 안 함 (기존 분기 그대로) |
 
+- 기록 블록은 `AccountPnlMonitorJob` 의 private fun `recordLatest` 로 두고, `save` true 뒤에 그 함수를 한 줄로 호출한다(기존 줄 변경 최소화).
 - `record` 예외(취소 아님)는 삼킨다: WARN `Account PnL latest record failed: error={}`(error = 예외 단순 클래스 이름, 메시지·값 없음) 후 `deliver()` 로 계속 — JobResult 무변경.
   취소(원인 체인에 `InterruptedException`·`CancellationException`)는 interrupt 플래그를 복구하고 **기록을 건너뛰고** `deliver()` 로 간다(dispatcher 가 claim 전 interrupt 를 확인한다 — #88 §5.2).
 - 앱 배선 `AccountPnlMonitorConfiguration.accountPnlMonitorJob` 에 `latestPnl: ObjectProvider<AccountPnlLatestStore>` 인자를 더하고 `latestPnl = latestPnl.ifAvailable` 로 넘긴다
@@ -714,7 +715,7 @@ class OwnerMarketSignalJob(
    `minutes = aggregations.read(pair, windows.minutes, MINUTE)`, `hours = aggregations.read(pair, windows.hours, HOUR)`. `windows = MarketWindows.of(now, zone)`.
 5. 정책: 급변 → 기준선(켜졌을 때) → 신고가 → 요약. 요약은 `DailySummaryPolicy.due` 가 참일 때만 입력을 읽는다:
    `day = aggregations.read(pair, windows.previousDay, DAY).firstOrNull { it.observedAt == windows.previousDay.from }`, `fx = fx.findLatest(batchMarket.fxBase, batchMarket.fxQuote)`,
-   `pnl = pnlLatest.find()` → `DailySummaryInput(day, batchMarket.fxBase, batchMarket.fxQuote, fx, pnl)`. 셋 중 하나라도 예외(취소 아님)면 WARN 후 요약만 보류(S3).
+   `pnl = pnlLatest.find()` → `DailySummaryInput(day, batchMarket.fxBase, batchMarket.fxQuote, fx, pnl)`. 셋 중 하나라도 예외(취소 아님)면 WARN 후 요약만 보류(S3). 하나가 실패해도 나머지 둘은 모두 읽고 원천별(`day`·`fx`·`pnl`)로 WARN 을 남긴 뒤 보류한다.
 6. notice 마다 `OwnerAlertRows.expand(OwnerMarketAlertContent.mail(notice, settings, zone), routing.resolve(notice.kind)) { OwnerMarketAlertContent.discord(notice, settings, zone) }`.
 7. `next` 가 모두 비면 `Success`(쓰지 않음).
 8. interrupt 플래그 → `Skipped("cancelled")`.
@@ -780,7 +781,7 @@ class OwnerMarketSignalScheduler(
 | `NewExtreme` | `owner-market.{pk}.extreme-{1h\|24h}-{high\|low}.{at.toEpochMilli()}` |
 | `DailySummary` | `owner-market.{pk}.daily-summary.{date}` (`date` = 대상일 `yyyy-MM-dd`) |
 
-- 예 `owner-market.btc-bithumb-binance.extreme-24h-high.1793232000000`(57자). 최대 = 13 + 40 + 18 + 13 < 128. 정규식 `[A-Za-z0-9._-]{1,128}`.
+- 예 `owner-market.btc-bithumb-binance.extreme-24h-high.1793232000000`(63자). 최대 약 84자 ≤ 128. 정규식 `[A-Za-z0-9._-]{1,128}`.
 - identity = (pair, 신호, 방향/창, 알림 시각) — 쿨다운·구역 전이가 같은 회차의 같은 알림을 하나로 만든다. 요약은 대상일로 유일하다. outbox `UNIQUE(event_key, channel)` 이 중복을 무시한다.
 
 ### 8.2 서식
@@ -1109,6 +1110,11 @@ class OwnerMarketAlertConfiguration {
 |---|---|---|---|
 | D1 | 일일 요약의 실계정 **순손익 원** 을 MARKET 채널에 싣는가 | (a) %·원 모두(U1 문언 그대로) (b) % 만 | (a) — U1 이 "%·원"을 명시. MARKET 채널을 공유한다면 (b) 로 바꾼다(렌더러 한 줄·golden). **⑦ owner 결정(2026-10-29): (a) %·원 모두** |
 
+### 후속 (계약 변경이라 이번 PR 제외)
+
+- 기준선 돌파에는 쿨다운이 없다 — 히스테리시스를 0 또는 작은 값으로 두면 기준선 근처에서 flapping 알림이 날 수 있다(runbook 경고로 대응). 쿨다운 또는 히스테리시스 하한은 후속에서 정한다.
+- PnL 최신값 기록 중 취소가 걸리면 `Skipped` 로 끝내지 않고 `deliver()` 를 진행한다(§6.3 현행 동작). `Skipped` 로 바꾸는 일은 후속이다.
+
 ## 15. 변경 이력
 
 | 라운드 | 변경 | 사유 |
@@ -1126,3 +1132,4 @@ class OwnerMarketAlertConfiguration {
 | ⑥ R1 #11 | §3.2 — `read()` 가 `window.zone` 대신 infra zone 을 쓴다는 KDoc | Minor |
 | ⑥ R1 #12 | §5.3 — BOOLEAN = `tinyint(1)` 명시 | Minor |
 | ⑥ R1 추가 | §6.1·§7.5·§8.4·§14 — 오케스트레이터 확인 사실 F1~F6 반영 | 추가 확인 사실 |
+| ⑪ 구현 반영 | 상태 표기, §8.1 eventKey 예 63자·최대 약 84자, §6.3 NoPosition `observed.round?.observedAt` null 생략·`recordLatest` private fun, §7.4 요약 입력 원천별 WARN 후 보류, §14 뒤 후속 두 줄 | 구현 중 확정·발견 사항 |

@@ -101,6 +101,10 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   후속 후보:
   - `AccountPnlMonitorWiringTest.kt:387` 타임스탬프 부분 일치로 인한 기존 flaky
   - `WebSocketConnectionManagerRegressionTest` stop/reconnect 기존 flaky
+  - 기준선 돌파 쿨다운 또는 히스테리시스 하한(히스테리시스 0/작은 값에서 flapping 가능)
+  - PnL 최신값 기록 중 취소 시 `Skipped` 처리(현재는 기록을 건너뛰고 deliver 진행)
+  - api integrationTest Tracking 계열 간헐 실패(`TrackingControllerE2ETest:90` 409, `TrackingArchiveIntegrationTest:130` — 단독 재실행 통과)
+  - 태스크 리뷰에서 미룬 테스트 보강 묶음(창 경계 정각·KST 자정, 대칭 경로, 동시성 중간 예외 등)
 - 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, PR #99, AC8 로컬 운영 실기동 관찰 완료 — 주말 동작 미관찰):
   수집 5분·허용 공백 30분(`FxIngestionFreshness`)·캐시 TTL 40분을 테스트와 기동 검증으로 묶었다.
   [설계](../docs/work/fx-provider-twelve-data/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다. 후속 후보:
