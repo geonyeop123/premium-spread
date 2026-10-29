@@ -137,3 +137,43 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ## 증거 로그
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### Gate 1 기준선 (Task 0)
+
+- 일시: 2026-10-29, HEAD `7d1161b`, merge-base(origin/dev) `4f8727c` (예상과 일치). 코드 변경 없음.
+- gradle (모두 `--offline --no-daemon`):
+
+| 명령 | exit | 테스트 수 (tests/failures/errors/skipped) |
+|---|---|---|
+| `./gradlew test architectureTest` | 0 (재실행) | unit 1156/0/0/0, architectureTest 35/0/0/0 |
+| `:infrastructure:common:verifyMigrations` | 0 | - |
+| `:infrastructure:common:integrationTest` | 0 | 64/0/0/0 |
+| `:apps:batch:integrationTest` | 0 | 109/0/0/0 |
+| `:apps:api:integrationTest` | 0 | 174/0/0/0 |
+
+- unit 모듈별: apps/api 143, apps/batch 255, domain 405, infrastructure/api 31, infrastructure/batch 215, infrastructure/common 45, modules/jpa 7, modules/redis 18, supports/email 12, supports/logging 9, supports/monitoring 16 (합 1156). 직전 #91 기준선(unit 1156, arch 35, common IT 64, batch IT 109, api IT 174)과 동일.
+- 1회 재실행 기록: 첫 `test architectureTest` 가 `:apps:batch:test` 의
+  `AccountPnlMonitorWiringTest > api 모드 필수값이 하나씩 비면 0개이고 WARN 에 해당 env 이름만 있다` (AccountPnlMonitorWiringTest.kt:387) 1건에서 exit 1.
+  원인: 캡처된 로그 줄의 타임스탬프 `09:13:58.915` 가 `doesNotContain("8.91")` 의 금액 리터럴과 부분 일치(시각 의존 flaky, 기존 테스트, 이번 작업 무관). 재실행 시 exit 0. 숨기지 않고 기록하며, 동결 테스트라 수정하지 않는다.
+- (g1)~(g20):
+  - (g1) 최신 migration `V21__create_owner_alert_signal_state.sql` → V22 번호 확정.
+  - (g2) `OwnerAlertRoutingTest.kt:25`, `:35` 두 곳(R7).
+  - (g4) `JobId.entries`/`MONITORED_JOBS`: `OwnerOpsSignalJob.kt:105,110,163-164`(`MONITORED_JOBS = JobId.entries.filterNot { OWNER_OPS_SIGNAL, OWNER_ALERT_DELIVERY }` 파생 정의), `OwnerOpsSignalJobTest.kt:142,324,345`(MONITORED_JOBS 참조), `OwnerAlertJobConfigTest.kt:31`(`JobId.entries.forEach` 순회). 고정 목록 단언 없음. 단, `OwnerOpsSignalJobTest` 는 MONITORED_JOBS 를 참조하므로 새 JobId 추가 시 감시 대상에 자동 포함된다는 점을 Task 에서 유의.
+  - (g5a) `CommonInfrastructureAutoConfiguration.kt:31`(import), `:94`(`@Import` 목록).
+  - (g5b) `apps/batch/src/main/resources/application.yml:9` `- jpa.yml`.
+  - (g6) `AggregationInfrastructureProperties.kt:10` `prefix = "aggregation"`, 키 `aggregation.zone`(기본 Asia/Seoul).
+  - (g7) `apps/api/src/integrationTest/kotlin` `*Flyway*` 에서 일치 없음 → 최신 버전 숫자 단언 없음.
+  - (g8) `docs/runbooks/account-pnl-alert.md`: :43(market webhook), :84, :98-101(market 은 후속 이슈용, fallback), :125(#90 에서 표에 추가), :130(`{KIND}` 11개 목록), :136, :168-169(routes INFO 예시), :496.
+  - (g9) 재사용 fake: `apps/batch/src/test/kotlin/io/premiumspread/application/notification/owneralert/OwnerAlertTestFakes.kt` — `MutableClock`:18, `FakeOwnerAlertStore`:32, `FakeMailSender`:111, `FakeDiscordSender`:123. (`AccountPnlMonitorJobTest.kt:638` 에 별도 `MutableClock` 중첩 클래스.)
+  - (g10) `infrastructure/common/build.gradle.kts:58` `springmockk` 있음.
+  - (g11) job tag 문서는 `docs/runbooks/owner-ops-alert.md:121` 한 곳(`job=owner_alert_delivery`, `job=owner_ops_signal`). `.ai` 에는 없음.
+  - (g12) `MarketSnapshotReadAdapters.kt:45-46` `PremiumReadAdapter.findLatest(pair) = reader.get(pair)?.toDomain()`; `:43` KDoc: `PremiumCacheReader` 가 payload pair 가 요청 pair 와 다르면 miss 로 돌려준다(검사함).
+  - (g13) `AccountPnlFixtureSchemaIntegrationTest.kt:70` (`account_pnl_mail` 단일 테이블 index), `:81-82` (인자로 받은 테이블명 컬럼 조회) → 전체 테이블 목록 단언 아님.
+  - (g14) `OwnerAlertDeliveryConfiguration.kt:41,52,66` 이 파일 하나(`private object`).
+  - (g15) `AccountAlertState.kt:118-123` `AccountRound` 마지막 필드 `observedAt: Instant`.
+  - (g16) `BatchIntegrationTestBase` 정의 `apps/batch/src/integrationTest/kotlin/io/premiumspread/support/BatchIntegrationTestBase.kt`, 사용처 24개(예: `OwnerOpsAlertIntegrationTest`, `OwnerAlertDeliveryIntegrationTest`, `FlywayOwnershipIntegrationTest`).
+  - (g17) `OwnerAlertDeliveryWiringTest.kt:69` `ApplicationContextRunner().withUserConfiguration(*configs.toTypedArray())`, `:83-` `withPropertyValues(...)` 사용 확인(구성 클래스 목록은 `runner()` 헬퍼 :55-68).
+  - (g18) `modules/redis/.../RedisKeyGenerator.kt:39` `premiumV2AggregationKey(koreaExchange, foreignExchange, symbol, timeUnit)`; `TickerAggregationTimeUnit.kt:19`, `AggregationTimeUnit.kt:20` 는 `keyFor`.
+  - (g19) `OwnerOpsAlertContent.kt:115` `internal fun threshold(duration: Duration): String`.
+  - (g20) 9개 경로 모두 존재.
+- 판정: 브리프의 "다르면 멈춘다" 항목 해당 없음. 기준선 초록.
