@@ -14,7 +14,7 @@ owner 가 batch 의 지속 장애를 메일·Discord 로 받는 기능이다(#91
 
 - FX 임계값(30분)은 env 로 바꿀 수 없다. 수집 주기·캐시 TTL 과 테스트로 묶여 있어 한 곳(`FxIngestionFreshness`)만 쓴다. PnL 모니터의 `STALE_FX` 판정과 같은 순간에 같은 답을 낸다.
 - 시세는 설정된 quote 의 tick 만 본다. 다른 quote 의 tick 으로 보정하지 않는다(없으면 "없음"으로 판정한다).
-- Job 신호는 `OWNER_OPS_SIGNAL`·`OWNER_ALERT_DELIVERY` 를 뺀 모든 Job(`JobId` 선언 순서)을 본다. 연속 실패는 `FAILED` 로만 세고, `SUCCEEDED` 가 카운터를 지우며, `SKIPPED`(lock 미획득·취소 등)는 바꾸지 않는다.
+- Job 신호는 `OWNER_OPS_SIGNAL`·`OWNER_ALERT_DELIVERY` 를 뺀 모든 Job(`JobId` 선언 순서)을 본다. 시장 알림 Job(`owner_market_signal`, [owner-market-alert.md](owner-market-alert.md))도 자동으로 포함되어 3회·5분 연속 실패하면 `JOB_CONSECUTIVE_FAILURES`(신호 key `job-failures.owner_market_signal`)로 알린다. 연속 실패는 `FAILED` 로만 세고, `SUCCEEDED` 가 카운터를 지우며, `SKIPPED`(lock 미획득·취소 등)는 바꾸지 않는다.
 - 같은 신호의 알림은 하나의 "장애"로 묶인다. 장애 식별은 신호 key + 장애 감지 시각이다.
 
 ## 재알림과 복구

@@ -238,3 +238,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 - RED (임시 변이 `store.enqueue(changed, emptyList())`): `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerMarketAlertIntegrationTest' --offline --no-daemon` → `3 tests completed, 3 failed` (모두 outbox 행 수 단언: `Expected size: 1/1/2 but was: 0`). 변이 되돌림 후 `git diff --stat -- apps/batch/src/main` 빈 출력.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL(3 tests). `./gradlew :apps:batch:integrationTest --offline --no-daemon`(R11) → BUILD SUCCESSFUL, 112 tests / 0 failed (기준선 109 + 3). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
 - 메모: summary eventKey 의 `{date}` 는 대상일(10-28)이고 `summary_date` 상태는 오늘(10-29)이다. 시작 시각이 09:00 KST 라 (a)~(c) 는 `summaryHour=23` 설정으로 요약을 끈다.
+
+### AC16 (Task 16)
+- 문서 태스크라 RED 없음. `bash docs/check-documentation.sh` -> `documentation check passed (20 files, 15 required paths)` (exit 0). `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` -> BUILD SUCCESSFUL (R16).
+- 갱신: 신규 `docs/runbooks/owner-market-alert.md`, `account-pnl-alert.md`(라우팅 표 15종·override 목록·기동 INFO 예문·account_pnl_latest), `owner-ops-alert.md`(감시 대상), `ARCHITECTURE_DESIGN.md`(시장 알림 단락), `PROJECT_STATUS.md`(V22·기능 항목·flaky 후속 2건). 사람 사후 검토 대기.
