@@ -3,7 +3,7 @@
 - slug: `owner-market-alerts` · base `origin/dev` `4f8727c`(Task 0 확인) · branch `feat/issue-90-owner-market-alerts`
 - 입력: issue #90 · ③ owner 합의(§0.1) · `docs/work/owner-alert-channel/design.md`(#88 §3.2 목표 표·§9 연결 경로) ·
   `docs/work/owner-ops-alerts/*`(#91 공용 기반) · `.ai/rules/{architecture,batch,testing,naming}.md` · `.claude/skills/module-layout`
-- 상태: DRAFT (④)
+- 상태: DRAFT (⑥ R1 반영 — §15)
 
 ## 0. 요약
 
@@ -94,7 +94,9 @@ batch 가 이미 수집·집계하는 김프 데이터(Redis current·DB/Redis �
 - 상태 key(§5)와 eventKey(§8.1)는 모두 pair key 를 담는다. `batch.market` 을 바꾸면 새 pair 의 상태 행이 새로 생기고 이전 행은 남는다(runbook 정리 SQL).
 - 현재 김프: `PremiumReadPort.findLatest(pair)` 결과의 `pair` 가 요청 pair 와 다르면 **없음**으로 본다(다른 pair 로 보정하지 않음).
 - 집계: `PremiumAggregationReadPort.read` 구현이 돌려줄 snapshot 중 하나라도 `pair` 가 요청과 다르면 `IllegalStateException("premium aggregation pair mismatch")`
-  (값 없는 메시지)를 던진다. Job 은 그 원천을 "모름"으로 본다(§7.3). 부분 결과를 쓰지 않는다.
+  (값 없는 메시지)를 던진다. Job 은 그 원천을 "모름"으로 본다(§7.4). 부분 결과를 쓰지 않는다.
+  **이 검사는 방어적 이중 확인이다** — 현재 두 원천은 모두 요청 pair 로 snapshot 을 만든다(`PremiumAggregationQueryRepository.kt:48-56` 은 pair 로 WHERE 후 `pair = pair`,
+  `PremiumAggregationCacheReader.kt:45-82` 는 pair 의 key 를 읽고 `pair = pair`). 실제 경로에서는 일어나지 않으며 검증은 mock 으로만 한다(dod AC10(c)).
 
 ## 3. 김프 데이터 읽기 경로 (K1)
 
@@ -120,7 +122,10 @@ cache/DB 병합 규칙(Redis 부분 cache 가 DB bucket 을 가리지 않음·�
 class JpaPremiumRepositoryAdapter(/* 생성자 무변경 */) : PremiumRepository, PremiumAggregationReadPort {
     /**
      * [window] 의 `[from, to)` 를 [unit] interval("1m"/"1h"/"1d")로 [findAggregationByPair] 에 위임한다.
-     * 결과 snapshot 의 pair 가 하나라도 [pair] 와 다르면 IllegalStateException("premium aggregation pair mismatch").
+     * [window] 의 zone 은 쓰지 않는다 — DAY 의 날짜 변환은 infra `AggregationInfrastructureProperties.aggregationZone`
+     * (= `aggregation.zone`)이 한다. 호출자는 같은 `aggregation.zone` 으로 창을 만들어야 한다.
+     * 결과 snapshot 의 pair 가 하나라도 [pair] 와 다르면 IllegalStateException("premium aggregation pair mismatch")
+     * — 방어적 이중 확인(현재 원천은 요청 pair 로만 snapshot 을 만든다, §2.2).
      */
     override fun read(pair: MarketPair, window: AggregationWindow, unit: AggregationUnit): List<PremiumAggregationSnapshot>
 }
@@ -136,6 +141,8 @@ class JpaPremiumRepositoryAdapter(/* 생성자 무변경 */) : PremiumRepository
 - DB 는 정본이고 항상 함께 읽힌다(`JpaPremiumRepositoryAdapter.kt:79`) — 회차당 DB 질의 2개(분·시간) + 하루 1개(일).
 - `DAY` 는 DB 질의가 `from`/`to` 를 `AggregationInfrastructureProperties.aggregationZone` 의 날짜로 바꾼다(`PremiumAggregationQueryRepository.kt:33-42`). Job 의 zone 은
   `aggregation.zone` 이고 같은 값이다(Task 0 (g6) 확인). API 도 같은 auto-configuration 이라 bean 이 interface 를 하나 더 갖지만 소비자가 없다.
+- batch 에서의 bean 존재: `CommonJpaConfiguration`(`CommonInfrastructureAutoConfiguration.kt:85-98`)이 `@ConditionalOnBean(EntityManagerFactory)` 로 `JpaPremiumRepositoryAdapter` 를 등록하고,
+  batch 는 `jpa.yml` 을 import(`application.yml:9`)하며 infra:common → modules:jpa 로 EntityManagerFactory 가 있다(오케스트레이터 확인 — 로컬 batch 기동 실측).
 
 ## 4. 시간·범위 계약과 판정 입력
 
@@ -173,7 +180,7 @@ data class MarketWindows(
   쓰므로 분이 바뀐 직후 수 초 동안 직전 분 bucket 이 없을 수 있다 — 기준이 최대 약 2분 덜 최신이다(한계로 runbook 에 적는다).
 - 24h 의 시 bucket 은 `floorHour − 1h` 에서 끝나므로 시 집계 cron(`5 0 * * * *`)의 지연과 무관하게 항상 이미 쓰인 bucket 이다.
 - 전일 창: `previousDay.from = today.minusDays(1).atStartOfDay(zone)`, `to = today.atStartOfDay(zone)` (`today = now.atZone(zone).toLocalDate()`). 일 집계(`10 0 0 * * *`)의
-  `AggregationWindowPolicy.previous` 와 같은 창이다.
+  `AggregationWindowPolicy.previous` 와 같은 창이다. 요약 시각 하한을 01시로 둔 이유(§7.1 `summaryHour` 1..23): 00:00:10 일 집계 전에 요약이 확정되지 않게 한다.
 
 ### 4.2 근거 충분성 (K2, 전문)
 
@@ -202,7 +209,7 @@ object MarketEvidence {
 |---|---|---|
 | 현재 김프 | null, pair 다름, 나이 > 10s, 읽기 예외 | 급변·돌파·신고가 모두 판정 안 함(상태 무변경) |
 | 분 bucket | 읽기 예외, pair 불일치 | 급변·1h·24h 판정 안 함 |
-| 시 bucket | 읽기 예외, pair 불일치 | 24h 판정 안 함 (1h 는 판정) |
+| 시 bucket | 읽기 예외, pair 불일치 (`hours == null`) | **24h 충분 = false** — 24h 판정 안 함, 1h 는 판정 |
 | 창별 bucket 수 | 기대 수의 80% 미만(급변 10 → 8, 1h 60 → 48, 24h 시 23 → 19) | 그 창만 판정 안 함 |
 | 요약 입력(일 bucket·환율·실계정) | 읽기 **예외** | 그 회차 요약 보류(다음 회차 재시도). 값이 **없음**(빈 결과·null)은 "없음"으로 표시하고 보낸다 |
 
@@ -331,8 +338,9 @@ CREATE TABLE account_pnl_latest (
 ```
 
 - 순수 `CREATE TABLE` 두 개 — `verifyMigrations` 금지 목록과 무관, 구 binary 호환(모르는 테이블), 롤백 SQL 없음. V12 등 기존 migration 무변경.
-- 열 타입 근거: 김프 `DECIMAL(10,4)` = `premium_*` 집계와 같음(`PremiumPolicy.STORAGE_SCALE` 4). `net_percent DECIMAL(12,2)` = `swing_baseline_percent` 와 같음(`AccountNetPnl` 의 `netPercent` scale 2).
-  `net_krw` 는 원 단위 HALF_UP 반올림 값(표시와 같다).
+- 열 타입 근거: 김프 `DECIMAL(10,4)` = `premium_*` 집계와 같음(`PremiumPolicy.STORAGE_SCALE` 4). 그래서 기준선 설정값은 **scale ≤ 4·절댓값 < 10^6** 만 받는다(§7.1) — 그보다 정밀하면
+  저장 시 반올림돼 `sameAs` 가 영원히 false 가 되고(H2 무한 재설정), 10^6 이상은 저장 오류다. `net_percent DECIMAL(12,2)` = `swing_baseline_percent` 와 같음(`AccountNetPnl` 의 `netPercent` scale 2).
+  `net_krw` 는 원 단위 HALF_UP 반올림 값(표시와 같다). `BOOLEAN` 은 MySQL 에서 `tinyint(1)` 이다.
 - batch fixture `apps/batch/src/integrationTest/resources/batch-schema.sql` 끝에 같은 DDL 을 `CREATE TABLE IF NOT EXISTS` 로 같은 테이블 옵션과 함께 추가한다(주석 `-- V22 와 같은 스키마`).
 
 ### 5.4 컬럼 ↔ Domain
@@ -360,9 +368,9 @@ CREATE TABLE account_pnl_latest (
 ### 6.1 왜 별도 테이블인가
 
 U1 의 "PnL 모니터가 상태에 저장"을 `account_pnl_monitor_state` 열 추가가 아니라 별도 단일 행 테이블로 구현한다.
-(1) `AccountPnlMonitorState` 는 동결 테스트(R3 — `domain/src/test/.../accountpnl/**`, `apps/batch/src/test/.../application/**`)가 생성자·`equals` 로 고정한 값이다.
-필드를 더하면 Computed 회차에 저장 상태가 달라져 기존 단언이 깨진다. (2) `AccountPnlAlertStore.save` 는 version 조건부라 충돌 회차에 최신값까지 버려진다 — 최신값은
-알림 정확성과 무관한 read model 이다. (3) `JdbcAccountPnlAlertStore` SQL·동결 `JdbcAccountPnlAlertStoreIntegrationTest` 를 건드리지 않는다.
+(1) `AccountPnlMonitorState` 는 동결 테스트 4개(`AccountAlertStateTest`·`AccountPnlMonitorJobTest`·`AccountPnlMonitorJobOwnerAlertTest`·`JdbcAccountPnlAlertStoreIntegrationTest`)가
+생성자·`equals` 로 고정한 값이다(오케스트레이터 확인). 필드를 더하면 Computed 회차에 저장 상태가 달라져 기존 단언이 깨진다. (2) `AccountPnlAlertStore.save` 는 version 조건부라 충돌 회차에
+최신값까지 버려진다 — 최신값은 알림 정확성과 무관한 read model 이다. (3) `JdbcAccountPnlAlertStore` SQL·동결 통합 테스트를 건드리지 않는다.
 대가: 상태 저장과 최신값 기록이 한 트랜잭션이 아니다 — 최신값은 상태 저장 **성공 뒤**에만 쓰므로 "저장되지 않은 회차의 값"이 요약에 실리지 않는다.
 
 ### 6.2 Domain (전문, `io.premiumspread.domain.accountpnl`)
@@ -416,7 +424,7 @@ last-write-wins 인 이유: 쓰는 쪽은 lock 을 잡은 PnL 모니터 하나�
 | 관측 | 기록 |
 |---|---|
 | `PnlObservation.Computed(pnl)` | `AccountPnlLatest.computed(pnl)` |
-| `PnlObservation.NoPosition` | `AccountPnlLatest.noPosition(completedAt)` (관측 완료 시각 — private `Observed` 에 `completedAt: Instant?` 를 더한다) |
+| `PnlObservation.NoPosition` | `AccountPnlLatest.noPosition(observed.round.observedAt)` — 성공 회차의 `AccountRound.observedAt` 은 관측 완료 시각 `completedAt` 이다(`AccountPnlMonitorJob.kt:169,173,191-197`). `Observed` 는 바꾸지 않는다 |
 | `PnlObservation.Failed` | 기록 안 함 (이전 값이 늙어 요약에서 "없음"이 된다) |
 | save false·save 예외·저장 전 취소 | 기록 안 함 (기존 분기 그대로) |
 
@@ -448,11 +456,18 @@ data class MarketAlertSettings(
     val summaryPnlMaxAge: Duration = Duration.ofMinutes(10),
 ) {
     init {
-        require(swingWindow >= Duration.ofMinutes(1) && swingWindow <= Duration.ofMinutes(60) && swingWindow.toSecondsPart() == 0) {
+        require(swingWindow >= Duration.ofMinutes(1) && swingWindow <= Duration.ofMinutes(60) && swingWindow.toSecondsPart() == 0 &&
+            swingWindow.toNanosPart() == 0) {
             "swingWindow must be whole minutes between 1m and 60m."
         }
         require(swingThreshold.signum() > 0) { "swingThreshold must be positive." }
         require(swingCooldown > Duration.ZERO) { "swingCooldown must be positive." }
+        // owner_market_alert_state 의 DECIMAL(10,4) 에 그대로 저장되는 값만 받는다 (§5.3 — 반올림되면 sameAs 가 영원히 false)
+        listOfNotNull(upperThreshold, lowerThreshold, thresholdHysteresis).forEach {
+            require(it.scale() <= MAX_THRESHOLD_SCALE && it.abs() < MAX_THRESHOLD_ABS) {
+                "threshold values must have at most 4 decimal places and an absolute value below 1000000."
+            }
+        }
         require(thresholdHysteresis.signum() >= 0) { "thresholdHysteresis must not be negative." }
         require(upperThreshold == null || lowerThreshold == null ||
             upperThreshold - lowerThreshold > thresholdHysteresis.multiply(BigDecimal(2))) {
@@ -461,22 +476,31 @@ data class MarketAlertSettings(
         require(extremeMinDelta.signum() > 0) { "extremeMinDelta must be positive." }
         require(extremeHourCooldown > Duration.ZERO) { "extremeHourCooldown must be positive." }
         require(extremeDayCooldown > Duration.ZERO) { "extremeDayCooldown must be positive." }
-        require(summaryHour in 0..23) { "summaryHour must be between 0 and 23." }
+        require(summaryHour in 1..23) { "summaryHour must be between 1 and 23." }
         require(summaryPnlMaxAge > Duration.ZERO) { "summaryPnlMaxAge must be positive." }
     }
 
     /** upper·lower 가 모두 null 이면 null(기준선 꺼짐). */
     val thresholdBaseline: ThresholdBaseline?
+
+    companion object {
+        const val MAX_THRESHOLD_SCALE = 4
+        val MAX_THRESHOLD_ABS: BigDecimal = BigDecimal("1000000")
+    }
 }
 ```
 
-`toString` = 임계값·기간만(비밀 없음).
+- `summaryHour` 는 1..23 이다 — 0 이면 일 집계 cron(`10 0 0 * * *`)이 전일 bucket 을 쓰기 전(00:00:00~00:00:10)에 요약이 "전일 집계 없음"으로 확정 발송된다(S4 는 재시도하지 않음).
+- `toString` = 임계값·기간만(비밀 없음).
 
 ### 7.2 정책과 상태 전이표 (전문)
 
 공통: 모든 정책은 순수 함수다(`object`). 입력 상태는 `load` 결과 또는 `MarketAlertState.initial`. 돌려주는 `next` 의 `version` 은 입력 `version`(저장 조건),
 `alertKind`·`signalKey` 는 입력 그대로. 상태가 바뀌지 않으면 `next` 를 내지 않는다(쓰지 않는다). 쿨다운 경과 = `lastNotifiedAt == null ∨ now − lastNotifiedAt ≥ cooldown`
 (경계 **이상** 이면 다시 알림; `lastNotifiedAt` 이 미래면 경과 안 함).
+
+**상태 key 검사 (모든 정책 공통 규칙).** 각 정책은 입력 상태의 `signalKey` 가 `MarketKeys.*(MarketKeys.pairKey(pair), …)` 로 만든 기대 key 와 같은지 확인하고, 다르면
+`IllegalArgumentException("market state key mismatch.")` 을 던진다. `pair` = 급변·기준선·신고가는 `observation.pair`, 요약은 `decide` 의 `pair` 인자. `due` 는 검사하지 않는다(판정만).
 
 ```kotlin
 enum class MarketDirection { UP, DOWN }
@@ -510,10 +534,14 @@ sealed interface MarketNotice {
         val previous: BigDecimal, val current: BigDecimal, val currentObservedAt: Instant,
     ) : MarketNotice
 
-    /** kind = DAILY_SUMMARY. date = 대상일(전일). day null = 전일 집계 없음, fx null = 현재 환율 없음. */
+    /**
+     * kind = DAILY_SUMMARY. date = 대상일(전일). day null = 전일 집계 없음, fx null = 현재 환율 없음.
+     * fxBase·fxQuote = 환율 통화쌍 표기 재료(batch.market fx-base/fx-quote) — fx 가 null 이어도 라벨을 낸다.
+     */
     data class DailySummary(
         override val pair: MarketPair, override val at: Instant,
-        val date: LocalDate, val day: PremiumAggregationSnapshot?, val fx: ExchangeRateSnapshot?,
+        val date: LocalDate, val day: PremiumAggregationSnapshot?,
+        val fxBase: Currency, val fxQuote: Currency, val fx: ExchangeRateSnapshot?,
         val pnl: SummaryPnl,
     ) : MarketNotice
 }
@@ -529,8 +557,12 @@ sealed interface SummaryPnl {
 }
 
 /** 정책 결과. next = 쓸 상태(빈 목록 = 쓰지 않음). */
-data class MarketDecision(val next: List<MarketAlertState>, val notices: List<MarketNotice>)
+data class MarketDecision(val next: List<MarketAlertState>, val notices: List<MarketNotice>) {
+    companion object { val NONE: MarketDecision = MarketDecision(emptyList(), emptyList()) }
+}
 ```
+
+`Currency` = `io.premiumspread.domain.ticker.Currency`, `ExchangeRateSnapshot` = `io.premiumspread.domain.exchangerate.ExchangeRateSnapshot`.
 
 #### (A) 급변 `PremiumSwingPolicy.decide(observation, up, down, settings, now): MarketDecision`
 
@@ -549,7 +581,7 @@ data class MarketDecision(val next: List<MarketAlertState>, val notices: List<Ma
 
 #### (B) 기준선 `PremiumThresholdPolicy.decide(observation, state, settings, now): MarketDecision`
 
-`settings.thresholdBaseline == null` 이면 호출하지 않는다(H0). `U`·`L`·`h` = baseline 의 upper·lower·hysteresis. `rate` = `current.premiumRate`.
+`settings.thresholdBaseline == null` 이면 호출하지 않는다(H0 — 호출하면 `IllegalArgumentException("threshold is disabled.")`). `U`·`L`·`h` = baseline 의 upper·lower·hysteresis. `rate` = `current.premiumRate`.
 
 `classify(rate, prev)` (위에서부터 먼저 맞는 것):
 
@@ -570,6 +602,7 @@ data class MarketDecision(val next: List<MarketAlertState>, val notices: List<Ma
 
 - 데이터 공백(H1) 동안 구역이 바뀌었으면 데이터가 돌아온 첫 회차에 H4/H5 로 알린다(늦었지만 실제 돌파다).
 - 경계: `rate == U` → ABOVE(이상). ABOVE 에서 `rate == U − h` → BETWEEN(초과가 아니므로 벗어남). BELOW 대칭.
+- H2 가 반복되지 않는 근거: 저장 열이 `DECIMAL(10,4)` 이고 설정값은 scale ≤ 4 만 받으므로(§7.1) 저장·읽기 후에도 `sameAs` 가 참이다.
 
 #### (C) 신고가·신저가 `PremiumExtremePolicy.decide(observation, states: ExtremeStates, settings, now): MarketDecision`
 
@@ -578,7 +611,7 @@ data class ExtremeStates(val hourHigh: MarketAlertState, val hourLow: MarketAler
 ```
 
 - 1h 기준: `minutes` 중 `observedAt ≥ floorMinute(now) − 60m`. 충분 = `sufficient(n, 60)`. `H1h = max(high)`, `L1h = min(low)`.
-- 24h 기준: `minutes` 전체 ∪ `hours` 전체. 충분 = `sufficient(분 수, 60 + minuteOfHour(now)) ∧ sufficient(시 수, 23)`. `H24 = max(high)`, `L24 = min(low)`.
+- 24h 기준: `minutes` 전체 ∪ `hours` 전체. 충분 = `hours != null ∧ sufficient(분 수, 60 + minuteOfHour(now)) ∧ sufficient(시 수, 23)` — **`hours == null` 이면 24h 충분 = false**. `H24 = max(high)`, `L24 = min(low)`.
 - 신고가 조건(창 W): `current − H_W ≥ extremeMinDelta`. 신저가: `L_W − current ≥ extremeMinDelta`. 고가·저가 bucket 을 쓴다 — 튀는 값은 기준을 높여 알림을 줄이는 쪽이다.
 
 방향마다(HIGH 기준, LOW 대칭):
@@ -592,7 +625,7 @@ data class ExtremeStates(val hourHigh: MarketAlertState, val hourLow: MarketAler
 | E5 | 그 밖 | — | 없음 |
 
 - E2 에서 1h 쿨다운도 찍는 이유: 같은 분 안의 다음 회차(30초 뒤)는 기준에 그 분이 아직 없어 1h 조건이 여전히 참이다 — 24h 직후 1h 가 따라 울리지 않게 한다.
-- 24h 가 근거 부족(¬충분)이면 1h 만 본다 — 24h 신고가가 1h 신고가로 나갈 수 있으나 참인 문장이다.
+- 24h 가 근거 부족(¬충분, `hours == null` 포함)이면 1h 만 본다 — 24h 신고가가 1h 신고가로 나갈 수 있으나 참인 문장이다.
 - 신고가 조건과 신저가 조건은 동시에 참일 수 없다(`H ≥ L`, `extremeMinDelta > 0`).
 
 #### (D) 일일 요약 `DailySummaryPolicy`
@@ -607,10 +640,21 @@ object DailySummaryPolicy {
         state: MarketAlertState, pair: MarketPair, input: DailySummaryInput,
         settings: MarketAlertSettings, now: Instant, zone: ZoneId,
     ): MarketDecision
+
+    fun summaryPnl(pnl: AccountPnlLatest?, settings: MarketAlertSettings, now: Instant): SummaryPnl
 }
 
-/** 읽기에 성공한 요약 입력. day null = 전일 bucket 없음, fx null = 환율 없음, pnl null = 최신값 행 없음. */
-data class DailySummaryInput(val day: PremiumAggregationSnapshot?, val fx: ExchangeRateSnapshot?, val pnl: AccountPnlLatest?)
+/**
+ * 읽기에 성공한 요약 입력. day null = 전일 bucket 없음, fx null = 환율 없음, pnl null = 최신값 행 없음.
+ * fxBase·fxQuote = Job 이 batchMarket.fxBase·fxQuote 에서 채운다(notice 로 그대로 옮긴다).
+ */
+data class DailySummaryInput(
+    val day: PremiumAggregationSnapshot?,
+    val fxBase: Currency,
+    val fxQuote: Currency,
+    val fx: ExchangeRateSnapshot?,
+    val pnl: AccountPnlLatest?,
+)
 ```
 
 `local = now.atZone(zone)`, `today = local.toLocalDate()`.
@@ -620,9 +664,9 @@ data class DailySummaryInput(val day: PremiumAggregationSnapshot?, val fx: Excha
 | S1 | `local.hour < summaryHour` | — | 없음 (`due` = false) |
 | S2 | `state.summaryDate != null ∧ state.summaryDate ≥ today` | — | 없음 (`due` = false, 시계가 되감겨도 다시 보내지 않음) |
 | S3 | 그 밖 (`due` = true) + 입력 읽기 예외 | — | 없음 (Job 이 `decide` 를 부르지 않는다 — 다음 회차 재시도) |
-| S4 | `due` = true + 입력 읽기 성공 | `summaryDate = today`, `lastNotifiedAt = now` | `DailySummary(date = today − 1일, …)` |
+| S4 | `due` = true + 입력 읽기 성공 | `summaryDate = today`, `lastNotifiedAt = now` | `DailySummary(date = today − 1일, fxBase/fxQuote = input 값, …)` |
 
-`SummaryPnl` 결정: `pnl == null` → `Unavailable`; `now − pnl.calculatedAt > summaryPnlMaxAge` → `Unavailable`(정확히 maxAge 는 유효); `pnl.position` false → `NoPosition(calculatedAt)`;
+`SummaryPnl` 결정(`summaryPnl`): `pnl == null` → `Unavailable`; `now − pnl.calculatedAt > summaryPnlMaxAge` → `Unavailable`(정확히 maxAge 는 유효); `pnl.position` false → `NoPosition(calculatedAt)`;
 그 밖 → `Value(netPercent, netKrw, calculatedAt)`. `calculatedAt` 이 미래면 나이 0.
 
 - 첫 배포·장기 정지 후 기동: 오늘 `summaryHour` 이후면 그 날 요약을 즉시 1회 보낸다(그날 것만 — 지난 날짜는 소급하지 않는다).
@@ -670,7 +714,7 @@ class OwnerMarketSignalJob(
    `minutes = aggregations.read(pair, windows.minutes, MINUTE)`, `hours = aggregations.read(pair, windows.hours, HOUR)`. `windows = MarketWindows.of(now, zone)`.
 5. 정책: 급변 → 기준선(켜졌을 때) → 신고가 → 요약. 요약은 `DailySummaryPolicy.due` 가 참일 때만 입력을 읽는다:
    `day = aggregations.read(pair, windows.previousDay, DAY).firstOrNull { it.observedAt == windows.previousDay.from }`, `fx = fx.findLatest(batchMarket.fxBase, batchMarket.fxQuote)`,
-   `pnl = pnlLatest.find()`. 셋 중 하나라도 예외(취소 아님)면 WARN 후 요약만 보류(S3).
+   `pnl = pnlLatest.find()` → `DailySummaryInput(day, batchMarket.fxBase, batchMarket.fxQuote, fx, pnl)`. 셋 중 하나라도 예외(취소 아님)면 WARN 후 요약만 보류(S3).
 6. notice 마다 `OwnerAlertRows.expand(OwnerMarketAlertContent.mail(notice, settings, zone), routing.resolve(notice.kind)) { OwnerMarketAlertContent.discord(notice, settings, zone) }`.
 7. `next` 가 모두 비면 `Success`(쓰지 않음).
 8. interrupt 플래그 → `Skipped("cancelled")`.
@@ -698,10 +742,10 @@ class OwnerMarketSignalJob(
 | `OWNER_MARKET_SIGNAL` | `owner_market_signal` | `lock:owner-market:signal` | 20s | 10s | fixed-rate 30s | `OWNER_MARKET_SIGNAL_LOCK_KEY`/`_LEASE`/`_TIMEOUT`, `OWNER_MARKET_SIGNAL_FIXED_RATE` |
 
 - lease 20s > timeout 10s(`JobExecutor` 계약). 회차 비용: Redis current 1 + 분·시 읽기(각 Redis ZSet range + DB 질의, ≤ 119·23 행) + 상태 SELECT 1 + 변화 있을 때 트랜잭션 1. 10s 면 충분하다.
-- 세 곳에 행을 추가한다: `DefaultJobConfigProvider`(`application/common/JobConfig.kt`) `when`, `BatchJobProperties` 필드·`when`, yml `batch.jobs.owner-market-signal`. 주기는
-  `BatchSchedulingProperties.ownerMarketSignal: FixedRate = FixedRate(Duration.ofSeconds(30))` + yml `batch.scheduling.owner-market-signal.fixed-rate`.
+- 행을 추가하는 곳: `DefaultJobConfigProvider`(`application/common/JobConfig.kt:20` `when`), `BatchJobProperties`(필드·`:42` `when`) — JobId 전수 `when` 은 이 두 곳뿐(오케스트레이터 확인) —
+  그리고 yml `batch.jobs.owner-market-signal`. 주기는 `BatchSchedulingProperties.ownerMarketSignal: FixedRate = FixedRate(Duration.ofSeconds(30))` + yml `batch.scheduling.owner-market-signal.fixed-rate`.
 - **#91 편입.** `OwnerOpsSignalJob.MONITORED_JOBS = JobId.entries − {OWNER_OPS_SIGNAL, OWNER_ALERT_DELIVERY}` 이므로 `OWNER_MARKET_SIGNAL` 은 자동으로 감시 대상이 된다
-  (연속 Failure 3회 ∧ 5분 → OPS `JOB_CONSECUTIVE_FAILURES`, 신호 key `job-failures.owner_market_signal`). 의도된 동작이다 — 시장 Job 의 실패는 운영 경로로 알리고 자기 경로로
+  (연속 Failure 3회 ∧ 5분 → OPS `JOB_CONSECUTIVE_FAILURES`, 신호 key `job-failures.owner_market_signal` — `OpsSignal.kt:34` 의 `"job-failures.${jobId.tag.lowercase()}"`). 의도된 동작이다 — 시장 Job 의 실패는 운영 경로로 알리고 자기 경로로
   알리지 않는다(순환 없음). `Skipped`(충돌·취소)는 세지 않는다. 기존 #91 테스트는 `MONITORED_JOBS` 를 참조하므로 무수정 통과가 기대값이다(Task 0 (g4) 확인, 깨지면 멈추고 보고).
 - 메트릭: 기존 `batch.job.run` 의 job tag 에 `owner_market_signal` 이 붙는 것뿐(bounded enum).
 
@@ -743,9 +787,10 @@ class OwnerMarketSignalScheduler(
 
 - `{p}` = `{symbol} {koreaExchange.name}/{foreignExchange.name}` 예 `BTC BITHUMB/BINANCE`.
 - `{r(x)}` = `AccountPnlFormat.percent(x)` 예 `+2.35%`·`-0.40%`. `{pp(x)}` = `AccountPnlFormat.percentPoint(x)` 예 `+0.52%p`. `{v(x)}` = `AccountPnlFormat.plain(x)` 예 `0.5`.
-- `{t(x)}` = `AccountPnlFormat.time(x, zone)`(메일), Discord 는 `{st(x)}` = `AccountPnlFormat.shortTime(x, zone)`. `{d(x)}` = #91 `OwnerOpsAlertContent` 의 임계값 표기 규칙(시간/분/초).
-- `{fx}` = `{base.code}/{quote.code}` 예 `USD/KRW`. `{rate(x)}` = `AccountPnlFormat.format("#,##0.00", x)` 예 `1,385.20`.
-- `AccountPnlFormat` 은 domain 모듈 `internal object` — `ownermarket` 에서 그대로 쓴다. `{d}` 는 `ownermarket` 안에 같은 규칙의 private 함수로 둔다(ops 의 private 함수를 공유하지 않는다).
+- `{t(x)}` = `AccountPnlFormat.time(x, zone)`(메일), Discord 는 `{st(x)}` = `AccountPnlFormat.shortTime(x, zone)`.
+- `{d(x)}` = `OwnerOpsAlertContent.threshold(x)` 를 **그대로 재사용**한다(`internal fun`, `OwnerOpsAlertContent.kt:115` — domain 모듈 안에서 공유 가능). 시간/분/초 표기(`30분`·`2시간`·`90초`).
+- `{fx}` = `{notice.fxBase.code}/{notice.fxQuote.code}` 예 `USD/KRW` — `DailySummary` 의 `fxBase`·`fxQuote` 필드에서 만들므로 `fx == null` 이어도 라벨이 있다. `{rate(x)}` = `AccountPnlFormat.format("#,##0.00", x)` 예 `1,385.20`.
+- `AccountPnlFormat` 은 domain 모듈 `internal object` — `ownermarket` 에서 그대로 쓴다.
 
 ### 8.3 제목 (메일 subject = `[시장] ` + 핵심, Discord title = 이모지 + 핵심)
 
@@ -803,9 +848,11 @@ class OwnerMarketSignalScheduler(
 |---|---|
 | `day == null` | 2·3번째 줄 대신 `김프: 전일 집계 없음` 한 줄 |
 | `day.fxRate == null` | `환율({fx}) 전일 마감: 없음` |
-| `fx == null` | `환율({fx}) 현재: 없음` |
+| `fx == null` | `환율({fx}) 현재: 없음` (`{fx}` 는 `fxBase`/`fxQuote` 에서 나오므로 예 `환율(USD/KRW) 현재: 없음`) |
 | `SummaryPnl.NoPosition` | `실계정 순수익률: 포지션 없음 · 계산 {t(calculatedAt)}` |
 | `SummaryPnl.Unavailable` | `실계정 순수익률: 없음 (PnL 모니터 꺼짐 또는 최근 {d(summaryPnlMaxAge)} 안에 계산 없음)` |
+
+"전일 마감" 근거: 집계 `fxRate` 는 bucket 의 마지막 값이다(`PremiumCacheOperations.kt:264,294`, 오케스트레이터 확인).
 
 ```kotlin
 object OwnerMarketAlertContent {
@@ -825,10 +872,28 @@ object OwnerMarketAlertContent {
 
 | 담는다 | 담지 않는다 |
 |---|---|
-| pair(심볼·거래소 이름), 김프 수치(현재·기준·OHLC·평균), 기준선·임계값·쿨다운, 환율(전일 마감·현재·관측 시각), **실계정 순수익률 %와 순손익 원(일일 요약만)**과 계산 시각, 시각, runbook 경로 | webhook URL·token, 수신 주소, API key·secret, 예외 메시지·클래스, 실계정 수량·평균가·청산가·수수료·펀딩·포지션 방향, 김프 원천 가격(빗썸·바이낸스 가격) |
+| pair(심볼·거래소 이름), 김프 수치(현재·기준·OHLC·평균), 기준선·임계값·쿨다운, 환율 통화쌍·환율(전일 마감·현재·관측 시각), **실계정 순수익률 %와 순손익 원(일일 요약만)**과 계산 시각, 시각, runbook 경로 | webhook URL·token, 수신 주소, API key·secret, 예외 메시지·클래스, 실계정 수량·평균가·청산가·수수료·펀딩·포지션 방향, 김프 원천 가격(빗썸·바이낸스 가격) |
 
 - **실계정 금액 노출 범위.** 순수익률 %·순손익 원 두 값만, 일일 요약에만, MARKET 채널(또는 fallback 채널)과 메일에. 이 값은 이미 PNL 채널 정시 보고에 나가는 값이다.
   MARKET 채널을 다른 사람과 공유한다면 노출이므로 ⑦ owner 확인 항목(D1)이다. 로그에는 남기지 않는다(`AccountPnlLatest`·`SummaryPnl.Value` 의 `toString` 이 금액을 뺀다).
+
+### 8.6 `data class` 자동 `toString` 이 노출하는 프로퍼티 (전문)
+
+| 타입 | 노출 |
+|---|---|
+| `MarketAlertState` | signalKey·alertKind·lastNotifiedAt·zone·baseline(upper·lower·hysteresis %)·summaryDate·version |
+| `ThresholdBaseline` | upper·lower·hysteresis |
+| `MarketAlertSettings`·`OwnerMarketAlertProperties` | 임계값·기간·summaryHour (비밀 없음) |
+| `MarketWindows`·`MarketObservation` | 창 시각·pair·김프 snapshot(김프·가격·환율 — 공개 시세) |
+| `MarketNotice.Swing`·`ThresholdCrossed`·`NewExtreme` | pair·시각·방향/창/선·김프 값 |
+| `MarketNotice.DailySummary` | pair·at·date·day snapshot·**fxBase·fxQuote**·fx snapshot·pnl(아래 마스킹 `toString`) |
+| `DailySummaryInput` | day·fxBase·fxQuote·fx·pnl(마스킹) |
+| `SummaryPnl.Value` | **override** — calculatedAt 만 |
+| `SummaryPnl.NoPosition` | calculatedAt |
+| `AccountPnlLatest` | **override** — position·calculatedAt 만 |
+| `ExtremeStates`·`MarketDecision` | 위 타입들의 `toString` |
+
+어느 타입도 webhook·주소·key 를 프로퍼티로 갖지 않는다. 그래도 Job 로그는 객체를 통째로 넣지 않는다(§7.4).
 
 ## 9. 설정·기동 조건
 
@@ -888,6 +953,7 @@ batch (yml):
 env 전부: `OWNER_ALERT_MARKET_ENABLED`, `OWNER_ALERT_MARKET_SWING_WINDOW`, `_SWING_THRESHOLD`, `_SWING_COOLDOWN`, `_UPPER_THRESHOLD`, `_LOWER_THRESHOLD`, `_THRESHOLD_HYSTERESIS`,
 `_EXTREME_MIN_DELTA`, `_EXTREME_HOUR_COOLDOWN`, `_EXTREME_DAY_COOLDOWN`, `_SUMMARY_HOUR`, `_SUMMARY_PNL_MAX_AGE`(`OWNER_ALERT_MARKET_` 접두 12개), `OWNER_MARKET_SIGNAL_FIXED_RATE`,
 `OWNER_MARKET_SIGNAL_LOCK_KEY`·`_LEASE`·`_TIMEOUT`, `OWNER_ALERT_{PREMIUM_SWING|PREMIUM_THRESHOLD_CROSSED|PREMIUM_NEW_EXTREME|DAILY_SUMMARY}_{EMAIL|DISCORD|PUSH}`(12개). 채널 env 는 #88 그대로.
+기준선 env 는 소수 넷째 자리까지(`3.1234` 가능, `3.12345` 는 기동 실패), `OWNER_ALERT_MARKET_SUMMARY_HOUR` 는 1~23.
 
 `OwnerMarketAlertProperties` (apps:batch `config`, 전문):
 
@@ -910,8 +976,8 @@ data class OwnerMarketAlertProperties(
 }
 ```
 
-- `enabled` 는 조건만 읽는다(#91 과 같은 이유). 빈 `upper-threshold` 는 `BigDecimal?` null 로 바인딩된다(`[ASSUMPTION]` A5 — Task 12 바인딩 테스트가 고정).
-- 잘못된 값은 `MarketAlertSettings` init 메시지로 기동 실패. infra `OwnerAlertProperties` 는 `owner-alert.market` 을 읽지 않는다(#91 A4 와 같은 unknown field 무시 — Task 12 확인).
+- `enabled` 는 조건만 읽는다(#91 과 같은 이유). 빈 `upper-threshold` 는 `BigDecimal?` null 로 바인딩된다(`[ASSUMPTION]` A5 — Task 14 바인딩 테스트가 고정).
+- 잘못된 값은 `MarketAlertSettings` init 메시지로 기동 실패. infra `OwnerAlertProperties` 는 `owner-alert.market` 을 읽지 않는다(#91 A4 와 같은 unknown field 무시 — Task 14 확인).
 
 ### 9.2 기동 판정
 
@@ -975,7 +1041,7 @@ class OwnerMarketAlertConfiguration {
 |---|---|
 | Facade 이름·주입 | **N/A** — batch 전용, REST 없음. 단일 진입 `OwnerMarketSignalScheduler → OwnerMarketSignalJob.run()` |
 | Domain port · 구현 모듈 | 신규 `OwnerMarketAlertStore` ← infra:common `JdbcOwnerMarketAlertStore`; 신규 `AccountPnlLatestStore` ← infra:common `JdbcAccountPnlLatestStore`; 기존(구현 없던) `PremiumAggregationReadPort` ← infra:common `JpaPremiumRepositoryAdapter`. 재사용 `PremiumReadPort`·`FxRateReadPort`(infra:batch), `BatchMarketProvider`, `OwnerAlertRouting`. 두 신규 port 는 Application 이 JDBC 를 몰라야 해서 port 다 |
-| MarketPair identity | §2.2 — pair key 가 상태 key·eventKey 에 있다. current pair 불일치 = 없음, 집계 pair 불일치 = 예외(모름). 보정 없음 |
+| MarketPair identity | §2.2 — pair key 가 상태 key·eventKey 에 있다. current pair 불일치 = 없음, 집계 pair 불일치 = 예외(모름, 방어적 이중 확인). 보정 없음 |
 | 시간·범위 | §4.1 — `Instant` + 주입 Clock, 분·시 UTC, 일 = `aggregation.zone` `[전일 00:00, 당일 00:00)`, 모든 창 `[from,to)`, 09:00 은 회차 안 판정 |
 | DB·cache 순서 | §10 — DB-first 한 트랜잭션, cache 쓰기 없음 |
 | Flyway | 필요. V22(테이블 2개, §5.3 전문), fixture 동기화(`IF NOT EXISTS`). 번호는 Task 0 이 `ls … \| sort -V \| tail -1` + 1 로 확정. 롤백 SQL 없음 |
@@ -989,19 +1055,19 @@ class OwnerMarketAlertConfiguration {
 
 | 계층 | 무엇을 | 어디서 |
 |---|---|---|
-| Domain | enum 4종 경로·key, pair key 규칙, 설정 기본값·검증, 상태 불변식, 창 계산(분·시·전일 KST), 근거 충분성 80% 경계, 정책 전이표 W·H·E·S 전 행과 경계값(0.5%p 정확히, 쿨다운 정확히, `rate == U`, `U − h`, 09:00:00 vs 08:59:59, maxAge 정확히), 렌더러 golden·eventKey·금지 문자열, `AccountPnlLatest` 불변식·`toString` | `domain` unit (고정 `Instant`, `ZoneId.of("Asia/Seoul")`) |
+| Domain | enum 4종 경로·key, pair key 규칙, 설정 기본값·검증(기준선 scale 4·10^6, summaryHour 1..23), 상태 불변식, 창 계산(분·시·전일 KST), 근거 충분성 80% 경계, 정책 전이표 W·H·E·S 전 행과 경계값(0.5%p 정확히, 쿨다운 정확히, `rate == U`, `U − h`, 09:00:00 vs 08:59:59, maxAge 정확히), 상태 key 검사, 렌더러 golden·eventKey·금지 문자열, `AccountPnlLatest` 불변식·`toString` | `domain` unit (고정 `Instant`, `ZoneId.of("Asia/Seoul")`) |
 | adapter | V22 두 경로(빈 DB, V21→V22)·CHECK, `JdbcOwnerMarketAlertStore` round-trip·충돌 롤백·행만/상태만·중복 무시·검증·claim 호환, `JdbcAccountPnlLatestStore` upsert·CHECK, auto-configuration bean 해석 | `infrastructure:common` integration (MySQL) |
-| adapter | `PremiumAggregationReadPort` unit→interval·창 위임·pair 불일치 예외 | `infrastructure:common` unit (MockK) |
+| adapter | `PremiumAggregationReadPort` unit→interval·창 위임·병합 규칙 위임·pair 불일치 예외(실제 경로에서 불가능 — **mock 으로만** 검증하는 방어 코드) | `infrastructure:common` unit (MockK) |
 | application | 시장 Job 의 4종 판정·라우팅·JobResult 분기 전부·원천별 모름·취소 재전파·요약 보류/재시도·재시작(새 인스턴스) 무알림; PnL 모니터 최신값 기록 분기 | `apps:batch` unit (fake port·store, `MutableClock`, fake 시각은 clock 상대값) |
 | wiring | 조건(ready ∧ market.enabled), INFO 문구, scheduling off, Properties 바인딩(빈 기준선 = null)·검증 실패, JobConfig 기본값·yml, yml routes key = enum key | `apps:batch` unit (`ApplicationContextRunner`, `OutputCaptureExtension`) |
-| E2E | 실제 MySQL fixture + 실제 store·실제 `PremiumAggregationReadPort`(DB 분·시·일 행) + fake 현재값 + 기록용 sender: 급변 SOUND 행 SENT, 쿨다운, 24h 신고가 SILENT, 요약 메일+Discord, 재시작 후 같은 날 요약 없음 | `apps:batch` integration |
+| E2E | 실제 MySQL fixture + 실제 store·실제 `PremiumAggregationReadPort`(DB 분·시·일 행, Redis 집계 key 사전 삭제) + fake 현재값 + 기록용 sender: 급변 SOUND 행 SENT, 쿨다운(근거 재적재 후 `last_notified_at` 유지), 24h 신고가 SILENT, 요약 메일+Discord, 재시작 후 같은 날 요약 없음 | `apps:batch` integration |
 | 경계 | 모듈·import·관측 cardinality·test isolation | root `architectureTest` (기존 규칙) |
 | 사람 | 실제 Discord market 채널 수신·소리/무음 체감 | T4 owner |
 
 ## 13. 문서 갱신 대상
 
 - **신규** `docs/runbooks/owner-market-alert.md` — 4종 판정 기준·경계·쿨다운·히스테리시스, 근거 부족 시 쉬는 규칙(현재값 10초·bucket 80%), 분 집계 지연 한계(최대 약 2분),
-  기본 라우팅 표와 **Discord 가 꺼져 있으면 4종 모두 메일**(굵게, 급변 메일 끄는 예시), market webhook 미설정 fallback, env 전부(§9.1)와 단위 %p, 기준선 설정 직후 이미 넘어 있으면 알리지 않음,
+  기본 라우팅 표와 **Discord 가 꺼져 있으면 4종 모두 메일**(굵게, 급변 메일 끄는 예시), market webhook 미설정 fallback, env 전부(§9.1)와 단위 %p·기준선 소수 넷째 자리·요약 시각 1~23, 기준선 설정 직후 이미 넘어 있으면 알리지 않음,
   일일 요약 구성·'없음' 조건·실계정 금액 노출 범위, 기동 판정과 INFO, `batch.market` 변경 뒤 남은 상태 행 확인·정리 SQL
   (`SELECT signal_key, alert_kind, last_notified_at, premium_zone, summary_date FROM owner_market_alert_state;` ·
   `DELETE FROM owner_market_alert_state WHERE signal_key LIKE 'market.<pk>.%';`), V22 배포(additive), Discord 수신 체크리스트(dod AC17)
@@ -1022,9 +1088,20 @@ class OwnerMarketAlertConfiguration {
 | A2 | 근거 충분 기준 80%(상수) — 수집 공백이 그 이상이면 해당 창 판정을 쉰다 | ⑦ owner 확인, 운영 관찰 |
 | A3 | 급변 기준은 분봉 **종가**의 저점·고점(튀는 값 억제). 신고가 기준은 분·시봉 고가·저가 | ⑦ owner 확인 |
 | A4 | 기준선 안쪽 복귀(ABOVE/BELOW → BETWEEN)는 알리지 않는다. 기준선 설정·변경 직후 이미 넘어 있으면 알리지 않는다 | ⑦ owner 확인 |
-| A5 | Spring Boot 생성자 바인딩이 빈 문자열 `upper-threshold` 를 `BigDecimal?` null 로 바인딩한다 | Task 12 바인딩 테스트. 실패하면 String 으로 받아 `toSettings` 에서 변환(설계 변경 없이 Properties 내부만) |
-| A6 | batch 컨텍스트에 `JpaPremiumRepositoryAdapter` bean 이 있다(batch 가 `jpa.yml` 을 import — `application.yml:9`) | Task 0 (g5) |
-| A7 | 요약을 09:00 이후 그날 언제든(늦은 기동 포함) 1회 보낸다. 지난 날짜는 소급하지 않는다 | ⑦ owner 확인 |
+| A5 | Spring Boot 생성자 바인딩이 빈 문자열 `upper-threshold` 를 `BigDecimal?` null 로 바인딩한다 | Task 14 바인딩 테스트. 실패하면 String 으로 받아 `toSettings` 에서 변환(설계 변경 없이 Properties 내부만) |
+| A7 | 요약을 `summaryHour`(기본 09시) 이후 그날 언제든(늦은 기동 포함) 1회 보낸다. 지난 날짜는 소급하지 않는다. `summaryHour` 는 1~23 | ⑦ owner 확인 |
+
+### 확인된 사실 (⑥ R1 에서 가정 → 사실)
+
+| # | 사실 | 근거 |
+|---|---|---|
+| A6 | batch 컨텍스트에 `JpaPremiumRepositoryAdapter` bean 이 있다 | `CommonInfrastructureAutoConfiguration.kt:85-98` `CommonJpaConfiguration`(`@ConditionalOnBean(EntityManagerFactory)`) 등록 + batch `application.yml:9` `jpa.yml` import + infra:common → modules:jpa 로 EMF 존재, 로컬 batch 기동 실측(오케스트레이터). Task 0 (g5) 가 두 줄로 재확인 |
+| F1 | JobId 전수 `when` 은 `JobConfig.kt:20`·`BatchJobProperties.kt:42` 두 곳뿐 | 오케스트레이터 확인 |
+| F2 | 운영 신호 Job 신호 key = `"job-failures.${jobId.tag.lowercase()}"` | `OpsSignal.kt:34` |
+| F3 | `AccountPnlMonitorState` 생성자를 쓰는 기존 테스트 4개 — K4 근거 | 오케스트레이터 확인(§6.1) |
+| F4 | 집계 `fxRate` 는 bucket 마지막 값 — "전일 마감 환율" 서술 근거 | `PremiumCacheOperations.kt:264,294` |
+| F5 | 성공 회차의 `AccountRound.observedAt` = 관측 완료 시각 | `AccountPnlMonitorJob.kt:169,173,191-197` |
+| F6 | `OwnerOpsAlertContent.threshold` 는 `internal fun` — 재사용 가능 | `OwnerOpsAlertContent.kt:115` |
 
 ### [DECISION_NEEDED]
 
@@ -1037,3 +1114,15 @@ class OwnerMarketAlertConfiguration {
 | 라운드 | 변경 | 사유 |
 |---|---|---|
 | 초안 | 최초 작성 | ④ |
+| ⑥ R1 #1 | §5.3·§7.1·§7.2(B)·§9.1 — 기준선 값 scale ≤ 4·절댓값 < 10^6 require, H2 무한 재설정 방지 근거 | Important THRESHOLD-SCALE |
+| ⑥ R1 #2 | §7.2·§7.2(D)·§7.4·§8.2·§8.4·§8.6 — `DailySummary`·`DailySummaryInput` 에 `fxBase`·`fxQuote`, Job 이 batchMarket 에서 채움, toString 표 | Important SUMMARY-FX-LABEL |
+| ⑥ R1 #3 | §3.2·§14 — A6 근거를 실제 등록 위치로, 확인된 사실로 이동 | Important TASK0-G5 |
+| ⑥ R1 #5 | §2.2·§3.2·§11·§12 — pair 불일치 예외는 방어적 이중 확인, mock 으로만 검증 | Minor |
+| ⑥ R1 #6 | §6.3 — `Observed.completedAt` 추가 철회, `observed.round.observedAt` 사용 | Minor |
+| ⑥ R1 #7 | §8.2 — `{d}` 는 `OwnerOpsAlertContent.threshold` 재사용 | Minor |
+| ⑥ R1 #8 | §4.1·§7.1 — `summaryHour` 1..23 | Minor |
+| ⑥ R1 #9 | §4.2·§7.2(C) — `hours == null ⇒ 24h 충분 = false` 명시 | Minor |
+| ⑥ R1 #10 | §7.2 — 상태 key 검사 규칙을 모든 정책 공통으로 통일 | Minor |
+| ⑥ R1 #11 | §3.2 — `read()` 가 `window.zone` 대신 infra zone 을 쓴다는 KDoc | Minor |
+| ⑥ R1 #12 | §5.3 — BOOLEAN = `tinyint(1)` 명시 | Minor |
+| ⑥ R1 추가 | §6.1·§7.5·§8.4·§14 — 오케스트레이터 확인 사실 F1~F6 반영 | 추가 확인 사실 |

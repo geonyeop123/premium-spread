@@ -12,18 +12,20 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
 
 **Tech Stack:** Kotlin 2.x, Spring Boot 3.x (`@ConfigurationProperties`, `Condition`, `ObjectProvider`, `@Scheduled`), JDBC `TransactionTemplate`, Flyway·MySQL 8 (Testcontainers), JUnit5 + AssertJ + MockK, `ApplicationContextRunner` + `OutputCaptureExtension`.
 
-**Spec:** `docs/work/owner-market-alerts/design.md` · **DoD:** `docs/work/owner-market-alerts/dod.md`
+**Spec:** `docs/work/owner-market-alerts/design.md` · **DoD:** `docs/work/owner-market-alerts/dod.md` · ⑥ R1 반영 내역은 design §15·dod `## 스펙 리뷰 라운드 기록`
 
 ## Global Constraints
 
 - base `4f8727c`(Task 0 확인). 직전 단위 산출물(`docs/work/owner-alert-channel/**`·`owner-account-alerts/**`·`owner-ops-alerts/**`)은 수정하지 않는다.
 - **동결 테스트 무수정** (dod R3). 이 테스트들이 컴파일·통과하도록:
   - `AccountPnlAlertStore`·`AccountPnlMonitorState`·`OwnerAlertOutbox` interface/타입 무변경. `JdbcAccountPnlAlertStore`·`JdbcOwnerAlertOutbox`·`OwnerAlertOutboxRows` 무변경(dod R6).
-  - `AccountPnlMonitorJob` 생성자 새 인자는 **끝에 기본값 null**. 배선은 `ObjectProvider`. `OwnerAlertDispatcher`·`OwnerAlertDeliveryJob`·`OwnerOpsSignalJob` main 무변경.
+  - `AccountPnlMonitorJob` 생성자 새 인자는 **끝에 기본값 null**, private `Observed` 무변경. 배선은 `ObjectProvider`. `OwnerAlertDispatcher`·`OwnerAlertDeliveryJob`·`OwnerOpsSignalJob`·`OwnerOpsAlertContent` main 무변경.
 - 허용 예외는 dod R7(`OwnerAlertRoutingTest` 기대 목록 끝 4개)·R8(main 두 파일의 한정 diff)·R9 뿐. 그 밖 기존 테스트를 고쳐야 하면 **멈추고 보고**한다.
 - `OwnerAlertKind`·`JobId` 새 값은 enum **끝에**. `OwnerAlertKind` 전체 `when` 금지(`OwnerAlertRouting.kt:18`) — 정책·렌더러는 `MarketNotice` sealed `when` 만 쓴다.
 - Domain 에 Spring/JDBC/Redis 의존 추가 금지(`ownermarket` 은 `java.time`·`java.math` + 기존 domain 타입만). 앱 main 은 infrastructure 타입을 import 하지 않는다. 앱에 `infrastructure`·`cache`·`repository` 패키지 금지.
-- webhook URL·token·수신 주소·API key·예외 메시지를 본문·로그·예외 메시지·`toString`·DB 에 남기지 않는다. 실계정 금액은 일일 요약 본문에만(로그·`toString` 금지). 새 로그는 design §6.3·§7.4·§9.2 의 문구·키만.
+- webhook URL·token·수신 주소·API key·예외 메시지를 본문·로그·예외 메시지·`toString`·DB 에 남기지 않는다. 실계정 금액은 일일 요약 본문에만(로그·`toString` 금지 — design §8.6 표). 새 로그는 design §6.3·§7.4·§9.2 의 문구·키만.
+- **정책 공통 규칙:** 모든 정책(`PremiumSwingPolicy`·`PremiumThresholdPolicy`·`PremiumExtremePolicy`·`DailySummaryPolicy.decide`)은 입력 상태의 signalKey 를 `MarketKeys` 로 만든 기대 key 와 비교하고 다르면
+  `IllegalArgumentException("market state key mismatch.")` (design §7.2). `DailySummaryPolicy.due` 는 검사하지 않는다.
 - 테스트: 고정 `Clock`(기준 `2026-10-29T00:00:00Z` = 09:00 KST)·`ZoneId.of("Asia/Seoul")`, URL 은 `https://discord.example.test/...`, 주소 `owner@example.test`, 가짜 금액(`12.34`·`123456`). 실 webhook·key 금지(`TestIsolationArchitectureTest`).
   시간을 전진시키는 테스트의 fake port(현재값·bucket·최신 PnL)는 **`MutableClock` 기준 상대 시각**을 돌려준다.
 - migration 은 V22 **추가만**. Redis key·TTL·payload, `PublicEndpointPolicy`, Slack `OperatorAlert` 무변경.
@@ -35,11 +37,12 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
 
 1. **가짜 알림 없음** — 현재값 없음·10초 초과·bucket 80% 미만·읽기 예외에서 판정과 상태가 멈추는가, 재시작 뒤 쿨다운·구역·요약 일자가 이어지는가(Task 3·4·5·6·13·15).
 2. **경계값** — 급변·신고가 `≥`(정확히 0.5/0.1%p 발동), 쿨다운 `≥`(정확히 30분/2시간 재발동), 기준선 `rate == U` ABOVE·`U − h` 이탈, 09:00:00 vs 08:59:59, PnL maxAge 정확히 유효(Task 3~7).
-3. **24h 우선** — 24h 조건이 참이면 1h 를 보지 않고, 24h 발동 때 1h 쿨다운도 찍는가(Task 6).
-4. **MarketPair·시간 계약** — 다른 pair 현재값 = 없음, 집계 pair 불일치 = 예외, 분·시 UTC·전일 KST `[from,to)`(Task 3·11·15).
+3. **24h 우선** — 24h 조건이 참이면 1h 를 보지 않고, 24h 발동 때 1h 쿨다운도 찍는가, `hours == null` 이면 24h 를 건너뛰는가(Task 6).
+4. **MarketPair·시간 계약** — 다른 pair 현재값 = 없음, 집계 pair 불일치 = 예외(방어적), 분·시 UTC·전일 KST `[from,to)`(Task 3·11·15).
 5. **원자성** — 상태 + outbox 행 한 트랜잭션, 두 번째 상태 충돌이 첫 상태까지 되돌리는가(Task 10).
-6. **PnL 모니터 무회귀** — 최신값 기록이 save true 뒤에만, 실패해도 결과·발송 무변화, 동결 테스트 무수정(Task 12).
+6. **PnL 모니터 무회귀** — 최신값 기록이 save true 뒤에만, 실패해도 결과·발송 무변화, 동결 테스트 무수정, `Observed` 무변경(Task 12).
 7. **비노출** — 본문·로그에 URL·주소·예외 메시지 없음, 금액은 요약 본문에만(Task 8·13).
+8. **기준선 값 정밀도** — scale > 4·절댓값 ≥ 10^6 이 기동 실패이고, DB 왕복 뒤에도 `sameAs` 가 참이라 H2 가 반복되지 않는가(Task 3·5·14).
 
 ---
 
@@ -55,7 +58,7 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
 | `apps/batch/src/main/kotlin/io/premiumspread/interfaces/scheduling/BatchSchedulingProperties.kt` | 필드 1개 | 2 |
 | `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketAlertModel.kt` (신규) | `MarketKeys`·`PremiumZone`·`ThresholdBaseline`·`MarketAlertState`·`OwnerMarketAlertStore`·`MarketAlertSettings` | 3 |
 | `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketObservation.kt` (신규) | `MarketWindows`·`MarketObservation`·`MarketEvidence` | 3 |
-| `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketNotice.kt` (신규) | `MarketDirection`·`ExtremeWindow`·`ThresholdLine`·`MarketNotice`·`SummaryPnl`·`MarketDecision` | 4 |
+| `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketNotice.kt` (신규) | `MarketDirection`·`ExtremeWindow`(3), `ThresholdLine`·`MarketNotice`·`SummaryPnl`·`MarketDecision`(4) | 3·4 |
 | `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/PremiumSwingPolicy.kt` (신규) | 급변 | 4 |
 | `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/PremiumThresholdPolicy.kt` (신규) | 기준선 | 5 |
 | `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/PremiumExtremePolicy.kt` (신규) | 신고가·신저가, `ExtremeStates` | 6 |
@@ -95,7 +98,8 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
   ls infrastructure/common/src/main/resources/db/migration | sort -V | tail -1              # (g1) V22 번호 근거
   grep -n "containsExactly" domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRoutingTest.kt   # (g2) R7 줄
   grep -rn "JobId.entries\|JobId.values()\|MONITORED_JOBS" --include=*.kt apps domain infrastructure architecture-tests   # (g4) 새 JobId 영향
-  grep -rn "PremiumRepository\|EntityManagerFactory\|PremiumAggregationReadPort" --include=*.kt apps/batch/src infrastructure/batch/src/main   # (g5) A6 batch 의 JPA adapter 존재·기존 소비자
+  grep -n "JpaPremiumRepositoryAdapter" infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/CommonInfrastructureAutoConfiguration.kt   # (g5a) A6 등록 위치
+  grep -n "jpa.yml" apps/batch/src/main/resources/application.yml                           # (g5b) A6 batch 가 JPA 설정을 import
   grep -n "aggregation" infrastructure/common/src/main/kotlin/io/premiumspread/infrastructure/common/config/AggregationInfrastructureProperties.kt   # (g6) DAY 변환 zone 키
   grep -rn "21\|latestVersion\|currentVersion" apps/api/src/integrationTest/kotlin --include=*Flyway*   # (g7) 최신 버전 숫자 단언 여부
   grep -n "11개\|market\|#90\|owner-alert routes" docs/runbooks/account-pnl-alert.md         # (g8) 문서 갱신 줄
@@ -105,14 +109,21 @@ infra:common `JpaPremiumRepositoryAdapter` 가 기존 cache+DB 병합 경로로 
   grep -rn "class PremiumReadAdapter" -A15 --include=*.kt infrastructure/batch/src/main     # (g12) current pair 처리
   grep -n "TABLE_NAME\|information_schema" apps/batch/src/integrationTest/kotlin/io/premiumspread/config/AccountPnlFixtureSchemaIntegrationTest.kt   # (g13) R9 필요 여부
   grep -rn "OwnerAlertReadiness" --include=*.kt apps/batch/src                              # (g14) internal 전환 영향
-  grep -rn "class AccountRound" -A8 --include=*.kt domain/src/main                          # (g15) NoPosition completedAt 출처
+  grep -rn "class AccountRound" -A8 --include=*.kt domain/src/main                          # (g15) NoPosition 시각 출처(observedAt)
   grep -rln "BatchIntegrationTestBase" apps/batch/src/integrationTest                       # (g16) E2E 기반
+  grep -n "withUserConfiguration\|withBean\|withPropertyValues" -A12 apps/batch/src/test/kotlin/io/premiumspread/config/OwnerAlertDeliveryWiringTest.kt   # (g17) AC14 runner 구성 원본(:55-68)
+  grep -n "fun premiumV2AggregationKey\|fun keyFor" -A6 --include=*.kt -r modules/redis/src/main   # (g18) AC15 정리할 Redis 집계 key 함수
+  grep -n "internal fun threshold" domain/src/main/kotlin/io/premiumspread/domain/ownerops/OwnerOpsAlertContent.kt   # (g19) {d} 재사용 대상
+  ls -d domain/src/test/kotlin/io/premiumspread/domain/accountpnl domain/src/test/kotlin/io/premiumspread/domain/ownerops domain/src/test/kotlin/io/premiumspread/domain/owneralert apps/batch/src/test/kotlin/io/premiumspread/application apps/batch/src/test/kotlin/io/premiumspread/config apps/batch/src/integrationTest/kotlin infrastructure/batch/src/test infrastructure/common/src/integrationTest infrastructure/common/src/test   # (g20) R3 경로 존재
   ```
 - [ ] **Step 2: 예상 결과.** merge-base `4f8727c`. gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지). (g1) `V21__create_owner_alert_signal_state.sql`.
-  (g2) 2곳. (g4) `MONITORED_JOBS` 는 `OwnerOpsSignalJob` 정의와 테스트의 **참조**뿐(고정 목록 단언 없음). (g5) batch 가 `PremiumRepository`/JPA bean 을 가진 근거가 있고 `PremiumAggregationReadPort` 소비자 없음.
+  (g2) 2곳. (g4) `MONITORED_JOBS` 는 `OwnerOpsSignalJob` 정의와 테스트의 **참조**뿐(고정 목록 단언 없음).
+  (g5a) `JpaPremiumRepositoryAdapter` 의 import 줄과 `CommonJpaConfiguration` `@Import` 목록 안의 줄(`:85-98` 범위) 두 곳. (g5b) `- jpa.yml` 한 줄(`:9`).
   (g6) `aggregation.zone`. (g7) 최신 버전 숫자 단언 없음. (g10) MockK 있음. (g12) pair 를 요청 pair 로 채우거나 검사함. (g13) 목록 단언 아님. (g14) 이 파일 하나.
-  **다르면 멈추고 보고한다** — (g1) 이 V21 이 아니면 V22 번호·AC8, (g4) 가 고정 목록 단언이면 dod 허용 예외를 Gate 1 에서 다시 정한다, (g5) 가 batch JPA 부재를 보이면 design K1 을 다시 정한다,
-  (g7) 가 숫자 단언을 보이면 R13 허용 예외 결정, (g10) 이 없으면 AC10 을 integrationTest 로 옮기는 변경 요청. (g2)·(g8)·(g9)·(g11)·(g13)·(g15)·(g16) 결과와 R3 경로 목록을 증거 로그에 남긴다.
+  (g15) `AccountRound` 마지막 필드가 `observedAt: Instant`. (g17) user configuration 목록(`OwnerAlertChannelConfiguration`·`BatchJobSupportConfiguration` 등)이 보인다. (g19) `internal fun threshold(` 한 줄. (g20) 9개 경로 모두 존재.
+  **다르면 멈추고 보고한다** — (g1) 이 V21 이 아니면 V22 번호·AC8, (g4) 가 고정 목록 단언이면 dod 허용 예외를 Gate 1 에서 다시 정한다, (g5a)/(g5b) 가 위 두 줄을 보이지 않으면 design K1·A6 을 다시 정한다,
+  (g7) 가 숫자 단언을 보이면 R13 허용 예외 결정, (g10) 이 없으면 AC10 을 integrationTest 로 옮기는 변경 요청, (g15)·(g19) 가 다르면 design §6.3·§8.2 를 다시 정한다.
+  (g2)·(g8)·(g9)·(g11)·(g13)·(g16)·(g17)·(g18)·(g20) 결과를 증거 로그에 남긴다.
 - [ ] **Step 3: Commit** — `docs: owner 시장 알림 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ### Task 1: `OwnerAlertKind` 4종과 yml routes (AC1)
@@ -166,8 +177,8 @@ yml (전문, `owner-alert.routes.ops-recovered` 블록 뒤):
 
 ### Task 2: `JobId.OWNER_MARKET_SIGNAL`·JobConfig·주기 (AC13)
 
-**Files:** Modify `domain/src/main/kotlin/io/premiumspread/domain/job/JobPorts.kt`, `apps/batch/src/main/kotlin/io/premiumspread/application/common/JobConfig.kt`,
-`apps/batch/src/main/kotlin/io/premiumspread/config/BatchJobProperties.kt`, `apps/batch/src/main/kotlin/io/premiumspread/interfaces/scheduling/BatchSchedulingProperties.kt`,
+**Files:** Modify `domain/src/main/kotlin/io/premiumspread/domain/job/JobPorts.kt`, `apps/batch/src/main/kotlin/io/premiumspread/application/common/JobConfig.kt`(`:20` `when`),
+`apps/batch/src/main/kotlin/io/premiumspread/config/BatchJobProperties.kt`(필드·`:42` `when`), `apps/batch/src/main/kotlin/io/premiumspread/interfaces/scheduling/BatchSchedulingProperties.kt`,
 `apps/batch/src/main/resources/application.yml`(`batch.jobs`·`batch.scheduling`); Test Create `apps/batch/src/test/kotlin/io/premiumspread/config/OwnerMarketJobConfigTest.kt`
 
 **Interfaces — Produces (전문):**
@@ -201,7 +212,7 @@ yml (전문):
 **테스트가 재는 것** (`OwnerMarketJobConfigTest`):
 - `시장 신호 Job 의 lock 은 설계 값이다` — `DefaultJobConfigProvider.get(OWNER_MARKET_SIGNAL)` 과 `BatchJobProperties().get(...)` 가 `(lock:owner-market:signal, 20s, 10s)` (AC13-a)
 - `yml 바인딩도 같은 값과 30초 주기` — #91 `OwnerAlertJobConfigTest` 와 같은 방식(`PropertySourcesPlaceholdersResolver` 로 `${ENV:default}` 해석)으로 `BatchJobProperties`·`BatchSchedulingProperties` (AC13-b)
-- `운영 신호 Job 이 시장 신호 Job 을 감시한다` — `OwnerOpsSignalJob.MONITORED_JOBS` 에 `OWNER_MARKET_SIGNAL` 포함 (AC13-c)
+- `운영 신호 Job 이 시장 신호 Job 을 감시한다` — `OwnerOpsSignalJob.MONITORED_JOBS` 에 `OWNER_MARKET_SIGNAL` 포함 (AC13-c). 신호 key 는 `job-failures.owner_market_signal`(`OpsSignal.kt:34`)
 
 - [ ] **Step 1:** 값을 stub(`Duration.ofSeconds(5)`/`3`, 주기 15s, yml 같은 stub)으로 추가하고 테스트 작성.
 - [ ] **Step 2:** `./gradlew :apps:batch:test --tests 'io.premiumspread.config.OwnerMarketJobConfigTest' --offline --no-daemon` → RED(lease·timeout·주기 단언 실패; (c) 는 stub 에서도 초록). 증거 로그 AC13.
@@ -210,12 +221,16 @@ yml (전문):
 
 ### Task 3: 시장 알림 모델 — key·설정·상태·port·창·근거 (AC2)
 
-**Files:** Create `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketAlertModel.kt`, `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketObservation.kt`;
-Test Create `domain/src/test/kotlin/io/premiumspread/domain/ownermarket/MarketAlertModelTest.kt`
+**Files:** Create `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketAlertModel.kt`, `domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketObservation.kt`,
+`domain/src/main/kotlin/io/premiumspread/domain/ownermarket/MarketNotice.kt`(이 태스크는 enum 2개만); Test Create `domain/src/test/kotlin/io/premiumspread/domain/ownermarket/MarketAlertModelTest.kt`
 
 **Interfaces — Produces (전문, package `io.premiumspread.domain.ownermarket`):**
 
 ```kotlin
+// MarketNotice.kt (이 태스크 분량 — Task 4 가 나머지를 추가)
+enum class MarketDirection { UP, DOWN }
+enum class ExtremeWindow(val duration: Duration) { ONE_HOUR(Duration.ofHours(1)), ONE_DAY(Duration.ofHours(24)) }
+
 // MarketAlertModel.kt
 object MarketKeys {
     const val MAX_PAIR_KEY_LENGTH = 40
@@ -228,6 +243,9 @@ object MarketKeys {
     fun threshold(pairKey: String): String                                // market.{pk}.threshold
     fun extreme(pairKey: String, window: ExtremeWindow, direction: MarketDirection): String  // market.{pk}.extreme-{1h|24h}-{high|low}
     fun dailySummary(pairKey: String): String                             // market.{pk}.daily-summary
+
+    /** 정책 공통 key 검사. 다르면 IllegalArgumentException("market state key mismatch."). */
+    fun requireKey(state: MarketAlertState, expected: String)
 }
 
 enum class PremiumZone { ABOVE, BETWEEN, BELOW }
@@ -281,8 +299,13 @@ data class MarketAlertSettings(
     val summaryHour: Int = 9,
     val summaryPnlMaxAge: Duration = Duration.ofMinutes(10),
 ) {
-    // init = design §7.1 require 전문(메시지 포함) 그대로
+    // init = design §7.1 require 전문(메시지 포함) 그대로 — 기준선 3값 scale ≤ 4·abs < 10^6, summaryHour 1..23 포함
     val thresholdBaseline: ThresholdBaseline?
+
+    companion object {
+        const val MAX_THRESHOLD_SCALE = 4
+        val MAX_THRESHOLD_ABS: BigDecimal = BigDecimal("1000000")
+    }
 }
 
 // MarketObservation.kt
@@ -304,21 +327,13 @@ object MarketEvidence {
 }
 ```
 
-`MarketDirection`·`ExtremeWindow` 는 Task 4 의 `MarketNotice.kt` 에 둔다 — 이 태스크가 먼저 쓰므로 **이 태스크에서** `MarketNotice.kt` 를 만들고 두 enum 만 넣는다(Task 4 가 나머지를 추가).
+`toString`: 전부 자동 data class `toString` — design §8.6 표 그대로(key·kind·시각·구역·기준값·일자·version·임계값만, 비밀·계정 값 없음).
 
-```kotlin
-// MarketNotice.kt (이 태스크 분량)
-enum class MarketDirection { UP, DOWN }
-enum class ExtremeWindow(val duration: Duration) { ONE_HOUR(Duration.ofHours(1)), ONE_DAY(Duration.ofHours(24)) }
-```
+**테스트가 재는 것** (`MarketAlertModelTest`, 고정 `Instant`, `ZoneId.of("Asia/Seoul")`): dod AC2 (a)~(f) 전 항목 — pair key·41자·`BTC_X` 거부, 상태 key 8개 문자열, `requireKey` 일치·불일치,
+설정 기본값·각 검증 경계(2h 정확히 거부·2.21 통과, **`3.12345`·`-1000000`·`0.00001` 거부, `3.1234`·`-999999.9999` 통과, `summaryHour` 0·24 거부·1·23 통과**), 상태 불변식 5종, `sameAs`(scale 무관·null),
+창 3개(`2026-10-29T00:30:15Z` 입력의 정확한 `Instant`), current 나이 10s/10s+1ms/미래/다른 pair, `sufficient` 경계 5개.
 
-`toString`: 전부 자동 data class `toString` — key·kind·시각·구역·기준값·일자·version·임계값만, 비밀·계정 값 없음.
-
-**테스트가 재는 것** (`MarketAlertModelTest`, 고정 `Instant`, `ZoneId.of("Asia/Seoul")`): dod AC2 (a)~(f) 전 항목 — pair key·41자·`BTC_X` 거부, 상태 key 8개 문자열,
-설정 기본값·각 검증 경계(2h 정확히 거부·2.21 통과), 상태 불변식 5종, `sameAs`(scale 무관·null), 창 3개(`2026-10-29T00:30:15Z` 입력의 정확한 `Instant`), current 나이 10s/10s+1ms/미래/다른 pair,
-`sufficient` 경계 5개.
-
-- [ ] **Step 1:** 타입 선언·시그니처와 테스트 작성. 함수 본문은 stub(`pairKey` = `"x"`, `sufficient` = true, `current` = snapshot, `of` 는 고정 창, settings init 비움).
+- [ ] **Step 1:** 타입 선언·시그니처와 테스트 작성. 함수 본문은 stub(`pairKey` = `"x"`, `requireKey` 무동작, `sufficient` = true, `current` = snapshot, `of` 는 고정 창, settings init 비움).
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.MarketAlertModelTest' --offline --no-daemon` → RED(값·예외 단언 실패). 증거 로그 AC2.
 - [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
 - [ ] **Step 4: Commit** — `feat: owner 시장 알림 상태·설정·관측 창 모델`
@@ -331,7 +346,7 @@ Test Create `domain/src/test/kotlin/io/premiumspread/domain/ownermarket/PremiumS
 **Interfaces — Produces (전문):**
 
 ```kotlin
-// MarketNotice.kt 에 추가
+// MarketNotice.kt 에 추가 (Currency = io.premiumspread.domain.ticker.Currency, ExchangeRateSnapshot = io.premiumspread.domain.exchangerate.ExchangeRateSnapshot)
 enum class ThresholdLine { UPPER, LOWER }
 
 sealed interface MarketNotice {
@@ -359,7 +374,8 @@ sealed interface MarketNotice {
 
     data class DailySummary(
         override val pair: MarketPair, override val at: Instant,
-        val date: LocalDate, val day: PremiumAggregationSnapshot?, val fx: ExchangeRateSnapshot?,
+        val date: LocalDate, val day: PremiumAggregationSnapshot?,
+        val fxBase: Currency, val fxQuote: Currency, val fx: ExchangeRateSnapshot?,
         val pnl: SummaryPnl,
     ) : MarketNotice { override val kind: OwnerAlertKind get() = OwnerAlertKind.DAILY_SUMMARY }
 }
@@ -378,7 +394,7 @@ data class MarketDecision(val next: List<MarketAlertState>, val notices: List<Ma
 
 // PremiumSwingPolicy.kt
 object PremiumSwingPolicy {
-    /** design §7.2(A) W1~W4. [up]·[down] 의 signalKey 는 MarketKeys.swing(...) 이어야 한다(아니면 IllegalArgumentException("swing state key mismatch.")). */
+    /** design §7.2(A) W1~W4. [up]·[down] 은 MarketKeys.requireKey(state, MarketKeys.swing(pairKey(observation.pair), UP/DOWN)) 로 검사(공통 규칙). */
     fun decide(
         observation: MarketObservation, up: MarketAlertState, down: MarketAlertState,
         settings: MarketAlertSettings, now: Instant,
@@ -386,13 +402,14 @@ object PremiumSwingPolicy {
 }
 ```
 
-전이표는 design §7.2(A) 그대로(코드에 옮길 정본). `delta` 는 `current − reference` 그대로(scale 은 입력 그대로, 반올림 없음).
+전이표는 design §7.2(A) 그대로(코드에 옮길 정본). `delta` 는 `current − reference` 그대로(scale 은 입력 그대로, 반올림 없음). key 검사는 W1 판정보다 먼저 한다(입력 오류는 데이터 유무와 무관).
 
-**테스트가 재는 것** (`PremiumSwingPolicyTest`, now = `2026-10-29T00:00:30Z`, bucket observedAt = `floorMinute(now) − k분`): dod AC3 (a)~(g) — 저점 2.00 + 2.50 발동·2.49 미발동, 고점 3.00 DOWN,
-양방향 동시, 쿨다운 `now−30m` 발동·`now−30m+1ms` 미발동(next 없음), 11분 전 bucket 무시·bucket 7개 W1, high 9.99 무시(종가만), current/minutes null → `NONE`. next 의 version 이 입력 version 과 같음.
+**테스트가 재는 것** (`PremiumSwingPolicyTest`, now = `2026-10-29T00:00:30Z`, bucket observedAt = `floorMinute(now) − k분`): dod AC3 (a)~(h) — 저점 2.00 + 2.50 발동·2.49 미발동, 고점 3.00 DOWN,
+양방향 동시, 쿨다운 `now−30m` 발동·`now−30m+1ms` 미발동(next 없음), 11분 전 bucket 무시·bucket 7개 W1, high 9.99 무시(종가만), current/minutes null → `NONE`, `up` 자리에 `swing-down` 상태 → key 불일치 예외.
+next 의 version 이 입력 version 과 같음.
 
 - [ ] **Step 1:** 타입·시그니처·테스트 작성, `decide` 는 `MarketDecision.NONE` stub.
-- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumSwingPolicyTest' --offline --no-daemon` → RED(발동 단언 실패; 미발동·null 은 stub 에서도 초록). 증거 로그 AC3.
+- [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumSwingPolicyTest' --offline --no-daemon` → RED(발동·예외 단언 실패; 미발동·null 은 stub 에서도 초록). 증거 로그 AC3.
 - [ ] **Step 3:** 구현. 같은 명령 → PASS. `./gradlew test architectureTest --offline --no-daemon` → PASS.
 - [ ] **Step 4: Commit** — `feat: 김프 급변 판정 정책`
 
@@ -409,14 +426,15 @@ object PremiumThresholdPolicy {
 
     /**
      * design §7.2(B) H1~H6. settings.thresholdBaseline 이 null 이면 IllegalArgumentException("threshold is disabled.")
-     * — 호출자(Job)가 꺼짐이면 부르지 않는다. state.signalKey 불일치 검사는 하지 않는다(호출자가 MarketKeys.threshold 로 만든다).
+     * — 호출자(Job)가 꺼짐이면 부르지 않는다. [state] 는 MarketKeys.requireKey(state, MarketKeys.threshold(pairKey(observation.pair))) 로 검사(공통 규칙).
      */
     fun decide(observation: MarketObservation, state: MarketAlertState, settings: MarketAlertSettings, now: Instant): MarketDecision
 }
 ```
 
-**테스트가 재는 것** (`PremiumThresholdPolicyTest`, U=3.0·L=1.0·h=0.1): dod AC4 (a)~(h) — H2 재설정 무알림, `3.0` ABOVE 발동·`2.9999` 미발동, ABOVE 유지 2.91·이탈 2.90·재돌파, 하단 대칭(1.09 유지·1.10 이탈),
-ABOVE→BELOW 직행 LOWER, baseline 변경(U 3.0→3.2) 재분류 무알림, U 만 설정, current null. `classify` 단독 경계(`rate == U`, `rate == U − h` with prev ABOVE).
+**테스트가 재는 것** (`PremiumThresholdPolicyTest`, U=3.0·L=1.0·h=0.1): dod AC4 (a)~(j) — H2 재설정 무알림, `3.0` ABOVE 발동·`2.9999` 미발동, ABOVE 유지 2.91·이탈 2.90·재돌파, 하단 대칭(1.09 유지·1.10 이탈),
+ABOVE→BELOW 직행 LOWER, baseline 변경(U 3.0→3.2) 재분류 무알림, U 만 설정, current null, 저장 baseline `3.0000`/설정 `3.0` → H3(재분류 없음), 꺼짐 설정 예외·key 불일치 예외.
+`classify` 단독 경계(`rate == U`, `rate == U − h` with prev ABOVE).
 
 - [ ] **Step 1:** 시그니처·테스트, 본문 stub(`classify` = `BETWEEN`, `decide` = `NONE`).
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumThresholdPolicyTest' --offline --no-daemon` → RED. 증거 로그 AC4.
@@ -438,13 +456,17 @@ data class ExtremeStates(
 )
 
 object PremiumExtremePolicy {
-    /** design §7.2(C) E1~E5. 방향(UP=HIGH, DOWN=LOW)마다 독립. */
+    /**
+     * design §7.2(C) E1~E5. 방향(UP=HIGH, DOWN=LOW)마다 독립. observation.hours == null 이면 24h 충분 = false(1h 만 판정).
+     * 네 상태는 MarketKeys.requireKey(state, MarketKeys.extreme(pairKey(observation.pair), window, direction)) 로 검사(공통 규칙).
+     */
     fun decide(observation: MarketObservation, states: ExtremeStates, settings: MarketAlertSettings, now: Instant): MarketDecision
 }
 ```
 
-**테스트가 재는 것** (`PremiumExtremePolicyTest`, now = `2026-10-29T00:20:30Z` → 분 기대 80·시 기대 23): dod AC5 (a)~(g) — 24h 발동 + 1h 쿨다운 동시 기록·`2.5999` 미발동, 1h 단독 발동,
-24h 쿨다운 중 1h 억제·`now−2h` 재발동, 1h 쿨다운 경계, 시 bucket 18개 → 24h 무판정·1h 판정, 분 1h 구간 47개 → 1h 무판정, 신저가 대칭, 고가·저가 사용(종가와 다르게 둔 fixture).
+**테스트가 재는 것** (`PremiumExtremePolicyTest`, now = `2026-10-29T00:20:30Z` → 분 기대 80·시 기대 23): dod AC5 (a)~(h) — 24h 발동 + 1h 쿨다운 동시 기록·`2.5999` 미발동, 1h 단독 발동,
+24h 쿨다운 중 1h 억제·`now−2h` 재발동, 1h 쿨다운 경계, 시 bucket 18개 → 24h 무판정·1h 판정, **`hours = null` → 24h 무판정·1h 판정**, 분 1h 구간 47개 → 1h 무판정, 신저가 대칭,
+고가·저가 사용(종가와 다르게 둔 fixture), `hourHigh`·`dayHigh` 자리 바꿈 → key 불일치 예외.
 
 - [ ] **Step 1:** 시그니처·테스트, `decide` = `NONE` stub.
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.PremiumExtremePolicyTest' --offline --no-daemon` → RED. 증거 로그 AC5.
@@ -486,18 +508,25 @@ interface AccountPnlLatestStore {
 }
 
 // DailySummaryPolicy.kt (package io.premiumspread.domain.ownermarket)
-data class DailySummaryInput(val day: PremiumAggregationSnapshot?, val fx: ExchangeRateSnapshot?, val pnl: AccountPnlLatest?)
+data class DailySummaryInput(
+    val day: PremiumAggregationSnapshot?,
+    val fxBase: Currency,
+    val fxQuote: Currency,
+    val fx: ExchangeRateSnapshot?,
+    val pnl: AccountPnlLatest?,
+)
 
 object DailySummaryPolicy {
     fun due(state: MarketAlertState, settings: MarketAlertSettings, now: Instant, zone: ZoneId): Boolean
+    /** [state] 는 MarketKeys.requireKey(state, MarketKeys.dailySummary(pairKey(pair))) 로 검사(공통 규칙). notice 의 fxBase·fxQuote 는 input 값. */
     fun decide(state: MarketAlertState, pair: MarketPair, input: DailySummaryInput, settings: MarketAlertSettings, now: Instant, zone: ZoneId): MarketDecision
     fun summaryPnl(pnl: AccountPnlLatest?, settings: MarketAlertSettings, now: Instant): SummaryPnl
 }
 ```
 
-**테스트가 재는 것**: dod AC6 (a)~(d) — `due` 6 시나리오(08:59:59 false, 09:00:00 true, 같은 날·미래 날짜 false, 전날 true, hour 0), `decide` 의 next(`summaryDate`·`lastNotifiedAt`)와
-notice `date = 2026-10-28`, `summaryPnl` 4분기(null·10m·10m+1ms·position false), `AccountPnlLatest` 불변식·`computed` 반올림(`123456.5` → `123457`)·`toString` 에 `123457`·`12.34` 문자열 없음.
-`computed` 테스트의 `AccountNetPnl` 은 `AccountNetPnl` 생성자에 가짜 값으로 만든다(실계정 값 금지).
+**테스트가 재는 것**: dod AC6 (a)~(e) — `due` 시나리오(08:59:59 false, 09:00:00 true, 같은 날·미래 날짜 false, 전날 true, `summaryHour` 1 + 01:00:00 KST true·00:59:59 KST false), `decide` 의 next(`summaryDate`·`lastNotifiedAt`)와
+notice `date = 2026-10-28`·`fxBase = USD`·`fxQuote = KRW`(input 그대로), `summaryPnl` 4분기(null·10m·10m+1ms·position false), `AccountPnlLatest` 불변식·`computed` 반올림(`123456.5` → `123457`)·`toString` 에
+`123457`·`12.34` 문자열 없음, swing key 상태로 `decide` → key 불일치 예외. `computed` 테스트의 `AccountNetPnl` 은 `AccountNetPnl` 생성자에 가짜 값으로 만든다(실계정 값 금지).
 
 - [ ] **Step 1:** 시그니처·테스트, 본문 stub(`due` = false, `decide` = `NONE`, `summaryPnl` = `Unavailable`, `computed` 는 반올림 없이).
 - [ ] **Step 2:** dod AC6 명령 → RED. 증거 로그 AC6.
@@ -524,10 +553,11 @@ object OwnerMarketAlertContent {
 ```
 
 eventKey·제목·이모지·색·본문·대체 줄은 design §8.1~§8.4 표·블록이 정본(exact copy). 이모지는 유니코드 escape 상수로 둔다(`OwnerOpsAlertContent.WARNING` 과 같은 방식).
-메일 subject = `"[시장] " + 핵심`, Discord title = `"{이모지} " + 핵심`. `{d(x)}` 는 이 파일의 private 함수(시간/분/초 규칙 — `OwnerOpsAlertContent` 와 같은 규칙, 공유하지 않음).
+메일 subject = `"[시장] " + 핵심`, Discord title = `"{이모지} " + 핵심`. `{d(x)}` = **`OwnerOpsAlertContent.threshold(x)` 를 그대로 호출**(`internal fun`, `OwnerOpsAlertContent.kt:115` — 그 파일 무변경, 복제하지 않음).
+`{fx}` = `"${notice.fxBase.code}/${notice.fxQuote.code}"` — `fx == null` 이어도 라벨이 나온다.
 
-**테스트가 재는 것** (`OwnerMarketAlertContentTest`): dod AC7 (a)~(e) — 메일 golden 9건·Discord golden 9건(전체 문자열 `isEqualTo`), 색 상수 3개 정수값, eventKey 4형식·정규식,
-금지 문자열 5종, 급변·기준선·신고가 결과에 `원` 없음. 시각 `2026-10-29T00:00:00Z`, zone `Asia/Seoul`.
+**테스트가 재는 것** (`OwnerMarketAlertContentTest`): dod AC7 (a)~(f) — 메일 golden 9건·Discord golden 9건(전체 문자열 `isEqualTo`, "일 집계 없음 + fx 없음 + `Unavailable`" golden 은 `김프: 전일 집계 없음` 한 줄과 `환율(USD/KRW) 현재: 없음` 줄로 구성 — design §8.4 대체 줄 표 그대로),
+색 상수 3개 정수값, eventKey 4형식·정규식, 금지 문자열 5종, 급변·기준선·신고가 결과에 `원` 없음, `{d}` 결과가 `OwnerOpsAlertContent.threshold` 와 같음(`30m`·`2h`). 시각 `2026-10-29T00:00:00Z`, zone `Asia/Seoul`.
 
 - [ ] **Step 1:** 시그니처·테스트, 본문 stub(`mail`·`discord` = `"x"` 고정, `eventKey` 는 전문 구현 — eventKey 테스트는 stub 에서 초록).
 - [ ] **Step 2:** `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.OwnerMarketAlertContentTest' --offline --no-daemon` → RED(golden 실패). 증거 로그 AC7.
@@ -584,8 +614,8 @@ CREATE TABLE account_pnl_latest (
 
 fixture: 같은 두 DDL 을 `CREATE TABLE IF NOT EXISTS` 로, 앞에 주석 `-- V22 와 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.`
 
-**테스트가 재는 것** (`V22…MigrationIntegrationTest`, `V21OwnerAlertSignalStateMigrationIntegrationTest` 와 같은 패턴): dod AC8 (a)~(c) — 빈 DB 1~22 성공·열 순서/타입/nullable·PK·collation,
-V21 target 에 기존 행 넣고 latest → 기존 행 무변경·새 테이블 0행, CHECK 거부 8종.
+**테스트가 재는 것** (`V22…MigrationIntegrationTest`, `V21OwnerAlertSignalStateMigrationIntegrationTest` 와 같은 패턴): dod AC8 (a)~(c) — 빈 DB 1~22 성공·열 순서/`data_type`/nullable·PK·collation
+(`has_position` 의 `data_type` 기대값은 **`tinyint`** — MySQL `BOOLEAN` = `tinyint(1)`), V21 target 에 기존 행 넣고 latest → 기존 행 무변경·새 테이블 0행, CHECK 거부 8종.
 
 - [ ] **Step 1:** 테스트 작성(V22 파일 없음 상태).
 - [ ] **Step 2:** AC8 명령 → RED(버전 22 부재·테이블 부재 assertion — 테스트가 테이블 부재를 `assertThat(...).isEmpty()` 류로 먼저 확인하도록 써서 SQL 예외가 아닌 assertion 실패로 둔다). 증거 로그 AC8.
@@ -619,11 +649,11 @@ class JdbcAccountPnlLatestStore(
 
 요건:
 - 동작·검증 메시지·트랜잭션 규칙은 design §5.5·§6.2 전문(`JdbcOwnerAlertOutbox` 와 같은 순서). 행 검증·삽입은 `OwnerAlertOutboxRows.validate`/`insert` 호출(그 파일 무변경).
-- 열 매핑은 design §5.4 표. `BigDecimal` 은 그대로 바인딩, `LocalDate` ↔ `java.sql.Date.valueOf`/`toLocalDate`, `Instant` ↔ `Timestamp.from`/`toInstant`.
+- 열 매핑은 design §5.4 표. `BigDecimal` 은 그대로 바인딩(설정이 scale ≤ 4 를 보장하므로 반올림 없음), `LocalDate` ↔ `java.sql.Date.valueOf`/`toLocalDate`, `Instant` ↔ `Timestamp.from`/`toInstant`.
 - 모르는 enum 값 예외 메시지는 design §5.4 문구(값 없음).
 - `record` SQL 은 design §6.2 전문(`ON DUPLICATE KEY UPDATE` 값 재바인딩, `VALUES()` 미사용). `updated_at` = `clock.instant()`.
 
-**테스트가 재는 것**: dod AC9 (a)~(j) — 실제 MySQL(기존 `JdbcOwnerAlertOutboxIntegrationTest` 의 컨테이너·fixture 패턴), 상태 3종 round-trip(`BigDecimal` compareTo, `LocalDate`),
+**테스트가 재는 것**: dod AC9 (a)~(j) — 실제 MySQL(기존 `JdbcOwnerAlertOutboxIntegrationTest` 의 컨테이너·fixture 패턴), 상태 3종 round-trip(`BigDecimal` compareTo — 기준선 `3.1234` 가 그대로 돌아옴, `LocalDate`),
 두 번째 충돌 전체 롤백, version 0 중복 INSERT 충돌, 행만·상태만, 중복 key·256자 subject 거부 + DB 무변경, `JdbcAccountPnlAlertStore.claim` 호환, latest upsert 3단계,
 `ApplicationContextRunner`(DataSource/JdbcTemplate/TransactionManager auto-configuration + `CommonInfrastructureAutoConfiguration` + 고정 `Clock`)로 bean 2개 해석.
 
@@ -646,15 +676,20 @@ class JpaPremiumRepositoryAdapter(
     private val premiumAggregationCacheReader: PremiumAggregationCacheReader? = null,
     private val premiumAggregationQueryRepository: PremiumAggregationQueryRepository,
 ) : PremiumRepository, PremiumAggregationReadPort {
+    /**
+     * [window] 의 [from, to) 를 [unit] interval 로 findAggregationByPair 에 위임한다.
+     * [window] 의 zone 은 쓰지 않는다 — DAY 의 날짜 변환은 infra AggregationInfrastructureProperties.aggregationZone(= aggregation.zone)이 한다.
+     * pair 불일치 검사는 방어적 이중 확인이다(현재 원천은 요청 pair 로만 snapshot 을 만든다 — design §2.2).
+     */
     override fun read(pair: MarketPair, window: AggregationWindow, unit: AggregationUnit): List<PremiumAggregationSnapshot>
 }
 ```
 
 요건: `MINUTE → "1m"`, `HOUR → "1h"`, `DAY → "1d"` 매핑 후 `findAggregationByPair(pair, interval, window.from, window.to)` 위임(기존 메서드 무변경). 결과 중 `it.pair != pair` 가 있으면
-`IllegalStateException("premium aggregation pair mismatch")`. `AggregationUnit` 매핑은 `when (unit)`(이 enum 은 `OwnerAlertKind` 가 아니므로 전체 `when` 허용).
+`IllegalStateException("premium aggregation pair mismatch")`. `AggregationUnit` 매핑은 `when (unit)`(이 enum 은 `OwnerAlertKind` 가 아니므로 전체 `when` 허용). KDoc 은 위 전문 그대로.
 
 **테스트가 재는 것** (MockK, `SpringDataPremiumRepository`·cache reader·query repository mock): dod AC10 (a)~(d) — interval 3종·from/to 전달(`verify`), 같은 `observedAt` 이면 DB 값,
-pair 다른 snapshot → 예외 메시지 정확히, cache reader null → DB 결과.
+pair 다른 snapshot → 예외 메시지 정확히(**mock 이 다른 pair 를 돌려주게 해서만 재현 가능한 방어 경로** — 테스트 이름에 "방어" 를 넣는다), cache reader null → DB 결과.
 
 - [ ] **Step 1:** `read` 를 `emptyList()` stub 으로 추가, 테스트 작성.
 - [ ] **Step 2:** AC10 명령 → RED(위임·예외 단언 실패). 증거 로그 AC10.
@@ -682,11 +717,13 @@ class AccountPnlMonitorJob(
         latestPnl = latestPnl.ifAvailable,
 ```
 
-요건: design §6.3 표 그대로 — save true 뒤·`deliver()` 전 기록, Failed·save false/예외·저장 전 취소는 기록 없음, `record` 예외는 WARN `Account PnL latest record failed: error={}`(단순 클래스 이름)
-후 계속, 취소면 interrupt 복구 후 기록 건너뛰고 `deliver()`. private `Observed` 에 `completedAt: Instant?`(성공 관측의 `completedAt`, 실패 null) 추가. 그 밖 줄 무변경(R8).
+요건: design §6.3 표 그대로 — save true 뒤·`deliver()` 전 기록. Computed → `AccountPnlLatest.computed(pnl)`, NoPosition → `AccountPnlLatest.noPosition(observed.round!!.observedAt)`
+(성공 회차의 `round` 는 non-null 이고 `observedAt` = 관측 완료 시각 — `AccountPnlMonitorJob.kt:169,173,191-197`; `observed.round?.observedAt` 이 null 이면 기록하지 않는다),
+Failed·save false/예외·저장 전 취소는 기록 없음, `record` 예외는 WARN `Account PnL latest record failed: error={}`(단순 클래스 이름) 후 계속, 취소면 interrupt 복구 후 기록 건너뛰고 `deliver()`.
+**private `Observed` 는 바꾸지 않는다.** 그 밖 줄 무변경(R8).
 
 **테스트가 재는 것** (`AccountPnlMonitorLatestRecordTest`, 기존 `AccountPnlMonitorJob*Test` 의 fake 를 **import 해 재사용**하고 수정하지 않는다; 파일 안 private `FakeAccountPnlLatestStore(records, nextFailure)`):
-dod AC11 (a)~(e) — Computed → `computed(pnl)` 1회(값 비교), NoPosition → `noPosition(completedAt)`, Failed·save false·save 예외·사전 interrupt → 0회, record 예외 → `JobResult`·발송 수가
+dod AC11 (a)~(e) — Computed → `computed(pnl)` 1회(값 비교), NoPosition → `noPosition(t)` 이고 `t` = 조회 뒤 fake clock 시각, Failed·save false·save 예외·사전 interrupt → 0회, record 예외 → `JobResult`·발송 수가
 예외 없는 회차와 같고 WARN 줄이 `error=IllegalStateException` 로 끝남(메시지 없음), `latestPnl` 미지정 → 기존 결과.
 
 - [ ] **Step 1:** 생성자 인자와 배선만 추가(기록 블록 없음 = stub). 테스트 작성.
@@ -728,7 +765,8 @@ class OwnerMarketSignalJob(
 }
 ```
 
-`JobResult` 분기·로그 키·담지 않는 값 = design §7.4 표 전문. 회차 순서 = design §7.4 1~9. 취소 판정 = 원인 체인 깊이 16(`OwnerOpsSignalJob.kt:170-175` 와 같은 private 함수를 이 파일에 둔다).
+`JobResult` 분기·로그 키·담지 않는 값 = design §7.4 표 전문. 회차 순서 = design §7.4 1~9 — 요약 입력은 `DailySummaryInput(day, batchMarket.fxBase, batchMarket.fxQuote, fx, pnl)` 로 만든다.
+취소 판정 = 원인 체인 깊이 16(`OwnerOpsSignalJob.kt:170-175` 와 같은 private 함수를 이 파일에 둔다).
 
 테스트 fake (`OwnerMarketTestFakes.kt`, 전문 시그니처):
 
@@ -747,7 +785,7 @@ class FakeOwnerMarketAlertStore : OwnerMarketAlertStore {
 (`next`/`minutes` 등 람다는 테스트가 `MutableClock` 상대 시각으로 값을 만든다. `JobExecutor` 구성·`MutableClock` 은 Task 0 (g9) 위치의 기존 것을 import 해 쓴다.)
 
 **테스트가 재는 것** (`OwnerMarketSignalJobTest`): dod AC12 (a)~(m) 전부 — 행 채널·target·push, 상태 key, 쿨다운 경계 회차, 기준선 꺼짐 시 `loadedKeys` 에 threshold 없음,
-요약 09:00/08:59:59(`FakeAggregationRead.calls` 에 DAY 없음·`FakeFxRead.calls == 0`), 요약 입력 예외 후 다음 회차 1통, 원천별 모름 조합, 새 인스턴스 쿨다운 유지, JobResult 4분기,
+요약 09:00/08:59:59(`FakeAggregationRead.calls` 에 DAY 없음·`FakeFxRead.calls == 0`)·요약 notice 의 `fxBase/fxQuote` = `BatchMarket` 값, 요약 입력 예외 후 다음 회차 1통, 원천별 모름 조합, 새 인스턴스 쿨다운 유지, JobResult 4분기,
 취소 재전파(`assertThrows` + `Thread.interrupted()` true + `enqueueCalls == 0`), `EMAIL_ONLY`, `OutputCaptureExtension` 로그 금지 문자열(`example.test`·`@`·fake 예외 메시지 `secret-detail`·`2.50`·`원`).
 
 - [ ] **Step 1:** Job 을 `run() = executor.execute(...) { JobResult.Success }` stub 으로, fake·테스트 작성.
@@ -808,6 +846,7 @@ class OwnerMarketAlertConfiguration {
         @Value("\${aggregation.zone:Asia/Seoul}") zone: String,
         jobConfigs: JobConfigProvider,
     ): OwnerMarketSignalJob
+}
 
 // OwnerMarketSignalScheduler.kt
 @Component
@@ -842,10 +881,14 @@ yml (전문, `owner-alert.ops` 블록 뒤):
     summary-pnl-max-age: ${OWNER_ALERT_MARKET_SUMMARY_PNL_MAX_AGE:10m}
 ```
 
-**테스트가 재는 것** (`OwnerMarketAlertWiringTest`, `ApplicationContextRunner` + mock port bean, `OutputCaptureExtension`, 기존 `OwnerAlertDeliveryWiringTest` 의 property 조합을 참고만 하고 수정하지 않는다):
-dod AC14 (a)~(h) — ready + 기본 → Job·Scheduler 존재(`account-pnl-monitor.enabled=false`), `enabled=false` → 없음 + INFO 1줄, `enabled=`(빈 값) → 존재, 채널 없음 → 없음·INFO 없음,
-scheduling off → 없음, 11개 값 바인딩(`upper-threshold=3.0` 등)과 빈 기준선 null, `swing-threshold=0` 기동 실패 원인 메시지, infra `OwnerAlertProperties` 를 같은 environment 로 바인딩해도 예외 없음,
-yml 원문을 읽어 `owner-alert.market` 12키 기본값 문자열 비교, 출력에 `discord.example.test`·`owner@example.test` 없음.
+**runner 구성 (전문 요건).** `ApplicationContextRunner` 는 `OwnerAlertDeliveryWiringTest.kt:55-68`(Task 0 (g17))의 구성을 **복사해 시작**한다(그 파일은 수정하지 않는다):
+- `withUserConfiguration` — 그 테스트와 같은 집합(`OwnerAlertChannelConfiguration` — `OwnerAlertRouting`·sender bean, `BatchJobSupportConfiguration` — `JobExecutor`·`JobConfigProvider`, 그 밖 (g17) 이 보인 것) + `OwnerMarketAlertConfiguration::class.java` + `OwnerMarketSignalScheduler::class.java`.
+- `withBean` — 이 Job 만 쓰는 port 의 mock: `PremiumReadPort`·`PremiumAggregationReadPort`·`FxRateReadPort`·`AccountPnlLatestStore`·`BatchMarketProvider`·`OwnerMarketAlertStore`, 고정 `Clock`.
+- `withPropertyValues` — 채널 ready 기본 조합(`owner-alert.discord.enabled=true`·`owner-alert.discord.webhook.market=https://discord.example.test/api/webhooks/1/x`·`owner-alert.email.enabled=false`·`account-pnl-monitor.enabled=false`) 위에 시나리오별 값을 더한다.
+
+**테스트가 재는 것** (`OwnerMarketAlertWiringTest`, 위 runner, `OutputCaptureExtension`): dod AC14 (a)~(h) — ready + 기본 → Job·Scheduler 존재, `enabled=false` → 없음 + INFO 1줄, `enabled=`(빈 값) → 존재,
+채널 없음 → 없음·INFO 없음, scheduling off → 없음, 11개 값 바인딩(`upper-threshold=3.0` 등)과 빈 기준선 null, `swing-threshold=0`·`upper-threshold=3.12345`·`summary-hour=0` 기동 실패 원인 메시지,
+infra `OwnerAlertProperties` 를 같은 environment 로 바인딩해도 예외 없음, yml 원문을 읽어 `owner-alert.market` 12키 기본값 문자열 비교, 출력에 `discord.example.test`·`owner@example.test` 없음.
 
 - [ ] **Step 1:** 조건의 `matches` 를 `false` stub 으로, 나머지 전문 작성 + 테스트.
 - [ ] **Step 2:** AC14 명령 → RED(bean 존재·INFO 단언 실패). 증거 로그 AC14.
@@ -856,13 +899,18 @@ yml 원문을 읽어 `owner-alert.market` 12키 기본값 문자열 비교, 출�
 
 **Files:** Test Create `apps/batch/src/integrationTest/kotlin/io/premiumspread/application/job/OwnerMarketAlertIntegrationTest.kt`
 
-요건(구성): `BatchIntegrationTestBase` 상속(Task 0 (g16)), `@Autowired` 실제 `OwnerMarketAlertStore`·`AccountPnlAlertStore`·`AccountPnlLatestStore`·`PremiumAggregationReadPort`,
+요건(구성): `BatchIntegrationTestBase` 상속(Task 0 (g16)), `@Autowired` 실제 `OwnerMarketAlertStore`·`AccountPnlAlertStore`·`AccountPnlLatestStore`·`PremiumAggregationReadPort`·`StringRedisTemplate`,
 `premium_minute`·`premium_hour`·`premium_day` 행은 `JdbcTemplate` INSERT(UTC `minute_at`·`hour_at`, `day_at` = KST 날짜), fake `PremiumReadPort`·`FxRateReadPort`(clock 상대),
 `MutableClock`(시작 `2026-10-29T00:00:00Z`), `JobExecutor(AlwaysLock, NoopRecorder, NoopAlert, clock)`(#91 `OwnerOpsAlertIntegrationTest` 와 같은 구성), 기록용 메일·Discord sender +
-`OwnerAlertDeliveryJob`. 각 테스트 전 `owner_market_alert_state`·`account_pnl_latest`·`account_pnl_mail`·`premium_*` 를 비운다. Redis premium 집계 key 는 쓰지 않는다(DB 경로 검증).
+`OwnerAlertDeliveryJob`. `@BeforeEach`:
+- DB — `owner_market_alert_state`·`account_pnl_latest`·`account_pnl_mail`·`premium_minute`·`premium_hour`·`premium_day` 를 비운다.
+- Redis — 기본 pair 의 premium 집계 key 를 **모두** 삭제한다: `RedisKeyGenerator.premiumV2AggregationKey(BITHUMB, BINANCE, BTC, unit)` 3개(MINUTES·HOURS·DAYS)와 legacy `AggregationTimeUnit.keyFor("BTC")` 3개
+  (Task 0 (g18) 의 함수). 이유: `PremiumAggregationCacheReader.kt:51-60` 이 default pair 의 legacy key 까지 읽어 DB 결과와 병합하므로, 다른 테스트가 남긴 cache 가 bucket 을 오염시킨다.
 
-**테스트가 재는 것**: dod AC15 (a)~(f) — 급변 행 SENT·sender 1회(MARKET/SOUND), +10분 쿨다운 무행, 24h 신고가 SILENT, 09:00 요약 메일+Discord SENT·본문 줄·`summary_date`,
-새 인스턴스 재회차 무행, `day_at` 2026-10-29 행이 있어도 요약 값은 10-28 행.
+**테스트가 재는 것**: dod AC15 (a)~(f) —
+- (a) 급변 행 SENT·sender 1회(MARKET/SOUND).
+- (b) 시계 +10분 → **새 clock 기준으로 분 bucket 을 다시 INSERT**(저점 2.00 유지, 급변 창 10개 모두 존재) + 현재 2.60 → 새 행 없음, 그리고 `SELECT last_notified_at FROM owner_market_alert_state WHERE signal_key = 'market.btc-bithumb-binance.swing-up'` 이 (a) 회차 시각과 같다(근거는 충분했고 쿨다운이 억제했음을 직접 확인).
+- (c) 24h 신고가 SILENT. (d) 09:00 요약 메일+Discord SENT·본문 줄(`환율(USD/KRW)` 포함)·`summary_date`. (e) 새 인스턴스 재회차 무행. (f) `day_at` 2026-10-29 행이 있어도 요약 값은 10-28 행.
 
 - [ ] **Step 1:** 테스트 작성.
 - [ ] **Step 2:** RED — `OwnerMarketSignalJob` 의 `store.enqueue(next, rows)` 를 `enqueue(next, emptyList())` 로 **임시 변이**하고 AC15 명령 → assertion 실패(행 수). 증거 로그 AC15. 변이 되돌림 후 `git diff --stat -- apps/batch/src/main` 빈 출력 확인.
@@ -874,7 +922,7 @@ yml 원문을 읽어 `owner-alert.market` 12키 기본값 문자열 비교, 출�
 **Files:** Create `docs/runbooks/owner-market-alert.md`; Modify `docs/runbooks/account-pnl-alert.md`(Task 0 (g8) 줄), `docs/runbooks/owner-ops-alert.md`, `.ai/architecture/ARCHITECTURE_DESIGN.md`, `.ai/PROJECT_STATUS.md`,
 (Task 0 (g11) 이 job tag 목록을 찾은 문서)
 
-요건: design §13 항목 전부. runbook 의 env 표는 design §9.1 env 전부(이름·기본값·의미), 라우팅 표 4종, 정리 SQL 두 문장 전문, V22 배포(additive·롤백 SQL 없음), AC17 체크리스트
+요건: design §13 항목 전부. runbook 의 env 표는 design §9.1 env 전부(이름·기본값·의미, 기준선 소수 넷째 자리까지·`OWNER_ALERT_MARKET_SUMMARY_HOUR` 1~23 명시), 라우팅 표 4종, 정리 SQL 두 문장 전문, V22 배포(additive·롤백 SQL 없음), AC17 체크리스트
 ((a) 기동 INFO 4종 (b) 09:00 무음 요약 + 메일 (c) 상단 기준선 소리 (d) 급변·신고가 관찰 여부). 문서에 실제 webhook·주소·key 를 쓰지 않는다(`https://discord.example.test/...` 예시만).
 
 - [ ] **Step 1:** 문서 작성.
@@ -895,7 +943,7 @@ yml 원문을 읽어 `owner-alert.market` 12키 기본값 문자열 비교, 출�
   ./gradlew jacocoTestReport jacocoTestCoverageVerification --offline --no-daemon     # R15
   ./gradlew harnessCheck harnessCheckTest --offline --no-daemon                       # R16
   bash docs/check-documentation.sh                                                    # R12
-  git diff --exit-code --diff-filter=MDR 4f8727c -- <Task 0 이 확정한 R3 경로>          # R3 (⑨ 리뷰가 재실행)
+  git diff --exit-code --diff-filter=MDR 4f8727c -- domain/src/test/kotlin/io/premiumspread/domain/accountpnl domain/src/test/kotlin/io/premiumspread/domain/ownerops domain/src/test/kotlin/io/premiumspread/domain/owneralert ':(exclude)domain/src/test/kotlin/io/premiumspread/domain/owneralert/OwnerAlertRoutingTest.kt' apps/batch/src/test/kotlin/io/premiumspread/application apps/batch/src/test/kotlin/io/premiumspread/config apps/batch/src/integrationTest/kotlin infrastructure/batch/src/test infrastructure/common/src/integrationTest infrastructure/common/src/test   # R3 (dod R3 확정 목록, ⑨ 리뷰가 재실행)
   ```
 - [ ] **Step 2: 예상 결과.** 전부 exit 0. Docker 부재 항목은 "미실행"(green 금지). R6·R7·R8 diff 는 ⑨ 리뷰가 사람 판정. R14 는 CI.
 - [ ] **Step 3: Commit** — `docs: owner 시장 알림 최종 게이트 기록`
