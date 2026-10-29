@@ -22,7 +22,7 @@ class OwnerAlertRoutingTest {
     @Test
     fun `종류 목록과 기본 경로는 설계 표와 같다`() {
         assertThat(OwnerAlertKind.entries.map { it.name })
-            .containsExactly("PROFIT", "HOURLY_REPORT", "MONITORING_OUTAGE", "MONITORING_RECOVERED", "POSITION_CHANGED", "NET_PERCENT_SWING", "UNRECOVERED_REMINDER", "FX_INGESTION_DELAYED", "MARKET_STREAM_DOWN", "JOB_CONSECUTIVE_FAILURES", "OPS_RECOVERED")
+            .containsExactly("PROFIT", "HOURLY_REPORT", "MONITORING_OUTAGE", "MONITORING_RECOVERED", "POSITION_CHANGED", "NET_PERCENT_SWING", "UNRECOVERED_REMINDER", "FX_INGESTION_DELAYED", "MARKET_STREAM_DOWN", "JOB_CONSECUTIVE_FAILURES", "OPS_RECOVERED", "PREMIUM_SWING", "PREMIUM_THRESHOLD_CROSSED", "PREMIUM_NEW_EXTREME", "DAILY_SUMMARY")
         assertThat(PROFIT.defaultRoute).isEqualTo(OwnerAlertRoute(true, DiscordRoute(PNL, HERE)))
         assertThat(HOURLY_REPORT.defaultRoute).isEqualTo(OwnerAlertRoute(false, DiscordRoute(PNL, SILENT)))
         assertThat(MONITORING_OUTAGE.defaultRoute).isEqualTo(OwnerAlertRoute(true, DiscordRoute(OPS, SOUND)))
@@ -32,7 +32,7 @@ class OwnerAlertRoutingTest {
     @Test
     fun `key 는 소문자 kebab 이고 fromKey 로 되돌아온다`() {
         assertThat(OwnerAlertKind.entries.map { it.key })
-            .containsExactly("profit", "hourly-report", "monitoring-outage", "monitoring-recovered", "position-changed", "net-percent-swing", "unrecovered-reminder", "fx-ingestion-delayed", "market-stream-down", "job-consecutive-failures", "ops-recovered")
+            .containsExactly("profit", "hourly-report", "monitoring-outage", "monitoring-recovered", "position-changed", "net-percent-swing", "unrecovered-reminder", "fx-ingestion-delayed", "market-stream-down", "job-consecutive-failures", "ops-recovered", "premium-swing", "premium-threshold-crossed", "premium-new-extreme", "daily-summary")
         OwnerAlertKind.entries.forEach { assertThat(OwnerAlertKind.fromKey(it.key)).isEqualTo(it) }
         assertThat(OwnerAlertKind.fromKey(" Hourly-Report ")).isEqualTo(HOURLY_REPORT)
         assertThat(OwnerAlertKind.fromKey("nope")).isNull()

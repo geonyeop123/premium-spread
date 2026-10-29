@@ -177,3 +177,7 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
   - (g19) `OwnerOpsAlertContent.kt:115` `internal fun threshold(duration: Duration): String`.
   - (g20) 9개 경로 모두 존재.
 - 판정: 브리프의 "다르면 멈춘다" 항목 해당 없음. 기준선 초록.
+
+### AC1 (Task 1)
+- RED (stub 경로 `email=true, discord=null`): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --offline --no-daemon` → `34 tests completed, 2 failed` (`OwnerMarketAlertKindTest` 기본 경로·일일 요약만 메일 단언 실패), BUILD FAILED.
+- GREEN: dod AC1 명령 → BUILD SUCCESSFUL (OwnerAlertPropertiesTest·OwnerAlertYamlContractTest 무수정 통과). `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
