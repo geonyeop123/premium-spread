@@ -205,3 +205,8 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC6 (Task 7)
 - RED (stub `due = false`, `decide = NONE`, `summaryPnl = Unavailable`, `computed` 반올림 없음): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.DailySummaryPolicyTest' --tests 'io.premiumspread.domain.accountpnl.AccountPnlLatestTest' --offline --no-daemon` → `16 tests completed, 11 failed`, BUILD FAILED.
 - GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### AC7 (Task 8)
+- RED (stub `mail`·`discord` = `"x"`, `eventKey` 전문): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.OwnerMarketAlertContentTest' --offline --no-daemon` → `24 tests completed, 20 failed`, BUILD FAILED (golden 18 + fxRate 대체 줄 + `{d}` 사용; eventKey·색·금지 문자열·`원` 없음은 stub 에서 초록).
+- GREEN: 같은 명령 → BUILD SUCCESSFUL. `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+- 메모: design §8.1 예시의 "57자"는 계산 오류다 — `owner-market.btc-bithumb-binance.extreme-24h-high.1793232000000` 은 63자(상한 128 이내). 테스트는 63 으로 고정.
