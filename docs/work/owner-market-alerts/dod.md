@@ -269,3 +269,81 @@ flaky 재실행 없음(실패 0). R6·R7·R8 은 ⑨ 리뷰 판정, R14 는 CI.
 - `OwnerMarketSignalJob` swing 상태를 `MarketKeys.swing(pairKey, UP/DOWN)` 직접 조회로 정리(동작 무변경).
 - runbook: 메일만 쓰는 환경의 실제 상한 표, `OWNER_ALERT_PREMIUM_NEW_EXTREME_EMAIL=false` 예시, 히스테리시스 0·소값 경고. PROJECT_STATUS #90/#91 문구 정합·Last updated 2026-10-29.
 - `./gradlew test architectureTest --offline --no-daemon` -> exit 0. `bash docs/check-documentation.sh` -> 통과. flaky 재실행 없음.
+
+### ⑩ 검증 (HEAD 1618a04)
+
+작업 트리 깨끗, Docker 사용 가능. 모든 gradle 은 `--offline --no-daemon`, test 계열은 `clean*` 후 재실행(캐시 재사용 없음). 테스트 수는 build/test-results XML 합계(tests/failures/errors/skipped).
+
+| 게이트 | 명령 | exit | 결과 |
+|--------|------|------|------|
+| R1·R2 | `cleanTest cleanArchitectureTest test architectureTest` | 0 | unit 1303/0/0/0 (기준선 1156, Task 17 1303), arch 35/0/0/0 (2m 6s) |
+| R10·AC8·AC9 | `:infrastructure:common:integrationTest` | 0 | 81/0/0/0 (기준선 64, Task 17 79, ⑨ fix wave +2) (11m 2s) |
+| R13 | `:apps:api:integrationTest` | 1 → 1 → 0 | 174 실행. 1차 1 실패, 2차 1 실패(서로 다른 테스트), 3차 174/0/0/0 — 아래 FLAKY 기록 |
+| R11·AC15 | `:apps:batch:integrationTest` | 0 | 112/0/0/0 (기준선 109, Task 17 112) (3m 1s) |
+| R5 | `:infrastructure:common:verifyMigrations` | 0 | 통과 |
+| R15 | `jacocoTestReport jacocoTestCoverageVerification` | 0 | 세 게이트(overall 70·domain 85·application 80) 통과. 집계 XML 직접 계산 overall 79.36%(Task 17 과 동일). domain 96.49%·application 92.93% 는 이 계산식(패키지 접두 `io/premiumspread/domain`, `/application` 합)이며 Task 17 기록(89.85·96.72)과 방식이 달라 직접 비교하지 않는다. 게이트 통과 자체는 gradle exit 0 이 증거. 최종 증거는 CI artifact |
+| R16 | `harnessCheck harnessCheckTest` | 0 | 통과 |
+| R12 | `bash docs/check-documentation.sh` | 0 | `documentation check passed (20 files, 15 required paths)` |
+| R3 | base 대비 `diff --exit-code --diff-filter=MDR 4f8727c -- <확정 목록>` | 0 | 빈 출력 |
+
+**FLAKY 기록 (`:apps:api:integrationTest`, 이번 변경 대상 아님)**
+- 1차: `TrackingControllerE2ETest > AUTO 추적 기록 오픈 성공 - 최신 스냅샷으로 DB 저장` (`:90`) `Status expected:<201> but was:<409>`.
+- 2차: `TrackingArchiveIntegrationTest > 케이스6 - 동시 archive 중 정확히 하나만 확정한다` (`:130`) AssertionFailedError.
+- 3차: 174/0/0/0 통과. Task 17(7171303)에서는 1회 통과.
+- 추가 재현 시도(controller, HEAD 1618a04): 실패한 두 클래스(`TrackingControllerE2ETest`·`TrackingArchiveIntegrationTest`)만 `--tests` 로 3회 반복 → 3/3 exit 0. 단독 실행에서 재현 안 됨 → 전체 스위트 내 상태/부하 의존 간헐 실패로 판단.
+- 서로 다른 tracking 계열 테스트가 간헐 실패. 사전 합의된 flaky 목록에 없다. `apps/api`·`modules/redis`·`http/` 는 base 대비 diff 0 이므로 이번 변경이 직접 건드린 코드는 아니지만, `infrastructure:common`(V22·adapter)을 소비하므로 무관함을 증명하지는 못했다(base 에서 같은 반복 실행은 하지 않았다). retry 로 지우지 않고 기록한다. 후속 확인 권고: CI 에서 api IT 결과 확인.
+
+**경계면 교차 검증**
+1. [MATCH] `owner_market_alert_state` 10열·`account_pnl_latest` 6열: V22 DDL ↔ `batch-schema.sql`(`IF NOT EXISTS` 만 다름, 열·타입·NULL·PK·CHECK 동일) ↔ `JdbcOwnerMarketAlertStore`(INSERT/UPDATE/SELECT 열 10개 이름 일치, INSERT 시 version 1, 갱신은 `version = ?` 조건, DuplicateKey → false) ↔ `JdbcAccountPnlLatestStore`(id=1 upsert, 열 6개 일치, `has_position`↔`position`).
+2. [MATCH] yml `owner-alert.market` 12키(enabled + 11) ↔ `OwnerMarketAlertProperties` 11 필드(이름·기본값 일치: 10m/0.5/30m/null/null/0.1/0.1/30m/2h/9/10m) ↔ runbook `owner-market-alert.md` env 12개 전부 언급. routes 4블록(premium-swing·premium-threshold-crossed·premium-new-extreme·daily-summary) ↔ `account-pnl-alert.md` 라우팅 15종·INFO 예문. jobs `owner-market-signal` `lock:owner-market:signal`/20s/10s, scheduling fixed-rate 30s ↔ AC13 테스트 통과. 참고(결함 아님): `OWNER_MARKET_SIGNAL_LEASE`·`_TIMEOUT` env 는 기존 `OWNER_OPS_SIGNAL_*` 와 마찬가지로 runbook 에 없다(기존 관례와 동일).
+3. [MATCH] Redis 계약 무변경: `modules/redis`·`docs/runbooks/redis-contract.md` diff 0.
+4. [MATCH] 공개 endpoint 무변경: `apps/api`·`http/` diff 0. 기존 migration 파일 MDR diff 0(R5).
+
+## 판정
+
+| AC | 판정 | 근거 |
+|----|------|------|
+| AC1~AC7 | VERIFIED | unit 1303/0 (전체 `test` 안에서 실행: `domain.owneralert.*`·`domain.ownermarket.*`·`AccountPnlLatestTest`·`OwnerAlertPropertiesTest`·`OwnerAlertYamlContractTest` 포함) |
+| AC8 | VERIFIED | common IT 81/0 (`V22OwnerMarketAlertStateMigrationIntegrationTest`), verifyMigrations exit 0 |
+| AC9 | VERIFIED | common IT 81/0 (`jdbc.*` 전부, 동시 enqueue 2건 포함) |
+| AC10 | VERIFIED | unit 1303/0 (`JpaPremiumRepositoryAdapterAggregationReadTest`) |
+| AC11~AC14 | VERIFIED | unit 1303/0 (`AccountPnlMonitorLatestRecordTest`·`OwnerMarketSignalJobTest`·`OwnerMarketJobConfigTest`·`OwnerMarketAlertWiringTest` 및 기존 무수정 테스트) |
+| AC15 | VERIFIED | batch IT 112/0 (`OwnerMarketAlertIntegrationTest` 3건) |
+| AC16 | AWAITING_HUMAN | `check-documentation.sh` exit 0 (T3 기록 제출). (a)~(d) 문서 내용 존재의 사람 사후 검토 대기 |
+| AC17 | AWAITING_HUMAN | T4 owner 수동 확인. PR 코멘트 앵커 없음 |
+
+개별 AC 명령(`--tests` 필터)은 따로 실행하지 않고 전체 `test`/`integrationTest` 실행(실패 0)으로 판정했다. 필터 명령은 전체의 부분집합이다.
+
+| R | 판정 | 근거 |
+|----|------|------|
+| R1 | VERIFIED | architectureTest 35/0, exit 0 |
+| R2 | VERIFIED | unit 1303/0 |
+| R3 | VERIFIED | 확정 목록 diff exit 0 |
+| R4 | VERIFIED | 해당 테스트는 전체 unit 1303/0 에 포함 |
+| R5 | VERIFIED | verifyMigrations exit 0, migration MDR diff 빈 출력 |
+| R6 | VERIFIED(사람 판정) | ⑨ spec-reviewer 통과 인용 |
+| R7 | VERIFIED(사람 판정) | ⑨ spec-reviewer 통과 인용 |
+| R8 | VERIFIED(사람 판정) | ⑨ controller Ruling 4: 기록 블록을 private fun 으로 분리한 것을 범위 안으로 판정, spec-reviewer 동의 |
+| R9 | VERIFIED | `apps/batch/src/integrationTest/kotlin` MDR diff 0(R3 목록 포함) |
+| R10 | VERIFIED | common IT 81/0 |
+| R11 | VERIFIED | batch IT 112/0 |
+| R12 | VERIFIED | check-documentation exit 0 |
+| R13 | FLAKY | api IT 3회 중 1회만 174/0 통과(위 기록). 마지막 실행은 통과했으나 안정 통과로 단정하지 않는다 |
+| R14 | CI 대기 | ktlint·detekt 는 로컬 task 없음, CI `quality-gate.yml` 결과 대기 |
+| R15 | VERIFIED(로컬) | 게이트 exit 0, overall 79.36%. 최종 증거는 CI artifact |
+| R16 | VERIFIED | harnessCheck·harnessCheckTest exit 0 |
+
+집계: AC VERIFIED 15 / AWAITING_HUMAN 2 / FAILED 0. R VERIFIED 14 (R6~R8 사람 판정 3 포함) / FLAKY 1 (R13) / CI 대기 1 (R14) / FAILED 0.
+
+```
+DoD VERDICT: owner-market-alerts @ 1618a04
+  수용기준 표:     17개  (T1 15 · T2 0 · T3 1 · T4 1)
+  T1/T2 자동:      15개 중 15개 PASS
+  T3 기록 제출:    1개 중 1건 (사람 사후 검토 대기)
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기
+  변경 요청:       0건
+  => AWAITING_HUMAN
+```
+
+남은 항목: AC16 문서 사후 검토, AC17 owner 수동 확인(PR 코멘트), R14 CI(ktlint·detekt), R13 api IT 간헐 실패(CI 재확인 권고), R15 CI coverage artifact.
+이 판정은 HEAD 1618a04 기준이며 브랜치 SHA 가 달라지면 만료다. "완료"라고 말할 수 없다.
