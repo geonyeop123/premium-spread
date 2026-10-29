@@ -242,3 +242,21 @@ source: docs/work/owner-market-alerts/design.md (DRAFT, ⑥ R1 반영)
 ### AC16 (Task 16)
 - 문서 태스크라 RED 없음. `bash docs/check-documentation.sh` -> `documentation check passed (20 files, 15 required paths)` (exit 0). `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` -> BUILD SUCCESSFUL (R16).
 - 갱신: 신규 `docs/runbooks/owner-market-alert.md`, `account-pnl-alert.md`(라우팅 표 15종·override 목록·기동 INFO 예문·account_pnl_latest), `owner-ops-alert.md`(감시 대상), `ARCHITECTURE_DESIGN.md`(시장 알림 단락), `PROJECT_STATUS.md`(V22·기능 항목·flaky 후속 2건). 사람 사후 검토 대기.
+
+### 최종 게이트 (Task 17)
+
+HEAD ce1b118, 작업 트리 깨끗, Docker 사용 가능. 전 게이트를 `--offline --no-daemon` 으로 순차 재실행(재사용 없음). 테스트 수는 build/test-results XML 합계(skipped/failures/errors 전부 0).
+
+| 게이트 | 명령 | exit | 결과 |
+|--------|------|------|------|
+| R1·R2 | `./gradlew test architectureTest` | 0 | unit 1303(기준선 1156), arch 35(기준선 35) |
+| R5 | `:infrastructure:common:verifyMigrations` | 0 | 통과 |
+| R10·AC8·AC9 | `:infrastructure:common:integrationTest` | 0 | 79(기준선 64) |
+| R11·AC15 | `:apps:batch:integrationTest` | 0 | 112(기준선 109) |
+| R13 | `:apps:api:integrationTest` | 0 | 174(기준선 174) |
+| R15 | `jacocoTestReport jacocoTestCoverageVerification` | 0 | line overall 79.36%(기준 70), domain 89.85%(85), application 96.72%(80; apps:api+batch `/application` 패키지) |
+| R16 | `harnessCheck harnessCheckTest` | 0 | 통과 |
+| R12 | `bash docs/check-documentation.sh` | 0 | 통과 |
+| R3 | `git diff --exit-code --diff-filter=MDR 4f8727c -- <확정 목록>` | 0 | 빈 출력 |
+
+flaky 재실행 없음(실패 0). R6·R7·R8 은 ⑨ 리뷰 판정, R14 는 CI.
