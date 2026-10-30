@@ -5,9 +5,8 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.sql.DriverManager
 
 /**
@@ -19,7 +18,6 @@ import java.sql.DriverManager
  * 조용히 인덱스를 잃는다.
  */
 @Tag("integration")
-@Testcontainers
 class V17TradePreparationIndexMigrationIntegrationTest {
 
     @Test
@@ -99,11 +97,6 @@ class V17TradePreparationIndexMigrationIntegrationTest {
     companion object {
         private const val EVALUATION_INDEX = "idx_trade_preparation_status_pair"
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_trade_preparation_index_migration")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_trade_preparation_index_migration")
     }
 }

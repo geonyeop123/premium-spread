@@ -16,15 +16,13 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Instant
 
 @Tag("integration")
-@Testcontainers
 class NotificationSubscriptionOptimisticLockIntegrationTest {
 
     private lateinit var entityManagerFactory: EntityManagerFactory
@@ -131,11 +129,6 @@ class NotificationSubscriptionOptimisticLockIntegrationTest {
         }
 
     companion object {
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_notification_lock")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_notification_lock")
     }
 }

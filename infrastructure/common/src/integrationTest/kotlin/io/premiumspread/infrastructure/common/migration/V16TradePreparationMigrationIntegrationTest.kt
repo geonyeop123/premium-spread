@@ -6,16 +6,14 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLIntegrityConstraintViolationException
 import java.sql.Statement
 
 @Tag("integration")
-@Testcontainers
 class V16TradePreparationMigrationIntegrationTest {
 
     @Test
@@ -242,11 +240,6 @@ class V16TradePreparationMigrationIntegrationTest {
         get() = mysql.jdbcUrl + if (mysql.jdbcUrl.contains('?')) "&sslMode=DISABLED" else "?sslMode=DISABLED"
 
     companion object {
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_trade_preparation_migration")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_trade_preparation_migration")
     }
 }

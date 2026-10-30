@@ -12,16 +12,14 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 @Tag("integration")
-@Testcontainers
 class JdbcNotificationDeliveryRepositoryIntegrationTest {
 
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -236,12 +234,7 @@ class JdbcNotificationDeliveryRepositoryIntegrationTest {
     companion object {
         private val NOW = Instant.parse("2026-07-15T01:00:00Z")
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_notification")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_notification")
     }
 
     private class RollbackMarker : RuntimeException()

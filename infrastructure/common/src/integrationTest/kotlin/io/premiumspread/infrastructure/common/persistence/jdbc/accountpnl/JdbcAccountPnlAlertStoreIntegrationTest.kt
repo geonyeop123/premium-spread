@@ -27,9 +27,8 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Clock
@@ -43,7 +42,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 @Tag("integration")
-@Testcontainers
 class JdbcAccountPnlAlertStoreIntegrationTest {
 
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -655,12 +653,7 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
             version = 0,
         )
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_account_pnl")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_account_pnl")
     }
 
     private class RollbackMarker : RuntimeException()

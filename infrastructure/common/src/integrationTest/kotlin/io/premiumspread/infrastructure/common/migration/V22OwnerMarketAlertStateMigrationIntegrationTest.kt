@@ -6,16 +6,14 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.sql.DriverManager
 import java.sql.ResultSet
 import java.sql.SQLException
 
 /** `V22` — owner 시장 알림(#90) 신호별 상태·실계정 최신 순수익률 테이블과 CHECK. */
 @Tag("integration")
-@Testcontainers
 class V22OwnerMarketAlertStateMigrationIntegrationTest {
 
     @Test
@@ -238,11 +236,6 @@ class V22OwnerMarketAlertStateMigrationIntegrationTest {
         get() = mysql.jdbcUrl + if (mysql.jdbcUrl.contains('?')) "&sslMode=DISABLED" else "?sslMode=DISABLED"
 
     companion object {
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_owner_market_alert_migration")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_owner_market_alert_migration")
     }
 }

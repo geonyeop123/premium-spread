@@ -28,9 +28,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -41,7 +40,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 @Tag("integration")
-@Testcontainers
 class JdbcOwnerMarketAlertStoreIntegrationTest {
 
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -319,11 +317,6 @@ class JdbcOwnerMarketAlertStoreIntegrationTest {
         private val NOTIFIED = Instant.parse("2026-10-27T23:00:00Z")
         private val BASELINE = ThresholdBaseline(BigDecimal("3.1234"), null, BigDecimal("0.2000"))
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_owner_market")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_owner_market")
     }
 }
