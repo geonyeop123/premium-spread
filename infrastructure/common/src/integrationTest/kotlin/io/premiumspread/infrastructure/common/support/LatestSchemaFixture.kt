@@ -55,7 +55,11 @@ class LatestSchemaFixture(private val database: TestDatabase) {
                 val columns = rs.metaData.columnCount
                 buildList {
                     while (rs.next()) {
-                        add((1..columns).joinToString(separator = "|", prefix = "$prefix:") { (rs.getString(it) as String?).toString() })
+                        val joined =
+                            (1..columns).joinToString(separator = "|", prefix = "$prefix:") { index ->
+                                (rs.getString(index) as String?).toString()
+                            }
+                        add(joined)
                     }
                 }
             }
