@@ -10,7 +10,7 @@
 | `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
 | `apps:web` | Active | Next.js 대시보드, 인증, position UI |
 | `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
-| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V22 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V23 |
 | `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
 | `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
 | `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
@@ -126,6 +126,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 | V20 | account_pnl_monitor_state 에 owner 계정 알림 상태 12열 | 포지션 변경·순수익률 급변·미반영 리마인더 상태 |
 | V21 | `owner_alert_signal_state` 신규 | owner 운영 알림 신호별 장애 상태(additive, 롤백 SQL 없음) |
 | V22 | `owner_market_alert_state`·`account_pnl_latest` 신규 | owner 시장 알림 신호별 상태, 실계정 최신 순수익률(additive, 롤백 SQL 없음) |
+| V23 | `account_pnl_mail.discord_layout` 추가 | owner 알림 Discord embed 칸 배치 보존(additive nullable, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
 
 - migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
 - Batch Flyway는 항상 비활성이다.
