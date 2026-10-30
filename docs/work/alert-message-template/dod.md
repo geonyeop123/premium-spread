@@ -223,3 +223,10 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - 수정한 기존 테스트(R3 허용): `AccountPnlMonitorJobTest`·`AccountPnlMonitorJobHourlyReportTest`·`AccountPnlMonitorJobOwnerAlertTest`·`AccountPnlEmailSenderAdapterTest` — 문구 단정·기대 행(layout 인자)·호출·import 줄만. 행 수·채널·eventKey·`JobResult` 단정 줄 무변경.
 - 문구 변경으로 대체된 단정: `환율 관측: 2026-10-17`(새 spec 에 환율 관측 시각 없음) → `환율 1,400.00원/USD`, `계산 시각: …12:00:03`(초 단위 표기 없음) → `기준 시각 2026-10-20 12:00 KST`(eventKey 단정이 초 정밀도를 이미 보장).
 - 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL, `compileIntegrationTestKotlin` → BUILD SUCCESSFUL.
+
+### Task 9 — 계정 알림 (AC6, 2026-10-30)
+
+- RED(stub: `message` 가 빈 문서 반환): `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountAlertContentTest' --offline --no-daemon` → `15 tests completed, 12 failed`(assertion 실패, BUILD FAILED).
+- GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` → BUILD SUCCESSFUL(신규 Job 행 시나리오 `POSITION_CHANGED` 포함, `AccountPnlMonitorJobAccountAlertTest` 무수정 통과).
+- 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
+- 옛 `route(kind, mail, discord)` 삭제. `reminderHour` 는 `alert.reminderHour` 출처(`09:00` 리터럴 없음). 바이낸스 칸 이름은 leg 방향과 무관하게 `바이낸스 선물 숏` 고정(spec), 롱이면 값 앞 `롱 `(A7).

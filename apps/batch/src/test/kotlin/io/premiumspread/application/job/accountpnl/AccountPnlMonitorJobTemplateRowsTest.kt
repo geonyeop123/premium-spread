@@ -8,13 +8,20 @@ import io.premiumspread.application.notification.owneralert.FakeDiscordSender
 import io.premiumspread.application.notification.owneralert.FakeMailSender
 import io.premiumspread.application.notification.owneralert.FakeOwnerAlertStore
 import io.premiumspread.application.notification.owneralert.MutableClock
+import io.premiumspread.domain.accountpnl.AccountAlert
+import io.premiumspread.domain.accountpnl.AccountAlertContent
+import io.premiumspread.domain.accountpnl.AccountAlertSettings
 import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
 import io.premiumspread.domain.accountpnl.AccountPnlAlertContent
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
+import io.premiumspread.domain.accountpnl.ForeignLeg
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
+import io.premiumspread.domain.accountpnl.ForeignPerpPositionSource
+import io.premiumspread.domain.accountpnl.KoreaLeg
+import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
@@ -68,7 +75,7 @@ class AccountPnlMonitorJobTemplateRowsTest {
         discord = FakeDiscordSender()
     }
 
-    private fun job(kind: OwnerAlertKind) = AccountPnlMonitorJob(
+    private fun job(kind: OwnerAlertKind, accountAlerts: AccountAlertSettings? = null) = AccountPnlMonitorJob(
         korea,
         foreign,
         Fx(clock),
@@ -83,6 +90,7 @@ class AccountPnlMonitorJobTemplateRowsTest {
             mapOf(kind to OwnerAlertRouteOverride(email = true)),
         ),
         discordSender = discord,
+        accountAlerts = accountAlerts,
     )
 
     @Test
@@ -120,6 +128,37 @@ class AccountPnlMonitorJobTemplateRowsTest {
         assertThat(rows[1].discordLayout).isEqualTo(message.discord.toDiscordMessage().layout)
     }
 
+    @Test
+    fun `포지션 변경 회차는 EMAIL DISCORD 2행이고 본문과 layout 이 템플릿 결과와 같다`() {
+        val job = job(OwnerAlertKind.POSITION_CHANGED, AccountAlertSettings())
+        job.run()
+        korea.quantity = BigDecimal("0.02")
+        clock.advance(Duration.ofMinutes(1))
+        job.run()
+
+        val message = AccountAlertContent.message(
+            AccountAlert.PositionChanged(
+                before = PositionLegs(
+                    KoreaLeg.of(BigDecimal("0.01"), BigDecimal("100000000")),
+                    ForeignLeg.of(BigDecimal("-0.01"), BigDecimal("70000")),
+                ),
+                after = PositionLegs(
+                    KoreaLeg.of(BigDecimal("0.02"), BigDecimal("100000000")),
+                    ForeignLeg.of(BigDecimal("-0.01"), BigDecimal("70000")),
+                ),
+                hedgeMismatchWarning = false,
+                source = ForeignPerpPositionSource.EXCHANGE_API,
+                detectedAt = clock.instant(),
+            ),
+            zone,
+        )
+        val rows = store.rows.map { it.mail }.filter { it.eventKey.startsWith("account-pnl-position-") }
+        assertThat(rows.map { it.channel }).containsExactly(OwnerAlertChannel.EMAIL, OwnerAlertChannel.DISCORD)
+        assertThat(rows[0].body).isEqualTo(message.mail.body())
+        assertThat(rows[1].discordLayout).isNotNull
+        assertThat(rows[1].discordLayout).isEqualTo(message.discord.toDiscordMessage().layout)
+    }
+
     private fun expectedPnl(): AccountNetPnl {
         val position = checkNotNull(AccountHedgePosition.resolve(korea.read(), foreign.read()))
         return AccountNetPnl.calculate(position, BigDecimal("1400"), t0.minus(Duration.ofMinutes(1)), t0)
@@ -129,12 +168,13 @@ class AccountPnlMonitorJobTemplateRowsTest {
 
     private class Korea(private val clock: Clock) : KoreaSpotAccountReadPort {
         var bid = BigDecimal("102000000")
+        var quantity = BigDecimal("0.01")
         var failure: Exception? = null
 
         override fun read(): KoreaSpotAccountSnapshot {
             failure?.let { throw it }
             return KoreaSpotAccountSnapshot(
-                quantity = BigDecimal("0.01"),
+                quantity = quantity,
                 averageBuyPrice = BigDecimal("100000000"),
                 averageBuyPriceModified = false,
                 entryFeeKrw = BigDecimal.ZERO,
