@@ -13,6 +13,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** 알림 문구 공용 서식. locale 무관(Locale.ROOT), 반올림 HALF_UP. zone 없는 시각 표기 함수는 두지 않는다. */
+// 서식 규칙을 한 곳이 소유해야 알림 22종의 표기가 갈리지 않는다. 함수는 모두 작은 순수 함수라 나누지 않는다.
+@Suppress("TooManyFunctions")
 internal object AlertFormat {
     private val STAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z", Locale.ROOT)
     private val ZONE_FORMAT = DateTimeFormatter.ofPattern("z", Locale.ROOT)
