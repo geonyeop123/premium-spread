@@ -26,7 +26,7 @@ object PremiumThresholdMailContent {
                 MailBlock.Pairs(
                     listOf(
                         MailPair("종목", "$symbol (${AlertFormat.exchangePair(subscription.pair, " / ")})"),
-                        MailPair("조건", "김프 ${AlertFormat.premium(subscription.threshold)} $side"),
+                        MailPair("조건", "김프 ${AlertFormat.thresholdPercent(subscription.threshold)} $side"),
                         MailPair("현재 김프", AlertFormat.premium(snapshot.premiumRate)),
                         MailPair("관측 시각", AlertFormat.stamp(snapshot.observedAt, zone)),
                     ),

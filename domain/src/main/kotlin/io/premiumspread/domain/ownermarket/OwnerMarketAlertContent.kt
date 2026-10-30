@@ -10,6 +10,7 @@ import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Locale
 
 /** 시장 알림 7종(급변·기준선·신고/신저·일일 요약)의 메일·Discord 문구. 문구 정본 message-spec.md "시장 알림", 값 출처 design §6.5. */
 object OwnerMarketAlertContent {
@@ -193,8 +194,8 @@ object OwnerMarketAlertContent {
 
     private fun summary(notice: MarketNotice.DailySummary, zone: ZoneId): Parts {
         val abbreviation = AlertFormat.zoneAbbreviation(notice.at, zone)
-        val monthDay = "%02d/%02d".format(notice.date.monthValue, notice.date.dayOfMonth)
-        val footerDay = "%02d-%02d".format(notice.date.monthValue, notice.date.dayOfMonth)
+        val monthDay = "%02d/%02d".format(Locale.ROOT, notice.date.monthValue, notice.date.dayOfMonth)
+        val footerDay = "%02d-%02d".format(Locale.ROOT, notice.date.monthValue, notice.date.dayOfMonth)
         val base = notice.fxBase.code
         val quote = notice.fxQuote.code
         val krwQuote = quote == "KRW"

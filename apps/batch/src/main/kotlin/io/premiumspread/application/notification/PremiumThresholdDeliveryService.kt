@@ -16,10 +16,12 @@ import java.time.ZoneId
 import java.util.UUID
 
 /**
- * `@Service` 없이 Configuration 의 `@Bean` 으로 등록된다. 클래스 수준 `@Transactional` 은 Kotlin spring allopen 이
+ * Service 스테레오타입 없이 Configuration 의 `@Bean` 으로 등록된다. 클래스 수준 `@Transactional` 은 Kotlin spring allopen 이
  * 클래스를 open 으로 만들어 CGLIB 프록시가 가능하게 한다(`evaluate` 가 유일한 public 진입점이다).
  */
 @Transactional
+// 실제 등록 조건은 NotificationDeliveryConfiguration 의 @Bean 이 소유한다.
+// 이 애너테이션은 클래스를 직접 import 하는 경로(NotificationDisabledContextTest 등)용이다.
 @ConditionalOnProperty(prefix = "notification.email", name = ["enabled"], havingValue = "true")
 class PremiumThresholdDeliveryService(
     private val subscriptions: ActiveNotificationSubscriptionPort,

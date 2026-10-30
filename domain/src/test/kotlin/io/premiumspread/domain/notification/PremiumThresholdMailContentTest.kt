@@ -97,4 +97,24 @@ class PremiumThresholdMailContentTest {
         assertThat(mail.body().lines().first()).contains("member")
         assertThat(mail.subject).doesNotContain("member")
     }
+
+    @Test
+    fun `조건 줄 임계값은 최소 소수 2자리이고 설정 정밀도를 보존한다`() {
+        val cases = mapOf(
+            "5" to "5.00%",
+            "5.5" to "5.50%",
+            "1.2345" to "1.2345%",
+            "1.2300" to "1.23%",
+            "-1" to "-1.00%",
+            "100" to "100.00%",
+            "0" to "0.00%",
+        )
+        cases.forEach { (threshold, expected) ->
+            val mail = PremiumThresholdMailContent.render(subscription(ThresholdDirection.ABOVE, threshold), snapshot("6.789"), seoul)
+
+            assertThat(mail.body()).contains("조건       김프 $expected 이상")
+            assertThat(mail.body()).contains("현재 김프  6.79%")
+            assertThat(mail.subject).isEqualTo("[김프 알림] BTC 김프 6.79% 도달")
+        }
+    }
 }

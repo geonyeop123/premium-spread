@@ -87,6 +87,13 @@ internal object AlertFormat {
         return (if (rounded.signum() < 0) "-" else "") + format("0.00", rounded.abs()) + "%"
     }
 
+    /** 설정 임계값 표시 — 최소 소수 2자리, 그 이상은 설정 정밀도 그대로(뒤 0 제거). `5.00%` / `1.2345%`. */
+    fun thresholdPercent(value: BigDecimal): String {
+        val stripped = value.stripTrailingZeros()
+        val scaled = if (stripped.scale() < 2) stripped.setScale(2) else stripped
+        return scaled.toPlainString() + "%"
+    }
+
     /** 원 단위 반올림 후 부호 — `+469,353원`, 0 이면 `+0원`. */
     fun krw(value: BigDecimal): String {
         val rounded = value.setScale(0, RoundingMode.HALF_UP)
