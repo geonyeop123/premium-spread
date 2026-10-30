@@ -9,7 +9,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** 메일·Discord 공용 숫자·시각 서식. locale 과 무관하다. `AccountPnlMailContent` 의 서식 요소를 그대로 옮긴 것이다. */
+/** 메일·Discord 공용 숫자·시각 서식. locale 과 무관하다. 계정 알림(Task 9)이 전환될 때까지 남겨 둔다. */
 internal object AccountPnlFormat {
     const val RUNBOOK = "docs/runbooks/account-pnl-alert.md"
     private val TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")

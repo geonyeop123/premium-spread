@@ -214,3 +214,12 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - GREEN: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.*' :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.*' --offline --no-daemon` → BUILD SUCCESSFUL (`DiscordWebhookSenderAdapterTest`·`OwnerAlertDispatcherTest` 무수정).
 - A단계 종료(R14): `git diff --name-status 3d179e7 -- domain/src/test infrastructure/batch/src/test apps/batch/src/test` 에 M·D 행 없음(A 행만).
 - 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → 아래 커밋 직전 결과 참조(BUILD SUCCESSFUL).
+
+### Task 8 — 실계정 순손익 5종 (AC5, 2026-10-30)
+
+- RED(stub: 템플릿이 빈 문서 반환): `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlAlertContentTest' --offline --no-daemon` → `13 tests completed, 10 failed`(assertion 실패, BUILD FAILED). eventKey 형식·색 상수 등 3건은 stub 에서도 통과.
+- GREEN: 같은 명령 → BUILD SUCCESSFUL(13건). `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' :infrastructure:batch:test --offline --no-daemon` 범위 모두 통과(Job 테스트 77건 + 신규 `AccountPnlMonitorJobTemplateRowsTest` 2건).
+- `grep -rn 'AccountPnlMailContent\|AccountPnlDiscordContent' --include=*.kt domain apps infrastructure` → 출력 없음.
+- 수정한 기존 테스트(R3 허용): `AccountPnlMonitorJobTest`·`AccountPnlMonitorJobHourlyReportTest`·`AccountPnlMonitorJobOwnerAlertTest`·`AccountPnlEmailSenderAdapterTest` — 문구 단정·기대 행(layout 인자)·호출·import 줄만. 행 수·채널·eventKey·`JobResult` 단정 줄 무변경.
+- 문구 변경으로 대체된 단정: `환율 관측: 2026-10-17`(새 spec 에 환율 관측 시각 없음) → `환율 1,400.00원/USD`, `계산 시각: …12:00:03`(초 단위 표기 없음) → `기준 시각 2026-10-20 12:00 KST`(eventKey 단정이 초 정밀도를 이미 보장).
+- 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL, `compileIntegrationTestKotlin` → BUILD SUCCESSFUL.

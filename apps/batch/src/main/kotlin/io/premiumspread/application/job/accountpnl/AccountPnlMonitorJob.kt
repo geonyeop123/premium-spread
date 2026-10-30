@@ -14,11 +14,10 @@ import io.premiumspread.domain.accountpnl.AccountAlertState
 import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
-import io.premiumspread.domain.accountpnl.AccountPnlDiscordContent
+import io.premiumspread.domain.accountpnl.AccountPnlAlertContent
 import io.premiumspread.domain.accountpnl.AccountPnlLatest
 import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
 import io.premiumspread.domain.accountpnl.AccountPnlMail
-import io.premiumspread.domain.accountpnl.AccountPnlMailContent
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.AccountReadException
@@ -34,6 +33,7 @@ import io.premiumspread.domain.accountpnl.OwnerAlertRows
 import io.premiumspread.domain.accountpnl.PnlAlertPolicy
 import io.premiumspread.domain.accountpnl.PnlObservation
 import io.premiumspread.domain.accountpnl.PositionLegs
+import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.exchangerate.FxIngestionFreshness
 import io.premiumspread.domain.job.JobId
@@ -314,31 +314,23 @@ class AccountPnlMonitorJob(
         if (sendProfit && observation is PnlObservation.Computed) {
             val pnl = observation.pnl
             addAll(
-                route(OwnerAlertKind.PROFIT, AccountPnlMailContent.profit(pnl, zone)) {
-                    AccountPnlDiscordContent.profit(pnl, zone)
-                },
+                route(OwnerAlertKind.PROFIT, AccountPnlAlertContent.profit(pnl, zone)),
             )
         }
         // 같은 정시 버킷의 eventKey 는 outbox 가 무시하므로 회차마다 넣어도 채널마다 시간당 한 통이다
         if (hourlyReportEnabled && observation is PnlObservation.Computed) {
             val pnl = observation.pnl
             addAll(
-                route(OwnerAlertKind.HOURLY_REPORT, AccountPnlMailContent.hourly(pnl, zone)) {
-                    AccountPnlDiscordContent.hourly(pnl, zone)
-                },
+                route(OwnerAlertKind.HOURLY_REPORT, AccountPnlAlertContent.hourly(pnl, zone)),
             )
         }
         when (notice) {
             is OutageNotice.Outage -> addAll(
-                route(OwnerAlertKind.MONITORING_OUTAGE, AccountPnlMailContent.outage(notice, now, zone)) {
-                    AccountPnlDiscordContent.outage(notice, now, zone)
-                },
+                route(OwnerAlertKind.MONITORING_OUTAGE, AccountPnlAlertContent.outage(notice, now, zone)),
             )
 
             OutageNotice.Recovered -> addAll(
-                route(OwnerAlertKind.MONITORING_RECOVERED, AccountPnlMailContent.recovered(now, zone)) {
-                    AccountPnlDiscordContent.recovered(now, zone)
-                },
+                route(OwnerAlertKind.MONITORING_RECOVERED, AccountPnlAlertContent.recovered(now, zone)),
             )
 
             null -> Unit
@@ -348,6 +340,9 @@ class AccountPnlMonitorJob(
     /** 알림 하나를 종류별 경로로 0~2행(메일 먼저)으로 펼친다 (design §3.4). Discord 렌더링은 Discord 행을 만들 때만 한다. */
     private fun route(kind: OwnerAlertKind, mail: AccountPnlMail, discord: () -> DiscordMessage): List<AccountPnlMail> =
         OwnerAlertRows.expand(mail, routing.resolve(kind), discord)
+
+    private fun route(kind: OwnerAlertKind, message: OwnerAlertMessage): List<AccountPnlMail> =
+        OwnerAlertRows.expand(message, routing.resolve(kind))
 
     private fun accountAlertRows(alert: AccountAlert): List<AccountPnlMail> =
         route(alert.kind, AccountAlertContent.mail(alert, zone)) { AccountAlertContent.discord(alert, zone) }

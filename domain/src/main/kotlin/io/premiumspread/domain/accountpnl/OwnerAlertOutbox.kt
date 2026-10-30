@@ -1,5 +1,8 @@
 package io.premiumspread.domain.accountpnl
 
+import io.premiumspread.domain.owneralert.DiscordLayout
+import io.premiumspread.domain.owneralert.DiscordRoute
+import io.premiumspread.domain.owneralert.OwnerAlertChannel
 import io.premiumspread.domain.owneralert.OwnerAlertKind
 import java.time.Instant
 
@@ -52,4 +55,26 @@ interface OwnerAlertOutbox {
      * 호출자 트랜잭션 밖에서 호출한다 — 구현이 자체 트랜잭션을 연다.
      */
     fun enqueue(signals: List<OwnerAlertSignalState>, rows: List<AccountPnlMail>): Boolean
+}
+
+/**
+ * owner 알림 공용 outbox 행 (이름은 호환 때문에 유지 — design §4.4).
+ * EMAIL 행: subject/body = 메일 제목/본문. DISCORD 행: subject/body = embed 제목/설명, Discord 필드 필수.
+ */
+data class AccountPnlMail(
+    val eventKey: String,
+    val subject: String,
+    val body: String,
+    val channel: OwnerAlertChannel = OwnerAlertChannel.EMAIL,
+    val discordRoute: DiscordRoute? = null,
+    val discordColor: Int? = null,
+    /** DISCORD 행의 embed 레이아웃. null = 제목·설명만(V23 이전 행 포함). */
+    val discordLayout: DiscordLayout? = null,
+) {
+    init {
+        val discord = channel == OwnerAlertChannel.DISCORD
+        require(discord == (discordRoute != null)) { "discordRoute must be set only for DISCORD rows." }
+        require(discord == (discordColor != null)) { "discordColor must be set only for DISCORD rows." }
+        require(discord || discordLayout == null) { "discordLayout must be set only for DISCORD rows." }
+    }
 }
