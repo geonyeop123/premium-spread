@@ -58,6 +58,7 @@ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
             "discord_target:varchar:YES",
             "discord_push:varchar:YES",
             "discord_color:int:YES",
+            "discord_layout:text:YES",
         )
     }
 

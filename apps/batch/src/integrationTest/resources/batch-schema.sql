@@ -238,11 +238,14 @@ CREATE TABLE IF NOT EXISTS account_pnl_mail (
     discord_target VARCHAR(16)  NULL,
     discord_push   VARCHAR(16)  NULL,
     discord_color  INT          NULL,
+    discord_layout TEXT         NULL,
     CONSTRAINT uk_account_pnl_mail_event_key_channel UNIQUE (event_key, channel),
     CONSTRAINT ck_account_pnl_mail_channel CHECK (
         (channel = 'EMAIL' AND discord_target IS NULL AND discord_push IS NULL AND discord_color IS NULL)
         OR (channel = 'DISCORD' AND discord_target IS NOT NULL AND discord_push IS NOT NULL AND discord_color IS NOT NULL)
     ),
+    -- V23 와 같은 스키마
+    CONSTRAINT ck_account_pnl_mail_discord_layout CHECK (discord_layout IS NULL OR channel = 'DISCORD'),
     INDEX idx_account_pnl_mail_status_id (status, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS owner_alert_signal_state (
