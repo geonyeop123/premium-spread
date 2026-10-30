@@ -3,7 +3,7 @@ feature: 테스트 실행 시간 단축 (issue #104)
 slug: test-time-reduction
 status: FROZEN
 frozen_at: 2026-10-29T17:12:51+09:00
-verdict_commit: 2f3f950
+verdict_commit: 96cba0a
 source: design.md
 ---
 
@@ -247,6 +247,8 @@ R4 check-documentation exit 0 · R5 deploy-contract-test exit 0 · R6~R8 AC2 실
        1 Compile 108s · 2 Unit 184s · 3 API IT 219s · 4 Batch IT 188s · 5 ktlint 28s · 6 Dep 24s · 7 Docker 390s · 8 Common IT 155s
        최장 = 7. Docker image build 390s (직전 run 275s, 기준선 run 172~231s). 테스트 job 최장 = 3. API IT 219s (기준선 6.4~7.3m)
        증거 앵커 https://github.com/geonyeop123/premium-spread/actions/runs/40997176643
+[PASS] (변경 요청 02f9e3a 개정 기준) run 40997176643 @ 96cba0a — 8 job success, Docker build 제외 7개 job 구간
+       03:24:14→03:27:53 = 219s (≤ 360s). Docker build 390s 는 기록만 — 후속 #107. R9(unit coverage)·R10(ktlint·detekt) success
 ```
 
 ## 사람 확인 (T4)
@@ -272,13 +274,13 @@ R4 check-documentation exit 0 · R5 deploy-contract-test exit 0 · R6~R8 AC2 실
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: test-time-reduction @ 2f3f950
+DoD VERDICT: test-time-reduction @ 96cba0a
   수용기준 표:     10개  (T1 3 · T2 6 · T3 1 · T4 0)
-  T1/T2 자동:      9개 중 9개 PASS
-  T3 기록 제출:    1개 중 0건 (AC3 — PR run 대기)
+  T1/T2 자동:      9개 중 9개 PASS (2f3f950 측정 — 이후 코드 변경은 ktlint 포맷과 ExchangeRateClientTest 단언뿐이고 CI 96cba0a 에서 unit·통합 전부 success)
+  T3 기록 제출:    1개 중 1건 (AC3 — run 40997176643, 개정 기준 219s)
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
-  변경 요청:       1건 (승인됨)
-  => AWAITING_T3 — 로컬 기준 전부 충족, AC3(CI wall-clock ≤ 6m) 기록 후 완료
+  변경 요청:       2건 (모두 승인됨)
+  => PASS
 ```
 
 **사람 확인이 필요한 항목**
