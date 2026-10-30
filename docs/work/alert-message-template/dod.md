@@ -170,3 +170,9 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - (g3) 예상 2건(`V19…:34`, `AccountPnlFixtureSchemaIntegrationTest:45`) 외에 `V20…:34`, `V21…:29` 가 더 걸렸으나 둘 다 account_pnl_mail 이 아닌 상태 테이블의 열 단언이다 — 영향 없음.
 - (g4) 예상 파일 외 걸린 줄: `OwnerAlertDispatcherTest.kt:198`(fake 의 title 비교), `OwnerAlertDeliveryIntegrationTest.kt:116`·`DiscordWebhookSenderAdapterTest.kt:89-95`(요청 body 읽기) — 변경되는 문구를 단정하는 줄이 아니므로 R3 목록 변경 불요로 판단.
 - (g5)~(g11) 예상과 일치(g5 `:63`·`:79`·`:84`·`:94`, g6 `:105`·`:119`·`:298`, g7 5개 파일, g8 `:225`·`:240`·`:242`, g9 `:153`·`:67`, g10 `OwnerOpsAlertContentTest:264-266` 3줄만, g11 `:33`·`:52`).
+
+### Task 1 — 회원 김프 메일 특성화 (AC9-a, 2026-10-30)
+
+- 특성화 PASS: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.PremiumThresholdDeliveryServiceMailTest' --offline --no-daemon` → 2건 통과(main 무변경).
+- 변이 확인: 기대 subject 의 `6%` → `7%` 로 바꾸면 같은 명령이 `2 tests completed, 1 failed`(`ABOVE 구독의 메일 제목과 본문 전문` assertion 실패, BUILD FAILED). 되돌린 뒤 PASS.
+- 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
