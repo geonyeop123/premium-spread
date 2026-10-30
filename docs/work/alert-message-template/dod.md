@@ -246,3 +246,11 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - 허용 예외: `OwnerMarketAlertIntegrationTest` 요약 단정 줄(메일 `■ 환율 (USD/KRW)`·`순수익률  +`, Discord `layout.fields` 값에 `9.99` 없음)만 수정. `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerMarketAlertIntegrationTest'` → BUILD SUCCESSFUL.
 - `OwnerOpsAlertContent.threshold` 삭제에 맞춰 `OwnerOpsAlertContentTest` 의 `threshold 표기` 테스트 제거(같은 단정이 `AlertFormatTest` 에 있음). `grep -rnE 'OwnerOpsAlertContent\.threshold|OwnerMarketAlertContent\.(RUNBOOK|mail|discord)' --include=*.kt domain apps infrastructure` → 출력 없음.
 - 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 12 — 회원 김프 메일 (AC9-b·c·d·e, 2026-10-30)
+
+- RED(특성화 테스트 기대값을 새 문구로 교체, 구현 전): `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.PremiumThresholdDeliveryServiceMailTest' --offline --no-daemon` → `2 tests completed, 2 failed`(assertion 실패).
+- GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.notification.*' :apps:batch:test --tests 'io.premiumspread.application.notification.*' --offline --no-daemon` → BUILD SUCCESSFUL(`PremiumThresholdDeliveryServiceTest`·`NotificationDisabledContextTest` 무수정). zone 사례(UTC → `관측 시각  2026-07-15 00:30 UTC`) 포함.
+- `grep -nE '@Value|@Service' apps/batch/src/main/kotlin/io/premiumspread/application/notification/PremiumThresholdDeliveryService.kt` → 출력 없음.
+- 통합: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.notification.*'` → 1차 FAILED(`Cannot subclass final class PremiumThresholdDeliveryService` — `@Service` 제거로 allopen 대상에서 빠져 `@Transactional` CGLIB 프록시 실패). `@Transactional` 을 메서드에서 클래스 수준으로 옮겨 allopen 이 클래스를 open 으로 만들게 한 뒤 BUILD SUCCESSFUL(enabled 컨텍스트 빈 생성·disabled 부재 확인).
+- 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
