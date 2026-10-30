@@ -182,3 +182,9 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - RED(stub: `DiscordField`·`DiscordLayout` 검증 없음): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordLayoutTest' --offline --no-daemon` → `15 tests completed, 8 failed`(assertion 실패, BUILD FAILED). 나머지 7건(합계 6000/6001·`AccountPnlMail` 불변식 등)은 stub 단계에서 이미 구현돼 통과.
 - GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` → BUILD SUCCESSFUL (기존 golden·`DiscordMessageTest`·`OwnerAlertRowsTest` 무수정).
 - 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 3 — 템플릿 계층 `domain.alertmessage` (AC2·AC3, 2026-10-30)
+
+- RED(stub: 렌더·서식 함수가 빈 값 반환, 검증 없음): `./gradlew :domain:test --tests 'io.premiumspread.domain.alertmessage.*' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsMessageTest' --offline --no-daemon` → `41 tests completed, 36 failed`(assertion 실패, BUILD FAILED).
+- GREEN: `./gradlew :domain:test --offline --no-daemon` → BUILD SUCCESSFUL (기존 golden 무수정).
+- 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
