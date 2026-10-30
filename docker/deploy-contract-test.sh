@@ -48,8 +48,11 @@ if grep -Eq 'git pull|docker compose .*--build' "${quality_workflow}" "${deploy_
 fi
 api_job="$(quality_job_block api-integration)"
 batch_job="$(quality_job_block batch-integration)"
-grep -Fq 'run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest --dependency-verification strict --no-daemon' <<< "${api_job}" ||
-  fail "Quality Gate API job must run exact strict API/common integration tasks"
+common_job="$(quality_job_block common-integration)"
+grep -Fq 'run: ./gradlew :apps:api:integrationTest --dependency-verification strict --no-daemon' <<< "${api_job}" ||
+  fail "Quality Gate API job must run exact strict API integration task"
+grep -Fq 'run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest --dependency-verification strict --no-daemon' <<< "${common_job}" ||
+  fail "Quality Gate common job must run exact strict migration and common integration tasks"
 grep -Fq 'run: ./gradlew :apps:batch:integrationTest --dependency-verification strict --no-daemon' <<< "${batch_job}" ||
   fail "Quality Gate Batch job must run exact strict Batch integration task"
 

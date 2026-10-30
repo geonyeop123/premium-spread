@@ -6,9 +6,8 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
@@ -20,7 +19,6 @@ import java.sql.SQLIntegrityConstraintViolationException
  * 구 binary(채널을 모르는 INSERT/claim SQL)가 V19 스키마와 롤백 SQL 뒤에도 안전한지 문자열 그대로 재생해 본다.
  */
 @Tag("integration")
-@Testcontainers
 class V19OwnerAlertChannelMigrationIntegrationTest {
 
     @Test
@@ -311,11 +309,6 @@ WHERE channel = 'DISCORD'
   AND status IN ('PENDING', 'PROCESSING')
 """
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_owner_alert_channel_migration")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_owner_alert_channel_migration")
     }
 }

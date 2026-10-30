@@ -194,14 +194,14 @@ grep -q 'trusted-keys' "${bootstrap_output_validator}" ||
   fail "bootstrap output validation must reject alternate trusted-key paths"
 bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"
 
-expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-build)
+expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-build common-integration)
 jobs_block="$(yaml_top_level_block jobs)"
 mapfile -t actual_jobs < <(
   awk '/^  [^[:space:]#][^:]*:$/ { value = $0; sub(/^  /, "", value); sub(/:$/, "", value); print value }' \
     <<< "${jobs_block}"
 )
 [[ "${actual_jobs[*]}" == "${expected_jobs[*]}" ]] ||
-  fail "Quality Gate job IDs must be exactly the seven required jobs in order"
+  fail "Quality Gate job IDs must be exactly the eight required jobs in order"
 
 upload_step_names=(
   'Publish dependency bootstrap review bundle'
@@ -210,6 +210,7 @@ upload_step_names=(
   'Publish Batch integration evidence'
   'Publish static-analysis evidence'
   'Publish Docker image archives'
+  'Publish common integration evidence'
 )
 upload_artifact_names=(
   'dependency-bootstrap-review-${{ github.sha }}'
@@ -218,6 +219,7 @@ upload_artifact_names=(
   'batch-integration-${{ github.sha }}'
   'static-analysis-${{ github.sha }}'
   'docker-images-${{ github.sha }}'
+  'common-integration-${{ github.sha }}'
 )
 upload_action_line='        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2'
 for index in "${!upload_step_names[@]}"; do
@@ -228,8 +230,8 @@ for index in "${!upload_step_names[@]}"; do
   [[ "$(grep -Fxc "          name: ${upload_artifact_names[${index}]}" <<< "${upload_step}")" -eq 1 ]] ||
     fail "upload step has the wrong exact artifact name: ${upload_step_names[${index}]}"
 done
-[[ "$(grep -c 'uses: actions/upload-artifact@' "${quality_workflow}")" -eq 6 ]] ||
-  fail "Quality Gate must publish exactly six review/evidence artifacts"
+[[ "$(grep -c 'uses: actions/upload-artifact@' "${quality_workflow}")" -eq 7 ]] ||
+  fail "Quality Gate must publish exactly seven review/evidence artifacts"
 
 mapfile -d '' -t workflow_files < <(
   find "${root_dir}/.github/workflows" -maxdepth 1 -type f \
@@ -256,25 +258,50 @@ grep -q 'npm ci --include=optional' "${root_dir}/apps/web/Dockerfile" || fail "w
 
 grep -q 'tasks.register("resolveVerificationArtifacts")' "${root_dir}/build-logic/build.gradle.kts" ||
   fail "build-logic verification artifact resolver task is missing"
-for dependent_job in unit-coverage api-integration batch-integration static-analysis dependency-security docker-build; do
-  job_line="$(grep -n "^  ${dependent_job}:$" "${quality_workflow}" | cut -d: -f1)"
-  sed -n "${job_line},$((job_line + 5))p" "${quality_workflow}" | grep -q 'needs: compile-architecture' ||
-    fail "${dependent_job} must wait for strict compile/bootstrap verification"
+# Gradle job 은 각자 --dependency-verification strict 로 의존성을 검증하고(아래 루프), PR 은 Gradle cache 를
+# 읽기만 하므로 compile job 을 기다리지 않아도 미검증 artifact 를 쓰거나 cache 를 오염시키지 않는다.
+[[ "$(grep -Ec '^[[:space:]]*needs:' "${quality_workflow}" || true)" -eq 0 ]] ||
+  fail "Quality Gate jobs must start in parallel without needs"
+setup_gradle_line='      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1'
+cache_read_only_line="          cache-read-only: \${{ github.ref != 'refs/heads/dev' }}"
+for gradle_job in compile-architecture unit-coverage api-integration batch-integration common-integration; do
+  gradle_job_block="$(workflow_job_block "${gradle_job}")"
+  [[ "$(grep -Fxc "${setup_gradle_line}" <<< "${gradle_job_block}")" -eq 1 ]] ||
+    fail "${gradle_job} must set up Gradle exactly once"
+  [[ "$(grep -Fxc "${cache_read_only_line}" <<< "${gradle_job_block}")" -eq 1 ]] ||
+    fail "${gradle_job} must restore the Gradle cache read-only outside dev pushes"
 done
+[[ "$(grep -Fc 'uses: gradle/actions/setup-gradle@' "${quality_workflow}")" -eq 5 ]] ||
+  fail "only the five Gradle jobs may set up Gradle"
 while IFS= read -r gradle_command; do
   [[ "${gradle_command}" == *"--write-verification-metadata"* ]] && continue
   [[ "${gradle_command}" == *"--dependency-verification strict"* ]] ||
     fail "committed-metadata Gradle gate is not explicitly strict: ${gradle_command}"
 done < <(grep -E 'run: ./gradlew' "${quality_workflow}")
 
+unit_job="$(workflow_job_block unit-coverage)"
 api_job="$(workflow_job_block api-integration)"
 batch_job="$(workflow_job_block batch-integration)"
-api_integration_command='run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest --dependency-verification strict --no-daemon'
+common_job="$(workflow_job_block common-integration)"
+unit_command='run: ./gradlew test jacocoTestReport jacocoTestCoverageVerification --parallel --dependency-verification strict --no-daemon'
+api_integration_command='run: ./gradlew :apps:api:integrationTest --dependency-verification strict --no-daemon'
 batch_integration_command='run: ./gradlew :apps:batch:integrationTest --dependency-verification strict --no-daemon'
+common_integration_command='run: ./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest --dependency-verification strict --no-daemon'
+grep -Fq "${unit_command}" <<< "${unit_job}" ||
+  fail "unit-coverage job must run unit tests and coverage across modules in parallel"
 grep -Fq "${api_integration_command}" <<< "${api_job}" ||
-  fail "api-integration job must execute the exact strict API/common integration tasks"
+  fail "api-integration job must execute the exact strict API integration task"
+if grep -Fq ':infrastructure:common:' <<< "${api_job}"; then
+  fail "api-integration job must not run common tasks; common-integration owns them"
+fi
 grep -Fq "${batch_integration_command}" <<< "${batch_job}" ||
   fail "batch-integration job must execute the exact strict Batch integration task"
+grep -Fq "${common_integration_command}" <<< "${common_job}" ||
+  fail "common-integration job must execute the exact strict migration and common integration tasks"
+for integration_job in common-integration api-integration batch-integration; do
+  grep -Fxq "          TESTCONTAINERS_REUSE_ENABLE: 'false'" <<< "$(workflow_job_block "${integration_job}")" ||
+    fail "${integration_job} must disable Testcontainers reuse"
+done
 
 compile_contract='compileKotlin architectureTest verifyTestIsolationPolicy verifyCoverageExclusions verifySecurityDependencyVersions harnessCheck harnessCheckTest :build-logic:test --dependency-verification strict'
 grep -q "${compile_contract}" "${quality_workflow}" ||

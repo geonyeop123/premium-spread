@@ -165,19 +165,20 @@ class ExchangeRateClientTest {
                 MockResponse()
                     .setHeader("Content-Type", "application/json")
                     .setBody("{}")
-                    .setBodyDelay(2, TimeUnit.SECONDS),
+                    .setBodyDelay(1, TimeUnit.SECONDS),
             )
         }
 
         assertThatThrownBy { client(maxRetries = 1, readTimeout = Duration.ofMillis(200)).fetchConfiguredRate() }
-            .isInstanceOf(TimeoutException::class.java)
+            // Reactor timeout() 과 Netty ReadTimeout 이 경합한다. 운영 isTimeoutType 과 같이 둘 다 timeout 으로 본다.
+            .isInstanceOfAny(TimeoutException::class.java, io.netty.handler.timeout.TimeoutException::class.java)
         assertThat(server.requestCount).isEqualTo(2)
     }
 
     @Test
     fun `응답 헤더 지연으로 Netty responseTimeout 이 이기면 WebClientRequestException 으로 재시도한다`() {
         repeat(2) {
-            server.enqueue(success().setHeadersDelay(2, TimeUnit.SECONDS))
+            server.enqueue(success().setHeadersDelay(1, TimeUnit.SECONDS))
         }
 
         assertThatThrownBy { client(maxRetries = 1, readTimeout = Duration.ofMillis(200)).fetchConfiguredRate() }

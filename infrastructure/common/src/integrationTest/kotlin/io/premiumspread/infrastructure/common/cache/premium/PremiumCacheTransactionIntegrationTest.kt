@@ -19,7 +19,8 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.MySQLContainer
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.math.BigDecimal
@@ -98,12 +99,7 @@ class PremiumCacheTransactionIntegrationTest {
     companion object {
         private val OBSERVED_AT: Instant = Instant.parse("2026-07-14T00:00:00Z")
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread")
 
         @Container
         @JvmStatic

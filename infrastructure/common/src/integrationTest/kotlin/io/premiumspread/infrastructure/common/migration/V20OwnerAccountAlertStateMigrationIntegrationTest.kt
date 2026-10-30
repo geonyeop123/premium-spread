@@ -6,9 +6,8 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.sql.DriverManager
 import java.sql.ResultSet
 import java.sql.SQLException
@@ -20,7 +19,6 @@ import java.sql.Timestamp
  * 구 binary(새 열을 모르는 상태 INSERT/UPDATE)가 V20 스키마에서도 안전한지 문자열 그대로 재생해 본다.
  */
 @Tag("integration")
-@Testcontainers
 class V20OwnerAccountAlertStateMigrationIntegrationTest {
 
     @Test
@@ -227,11 +225,6 @@ WHERE id = 1
   AND version = ?
 """
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_owner_account_alert_migration")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_owner_account_alert_migration")
     }
 }

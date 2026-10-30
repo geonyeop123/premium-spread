@@ -3,6 +3,7 @@ package io.premiumspread.config
 import io.premiumspread.infrastructure.batch.exchange.ExchangeRateClient
 import io.premiumspread.infrastructure.batch.exchange.ExchangeRateClientProperties
 import io.premiumspread.redis.DistributedLockManager
+import io.premiumspread.testcontainers.RedisTestContainersConfig
 import io.micrometer.core.instrument.MeterRegistry
 import okhttp3.mockwebserver.MockWebServer
 import org.redisson.Redisson
@@ -16,7 +17,6 @@ import org.springframework.context.annotation.Primary
 import org.springframework.core.io.ClassPathResource
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.web.reactive.function.client.WebClient
-import org.testcontainers.containers.GenericContainer
 import java.time.Duration
 
 @TestConfiguration
@@ -46,10 +46,10 @@ class BatchTestConfig {
     fun distributedLockManager(redissonClient: RedissonClient) = DistributedLockManager(redissonClient)
 
     @Bean
-    fun redissonClient(redisContainer: GenericContainer<*>): RedissonClient {
+    fun redissonClient(): RedissonClient {
         val config = Config().apply {
             useSingleServer().apply {
-                address = "redis://${redisContainer.host}:${redisContainer.firstMappedPort}"
+                address = "redis://${RedisTestContainersConfig.host()}:${RedisTestContainersConfig.port()}"
                 connectionMinimumIdleSize = 1
                 connectionPoolSize = 5
                 retryAttempts = 3

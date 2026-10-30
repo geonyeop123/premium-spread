@@ -16,12 +16,10 @@ description: "테스트 전략 스킬. unit/architectureTest/integrationTest 태
 로컬은 기존 캐시만 쓴다.
 
 ```bash
-./gradlew test architectureTest --offline --no-daemon
-./gradlew :infrastructure:common:integrationTest --offline --no-daemon
-./gradlew :apps:api:integrationTest --offline --no-daemon
-./gradlew :apps:batch:integrationTest --offline --no-daemon
-./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
+./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
 ```
+
+실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌린다.
 
 **이 저장소에 `lint` 태스크는 없다.** 정적 경계 검증은 `architectureTest`가 담당한다.
 

@@ -4,7 +4,6 @@ import io.premiumspread.domain.notification.NewNotificationDelivery
 import io.premiumspread.domain.notification.NotificationDeliveryEnqueueResult
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -12,16 +11,15 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.LatestSchemaFixture
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 @Tag("integration")
-@Testcontainers
 class JdbcNotificationDeliveryRepositoryIntegrationTest {
 
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -31,7 +29,7 @@ class JdbcNotificationDeliveryRepositoryIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        migrateLatest()
+        latestSchema.reset()
         val dataSource = DriverManagerDataSource(jdbcUrl, mysql.username, mysql.password)
         jdbcTemplate = JdbcTemplate(dataSource)
         transaction = TransactionTemplate(DataSourceTransactionManager(dataSource))
@@ -216,16 +214,6 @@ class JdbcNotificationDeliveryRepositoryIntegrationTest {
         return requireNotNull(jdbcTemplate.queryForObject("SELECT id FROM notification_subscription", Long::class.java))
     }
 
-    private fun migrateLatest() {
-        val flyway = Flyway.configure()
-            .dataSource(jdbcUrl, mysql.username, mysql.password)
-            .locations("classpath:db/migration")
-            .cleanDisabled(false)
-            .load()
-        flyway.clean()
-        flyway.migrate()
-    }
-
     private val jdbcUrl: String
         get() = mysql.jdbcUrl + if (mysql.jdbcUrl.contains('?')) {
             "&sslMode=DISABLED&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
@@ -236,12 +224,8 @@ class JdbcNotificationDeliveryRepositoryIntegrationTest {
     companion object {
         private val NOW = Instant.parse("2026-07-15T01:00:00Z")
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_notification")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_notification")
+        private val latestSchema = LatestSchemaFixture(mysql)
     }
 
     private class RollbackMarker : RuntimeException()

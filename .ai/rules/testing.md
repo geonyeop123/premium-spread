@@ -2,10 +2,16 @@
 
 ## Test task와 명령
 
-로컬은 기존 cache만 사용한다.
+로컬은 기존 cache만 사용한다. 전체 검증은 Gradle을 한 번만 부른다.
 
 ```bash
-./gradlew test architectureTest --offline --no-daemon
+./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
+```
+
+실패한 task만 다시 돌릴 때:
+
+```bash
+./gradlew test architectureTest --parallel --offline --no-daemon
 ./gradlew :infrastructure:common:integrationTest --offline --no-daemon
 ./gradlew :apps:api:integrationTest --offline --no-daemon
 ./gradlew :apps:batch:integrationTest --offline --no-daemon
@@ -15,7 +21,8 @@
 - 각 모듈 `test`: unit/context/contract test, `integration` tag 제외
 - root `architectureTest`: 독립 architecture source set의 모듈 dependency, source/import, bytecode 경계
 - `*:integrationTest`: `@Tag("integration")`, Docker/Testcontainers 필요
-- 통합 test task는 unit 뒤에 실행하되 서로 상태를 공유한다고 가정하지 않는다.
+- `--parallel`이면 서로 다른 모듈의 unit·통합 task가 동시에 돈다. task끼리 컨테이너·DB·포트를 공유한다고 가정하지 않는다.
+- `--continue`는 실패한 task가 있어도 나머지를 끝까지 실행해 실패 전체를 한 번에 보여 준다.
 
 ## 격리 규칙
 
@@ -26,6 +33,18 @@
 - 테스트 종료 뒤 executor, scheduler, socket, container resource를 정리한다.
 - timeout/leaked thread 검출 실패를 retry로 숨기지 않는다.
 - `@Disabled`로 계약을 미루지 않는다.
+- 같은 테스트 JVM 안의 Testcontainers singleton(모듈 공용 컨테이너)은 허용한다. 정리는 JVM 종료 시 Ryuk가 맡는다(명시적 stop 없음).
+  Redis도 JVM당 컨테이너 1개이며, Spring에는 컨테이너를 bean으로 노출하지 않고 `spring.data.redis.host/port` property로만
+  연결한다(context close 시 stop되지 않게).
+- run 사이의 reuse는 금지다. 수단은 모든 Test task의 환경 변수 `TESTCONTAINERS_REUSE_ENABLE=false`이고
+  `verifyTestIsolationPolicy`가 이 env를 검사한다. Testcontainers는 system property `testcontainers.reuse.enable`을
+  읽지 않고(env → `~/.testcontainers.properties` 순), 개발자의 `~/.testcontainers.properties`가 reuse를 켜 두면 api·batch
+  JVM이 한 컨테이너를 공유해 서로의 데이터를 지운다. fixture는 `withReuse`를 쓰지 않는다.
+- 테스트 MySQL 컨테이너는 내구성 튜닝(`MySqlTestTuning`: tmpfs datadir, flush-log-at-trx-commit=0, doublewrite=0, sync-binlog=0)을
+  허용한다. 트랜잭션 가시성·락·제약·charset·시간대 의미는 바꾸지 않고 crash 내구성만 포기한다. `--skip-log-bin`은 쓰지 않는다.
+- common 통합 테스트 클래스는 공용 MySQL에서 `SharedMySqlContainer.database(...)`로 자기 database를 따로 받는다.
+- 공용 Spring context를 쓰는 batch 통합 테스트는 매 테스트 전에 base가 공용 상태(DB·Redis·MockWebServer)를 초기화한다.
+  상태를 남기는 공용 bean을 새로 추가하면 base 초기화에 넣는다.
 
 ## 검증 범위
 

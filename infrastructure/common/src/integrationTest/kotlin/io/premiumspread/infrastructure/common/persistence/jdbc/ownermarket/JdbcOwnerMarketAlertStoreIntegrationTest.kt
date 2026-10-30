@@ -16,7 +16,6 @@ import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAc
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlLatestStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -28,9 +27,9 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.LatestSchemaFixture
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
@@ -41,7 +40,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 @Tag("integration")
-@Testcontainers
 class JdbcOwnerMarketAlertStoreIntegrationTest {
 
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -50,7 +48,7 @@ class JdbcOwnerMarketAlertStoreIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        migrateLatest()
+        latestSchema.reset()
         val dataSource = DriverManagerDataSource(jdbcUrl, mysql.username, mysql.password)
         val transactionManager = DataSourceTransactionManager(dataSource)
         jdbcTemplate = JdbcTemplate(dataSource)
@@ -297,16 +295,6 @@ class JdbcOwnerMarketAlertStoreIntegrationTest {
     private fun mailStatuses(): List<String> =
         jdbcTemplate.queryForList("SELECT status FROM account_pnl_mail ORDER BY id", String::class.java)
 
-    private fun migrateLatest() {
-        val flyway = Flyway.configure()
-            .dataSource(jdbcUrl, mysql.username, mysql.password)
-            .locations("classpath:db/migration")
-            .cleanDisabled(false)
-            .load()
-        flyway.clean()
-        flyway.migrate()
-    }
-
     private val jdbcUrl: String
         get() = mysql.jdbcUrl + if (mysql.jdbcUrl.contains('?')) {
             "&sslMode=DISABLED&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
@@ -319,11 +307,7 @@ class JdbcOwnerMarketAlertStoreIntegrationTest {
         private val NOTIFIED = Instant.parse("2026-10-27T23:00:00Z")
         private val BASELINE = ThresholdBaseline(BigDecimal("3.1234"), null, BigDecimal("0.2000"))
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_owner_market")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_owner_market")
+        private val latestSchema = LatestSchemaFixture(mysql)
     }
 }

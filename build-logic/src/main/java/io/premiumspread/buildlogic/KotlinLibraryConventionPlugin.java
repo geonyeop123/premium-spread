@@ -46,6 +46,9 @@ public final class KotlinLibraryConventionPlugin implements Plugin<Project> {
             test.systemProperty("user.timezone", "Asia/Seoul");
             test.systemProperty("spring.profiles.active", "test");
             test.systemProperty("testcontainers.reuse.enable", "false");
+            // Testcontainers 는 reuse 설정을 JVM system property 가 아니라 환경 변수와
+            // ~/.testcontainers.properties 에서만 읽는다. 환경 변수가 사용자 파일보다 우선한다.
+            test.environment("TESTCONTAINERS_REUSE_ENABLE", "false");
             test.systemProperty("premiumspread.test.leak-detection", "true");
             test.systemProperty("junit.jupiter.execution.timeout.default", "5m");
             test.systemProperty("junit.jupiter.execution.timeout.lifecycle.method.default", "2m");

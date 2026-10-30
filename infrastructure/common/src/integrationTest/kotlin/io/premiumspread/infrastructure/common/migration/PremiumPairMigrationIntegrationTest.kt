@@ -6,15 +6,13 @@ import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
 
 @Tag("integration")
-@Testcontainers
 class PremiumPairMigrationIntegrationTest {
 
     @Test
@@ -189,11 +187,6 @@ class PremiumPairMigrationIntegrationTest {
     companion object {
         private val PREMIUM_TABLES = listOf("premium_snapshot", "premium_minute", "premium_hour", "premium_day")
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_migration")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_migration")
     }
 }

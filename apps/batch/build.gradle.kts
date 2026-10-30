@@ -34,6 +34,7 @@ tasks.register<Test>("integrationTest") {
     testClassesDirs = integrationTestSourceSet.output.classesDirs
     classpath = integrationTestSourceSet.runtimeClasspath
     shouldRunAfter(tasks.named("test"))
+    maxHeapSize = "1g"
 }
 
 dependencies {

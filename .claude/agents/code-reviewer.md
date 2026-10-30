@@ -12,7 +12,7 @@ model: opus
 ## Phase 1 — 자동 검사 먼저 (토큰 0)
 
 ```bash
-./gradlew test architectureTest --offline --no-daemon
+./gradlew test architectureTest --parallel --offline --no-daemon
 ```
 
 **이 저장소에 `lint` 태스크는 없다.** `architectureTest`가 모듈 의존·import 경계·바이트코드 경계를

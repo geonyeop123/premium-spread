@@ -18,12 +18,8 @@ model: sonnet
 ## 실행 명령
 
 ```bash
-./gradlew test architectureTest --offline --no-daemon
+./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
 ./gradlew :{module}:test --offline --no-daemon            # 점진 검증
-./gradlew :infrastructure:common:integrationTest --offline --no-daemon
-./gradlew :apps:api:integrationTest --offline --no-daemon
-./gradlew :apps:batch:integrationTest --offline --no-daemon
-./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
 bash docs/check-documentation.sh
 ```
 
@@ -49,8 +45,9 @@ artifact다.
 ## QA 보고서
 
 ### 실행 결과
-- [PASS] ./gradlew test architectureTest --offline --no-daemon — 1,204 실행 / 실패 0 (2m 31s)
-- [FAIL] ./gradlew :apps:api:integrationTest — 42 실행 / 실패 1
+전체 명령(`./gradlew test architectureTest :infrastructure:common:verifyMigrations ... --parallel --continue --offline --no-daemon`) 1회, task별 결과:
+- [PASS] test architectureTest — 1,204 실행 / 실패 0
+- [FAIL] :apps:api:integrationTest — 42 실행 / 실패 1
   - PremiumQueryIntegrationTest.pair_miss: expected MISS, got default-pair row
 - [ENV_ISSUE] :apps:batch:integrationTest — Docker 데몬 미기동으로 미실행
 
@@ -76,7 +73,7 @@ artifact다.
 
 - Docker·JDK·네트워크 문제는 `[ENV_ISSUE]`로 보고하고 해결 실마리를 덧붙인다. **green으로 기록하지 않는다.**
 - 간헐 실패가 의심되면 재실행 근거(횟수·결과)를 기록한다. retry로 실패를 지우지 않는다.
-- 전체 실행이 오래 걸리면 모듈별로 나눠 돌리고 소요 시간을 함께 보고한다.
+- 전체 검증은 한 번에 돌린다. 실패한 task 만 `.ai/rules/testing.md` 의 개별 명령으로 다시 돌리고 소요 시간을 함께 보고한다.
 
 ## 팀 통신 프로토콜
 
