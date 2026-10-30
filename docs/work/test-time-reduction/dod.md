@@ -3,7 +3,7 @@ feature: 테스트 실행 시간 단축 (issue #104)
 slug: test-time-reduction
 status: FROZEN
 frozen_at: 2026-10-29T17:12:51+09:00
-verdict_commit:
+verdict_commit: 2f3f950
 source: design.md
 ---
 
@@ -217,6 +217,27 @@ R1 verifyTestIsolationPolicy exit 0 · R2 harnessCheck harnessCheckTest exit 0 �
 R4 check-documentation exit 0 · R5 deploy-contract-test exit 0 · R6~R8 AC2 실행 exit 0 · R9·R10 은 AC3 run 에서 확인
 ```
 
+### 최종 재측정 @ 2f3f950 (⑩ qa-agent, ⑨ 재작업·문서 동기화 이후)
+
+> c3693c6 기준 증거는 ⑨ 재작업 코드 커밋(10a635c..6d08792)으로 만료되어 최종 SHA 로 전부 다시 쟀다. 콜드 스냅샷(git archive).
+
+```
+[PASS] AC1  common IT --rerun 52s (≤ 240s), exit 0
+[PASS] AC2  ⑩ 단일 명령 163s (≤ 420s), exit 0 — 기준선 1516s
+[AWAITING] AC3  PR Quality Gate run 이후 기록
+[PASS] AC4  unit 1303 · common 84 · api 174 · batch 114, failures 0 · errors 0 · skipped 0
+[PASS] AC5  grep -ho 'Started [^ ]* in [0-9.]* seconds' …/apps/batch/…/TEST-*.xml | wc -l = 8 (≤ 9)
+[PASS] AC6  LatestSchemaFixtureIntegrationTest tests=3 failures=0
+[PASS] AC7  SharedContextIsolationIntegrationTest tests=2 failures=0
+[PASS] AC8  bash ci/quality-gate-contract-test.sh exit 0
+[PASS] AC9  grep (a) 7개 파일 · grep (b) 0건
+[PASS] AC10 Bithumb 33 · ExchangeRate 19, 메서드 1.005 / 1.003 / 1.222 / 2.412 (각 기준선 − 0.8s 이하)
+[PASS] R1 verifyTestIsolationPolicy · R2 harnessCheck harnessCheckTest · R3 local-offline-contract-test
+       R4 check-documentation · R5 deploy-contract-test · R6~R8 AC2 실행 exit 0 · R9·R10 은 AC3 run
+경계면: CI job 명령 ↔ 계약 스크립트 단언 일치 · testing.md ↔ 코드(env reuse 차단, MySqlTestTuning, Redis property 연결) 일치
+        · src/main(apps/domain/infrastructure) diff 0
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -239,13 +260,13 @@ R4 check-documentation exit 0 · R5 deploy-contract-test exit 0 · R6~R8 AC2 실
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: test-time-reduction @ <commit SHA>
+DoD VERDICT: test-time-reduction @ 2f3f950
   수용기준 표:     10개  (T1 3 · T2 6 · T3 1 · T4 0)
-  T1/T2 자동:      9개 중 <p>개 PASS
-  T3 기록 제출:    1개 중 <q>건
+  T1/T2 자동:      9개 중 9개 PASS
+  T3 기록 제출:    1개 중 0건 (AC3 — PR run 대기)
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
-  변경 요청:       <k>건
-  =>
+  변경 요청:       1건 (승인됨)
+  => AWAITING_T3 — 로컬 기준 전부 충족, AC3(CI wall-clock ≤ 6m) 기록 후 완료
 ```
 
 **사람 확인이 필요한 항목**
