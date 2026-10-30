@@ -230,3 +230,10 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` → BUILD SUCCESSFUL(신규 Job 행 시나리오 `POSITION_CHANGED` 포함, `AccountPnlMonitorJobAccountAlertTest` 무수정 통과).
 - 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
 - 옛 `route(kind, mail, discord)` 삭제. `reminderHour` 는 `alert.reminderHour` 출처(`09:00` 리터럴 없음). 바이낸스 칸 이름은 leg 방향과 무관하게 `바이낸스 선물 숏` 고정(spec), 롱이면 값 앞 `롱 `(A7).
+
+### Task 10 — 운영 알림 (AC7, 2026-10-30)
+
+- RED(변이: 안내 문장 `1번 알립니다` → `한 번 알립니다`): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.*' --offline --no-daemon` → `29 tests completed, 2 failed`(assertion 실패, BUILD FAILED). 변이 되돌림.
+- GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.*' --tests 'io.premiumspread.domain.ownermarket.*' :apps:batch:test --tests 'io.premiumspread.application.job.ownerops.*' --offline --no-daemon` → BUILD SUCCESSFUL(`OwnerOpsSignalJobTest` 무수정, 신규 `OwnerOpsSignalJobTemplateRowsTest` 포함).
+- `grep -rnE 'OwnerOpsAlertContent\.(RUNBOOK|elapsed)|OwnerMarketAlertContent\.RUNBOOK' --include=*.kt domain apps infrastructure` → 출력 없음.
+- 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
