@@ -2,30 +2,19 @@ package io.premiumspread.repository
 
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateWriteRepository
 import io.premiumspread.support.BatchIntegrationTestBase
+import io.premiumspread.support.FixedClockTestConfig
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
-import org.springframework.context.annotation.Primary
 import java.math.BigDecimal
 import java.time.Instant
-import java.time.Clock
-import java.time.ZoneOffset
 
 @DisplayName("ExchangeRateRepository")
-@Import(ExchangeRateRepositoryTest.FixedClockConfig::class)
+@Import(FixedClockTestConfig::class)
 class ExchangeRateRepositoryTest : BatchIntegrationTestBase() {
-
-    @TestConfiguration
-    class FixedClockConfig {
-        @Bean
-        @Primary
-        fun fixedClock(): Clock = Clock.fixed(Instant.parse("2026-05-12T00:00:10Z"), ZoneOffset.UTC)
-    }
 
     @Autowired
     lateinit var repository: JdbcExchangeRateWriteRepository
