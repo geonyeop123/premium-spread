@@ -3,7 +3,9 @@
 > dod: `docs/work/test-time-reduction/dod.md` · plan: `docs/work/test-time-reduction/plan.md`
 > 브랜치 `chore/issue-104-test-time-reduction` (base `origin/dev`)
 > **비즈니스 코드·API·스키마 변경 없음.** 바뀌는 것은 테스트 소스, 빌드 스크립트, CI workflow와 그 계약 테스트,
-> 하네스·정본 문서뿐이다. 앱·도메인·infrastructure `src/main` 은 한 줄도 고치지 않는다.
+> 하네스·정본 문서뿐이다. 앱·도메인·infrastructure `src/main` 은 한 줄도 고치지 않는다. 테스트 fixture 는
+> `modules/jpa`·`modules/redis` 의 `testFixtures` 도 바뀐다(`MySqlTestTuning` 신규, `MySqlTestContainersConfig`·
+> `RedisTestContainersConfig` 변경). `build-logic` 은 `src/main` 이 아니라 빌드 스크립트로 본다(Test task env 추가).
 
 ## 0. 배경과 측정 근거 (2026-10-28)
 
@@ -33,7 +35,8 @@
 **제외**
 
 - `apps/api` 의 전용 컨테이너 2개(`TradePreparationConcurrencyIntegrationTest`, `TradePreparationActiveTrackingContractTest`) —
-  create-drop이 Flyway 제약을 지우는 문제 때문에 의도된 설계다. 손대지 않는다.
+  create-drop이 Flyway 제약을 지우는 문제 때문에 의도된 설계다. 설계와 `ddl-auto=validate` 는 바꾸지 않는다.
+  다만 `MySqlTestTuning`(D6) 은 두 컨테이너에도 적용한다 — dod 변경 요청으로 승인됨(2026-10-30).
 - batch 커스텀 context(`@TestPropertySource`·`@MockkBean`·`@SpykBean`·전용 `@Import`) 6개의 통합.
 - WebSocket 회귀 테스트의 sleep/backoff, `BinanceFuturesManualAccountAdapterTest` 의 1초 지연(재측정만 한다).
 - 테스트 retry, run 간 container reuse, `@Disabled`, leak-detection 완화, Gradle build cache 재활성화(Kotlin CVE).
@@ -164,7 +167,7 @@ MockWebServer 는 지연을 응답 스레드의 sleep 으로 구현하고 `shutd
    `TickerCacheServiceScoreTest.FixedClockConfig`(:20-25)는 내용이 같다(`Clock.fixed(Instant.parse("2026-05-12T00:00:10Z"), ZoneOffset.UTC)`,
    `@Primary`). `io.premiumspread.support.FixedClockTestConfig` 하나로 옮기고 두 클래스가 그것을 `@Import` 한다.
    `@Import` 대상 클래스 집합이 같으면 Spring Boot `ImportsContextCustomizer` key 가 같아 context 가 하나로 묶인다.
-4. **테스트 JVM heap.** context 가 닫히지 않으므로 최대 8개 context(각자 Redis 컨테이너·Hikari pool·Redisson 포함)가
+4. **테스트 JVM heap.** context 가 닫히지 않으므로 최대 8개 context(각자 Hikari pool·Redisson 포함, Redis 컨테이너는 JVM 당 1개)가
    세션 끝까지 동시에 산다. Gradle 기본 test heap(512m)에서 GC 압박·OOM 위험이 있어 `apps/batch/build.gradle.kts`
    의 `integrationTest` task 에 `maxHeapSize = "1g"` 를 준다.
    [ASSUMPTION] 1g 면 충분하다 — Task 4 실행에서 OOM/과도한 GC 가 없음을 확인한다.
@@ -180,7 +183,7 @@ MockWebServer 는 지연을 응답 스레드의 sleep 으로 구현하고 `shutd
 | 상태 | 이전 | 이후 | 처리 |
 |---|---|---|---|
 | MySQL | JVM singleton(`MySqlTestContainersConfig` companion) — context 와 무관하게 이미 클래스 간 공유 | 같음 | base `@BeforeEach` 가 `BatchTestConfig.BATCH_TABLES` truncate. owner 계열 테이블은 각 클래스 `@BeforeEach` 가 이미 지운다(`OwnerMarketAlertIntegrationTest.cleanMarketAlertState`, `OwnerOpsAlertIntegrationTest.cleanOwnerOpsTables`) — 변화 없음 |
-| Redis | context 마다 새 컨테이너(`RedisTestContainersConfig` bean) | context 를 공유하는 클래스끼리 공유 | base `@BeforeEach` `flushAll` 이 이미 매 테스트 비운다 |
+| Redis | context 마다 새 컨테이너(`RedisTestContainersConfig` bean) | JVM 당 컨테이너 1개(companion singleton, bean 비노출) — 모든 context 가 공유 | context 간 격리는 base `@BeforeEach` `flushAll` 이 맡는다(매 테스트 비운다) |
 | MockWebServer bean | context 마다 새 서버 | 공유 | 2. 의 초기화 |
 | Micrometer 카운터 | context 마다 새 registry | 공유 | 카운터를 읽는 `DurableNotificationDeliveryIntegrationTest` 는 자체 context 라 다른 클래스와 섞이지 않는다 |
 | springmockk spy/mock | 커스텀 context 에만 존재 | 같음 | 변화 없음 |
@@ -196,9 +199,13 @@ MockWebServer 는 지연을 응답 스레드의 sleep 으로 구현하고 `shutd
 `infrastructure/common/src/integrationTest/kotlin/io/premiumspread/infrastructure/common/support/` 에 둔다.
 
 - JVM 당 컨테이너 1개를 `object` 초기화에서 `start()` 한다. 명시적 stop 은 하지 않고 Ryuk 가 JVM 종료 시 정리한다.
-  - 정책 확인: `verifyTestIsolationPolicy`(`build.gradle.kts:142-161`)가 막는 것은 run 간 reuse
-    (`testcontainers.reuse.enable=false`)·leak detection 비활성·retry 다. 같은 JVM 안의 singleton 은 run 간 reuse 가
-    아니다. 선례: `modules/jpa/src/testFixtures/.../MySqlTestContainersConfig.kt` 가 api/batch 에서 같은 방식(companion
+  - 정책 확인: `verifyTestIsolationPolicy`(`build.gradle.kts:142-165`)가 막는 것은 run 간 reuse
+    (system property `testcontainers.reuse.enable=false` 와 환경 변수 `TESTCONTAINERS_REUSE_ENABLE=false` 를 둘 다 검사)·
+    leak detection 비활성·retry 다. 실제로 reuse 를 끄는 것은 env 다 — Testcontainers 1.21.4 는 system property 를 읽지
+    않고 env → `~/.testcontainers.properties` 순으로 읽는다. env 는 `KotlinLibraryConventionPlugin.java:51` 이 모든 Test
+    task 에 준다. 원인 사건: 개발자 `~/.testcontainers.properties` 의 `reuse.enable=true` 와 Redis fixture 의
+    `withReuse(true)` 로 api·batch JVM 이 Redis 를 공유해 api `flushAll` 이 batch 데이터를 지웠다. fixture 는 `withReuse` 를
+    쓰지 않는다. 같은 JVM 안의 singleton 은 run 간 reuse 가 아니다. 선례: `modules/jpa/src/testFixtures/.../MySqlTestContainersConfig.kt` 가 api/batch 에서 같은 방식(companion
     `start()`, stop 없음)으로 쓰이며 `NonDaemonThreadLeakListener` 를 통과한다.
 - 클래스마다 `CREATE DATABASE` 로 자기 database 를 받는다. 이전에 컨테이너가 주던 "클래스마다 빈 서버" 격리를
   "클래스마다 빈 database" 로 바꾸는 것이다.
@@ -220,7 +227,15 @@ MockWebServer 는 지연을 응답 스레드의 sleep 으로 구현하고 `shutd
   `MySQLContainer.getJdbcUrl()` 도 query 가 없다(`PremiumCacheTransactionIntegrationTest.kt:34` 가 `+ "?..."` 로 바로
   붙여 쓰고 통과한다). 공용 컨테이너 초기화에서 `container.jdbcUrl` 에 `?` 가 있으면 즉시 실패시켜 이 전제가
   깨지는 것을 드러낸다.
-- 컨테이너 설정은 기존과 같다: `mysql:8.0`, `withCommand` 없음(서버 기본 charset·collation 유지), `test`/`test`.
+- 컨테이너 설정: `mysql:8.0`, 서버 기본 charset·collation 유지, `test`/`test`. 내구성 튜닝은
+  `modules/jpa/src/testFixtures/.../MySqlTestTuning.kt`(신규)의 목록 하나를 `SharedMySqlContainer`·
+  `MySqlTestContainersConfig`(api·batch 공용)·api 전용 컨테이너 2개가 공유한다: tmpfs datadir,
+  `--innodb-flush-log-at-trx-commit=0`, `--innodb-doublewrite=0`, `--sync-binlog=0`. 트랜잭션 가시성·락·제약·charset·시간대
+  의미는 불변이고 crash 내구성만 포기한다. **`--skip-log-bin` 은 쓰지 않는다** — binlog 가 켜진 MySQL 8 기본 상태와
+  같아야 binlog 에 의존하는 migration 오류를 테스트가 잡는다.
+- Redis(`modules/redis` testFixtures `RedisTestContainersConfig`)는 JVM 당 companion singleton 1개다. Spring 에는
+  `DynamicPropertyRegistrar` 로 `spring.data.redis.host/port` 만 전달하고 컨테이너를 `Startable` bean 으로 노출하지
+  않는다(context close 시 stop 되지 않게). `BatchTestConfig.redissonClient` 는 companion `host()`/`port()` 를 쓴다.
 
 전환 대상 16개 클래스(데이터베이스 이름은 기존 `withDatabaseName` 값 그대로):
 
@@ -258,12 +273,13 @@ adapter 6개 클래스의 `@BeforeEach` 에서 `flyway.clean()`+`migrate()` 를 
 | 상황 | 동작 |
 |---|---|
 | 그 fixture 의 첫 호출 | Flyway `clean()` + `migrate()`(locations `classpath:db/migration`, `cleanDisabled(false)`) 후 스키마 지문을 저장 |
-| 이후 호출, 지문이 저장값과 같음 | 한 JDBC 연결에서 `SET FOREIGN_KEY_CHECKS = 0` → `flyway_schema_history` 를 뺀 모든 base table `TRUNCATE` → `SET FOREIGN_KEY_CHECKS = 1`(finally) |
+| 이후 호출, 지문이 저장값과 같음 | 한 JDBC 연결에서 `SET FOREIGN_KEY_CHECKS = 0` → `flyway_schema_history` 를 뺀 base table 중 **dirty 테이블만** `TRUNCATE` → `SET FOREIGN_KEY_CHECKS = 1`(finally) |
 | 이후 호출, 지문이 다름 | `clean()` + `migrate()` 후 지문 재저장 |
 
 - **TRUNCATE 대상은 하드코딩하지 않는다.** 매 호출 `information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND
-  TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME <> 'flyway_schema_history'` 로 조회한다. 새 migration 이 테이블을 더해도
-  누락되지 않는다.
+  TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME <> 'flyway_schema_history'` 로 조회하고, 그중 dirty 인 것만 지운다.
+  dirty = 행이 있거나 `AUTO_INCREMENT > 1` 인 테이블(rollback 이 counter 만 올린 경우 포함). 통계가 stale 하지 않도록
+  세션에 `information_schema_stats_expiry = 0` 을 준다. 새 migration 이 테이블을 더해도 누락되지 않는다.
 - **같은 연결**이어야 한다. `FOREIGN_KEY_CHECKS` 는 세션 변수이고 `DriverManagerDataSource` 는 호출마다 새 연결을
   준다. FK 로 참조되는 InnoDB 테이블은 `FOREIGN_KEY_CHECKS = 0` 인 세션에서만 TRUNCATE 된다.
 - TRUNCATE 는 AUTO_INCREMENT 도 1 로 되돌린다 — rollback 테스트가 counter 를 올려도 다음 테스트는 새 schema 와
@@ -277,7 +293,8 @@ adapter 6개 클래스의 `@BeforeEach` 에서 `flyway.clean()`+`migrate()` 를 
   `STATISTICS`(table, index, seq, column, non_unique) · `TABLE_CONSTRAINTS`(table, name, type) ·
   `CHECK_CONSTRAINTS`(name, clause) · `REFERENTIAL_CONSTRAINTS`(name, table, referenced table, update_rule, delete_rule) ·
   `TRIGGERS`(name) · `VIEWS`(name) · `flyway_schema_history`(installed_rank, version, checksum, success).
-- 비용 추정: 지문 질의 ~9회 + TRUNCATE ~25회 ≈ 1s 미만/테스트(현재 6.8s). 스키마를 바꾼 테스트 직후 1회만 6.8s.
+- 비용(실측): 지문 12~29ms, 스키마 재구성(clean+migrate) 2.6~12s. 스키마를 바꾼 테스트 직후 1회만 재구성 비용이 든다.
+  지문 동일 시에는 dirty 테이블만 TRUNCATE 하므로 테스트당 수십 ms 수준이다(초기 추정은 전 테이블 TRUNCATE 기준 1s 미만).
 - 상태(마이그레이션 여부·지문)는 클래스 companion 의 fixture 인스턴스가 가진다. JUnit 이 테스트마다 인스턴스를 새로
   만들어도 companion 은 클래스당 하나다.
 - 접속 URL 은 `TestDatabase.utcJdbcUrl` — 6개 adapter 테스트가 각자 계산하던 문자열
@@ -344,7 +361,7 @@ bash docs/check-documentation.sh
 | batch 테스트 JVM 메모리 | D5-4 `maxHeapSize = "1g"` |
 | root 의 `FLUSH PRIVILEGES` 로 인증 캐시가 비는 문제 | D6 에서 금지. 공용 컨테이너 KDoc 에 이유를 남긴다 |
 | 지문이 놓치는 스키마 변경(예: 테이블 옵션·collation) | 현재 스키마를 바꾸는 테스트는 CHECK 제거 1건뿐이고 지문이 잡는다. 자가 검증 테스트가 그 경로를 고정한다 |
-| `--parallel` 로컬 ⑩ 에서 Docker 자원 경합 | 동시 컨테이너: common 1 + api 1~3 + batch MySQL 1 + Redis ≤ 8. 24코어/31GB 에서 문제 없다고 본다 — Task 7 실측 |
+| `--parallel` 로컬 ⑩ 에서 Docker 자원 경합 | 동시 컨테이너: common 1 + api 1~3 + batch MySQL 1 + Redis JVM 당 1개(api·batch 각 1). 24코어/31GB 에서 문제 없다고 본다 — Task 7 실측 |
 | required status check 미갱신으로 common IT 실패가 merge 를 막지 못함 | D1 [DECISION_NEEDED] — 저장소 관리자 조치 |
 | setup-gradle 기본값 때문에 D2 효과가 작음 | D9 PR run 측정으로 확인. 목표는 D1 만으로도 도달 가능하다고 본다 |
 
@@ -380,3 +397,6 @@ bash docs/check-documentation.sh
 | 시점 | 변경 | 사유 |
 |---|---|---|
 | ⑥ spec-reviewer 1R (7건 ACCEPT) | D4 기대 절감을 메서드별 ~1s 로 정정, AC10 을 메서드별 ≥ 0.8s 로 / D5 `requestCount` 근거 정정 / AC9 둘째 grep 에 test-strategy 포함 / qa-agent 79행 갱신 대상 추가 / plan 라벨 "시그니처 계약" / CRLF 유지 지시 / testing.md bullet 에 Ryuk 정리 명시 | ExchangeRate 재시도가 새 연결에서 돌아 두 지연이 겹친다 — 클래스 합계 4s 단축 가정이 틀렸다. 나머지는 근거 정확도·문서 일관성 |
+| 구현 중 판단 — Task 3 fix | `LatestSchemaFixture` 를 dirty 테이블만 TRUNCATE 로, common·api·batch MySQL 에 `MySqlTestTuning`(tmpfs·durability flag) 적용 | TRUNCATE 와 commit 의 비용을 줄이기 위해. 트랜잭션 가시성·락·제약 의미는 불변, crash 내구성만 포기 |
+| 구현 중 판단 — Task 7 fix | 모든 Test task 에 env `TESTCONTAINERS_REUSE_ENABLE=false` 강제 + `verifyTestIsolationPolicy` env 검사, Redis fixture JVM singleton, 튜닝을 api·batch 로 확장 | 개발자 `~/.testcontainers.properties` reuse + Redis `withReuse(true)` 로 api·batch JVM 이 Redis 를 공유, api `flushAll` 이 batch 데이터를 지웠다. system property 는 Testcontainers 가 읽지 않는다 |
+| ⑨ rework | Redis 컨테이너를 Spring bean 으로 노출하지 않고 property 로만 연결, `--skip-log-bin` 제거, api 전용 컨테이너 2개 튜닝 적용을 dod 변경 요청으로 승인(2026-10-30) | bean 이면 context close 가 공용 컨테이너를 stop 한다. skip-log-bin 은 서버 상태를 운영 기본과 갈라 binlog 의존 오류를 숨긴다 |

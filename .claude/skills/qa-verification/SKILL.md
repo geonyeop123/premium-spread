@@ -48,8 +48,9 @@ bash docs/check-documentation.sh
 ## QA 보고서
 
 ### 실행 결과
-- [PASS] ./gradlew test architectureTest --offline --no-daemon — 1,204 실행 / 실패 0 (2m 31s)
-- [FAIL] ./gradlew :apps:api:integrationTest — 42 실행 / 실패 1
+전체 명령(`./gradlew test architectureTest :infrastructure:common:verifyMigrations ... --parallel --continue --offline --no-daemon`) 1회, task별 결과:
+- [PASS] test architectureTest — 1,204 실행 / 실패 0
+- [FAIL] :apps:api:integrationTest — 42 실행 / 실패 1
   - PremiumQueryIntegrationTest.pair_miss: expected MISS, got default-pair row
 - [ENV_ISSUE] :apps:batch:integrationTest — Docker 데몬 미기동으로 미실행
 

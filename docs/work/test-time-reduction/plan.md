@@ -14,7 +14,8 @@ batch IT 는 Spring context 재사용 + 공용 MockWebServer 초기화, unit 은
 > design: `docs/work/test-time-reduction/design.md` · dod: `docs/work/test-time-reduction/dod.md`
 > 모든 명령은 worktree 루트(`/home/yeop/IdeaProjects/premium-spread/.worktrees/chore-issue-104-test-time-reduction`)에서
 > 실행한다. Task 0 과 Task 7 만 측정용 별도 worktree 를 쓴다.
-> **`src/main` 은 어느 모듈에서도 고치지 않는다.** 고쳐야 할 것 같으면 멈추고 보고한다.
+> **앱·도메인·infrastructure `src/main` 은 고치지 않는다**(design 범위). 고쳐야 할 것 같으면 멈추고 보고한다.
+> `build-logic` 은 빌드 스크립트로 보며, `modules/jpa`·`modules/redis` 의 `testFixtures` 는 테스트 소스다.
 
 ## 공통 정의
 
@@ -62,7 +63,7 @@ Task 7 최종 측정 ── 1~6 전부 뒤
 
 **Files:** 없음(dod 증거 로그에 기록만).
 
-- [ ] **Step 1: origin/dev 콜드 worktree 생성**
+- [x] **Step 1: origin/dev 콜드 worktree 생성**
 
 ```bash
 git -C /home/yeop/IdeaProjects/premium-spread fetch origin dev
@@ -71,7 +72,7 @@ cd /home/yeop/IdeaProjects/premium-spread/.worktrees/issue-104-baseline
 git rev-parse HEAD
 ```
 
-- [ ] **Step 2: 기존 ⑩ 직렬 5개 명령을 명령별로 시간 측정**
+- [x] **Step 2: 기존 ⑩ 직렬 5개 명령을 명령별로 시간 측정**
 
 ```bash
 time ./gradlew test architectureTest --offline --no-daemon
@@ -83,7 +84,7 @@ time ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
 
 예상: 5개 모두 `BUILD SUCCESSFUL`. `real` 합 ≈ 17m(측정 근거). 하나라도 실패하면 기준선이 아니다 — 멈추고 보고한다.
 
-- [ ] **Step 3: 개수·context 수 집계**
+- [x] **Step 3: 개수·context 수 집계**
 
 ```bash
 count_tests $(find . -path '*/build/test-results/test/TEST-*.xml')               # B_unit
@@ -97,7 +98,7 @@ count_contexts                                                                  
 예상: failures=0 errors=0. `B_common` ≥ 64, `B_api` ≥ 174, `B_batch` ≥ 109(issue 기준값, dev 에는 V22·OwnerMarketAlert 로 더 많을 수 있다).
 `B_ctx` ≈ 23. `count_contexts` 가 0 이면 Spring Boot 기동 로그가 XML 에 없는 것이다 — 멈추고 보고한다(AC5 측정 수단 재결정 필요).
 
-- [ ] **Step 4: unit 클래스·메서드 시간 기준선**
+- [x] **Step 4: unit 클래스·메서드 시간 기준선**
 
 ```bash
 ./gradlew :infrastructure:batch:test --rerun --offline --no-daemon
@@ -110,7 +111,7 @@ case_times infrastructure/batch ExchangeRateClientTest
 
 `case_times` 출력에서 공통 정의의 AC10 대상 메서드 4개 행의 `time` 을 기준선으로 기록한다.
 
-- [ ] **Step 5: dod `### 기준선` 블록에 SHA·값 전부 기록, worktree 제거**
+- [x] **Step 5: dod `### 기준선` 블록에 SHA·값 전부 기록, worktree 제거**
 
 ```bash
 cd /home/yeop/IdeaProjects/premium-spread/.worktrees/chore-issue-104-test-time-reduction
@@ -137,8 +138,8 @@ git -C /home/yeop/IdeaProjects/premium-spread worktree remove /home/yeop/IdeaPro
 timeout 값(200ms)·assertion·테스트 이름은 바꾸지 않는다. `BinanceFuturesManualAccountAdapterTest`·`DiscordWebhookSenderAdapterTest`·
 WebSocket 테스트는 건드리지 않는다.
 
-- [ ] **Step 1: 4곳 치환**
-- [ ] **Step 2: 모듈 테스트**
+- [x] **Step 1: 4곳 치환**
+- [x] **Step 2: 모듈 테스트**
 
 ```bash
 ./gradlew :infrastructure:batch:test --rerun --offline --no-daemon
@@ -154,7 +155,7 @@ case_times infrastructure/batch ExchangeRateClientTest
 각각의 `time` ≤ 기준선 − 0.8s. ExchangeRate 두 메서드는 재시도가 새 연결에서 돌아 두 응답 지연이 겹치므로 메서드당 절감은 약 1s 다
 (design D4). Binance 는 값만 기록.
 
-- [ ] **Step 3: 커밋** — `test: MockWebServer timeout 테스트 지연을 2초에서 1초로 단축`
+- [x] **Step 3: 커밋** — `test: MockWebServer timeout 테스트 지연을 2초에서 1초로 단축`
 
 ---
 
@@ -210,7 +211,8 @@ class TestDatabase internal constructor(
 
 **구현 요건 (`SharedMySqlContainer`):**
 - 컨테이너: `MySQLContainer(DockerImageName.parse("mysql:8.0")).withDatabaseName("shared_bootstrap").withUsername(USERNAME).withPassword(PASSWORD)`,
-  `withCommand` 없음, object 초기화에서 `start()`.
+  서버 기본 charset·collation 유지, `MySqlTestTuning`(`modules/jpa` testFixtures — tmpfs datadir, `--innodb-flush-log-at-trx-commit=0`,
+  `--innodb-doublewrite=0`, `--sync-binlog=0`; `--skip-log-bin` 은 binlog 의존 migration 오류를 잡기 위해 쓰지 않는다)을 적용, object 초기화에서 `start()`.
 - 기동 직후 `container.jdbcUrl` 에 `?` 가 있으면 `IllegalStateException` (design A3 전제 확인).
 - 할당된 이름 집합은 `"shared_bootstrap"` 을 담고 시작한다. `database()` 는 `@Synchronized`.
 - database 생성은 root 연결 하나에서: URL `jdbc:mysql://{host}:{mappedPort}/`(sslMode 지정 없음), user `root`, password `PASSWORD`.
@@ -228,10 +230,10 @@ class TestDatabase internal constructor(
   `GenericContainer`·`Container`·`Testcontainers` 를 유지한다. mysql 만 바꾼다.
 - 테스트 본문·`jdbcUrl` getter·`migrateLatest()`·migration 테스트의 clean/target 로직은 **이 태스크에서 바꾸지 않는다.**
 
-- [ ] **Step 1: `SharedMySqlContainer.kt` 작성**
-- [ ] **Step 2: 16개 클래스 전환**
-- [ ] **Step 3: 컴파일 확인** — `./gradlew :infrastructure:common:compileIntegrationTestKotlin --offline --no-daemon` → `BUILD SUCCESSFUL`(경고=에러 설정이라 경고 0)
-- [ ] **Step 4: common IT 실행**
+- [x] **Step 1: `SharedMySqlContainer.kt` 작성**
+- [x] **Step 2: 16개 클래스 전환**
+- [x] **Step 3: 컴파일 확인** — `./gradlew :infrastructure:common:compileIntegrationTestKotlin --offline --no-daemon` → `BUILD SUCCESSFUL`(경고=에러 설정이라 경고 0)
+- [x] **Step 4: common IT 실행**
 
 ```bash
 time ./gradlew :infrastructure:common:integrationTest --offline --no-daemon
@@ -241,7 +243,7 @@ count_tests infrastructure/common/build/test-results/integrationTest/TEST-*.xml
 예상: `BUILD SUCCESSFUL`(leak 검사 포함). tests = `B_common`, failures=0 errors=0, skipped = 기준선. 실행 중 `docker ps` 에 이 JVM 의
 `mysql:8.0` 은 1개. 시간은 기준선보다 짧다(컨테이너 기동 16회 → 1회) — 기록만.
 
-- [ ] **Step 5: 커밋** — `test: common 통합 테스트를 공용 MySQL 컨테이너와 클래스별 database 로 전환`
+- [x] **Step 5: 커밋** — `test: common 통합 테스트를 공용 MySQL 컨테이너와 클래스별 database 로 전환`
 
 ---
 
@@ -267,7 +269,7 @@ package io.premiumspread.infrastructure.common.support
 class LatestSchemaFixture(private val database: TestDatabase) {
     /**
      * 첫 호출: Flyway clean + migrate 후 스키마 지문 저장.
-     * 이후 호출: 지문이 같으면 flyway_schema_history 를 뺀 모든 base table 을 TRUNCATE,
+     * 이후 호출: 지문이 같으면 flyway_schema_history 를 뺀 base table 중 dirty 테이블만 TRUNCATE,
      * 다르면 clean + migrate 후 지문 재저장.
      */
     fun reset()
@@ -278,7 +280,8 @@ class LatestSchemaFixture(private val database: TestDatabase) {
 - 접속: `database.utcJdbcUrl`, `database.username`, `database.password`.
 - Flyway: `Flyway.configure().dataSource(url, user, password).locations("classpath:db/migration").cleanDisabled(false).load()` 의 `clean()` → `migrate()`.
 - TRUNCATE 경로는 **JDBC 연결 하나**에서: `SET FOREIGN_KEY_CHECKS = 0` → 대상 각각 `TRUNCATE TABLE \`{t}\`` → finally `SET FOREIGN_KEY_CHECKS = 1`.
-  대상 = `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME <> 'flyway_schema_history'`(매 호출 조회, 하드코딩 금지).
+  대상 = `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME <> 'flyway_schema_history'`(매 호출 조회, 하드코딩 금지) 중
+  dirty 인 것만(행 존재 또는 `AUTO_INCREMENT > 1`; 세션 `information_schema_stats_expiry = 0`). 실측: 지문 12~29ms, clean+migrate 2.6~12s.
 - 지문 = 아래 질의 결과를 행마다 문자열로 만든 뒤 정렬한 `List<String>`(모두 schema = `DATABASE()`): `TABLES`(TABLE_NAME, TABLE_TYPE) ·
   `COLUMNS`(TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA) · `STATISTICS`(TABLE_NAME, INDEX_NAME,
   SEQ_IN_INDEX, COLUMN_NAME, NON_UNIQUE) · `TABLE_CONSTRAINTS`(TABLE_NAME, CONSTRAINT_NAME, CONSTRAINT_TYPE) · `CHECK_CONSTRAINTS`(CONSTRAINT_NAME,
@@ -306,7 +309,7 @@ class LatestSchemaFixture(private val database: TestDatabase) {
 - (c) `첫 reset 은 빈 database 를 최신 schema 로 만든다`: `firstFixture.reset()` 후 `firstMysql.utcJdbcUrl` 에 대한 Flyway `info()` 의 `pending()` 이
   비어 있고 `applied().size` 가 `all().size` 와 같다.
 
-- [ ] **Step 1: 테스트 + 지문 없는 1차 구현 → RED**
+- [x] **Step 1: 테스트 + 지문 없는 1차 구현 → RED**
 
 `LatestSchemaFixtureIntegrationTest` 를 쓰고, `LatestSchemaFixture.reset()` 은 **1차 구현**으로 둔다 — 첫 호출만 clean+migrate,
 이후 호출은 항상 TRUNCATE(지문 비교 없음).
@@ -318,9 +321,9 @@ class LatestSchemaFixture(private val database: TestDatabase) {
 예상: (a)·(c) 통과, (b) 가 CHECK 제약 건수 `expected 1 but was 0` 으로 실패한다(지문 없이는 스키마 변경을 되돌리지 못한다).
 이 출력을 dod AC6 증거 로그에 RED 로 붙인다. 컴파일 실패는 RED 가 아니다.
 
-- [ ] **Step 2: 지문 비교를 넣어 완성 → 같은 명령 GREEN (3 tests, failures 0)**
-- [ ] **Step 3: adapter 6개 클래스 전환**
-- [ ] **Step 4: common IT 전체**
+- [x] **Step 2: 지문 비교를 넣어 완성 → 같은 명령 GREEN (3 tests, failures 0)**
+- [x] **Step 3: adapter 6개 클래스 전환**
+- [x] **Step 4: common IT 전체**
 
 ```bash
 time ./gradlew :infrastructure:common:integrationTest --offline --no-daemon
@@ -331,7 +334,7 @@ grep -ho '<testsuite name="[^"]*JdbcAccountPnlAlertStoreIntegrationTest" [^>]*' 
 예상: `BUILD SUCCESSFUL`. tests = `B_common` + 3, failures=0 errors=0, skipped = 기준선. `JdbcAccountPnlAlertStoreIntegrationTest` 의 `time`
 이 기준선 163s 대비 크게 줄어든다(테스트당 clean+migrate 6.8s 제거) — 기록만. 전체 `real` ≤ 4m 이 AC1 의 예비 확인이다.
 
-- [ ] **Step 5: 커밋** — `test: common adapter 통합 테스트를 migrate 1회와 지문 확인 TRUNCATE 로 전환`
+- [x] **Step 5: 커밋** — `test: common adapter 통합 테스트를 migrate 1회와 지문 확인 TRUNCATE 로 전환`
 
 ---
 
@@ -423,7 +426,7 @@ class SharedContextIsolationIntegrationTest : BatchIntegrationTestBase() {
     다음 `takeRequest(0, MILLISECONDS)` = `null`.
 - 커스텀 context 6개 클래스와 다른 테스트 본문은 바꾸지 않는다. 공유 때문에 실패하는 클래스가 나오면 design D5 마지막 문단을 따른다.
 
-- [ ] **Step 1: `SharedContextIsolationIntegrationTest` 와 `FixedClockTestConfig` 작성(아직 base 미수정) → RED**
+- [x] **Step 1: `SharedContextIsolationIntegrationTest` 와 `FixedClockTestConfig` 작성(아직 base 미수정) → RED**
 
 ```bash
 ./gradlew :apps:batch:integrationTest --tests '*SharedContextIsolationIntegrationTest' --offline --no-daemon
@@ -431,9 +434,9 @@ class SharedContextIsolationIntegrationTest : BatchIntegrationTestBase() {
 
 예상: (2) 가 `expected "fresh" but was "leftover-2"` 로 실패(공용 서버에 앞 응답이 남아 있다). 같은 클래스 안의 두 메서드는
 `@DirtiesContext(AFTER_CLASS)` 와 무관하게 이미 context 를 공유하므로 base 수정 전에도 재현된다. dod AC7 증거 로그에 붙인다.
-- [ ] **Step 2: base 수정(`@DirtiesContext` 제거 + 초기화) → 같은 명령 GREEN (2 tests)**
-- [ ] **Step 3: FixedClock 두 클래스 전환, `maxHeapSize` 추가**
-- [ ] **Step 4: batch IT 전체**
+- [x] **Step 2: base 수정(`@DirtiesContext` 제거 + 초기화) → 같은 명령 GREEN (2 tests)**
+- [x] **Step 3: FixedClock 두 클래스 전환, `maxHeapSize` 추가**
+- [x] **Step 4: batch IT 전체**
 
 ```bash
 time ./gradlew :apps:batch:integrationTest --offline --no-daemon
@@ -443,7 +446,7 @@ count_contexts
 
 예상: `BUILD SUCCESSFUL`(leak 검사 포함, OOM 없음). tests = `B_batch` + 2, failures=0 errors=0, skipped = 기준선. `count_contexts` ≤ 9(설계 예상 8).
 
-- [ ] **Step 5: 커밋** — `test: batch 통합 테스트 Spring context 재사용과 공용 MockWebServer 초기화`
+- [x] **Step 5: 커밋** — `test: batch 통합 테스트 Spring context 재사용과 공용 MockWebServer 초기화`
 
 ---
 
@@ -563,7 +566,7 @@ grep -Fq 'run: ./gradlew :apps:batch:integrationTest --dependency-verification s
   fail "Quality Gate Batch job must run exact strict Batch integration task"
 ```
 
-- [ ] **Step 1: 두 스크립트 수정 → RED**
+- [x] **Step 1: 두 스크립트 수정 → RED**
 
 ```bash
 bash ci/quality-gate-contract-test.sh
@@ -677,7 +680,7 @@ static-analysis(141행)·dependency-security(182행)·docker-build(203행): `   
           retention-days: 14
 ```
 
-- [ ] **Step 2: workflow 수정 → GREEN**
+- [x] **Step 2: workflow 수정 → GREEN**
 
 ```bash
 bash ci/quality-gate-contract-test.sh
@@ -689,7 +692,7 @@ grep -c '^    needs:' .github/workflows/quality-gate.yml
 예상: 세 스크립트 exit 0(`quality gate and supply-chain contracts verified`, deploy 스크립트 성공 출력, `offline Gradle configuration is independent of CI-only tools`).
 마지막 grep 출력 `0`.
 
-- [ ] **Step 3: 로컬 unit 병렬 확인**
+- [x] **Step 3: 로컬 unit 병렬 확인**
 
 ```bash
 ./gradlew test --parallel --offline --no-daemon
@@ -698,7 +701,7 @@ count_tests $(find . -path '*/build/test-results/test/TEST-*.xml')
 
 예상: `BUILD SUCCESSFUL`, tests = `B_unit`, failures=0 errors=0.
 
-- [ ] **Step 4: 커밋** — `chore: Quality Gate job 병렬화와 common 통합 테스트 job 분리`
+- [x] **Step 4: 커밋** — `chore: Quality Gate job 병렬화와 common 통합 테스트 job 분리`
 
 ---
 
@@ -808,12 +811,19 @@ bash docs/check-documentation.sh
 - `--continue`는 실패한 task가 있어도 나머지를 끝까지 실행해 실패 전체를 한 번에 보여 준다.
 ````
 
-`.ai/rules/testing.md` "## 격리 규칙" 절 끝에 두 bullet 추가:
+`.ai/rules/testing.md` "## 격리 규칙" 절 끝에 bullet 추가(최종 문구는 `.ai/rules/testing.md` 가 정본):
 
 ```markdown
 - 같은 테스트 JVM 안의 Testcontainers singleton(모듈 공용 컨테이너)은 허용한다. 정리는 JVM 종료 시 Ryuk가 맡는다(명시적 stop 없음).
-  run 사이의 reuse(`testcontainers.reuse.enable`)는 금지다. common 통합 테스트 클래스는 공용 MySQL에서
-  `SharedMySqlContainer.database(...)`로 자기 database를 따로 받는다.
+  Redis도 JVM당 컨테이너 1개이며, Spring에는 컨테이너를 bean으로 노출하지 않고 `spring.data.redis.host/port` property로만
+  연결한다(context close 시 stop되지 않게).
+- run 사이의 reuse는 금지다. 수단은 모든 Test task의 환경 변수 `TESTCONTAINERS_REUSE_ENABLE=false`이고
+  `verifyTestIsolationPolicy`가 이 env를 검사한다. Testcontainers는 system property `testcontainers.reuse.enable`을
+  읽지 않고(env → `~/.testcontainers.properties` 순), 개발자의 `~/.testcontainers.properties`가 reuse를 켜 두면 api·batch
+  JVM이 한 컨테이너를 공유해 서로의 데이터를 지운다. fixture는 `withReuse`를 쓰지 않는다.
+- 테스트 MySQL 컨테이너는 내구성 튜닝(`MySqlTestTuning`: tmpfs datadir, flush-log-at-trx-commit=0, doublewrite=0, sync-binlog=0)을
+  허용한다. 트랜잭션 가시성·락·제약·charset·시간대 의미는 바꾸지 않고 crash 내구성만 포기한다. `--skip-log-bin`은 쓰지 않는다.
+- common 통합 테스트 클래스는 공용 MySQL에서 `SharedMySqlContainer.database(...)`로 자기 database를 따로 받는다.
 - 공용 Spring context를 쓰는 batch 통합 테스트는 매 테스트 전에 base가 공용 상태(DB·Redis·MockWebServer)를 초기화한다.
   상태를 남기는 공용 bean을 새로 추가하면 base 초기화에 넣는다.
 ```
@@ -827,8 +837,8 @@ bash docs/check-documentation.sh
 | YYYY-MM-DD | 검증 명령을 Gradle 한 번 호출(`--parallel --continue`)로 통합 — orchestrator ⑩·qa-agent·qa-verification·test-strategy 의 직렬 5개 명령을 한 줄로 교체, qa-agent 의 "모듈별로 나눠 돌리기" 문구를 실패 task 개별 재실행으로 통일, code-reviewer unit 게이트에 `--parallel` 추가 | `.claude/skills/orchestrator/SKILL.md`, `.claude/agents/qa-agent.md`, `.claude/skills/qa-verification/SKILL.md`, `.claude/skills/test-strategy/SKILL.md`, `.claude/agents/code-reviewer.md` | issue #104 — 직렬 5회 호출 합 ~17m. 같은 검증 범위를 병렬 한 번 호출로 돌린다. `--continue` 로 실패 전체를 한 번에 본다. 정본(`.ai/rules/testing.md`·`AGENTS.md`·`.ai/instructions.md`)도 같은 명령으로 맞췄다. 전후 측정은 `docs/work/test-time-reduction/dod.md` 증거 로그 |
 ```
 
-- [ ] **Step 1: 9개 파일 수정** — `docs/harness-changelog.md`·`CLAUDE.md` 는 CRLF 다. 기존 줄바꿈을 유지한다(LF 로 바꾸면 행 끝 앵커 검사가 달라진다).
-- [ ] **Step 2: 게이트**
+- [x] **Step 1: 9개 파일 수정** — `docs/harness-changelog.md`·`CLAUDE.md` 는 CRLF 다. 기존 줄바꿈을 유지한다(LF 로 바꾸면 행 끝 앵커 검사가 달라진다).
+- [x] **Step 2: 게이트**
 
 ```bash
 ./gradlew harnessCheck harnessCheckTest --offline --no-daemon
@@ -840,7 +850,7 @@ grep -rnE '^\./gradlew :infrastructure:common:integrationTest --offline --no-dae
 예상: 첫 두 명령 exit 0(`documentation check passed (...)`). 셋째 grep 이 7개 파일(orchestrator SKILL, qa-agent, qa-verification, test-strategy,
 testing.md, AGENTS.md, instructions.md)에서 각 1건 이상. 넷째 grep 출력 없음(exit 1) — 개별 명령은 `.ai/rules/testing.md` 에만 남는다. (AC9)
 
-- [ ] **Step 3: 커밋** — `docs: 검증 명령을 Gradle 한 번 호출과 --parallel 로 통합`
+- [x] **Step 3: 커밋** — `docs: 검증 명령을 Gradle 한 번 호출과 --parallel 로 통합`
 
 ---
 
@@ -848,7 +858,7 @@ testing.md, AGENTS.md, instructions.md)에서 각 1건 이상. 넷째 grep 출�
 
 **Files:** `docs/work/test-time-reduction/dod.md` 증거 로그만.
 
-- [ ] **Step 1: 회귀 방어선 (작업 worktree)**
+- [x] **Step 1: 회귀 방어선 (작업 worktree)**
 
 ```bash
 ./gradlew verifyTestIsolationPolicy --offline --no-daemon
@@ -861,7 +871,7 @@ bash docs/check-documentation.sh
 
 예상: 전부 exit 0 (R1~R5, AC8 GREEN).
 
-- [ ] **Step 2: 최종 SHA 콜드 worktree 생성**
+- [x] **Step 2: 최종 SHA 콜드 worktree 생성**
 
 ```bash
 FINAL_SHA="$(git rev-parse HEAD)"
@@ -869,7 +879,7 @@ git -C /home/yeop/IdeaProjects/premium-spread worktree add --detach /home/yeop/I
 cd /home/yeop/IdeaProjects/premium-spread/.worktrees/issue-104-measure
 ```
 
-- [ ] **Step 3: ⑩ 1회 (AC2·AC4·AC5, R6~R8)** — 측정 중 다른 무거운 작업을 돌리지 않는다.
+- [x] **Step 3: ⑩ 1회 (AC2·AC4·AC5, R6~R8)** — 측정 중 다른 무거운 작업을 돌리지 않는다.
 
 ```bash
 time ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
@@ -883,7 +893,7 @@ count_contexts
 예상: `BUILD SUCCESSFUL`, `real` ≤ 7m00s. tests: unit = `B_unit`, common = `B_common` + 3, api = `B_api`, batch = `B_batch` + 2, 모두 failures=0 errors=0,
 skipped = 기준선. contexts ≤ 9.
 
-- [ ] **Step 4: common IT 단독 (AC1)**
+- [x] **Step 4: common IT 단독 (AC1)**
 
 ```bash
 time ./gradlew :infrastructure:common:integrationTest --rerun --offline --no-daemon
@@ -891,7 +901,7 @@ time ./gradlew :infrastructure:common:integrationTest --rerun --offline --no-dae
 
 예상: `BUILD SUCCESSFUL`, `real` ≤ 4m00s.
 
-- [ ] **Step 5: unit 메서드 시간 (AC10)**
+- [x] **Step 5: unit 메서드 시간 (AC10)**
 
 ```bash
 ./gradlew :infrastructure:batch:test --rerun --offline --no-daemon
@@ -904,7 +914,7 @@ case_times infrastructure/batch ExchangeRateClientTest
 
 예상: Bithumb·ExchangeRate `tests` 기준선과 같고, AC10 대상 메서드 4개 각각의 `time` ≤ 기준선 − 0.8s. Binance 는 기록만.
 
-- [ ] **Step 6: 측정 worktree 제거, 증거 기록**
+- [x] **Step 6: 측정 worktree 제거, 증거 기록**
 
 ```bash
 cd /home/yeop/IdeaProjects/premium-spread/.worktrees/chore-issue-104-test-time-reduction
