@@ -136,9 +136,7 @@ class OwnerMarketSignalJob(
 
         val notices = decisions.flatMap { it.notices }
         val rows = notices.flatMap { notice ->
-            OwnerAlertRows.expand(OwnerMarketAlertContent.mail(notice, settings, zone), routing.resolve(notice.kind)) {
-                OwnerMarketAlertContent.discord(notice, settings, zone)
-            }
+            OwnerAlertRows.expand(OwnerMarketAlertContent.message(notice, settings, zone), routing.resolve(notice.kind))
         }
         val changed = decisions.flatMap { it.next }
         if (changed.isEmpty()) return JobResult.Success

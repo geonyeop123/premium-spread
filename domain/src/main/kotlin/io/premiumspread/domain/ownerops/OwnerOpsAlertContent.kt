@@ -173,7 +173,4 @@ object OwnerOpsAlertContent {
 
     private fun market(signal: OpsSignal.MarketStream): String =
         "${AlertFormat.exchange(signal.exchange)} ${signal.quote.baseCode}/${signal.quote.currency.code}"
-
-    /** Task 11 까지 OwnerMarketAlertContent 가 쓴다. Task 11 에서 삭제. */
-    internal fun threshold(duration: Duration): String = AlertFormat.threshold(duration)
 }

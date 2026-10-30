@@ -1,22 +1,23 @@
 package io.premiumspread.domain.ownermarket
 
-import io.premiumspread.domain.accountpnl.AccountPnlFormat
-import io.premiumspread.domain.accountpnl.AccountPnlMail
-import io.premiumspread.domain.market.MarketPair
-import io.premiumspread.domain.owneralert.DiscordMessage
-import io.premiumspread.domain.ownerops.OwnerOpsAlertContent
+import io.premiumspread.domain.alertmessage.AlertFormat
+import io.premiumspread.domain.alertmessage.EmbedCell
+import io.premiumspread.domain.alertmessage.EmbedDocument
+import io.premiumspread.domain.alertmessage.MailBlock
+import io.premiumspread.domain.alertmessage.MailDocument
+import io.premiumspread.domain.alertmessage.MailPair
+import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneId
 
-/** owner 시장 알림 본문 (design §8). 메일(EMAIL 행)과 Discord 메시지를 같은 문구로 만든다. */
+/** 시장 알림 7종(급변·기준선·신고/신저·일일 요약)의 메일·Discord 문구. 문구 정본 message-spec.md "시장 알림", 값 출처 design §6.5. */
 object OwnerMarketAlertContent {
-    const val RUNBOOK = "docs/runbooks/owner-market-alert.md"
     const val UP_COLOR = 0xE74C3C
     const val DOWN_COLOR = 0x3498DB
     const val SUMMARY_COLOR = 0x95A5A6
 
-    /** design §8.1. */
+    /** design §8.1. 무변경. */
     fun eventKey(notice: MarketNotice): String {
         val base = "owner-market.${MarketKeys.pairKey(notice.pair)}"
         return when (notice) {
@@ -36,174 +37,245 @@ object OwnerMarketAlertContent {
         }
     }
 
-    /** EMAIL 행(channel 기본값). 제목 = `[시장] ` + 핵심, 본문 = design §8.4. */
-    fun mail(notice: MarketNotice, settings: MarketAlertSettings, zone: ZoneId): AccountPnlMail =
-        AccountPnlMail(
-            eventKey(notice),
-            "[시장] " + titleCore(notice),
-            body(notice, settings, zone) { AccountPnlFormat.time(it, zone) },
+    /** author = `시장 · {symbol} {korea}/{foreign}` — notice.pair 에서만 만든다. basis = notice.at. */
+    fun message(notice: MarketNotice, settings: MarketAlertSettings, zone: ZoneId): OwnerAlertMessage {
+        val author = "시장 · ${notice.pair.symbol.code} ${pairText(notice)}"
+        val parts = when (notice) {
+            is MarketNotice.Swing -> swing(notice, settings, zone)
+            is MarketNotice.ThresholdCrossed -> crossed(notice, zone)
+            is MarketNotice.NewExtreme -> extreme(notice, settings, zone)
+            is MarketNotice.DailySummary -> summary(notice, zone)
+        }
+        return OwnerAlertMessage(
+            eventKey = eventKey(notice),
+            mail = MailDocument(
+                subject = "[시장] ${parts.core} (${notice.pair.symbol.code})",
+                blocks = parts.blocks,
+                basis = notice.at,
+                zone = zone,
+            ),
+            discord = EmbedDocument(
+                author = author,
+                title = "${parts.emoji} ${parts.core}",
+                color = parts.color,
+                rows = parts.rows,
+                footer = parts.footer,
+                timestamp = notice.at,
+            ),
         )
+    }
 
-    /** DiscordMessage.of 로 절단. 제목 = 이모지 + 핵심, 설명의 시각은 짧은 표기. */
-    fun discord(notice: MarketNotice, settings: MarketAlertSettings, zone: ZoneId): DiscordMessage =
-        DiscordMessage.of(
-            "${emoji(notice)} ${titleCore(notice)}",
-            body(notice, settings, zone) { AccountPnlFormat.shortTime(it, zone) },
-            color(notice),
-        )
+    private class Parts(
+        val emoji: String,
+        val core: String,
+        val color: Int,
+        val blocks: List<MailBlock>,
+        val rows: List<List<EmbedCell>>,
+        val footer: String,
+    )
 
     // 유니코드 escape: 📈 📉 🔺 🔻 ⬆️ ⬇️ 🗓️ (variation selector 포함)
-    private const val CHART_UP = "\uD83D\uDCC8"
-    private const val CHART_DOWN = "\uD83D\uDCC9"
-    private const val TRIANGLE_UP = "\uD83D\uDD3A"
-    private const val TRIANGLE_DOWN = "\uD83D\uDD3B"
-    private const val ARROW_UP = "\u2B06\uFE0F"
-    private const val ARROW_DOWN = "\u2B07\uFE0F"
-    private const val CALENDAR = "\uD83D\uDDD3\uFE0F"
-
-    private fun emoji(notice: MarketNotice): String = when (notice) {
-        is MarketNotice.Swing -> if (notice.direction == MarketDirection.UP) CHART_UP else CHART_DOWN
-        is MarketNotice.ThresholdCrossed -> if (notice.line == ThresholdLine.UPPER) TRIANGLE_UP else TRIANGLE_DOWN
-        is MarketNotice.NewExtreme -> if (notice.direction == MarketDirection.UP) ARROW_UP else ARROW_DOWN
-        is MarketNotice.DailySummary -> CALENDAR
-    }
-
-    private fun color(notice: MarketNotice): Int = when (notice) {
-        is MarketNotice.Swing -> directionColor(notice.direction)
-        is MarketNotice.ThresholdCrossed -> if (notice.line == ThresholdLine.UPPER) UP_COLOR else DOWN_COLOR
-        is MarketNotice.NewExtreme -> directionColor(notice.direction)
-        is MarketNotice.DailySummary -> SUMMARY_COLOR
-    }
+    private const val CHART_UP = "📈"
+    private const val CHART_DOWN = "📉"
+    private const val TRIANGLE_UP = "🔺"
+    private const val TRIANGLE_DOWN = "🔻"
+    private const val ARROW_UP = "⬆️"
+    private const val ARROW_DOWN = "⬇️"
+    private const val CALENDAR = "🗓️"
 
     private fun directionColor(direction: MarketDirection): Int =
         if (direction == MarketDirection.UP) UP_COLOR else DOWN_COLOR
 
-    /** `{p}` 예 `BTC BITHUMB/BINANCE`. */
-    private fun label(pair: MarketPair): String =
-        "${pair.symbol.code} ${pair.koreaExchange.name}/${pair.foreignExchange.name}"
+    private fun pairText(notice: MarketNotice): String = AlertFormat.exchangePair(notice.pair, "/")
 
-    private fun titleCore(notice: MarketNotice): String {
-        val p = label(notice.pair)
-        return when (notice) {
-            is MarketNotice.Swing -> {
-                val word = if (notice.direction == MarketDirection.UP) "급등" else "급락"
-                "김프 $word $p ${pp(notice.delta)} (${OwnerOpsAlertContent.threshold(notice.window)})"
-            }
-
-            is MarketNotice.ThresholdCrossed ->
-                if (notice.line == ThresholdLine.UPPER) {
-                    "김프 상단 기준선 돌파 $p ${r(notice.current)} ≥ ${r(notice.threshold)}"
-                } else {
-                    "김프 하단 기준선 이탈 $p ${r(notice.current)} ≤ ${r(notice.threshold)}"
-                }
-
-            is MarketNotice.NewExtreme -> {
-                val word = if (notice.direction == MarketDirection.UP) "신고가" else "신저가"
-                "김프 ${windowLabel(notice.window)} $word $p ${r(notice.current)}"
-            }
-
-            is MarketNotice.DailySummary -> "김프 일일 요약 $p ${notice.date}"
-        }
-    }
-
-    private fun windowLabel(window: ExtremeWindow): String =
-        if (window == ExtremeWindow.ONE_HOUR) "1시간" else "24시간"
-
-    private fun body(
-        notice: MarketNotice,
-        settings: MarketAlertSettings,
-        zone: ZoneId,
-        t: (Instant) -> String,
-    ): String {
-        val lines = when (notice) {
-            is MarketNotice.Swing -> swingLines(notice, settings, t)
-            is MarketNotice.ThresholdCrossed -> thresholdLines(notice, t)
-            is MarketNotice.NewExtreme -> extremeLines(notice, settings, t)
-            is MarketNotice.DailySummary -> summaryLines(notice, settings, zone, t)
-        }
-        return (lines + "조치 안내: $RUNBOOK").joinToString("\n")
-    }
-
-    private fun swingLines(notice: MarketNotice.Swing, settings: MarketAlertSettings, t: (Instant) -> String): List<String> {
-        val window = OwnerOpsAlertContent.threshold(notice.window)
-        val extreme = if (notice.direction == MarketDirection.UP) "저점" else "고점"
-        return listOf(
-            "현재 김프: ${r(notice.current)} (${t(notice.currentObservedAt)})",
-            "최근 $window 분봉 종가 $extreme: ${r(notice.reference)}",
-            "변화: ${pp(notice.delta)}",
-            "기준: $window 안에서 ±${v(settings.swingThreshold)}%p 이상 · " +
-                "같은 방향은 ${OwnerOpsAlertContent.threshold(settings.swingCooldown)} 동안 다시 알리지 않습니다.",
-            "알림 시각: ${t(notice.at)}",
+    private fun swing(notice: MarketNotice.Swing, settings: MarketAlertSettings, zone: ZoneId): Parts {
+        val up = notice.direction == MarketDirection.UP
+        val window = AlertFormat.threshold(notice.window)
+        val threshold = AlertFormat.plain(settings.swingThreshold)
+        val cooldown = AlertFormat.threshold(settings.swingCooldown)
+        val reference = "$window ${if (up) "저점" else "고점"}"
+        val intro = "${notice.pair.symbol.code} 김프가 $window 사이 ${magnitude(notice.delta)} " +
+            "${if (up) "올랐습니다" else "내렸습니다"}. (${pairText(notice)})"
+        val delta = AlertFormat.percentPoint(notice.delta)
+        return Parts(
+            emoji = if (up) CHART_UP else CHART_DOWN,
+            core = "김프 ${if (up) "급등" else "급락"} $delta → ${AlertFormat.percent(notice.current)}",
+            color = directionColor(notice.direction),
+            blocks = listOf(
+                MailBlock.Text(listOf(intro)),
+                MailBlock.Pairs(
+                    listOf(
+                        currentPair(notice.current, notice.currentObservedAt, notice.at, zone),
+                        MailPair(reference, AlertFormat.percent(notice.reference)),
+                        MailPair("변화", delta),
+                    ),
+                ),
+                MailBlock.Text(listOf("기준: $window 안에서 ±$threshold%p 이상. 같은 방향은 $cooldown 동안 다시 알리지 않습니다.")),
+            ),
+            rows = listOf(
+                listOf(
+                    EmbedCell("현재 김프", AlertFormat.percent(notice.current)),
+                    EmbedCell(reference, AlertFormat.percent(notice.reference)),
+                    EmbedCell("변화", delta),
+                ),
+            ),
+            footer = "기준 $window 안 ±$threshold%p · 같은 방향은 $cooldown 동안 다시 알리지 않음",
         )
     }
 
-    private fun thresholdLines(notice: MarketNotice.ThresholdCrossed, t: (Instant) -> String): List<String> {
-        val side = if (notice.line == ThresholdLine.UPPER) "상단" else "하단"
-        return listOf(
-            "현재 김프: ${r(notice.current)} (${t(notice.currentObservedAt)})",
-            "$side 기준선: ${r(notice.threshold)}",
-            "기준선 안쪽으로 ${v(notice.hysteresis)}%p 이상 돌아온 뒤 다시 넘으면 다시 알립니다.",
-            "알림 시각: ${t(notice.at)}",
+    private fun crossed(notice: MarketNotice.ThresholdCrossed, zone: ZoneId): Parts {
+        val upper = notice.line == ThresholdLine.UPPER
+        val side = if (upper) "상단" else "하단"
+        val hysteresis = AlertFormat.plain(notice.hysteresis)
+        val action = if (upper) "상단 기준선을 넘었습니다" else "하단 기준선 아래로 내려갔습니다"
+        return Parts(
+            emoji = if (upper) TRIANGLE_UP else TRIANGLE_DOWN,
+            core = "김프 ${if (upper) "상단 기준선 돌파" else "하단 기준선 이탈"} ${AlertFormat.percent(notice.current)}",
+            color = if (upper) UP_COLOR else DOWN_COLOR,
+            blocks = listOf(
+                MailBlock.Text(listOf("${notice.pair.symbol.code} 김프가 $action. (${pairText(notice)})")),
+                MailBlock.Pairs(
+                    listOf(
+                        currentPair(notice.current, notice.currentObservedAt, notice.at, zone),
+                        MailPair("$side 기준선", AlertFormat.percent(notice.threshold)),
+                    ),
+                ),
+                MailBlock.Text(listOf("기준선 안쪽으로 $hysteresis%p 이상 돌아온 뒤 다시 넘으면 다시 알립니다.")),
+            ),
+            rows = listOf(
+                listOf(
+                    EmbedCell("현재 김프", AlertFormat.percent(notice.current)),
+                    EmbedCell("$side 기준선", AlertFormat.percent(notice.threshold)),
+                ),
+            ),
+            footer = "기준선 안쪽으로 $hysteresis%p 이상 돌아온 뒤 다시 넘으면 다시 알림",
         )
     }
 
-    private fun extremeLines(
-        notice: MarketNotice.NewExtreme,
-        settings: MarketAlertSettings,
-        t: (Instant) -> String,
-    ): List<String> {
-        val side = if (notice.direction == MarketDirection.UP) "고점" else "저점"
-        val cooldown = if (notice.window == ExtremeWindow.ONE_HOUR) settings.extremeHourCooldown else settings.extremeDayCooldown
-        return listOf(
-            "현재 김프: ${r(notice.current)} (${t(notice.currentObservedAt)})",
-            "직전 ${windowLabel(notice.window)} $side: ${r(notice.previous)} (차이 ${pp(notice.current - notice.previous)})",
-            "기준: 최소 ${v(settings.extremeMinDelta)}%p · " +
-                "같은 창·방향은 ${OwnerOpsAlertContent.threshold(cooldown)} 동안 다시 알리지 않습니다.",
-            "알림 시각: ${t(notice.at)}",
+    private fun extreme(notice: MarketNotice.NewExtreme, settings: MarketAlertSettings, zone: ZoneId): Parts {
+        val up = notice.direction == MarketDirection.UP
+        val window = if (notice.window == ExtremeWindow.ONE_HOUR) "1시간" else "24시간"
+        val cooldown = AlertFormat.threshold(
+            if (notice.window == ExtremeWindow.ONE_HOUR) settings.extremeHourCooldown else settings.extremeDayCooldown,
+        )
+        val minDelta = AlertFormat.plain(settings.extremeMinDelta)
+        val previousLabel = "직전 $window ${if (up) "고점" else "저점"}"
+        val diff = AlertFormat.percentPoint(notice.current - notice.previous)
+        return Parts(
+            emoji = if (up) ARROW_UP else ARROW_DOWN,
+            core = "김프 $window ${if (up) "신고가" else "신저가"} ${AlertFormat.percent(notice.current)}",
+            color = directionColor(notice.direction),
+            blocks = listOf(
+                MailBlock.Text(
+                    listOf("${notice.pair.symbol.code} 김프가 $window ${if (up) "고점" else "저점"}을 새로 썼습니다. (${pairText(notice)})"),
+                ),
+                MailBlock.Pairs(
+                    listOf(
+                        currentPair(notice.current, notice.currentObservedAt, notice.at, zone),
+                        MailPair(previousLabel, AlertFormat.percent(notice.previous)),
+                        MailPair("차이", diff),
+                    ),
+                ),
+                MailBlock.Text(
+                    listOf("최소 $minDelta%p 이상일 때만 알리고, 같은 기간·방향은 $cooldown 동안 다시 알리지 않습니다."),
+                ),
+            ),
+            rows = listOf(
+                listOf(
+                    EmbedCell("현재 김프", AlertFormat.percent(notice.current)),
+                    EmbedCell(previousLabel, AlertFormat.percent(notice.previous)),
+                    EmbedCell("차이", diff),
+                ),
+            ),
+            footer = "최소 $minDelta%p · 같은 기간·방향은 $cooldown 동안 다시 알리지 않음",
         )
     }
 
-    private fun summaryLines(
-        notice: MarketNotice.DailySummary,
-        settings: MarketAlertSettings,
-        zone: ZoneId,
-        t: (Instant) -> String,
-    ): List<String> {
-        val fx = "${notice.fxBase.code}/${notice.fxQuote.code}"
+    private fun summary(notice: MarketNotice.DailySummary, zone: ZoneId): Parts {
+        val abbreviation = AlertFormat.zoneAbbreviation(notice.at, zone)
+        val monthDay = "%02d/%02d".format(notice.date.monthValue, notice.date.dayOfMonth)
+        val footerDay = "%02d-%02d".format(notice.date.monthValue, notice.date.dayOfMonth)
+        val base = notice.fxBase.code
+        val quote = notice.fxQuote.code
+        val krwQuote = quote == "KRW"
         val day = notice.day
+        val previousFx = day?.fxRate
+        val currentFx = notice.fx?.rate
+        val pnlValue = when (val pnl = notice.pnl) {
+            is SummaryPnl.Value -> "${AlertFormat.percent(pnl.netPercent)} (${AlertFormat.krw(pnl.netKrw)})"
+            is SummaryPnl.NoPosition -> "포지션 없음"
+            SummaryPnl.Unavailable -> "없음"
+        }
         val premiumLines = if (day == null) {
-            listOf("김프: 전일 집계 없음")
+            listOf("전일 집계 없음")
         } else {
             listOf(
-                "김프 시가 ${r(day.open)} · 고가 ${r(day.high)} · 저가 ${r(day.low)} · 종가 ${r(day.close)} · 평균 ${r(day.avg)}",
-                "환율($fx) 전일 마감: ${day.fxRate?.let(::rate) ?: "없음"}",
+                "시가 ${AlertFormat.percent(day.open)} · 고가 ${AlertFormat.percent(day.high)} · 저가 ${AlertFormat.percent(day.low)}",
+                "종가 ${AlertFormat.percent(day.close)} · 평균 ${AlertFormat.percent(day.avg)}",
             )
         }
-        val current = notice.fx
-        val fxLine = if (current == null) {
-            "환율($fx) 현재: 없음"
+        val premiumRows = if (day == null) {
+            listOf(listOf(EmbedCell("김프", "전일 집계 없음")))
         } else {
-            "환율($fx) 현재: ${rate(current.rate)} (${t(current.observedAt)})"
+            listOf(
+                listOf(
+                    EmbedCell("시가", AlertFormat.percent(day.open)),
+                    EmbedCell("고가", AlertFormat.percent(day.high)),
+                    EmbedCell("저가", AlertFormat.percent(day.low)),
+                ),
+                listOf(
+                    EmbedCell("종가", AlertFormat.percent(day.close)),
+                    EmbedCell("평균", AlertFormat.percent(day.avg)),
+                ),
+            )
         }
-        return listOf("대상일: ${notice.date} 00:00 ~ 24:00 (${zone.id})") + premiumLines + fxLine +
-            pnlLine(notice.pnl, settings, t) + "요약 시각: ${t(notice.at)}"
+        return Parts(
+            emoji = CALENDAR,
+            core = "김프 일일 요약 $monthDay",
+            color = SUMMARY_COLOR,
+            blocks = listOf(
+                MailBlock.Text(
+                    listOf(
+                        "${notice.date} ${notice.pair.symbol.code} 김프 요약입니다. " +
+                            "(${pairText(notice)}, 00:00 ~ 24:00 $abbreviation)",
+                    ),
+                ),
+                MailBlock.Section("김프", listOf(MailBlock.Text(premiumLines))),
+                MailBlock.Section(
+                    "환율 ($base/$quote)",
+                    listOf(
+                        MailBlock.Pairs(
+                            listOf(
+                                MailPair("전일 마감", fxMail(previousFx, krwQuote, quote)),
+                                MailPair("현재", fxMail(currentFx, krwQuote, quote)),
+                            ),
+                        ),
+                    ),
+                ),
+                MailBlock.Section("실계정", listOf(MailBlock.Pairs(listOf(MailPair("순수익률", pnlValue))))),
+            ),
+            rows = premiumRows + listOf(
+                listOf(
+                    EmbedCell("환율 전일 마감", fxEmbed(previousFx, krwQuote, base, quote)),
+                    EmbedCell("환율 현재", fxEmbed(currentFx, krwQuote, base, quote)),
+                ),
+                listOf(EmbedCell("실계정 순수익률", pnlValue)),
+            ),
+            footer = "대상 $footerDay 00:00 ~ 24:00 $abbreviation",
+        )
     }
 
-    private fun pnlLine(pnl: SummaryPnl, settings: MarketAlertSettings, t: (Instant) -> String): String = when (pnl) {
-        is SummaryPnl.Value ->
-            "실계정 순수익률: ${r(pnl.netPercent)} (${AccountPnlFormat.krw(pnl.netKrw)}) · 계산 ${t(pnl.calculatedAt)}"
+    private fun fxMail(rate: BigDecimal?, krwQuote: Boolean, quote: String): String =
+        rate?.let { AlertFormat.rate(it) + if (krwQuote) "원" else " $quote" } ?: "없음"
 
-        is SummaryPnl.NoPosition -> "실계정 순수익률: 포지션 없음 · 계산 ${t(pnl.calculatedAt)}"
+    private fun fxEmbed(rate: BigDecimal?, krwQuote: Boolean, base: String, quote: String): String =
+        rate?.let { AlertFormat.rate(it) + if (krwQuote) "원/$base" else " $quote/$base" } ?: "없음"
 
-        SummaryPnl.Unavailable ->
-            "실계정 순수익률: 없음 (PnL 모니터 꺼짐 또는 최근 ${OwnerOpsAlertContent.threshold(settings.summaryPnlMaxAge)} 안에 계산 없음)"
-    }
+    private fun currentPair(current: BigDecimal, observedAt: Instant, at: Instant, zone: ZoneId): MailPair = MailPair(
+        "현재 김프",
+        "${AlertFormat.percent(current)} (${AlertFormat.clock(observedAt, at, zone)} 관측)",
+    )
 
-    private fun r(value: BigDecimal): String = AccountPnlFormat.percent(value)
-
-    private fun pp(value: BigDecimal): String = AccountPnlFormat.percentPoint(value)
-
-    private fun v(value: BigDecimal): String = AccountPnlFormat.plain(value)
-
-    private fun rate(value: BigDecimal): String = AccountPnlFormat.format("#,##0.00", value)
+    /** 부호 없는 `0.60%p`. */
+    private fun magnitude(value: BigDecimal): String = AlertFormat.format("0.00", value.abs()) + "%p"
 }

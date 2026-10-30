@@ -9,7 +9,6 @@ import io.premiumspread.domain.ticker.Quote
 import io.premiumspread.domain.ticker.Symbol
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 
@@ -208,13 +207,6 @@ class OwnerOpsAlertContentTest {
             assertThat(OwnerOpsAlertContent.eventKey(it)).matches("[A-Za-z0-9._-]{1,128}")
             assertThat(msg(it).eventKey).isEqualTo(OwnerOpsAlertContent.eventKey(it))
         }
-    }
-
-    @Test
-    fun `threshold 표기`() {
-        assertThat(OwnerOpsAlertContent.threshold(Duration.ofMinutes(30))).isEqualTo("30분")
-        assertThat(OwnerOpsAlertContent.threshold(Duration.ofHours(6))).isEqualTo("6시간")
-        assertThat(OwnerOpsAlertContent.threshold(Duration.ofSeconds(90))).isEqualTo("90초")
     }
 
     @Test

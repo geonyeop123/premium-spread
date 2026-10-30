@@ -237,3 +237,12 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.*' --tests 'io.premiumspread.domain.ownermarket.*' :apps:batch:test --tests 'io.premiumspread.application.job.ownerops.*' --offline --no-daemon` → BUILD SUCCESSFUL(`OwnerOpsSignalJobTest` 무수정, 신규 `OwnerOpsSignalJobTemplateRowsTest` 포함).
 - `grep -rnE 'OwnerOpsAlertContent\.(RUNBOOK|elapsed)|OwnerMarketAlertContent\.RUNBOOK' --include=*.kt domain apps infrastructure` → 출력 없음.
 - 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 11 — 시장 알림 (AC8, 2026-10-30)
+
+- RED(변이: 급등 안내 `올랐습니다` → `상승했습니다`): `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.*' --offline --no-daemon` → `74 tests completed, 1 failed`(assertion 실패, BUILD FAILED). 변이 되돌림.
+- GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.*' --tests 'io.premiumspread.domain.ownerops.*' :apps:batch:test --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` → BUILD SUCCESSFUL(`OwnerMarketSignalJobTest` 무수정, 신규 `OwnerMarketSignalJobTemplateRowsTest` 2건 포함).
+- 메일 정렬은 design §3.2 규칙(표시 폭 최댓값 + 2)의 출력이다(A1) — spec 의 손 정렬 공백 개수와 다르다.
+- 허용 예외: `OwnerMarketAlertIntegrationTest` 요약 단정 줄(메일 `■ 환율 (USD/KRW)`·`순수익률  +`, Discord `layout.fields` 값에 `9.99` 없음)만 수정. `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerMarketAlertIntegrationTest'` → BUILD SUCCESSFUL.
+- `OwnerOpsAlertContent.threshold` 삭제에 맞춰 `OwnerOpsAlertContentTest` 의 `threshold 표기` 테스트 제거(같은 단정이 `AlertFormatTest` 에 있음). `grep -rnE 'OwnerOpsAlertContent\.threshold|OwnerMarketAlertContent\.(RUNBOOK|mail|discord)' --include=*.kt domain apps infrastructure` → 출력 없음.
+- 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
