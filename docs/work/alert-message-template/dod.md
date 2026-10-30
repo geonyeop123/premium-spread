@@ -1,7 +1,8 @@
 ---
 feature: 알림 문구 템플릿화와 문구 정리 (issue #102)
 slug: alert-message-template
-status: DRAFT
+status: FROZEN
+frozen_at: 2026-10-30
 source: docs/work/alert-message-template/design.md (DRAFT)
 ---
 
