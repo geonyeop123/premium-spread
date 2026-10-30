@@ -23,6 +23,7 @@ import io.premiumspread.domain.tradeprep.TradePreparationStatus
 import io.premiumspread.domain.tradeprep.VerifiedBalance
 import io.premiumspread.domain.tradeprep.VerifiedBalanceReadPort
 import io.premiumspread.testcontainers.RedisTestContainersConfig
+import io.premiumspread.testcontainers.applyTestDurabilityTuning
 import io.premiumspread.utils.DatabaseCleanUp
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -472,6 +473,7 @@ class TradePreparationActiveTrackingContractTest {
             .withDatabaseName("premiumspread_trade_prep_active_tracking")
             .withUsername("test")
             .withPassword("test")
+            .apply { applyTestDurabilityTuning() }
 
         @JvmStatic
         @DynamicPropertySource
