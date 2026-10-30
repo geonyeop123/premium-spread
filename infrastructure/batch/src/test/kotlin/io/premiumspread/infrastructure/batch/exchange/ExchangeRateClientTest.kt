@@ -170,7 +170,8 @@ class ExchangeRateClientTest {
         }
 
         assertThatThrownBy { client(maxRetries = 1, readTimeout = Duration.ofMillis(200)).fetchConfiguredRate() }
-            .isInstanceOf(TimeoutException::class.java)
+            // Reactor timeout() 과 Netty ReadTimeout 이 경합한다. 운영 isTimeoutType 과 같이 둘 다 timeout 으로 본다.
+            .isInstanceOfAny(TimeoutException::class.java, io.netty.handler.timeout.TimeoutException::class.java)
         assertThat(server.requestCount).isEqualTo(2)
     }
 
