@@ -13,14 +13,18 @@ class LatestSchemaFixture(private val database: TestDatabase) {
 
     /**
      * 첫 호출: Flyway clean + migrate 후 스키마 지문 저장.
-     * 이후 호출: 지문이 같으면 flyway_schema_history 를 뺀 모든 base table 을 TRUNCATE,
-     * 다르면 clean + migrate 후 지문 재저장.
+     * 이후 호출: 지문이 같으면 flyway_schema_history 를 뺀 base table 중 dirty 한 것(행이 있거나
+     * AUTO_INCREMENT > 1)만 TRUNCATE, 다르면 clean + migrate 후 지문 재저장.
+     *
+     * dirty 판정은 "migrate 직후 모든 테이블은 비어 있고 AUTO_INCREMENT 가 1" 이라는 전제에 기댄다.
+     * migration 이 seed row 를 넣거나 `AUTO_INCREMENT=N` 을 지정하게 되면 이 판정(과 TRUNCATE 로 seed 가
+     * 지워지는 문제)을 다시 검토해야 한다.
      */
     @Synchronized
     fun reset() {
         val saved = fingerprint
         if (saved != null && saved == currentFingerprint()) {
-            truncateAll()
+            truncateDirtyTables()
             return
         }
         cleanAndMigrate()
@@ -57,7 +61,7 @@ class LatestSchemaFixture(private val database: TestDatabase) {
             }
         }
 
-    private fun truncateAll() {
+    private fun truncateDirtyTables() {
         connect().use { connection ->
             val tables = rows(connection, "T", TRUNCATE_TARGETS_SQL).map { it.removePrefix("T:") }
             connection.createStatement().use { statement ->
