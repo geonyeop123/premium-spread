@@ -188,3 +188,9 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - RED(stub: 렌더·서식 함수가 빈 값 반환, 검증 없음): `./gradlew :domain:test --tests 'io.premiumspread.domain.alertmessage.*' --tests 'io.premiumspread.domain.accountpnl.OwnerAlertRowsMessageTest' --offline --no-daemon` → `41 tests completed, 36 failed`(assertion 실패, BUILD FAILED).
 - GREEN: `./gradlew :domain:test --offline --no-daemon` → BUILD SUCCESSFUL (기존 golden 무수정).
 - 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 4 — AccountPnlBreakdown (AC4, 2026-10-30)
+
+- RED(stub: `of` 가 모든 값 0·null 반환): `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.AccountPnlBreakdownTest' --offline --no-daemon` → `6 tests completed, 5 failed`(assertion 실패, BUILD FAILED). `toString` 테스트 1건은 stub 에서도 통과.
+- GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` → BUILD SUCCESSFUL (`AccountNetPnl` 무변경, 기존 golden 무수정).
+- AC4 숫자: 현김프 1.78·매수김프 0.53·차이 1.25, 빗썸 손익 1,729,000·평가액 42,161,000, 바이낸스 손익 −851.2 USDT·−1,191,680원·평가액 29,579.2 USDT·41,410,880원, 정리 수수료 16,864.4원·14.7896 USDT·20,705.44원, 수수료 합계 73,846.84원, 펀딩 5,880원, 순손익 469,353.16원(1.11%) 모두 `compareTo` 일치. 불변식 3개 통과.
