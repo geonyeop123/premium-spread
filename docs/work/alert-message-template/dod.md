@@ -261,3 +261,9 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - 변이(RED): `OwnerMarketAlertContent.kt:52` 접두어 `[시장]` → `[실계정 ]` → `./gradlew :domain:test --tests '*AlertMessageSpecConformanceTest'` → `22 tests completed, 7 failed`(15~21 시장 7종). 되돌린 뒤 GREEN.
 - GREEN: `./gradlew :domain:test --tests '*AlertMessageSpecConformanceTest' --tests '*AlertFormatTest' --offline --no-daemon` → BUILD SUCCESSFUL, 적합성 `tests="22" failures="0"`.
 - 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 14 — E2E 실제 outbox 와 mock Discord (AC16, 2026-10-30)
+
+- GREEN: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDiscordLayoutIntegrationTest' --offline --no-daemon` → BUILD SUCCESSFUL(3개 시나리오 a·b·c).
+- 변이(RED): `DiscordWebhookSenderAdapter.embed` 의 layout 경로에 `description` 추가 → 같은 명령 `3 tests completed, 1 failed`((a) FAILED). 되돌린 뒤 GREEN.
+- 전체: `./gradlew :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL(기존 IT 무수정 통과).
