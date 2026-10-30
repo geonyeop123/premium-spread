@@ -201,3 +201,9 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - GREEN: 같은 테스트 + `:infrastructure:common:verifyMigrations` → BUILD SUCCESSFUL. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL, 84건(skipped 0, failures 0, errors 0; V19 테스트 포함).
 - `git diff --name-only --diff-filter=MDR 3d179e7 -- infrastructure/common/src/main/resources/db/migration` → 빈 출력.
 - 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 6 — outbox 레이아웃 직렬화와 claim (AC12, 2026-10-30)
+
+- RED(코덱 stub `write`="{}"·`read`=빈 layout, store 는 열 미사용): `./gradlew :infrastructure:common:test --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.*' --offline --no-daemon` → `12 tests completed, 11 failed`(assertion 실패). `:infrastructure:common:integrationTest --tests '*OwnerAlertDiscordLayoutStoreIntegrationTest'` → `7 tests completed, 6 failed`.
+- GREEN: 같은 unit 명령 → BUILD SUCCESSFUL. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL, 91건(skipped 0, failures 0, errors 0; 기존 store IT 무수정 포함). `jackson-databind` 선언 추가(D1 승인), lockfile 변경 없음(기존 2.21.4).
+- 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.

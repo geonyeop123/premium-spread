@@ -45,6 +45,7 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-mysql")
     implementation("io.micrometer:micrometer-core")
+    implementation("com.fasterxml.jackson.core:jackson-databind")
 
     runtimeOnly("com.mysql:mysql-connector-j")
 

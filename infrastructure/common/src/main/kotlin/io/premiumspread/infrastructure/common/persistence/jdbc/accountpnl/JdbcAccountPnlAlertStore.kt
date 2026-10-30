@@ -13,10 +13,13 @@ import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.PositionWatchState
 import io.premiumspread.domain.accountpnl.ReminderState
 import io.premiumspread.domain.accountpnl.SwingState
+import io.premiumspread.domain.owneralert.DiscordLayout
+import io.premiumspread.domain.owneralert.DiscordMessage
 import io.premiumspread.domain.owneralert.DiscordPush
 import io.premiumspread.domain.owneralert.DiscordRoute
 import io.premiumspread.domain.owneralert.DiscordTarget
 import io.premiumspread.domain.owneralert.OwnerAlertChannel
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
@@ -50,6 +53,8 @@ class JdbcAccountPnlAlertStore(
     transactionManager: PlatformTransactionManager,
     private val clock: Clock,
 ) : AccountPnlAlertStore {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     private val saveTransaction = TransactionTemplate(transactionManager)
     private val claimTransaction = TransactionTemplate(transactionManager).apply {
@@ -94,7 +99,7 @@ class JdbcAccountPnlAlertStore(
             jdbcTemplate.query(
                 """
                 SELECT id, event_key, subject, body, attempt_count,
-                       channel, discord_target, discord_push, discord_color
+                       channel, discord_target, discord_push, discord_color, discord_layout
                 FROM account_pnl_mail
                 WHERE status = 'PENDING'
                 ORDER BY id
@@ -359,8 +364,15 @@ class JdbcAccountPnlAlertStore(
     private fun ResultSet.toPendingMail(): PendingMail {
         val channel = OwnerAlertChannel.valueOf(getString("channel"))
         val discord = channel == OwnerAlertChannel.DISCORD
+        val id = getLong("id")
+        val discordColor = if (discord) getInt("discord_color") else null
+        val discordLayout = if (discord) {
+            readLayout(id, getString("discord_layout"), getString("subject"), getString("body"), discordColor!!)
+        } else {
+            null
+        }
         return PendingMail(
-            id = getLong("id"),
+            id = id,
             mail = AccountPnlMail(
                 eventKey = getString("event_key"),
                 subject = getString("subject"),
@@ -374,10 +386,36 @@ class JdbcAccountPnlAlertStore(
                 } else {
                     null
                 },
-                discordColor = if (discord) getInt("discord_color") else null,
+                discordColor = discordColor,
+                discordLayout = discordLayout,
             ),
             attemptCount = getInt("attempt_count"),
         )
+    }
+
+    /**
+     * 복원과 `DiscordMessage` 조립 확인에 실패하면 그 행만 레이아웃 없이(대체 평문) 발송하도록 null 을 돌려준다.
+     * claim 전체를 실패시키지 않는다. 로그에는 id·reason 만 남긴다(컬럼 값·예외 메시지 금지).
+     */
+    private fun readLayout(id: Long, json: String?, subject: String, body: String, color: Int): DiscordLayout? {
+        if (json == null) return null
+        val reason = try {
+            val layout = DiscordLayoutJson.read(json)
+            try {
+                DiscordMessage(subject, body, color, layout)
+            } catch (_: IllegalArgumentException) {
+                throw DiscordLayoutUnreadableException(DiscordLayoutUnreadableReason.SHAPE)
+            }
+            return layout
+        } catch (e: DiscordLayoutUnreadableException) {
+            e.reason
+        }
+        log.warn(
+            "Owner alert discord layout unreadable; sending plain description: id={}, reason={}",
+            id,
+            reason.name.lowercase(),
+        )
+        return null
     }
 
     private fun ResultSet.getInstantOrNull(column: String): Instant? = getTimestamp(column)?.toInstant()
