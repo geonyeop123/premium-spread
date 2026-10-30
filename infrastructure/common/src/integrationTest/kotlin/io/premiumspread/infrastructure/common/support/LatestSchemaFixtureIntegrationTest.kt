@@ -24,20 +24,9 @@ class LatestSchemaFixtureIntegrationTest {
         connect(mysql).use { connection ->
             insertMember(connection, "a@example.com")
             val memberId = insertMember(connection, "b@example.com")
-            connection.prepareStatement(
-                """
-                INSERT INTO notification_subscription (
-                    member_id, symbol, korea_exchange, foreign_exchange, revision,
-                    direction, threshold, status, created_at, updated_at
-                ) VALUES (?, 'BTC', 'BITHUMB', 'BINANCE', 1, 'ABOVE', 5.0, 'ACTIVE', ?, ?)
-                """.trimIndent(),
-            ).use {
-                it.setLong(1, memberId)
-                it.setTimestamp(2, Timestamp.from(NOW))
-                it.setTimestamp(3, Timestamp.from(NOW))
-                it.executeUpdate()
-            }
+            insertSubscription(connection, memberId)
             val historyBefore = count(connection, "flyway_schema_history")
+            connection.createStatement().use { it.execute("DELETE FROM notification_subscription") }
 
             fixture.reset()
 
@@ -51,7 +40,8 @@ class LatestSchemaFixtureIntegrationTest {
             tables.forEach { assertThat(count(connection, it)).describedAs(it).isZero() }
             assertThat(count(connection, "flyway_schema_history")).isEqualTo(historyBefore)
 
-            insertMember(connection, "c@example.com")
+            val newMemberId = insertMember(connection, "c@example.com")
+            insertSubscription(connection, newMemberId)
             val id = connection.createStatement().use { s ->
                 s.executeQuery("SELECT id FROM member").use { rs ->
                     rs.next()
@@ -59,6 +49,13 @@ class LatestSchemaFixtureIntegrationTest {
                 }
             }
             assertThat(id).isEqualTo(1L)
+            val subscriptionId = connection.createStatement().use { s ->
+                s.executeQuery("SELECT id FROM notification_subscription").use { rs ->
+                    rs.next()
+                    rs.getLong(1)
+                }
+            }
+            assertThat(subscriptionId).isEqualTo(1L)
         }
     }
 
@@ -91,6 +88,22 @@ class LatestSchemaFixtureIntegrationTest {
 
     private fun connect(db: TestDatabase): Connection =
         DriverManager.getConnection(db.utcJdbcUrl, db.username, db.password)
+
+    private fun insertSubscription(connection: Connection, memberId: Long) {
+        connection.prepareStatement(
+            """
+            INSERT INTO notification_subscription (
+                member_id, symbol, korea_exchange, foreign_exchange, revision,
+                direction, threshold, status, created_at, updated_at
+            ) VALUES (?, 'BTC', 'BITHUMB', 'BINANCE', 1, 'ABOVE', 5.0, 'ACTIVE', ?, ?)
+            """.trimIndent(),
+        ).use {
+            it.setLong(1, memberId)
+            it.setTimestamp(2, Timestamp.from(NOW))
+            it.setTimestamp(3, Timestamp.from(NOW))
+            it.executeUpdate()
+        }
+    }
 
     private fun insertMember(connection: Connection, email: String): Long =
         connection.prepareStatement(

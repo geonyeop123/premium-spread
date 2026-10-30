@@ -61,14 +61,36 @@ class LatestSchemaFixture(private val database: TestDatabase) {
         connect().use { connection ->
             val tables = rows(connection, "T", TRUNCATE_TARGETS_SQL).map { it.removePrefix("T:") }
             connection.createStatement().use { statement ->
+                statement.execute("SET SESSION information_schema_stats_expiry = 0")
+            }
+            val dirty = dirtyTables(connection, tables)
+            if (dirty.isEmpty()) return
+            connection.createStatement().use { statement ->
                 statement.execute("SET FOREIGN_KEY_CHECKS = 0")
                 try {
-                    tables.forEach { statement.execute("TRUNCATE TABLE `$it`") }
+                    dirty.forEach { statement.execute("TRUNCATE TABLE `$it`") }
                 } finally {
                     statement.execute("SET FOREIGN_KEY_CHECKS = 1")
                 }
             }
         }
+    }
+
+    /** 행이 있거나 AUTO_INCREMENT 가 1 을 넘은 테이블만 고른다. */
+    private fun dirtyTables(connection: Connection, tables: List<String>): List<String> {
+        if (tables.isEmpty()) return emptyList()
+        val dirty = linkedSetOf<String>()
+        connection.createStatement().use { statement ->
+            statement.executeQuery(
+                "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() " +
+                    "AND TABLE_TYPE = 'BASE TABLE' AND AUTO_INCREMENT > 1",
+            ).use { rs -> while (rs.next()) dirty.add(rs.getString(1)) }
+        }
+        val presence = tables.joinToString(" UNION ALL ") { "(SELECT '$it' FROM `$it` LIMIT 1)" }
+        connection.createStatement().use { statement ->
+            statement.executeQuery(presence).use { rs -> while (rs.next()) dirty.add(rs.getString(1)) }
+        }
+        return tables.filter { it in dirty }
     }
 
     private companion object {

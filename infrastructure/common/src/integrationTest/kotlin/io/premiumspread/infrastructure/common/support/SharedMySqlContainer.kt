@@ -21,6 +21,14 @@ object SharedMySqlContainer {
             .withDatabaseName(BOOTSTRAP_DATABASE)
             .withUsername(USERNAME)
             .withPassword(PASSWORD)
+            // 테스트 전용: DDL/commit fsync 비용을 줄인다. 내구성은 필요 없다.
+            .withTmpFs(mapOf("/var/lib/mysql" to "rw"))
+            .withCommand(
+                "--innodb-flush-log-at-trx-commit=0",
+                "--sync-binlog=0",
+                "--innodb-doublewrite=0",
+                "--skip-log-bin",
+            )
 
     private val allocated: MutableSet<String> = mutableSetOf(BOOTSTRAP_DATABASE)
 
