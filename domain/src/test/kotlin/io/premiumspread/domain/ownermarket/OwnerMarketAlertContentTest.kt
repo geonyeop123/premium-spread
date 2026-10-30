@@ -31,22 +31,60 @@ class OwnerMarketAlertContentTest {
     private fun bd(value: String) = BigDecimal(value)
 
     private val swingUp = MarketNotice.Swing(
-        pair, at, MarketDirection.UP, Duration.ofMinutes(10), bd("2.00"), bd("2.60"), observed, bd("0.60"),
+        pair,
+        at,
+        MarketDirection.UP,
+        Duration.ofMinutes(10),
+        bd("2.00"),
+        bd("2.60"),
+        observed,
+        bd("0.60"),
     )
     private val swingDown = MarketNotice.Swing(
-        pair, at, MarketDirection.DOWN, Duration.ofMinutes(10), bd("2.60"), bd("2.00"), observed, bd("-0.60"),
+        pair,
+        at,
+        MarketDirection.DOWN,
+        Duration.ofMinutes(10),
+        bd("2.60"),
+        bd("2.00"),
+        observed,
+        bd("-0.60"),
     )
     private val upper = MarketNotice.ThresholdCrossed(
-        pair, at, ThresholdLine.UPPER, bd("3.0"), bd("0.1"), bd("3.05"), observed,
+        pair,
+        at,
+        ThresholdLine.UPPER,
+        bd("3.0"),
+        bd("0.1"),
+        bd("3.05"),
+        observed,
     )
     private val lower = MarketNotice.ThresholdCrossed(
-        pair, at, ThresholdLine.LOWER, bd("-1.0"), bd("0.1"), bd("-1.04"), observed,
+        pair,
+        at,
+        ThresholdLine.LOWER,
+        bd("-1.0"),
+        bd("0.1"),
+        bd("-1.04"),
+        observed,
     )
     private val dayHigh = MarketNotice.NewExtreme(
-        pair, at, ExtremeWindow.ONE_DAY, MarketDirection.UP, bd("2.50"), bd("2.70"), observed,
+        pair,
+        at,
+        ExtremeWindow.ONE_DAY,
+        MarketDirection.UP,
+        bd("2.50"),
+        bd("2.70"),
+        observed,
     )
     private val hourLow = MarketNotice.NewExtreme(
-        pair, at, ExtremeWindow.ONE_HOUR, MarketDirection.DOWN, bd("1.50"), bd("1.35"), observed,
+        pair,
+        at,
+        ExtremeWindow.ONE_HOUR,
+        MarketDirection.DOWN,
+        bd("1.50"),
+        bd("1.35"),
+        observed,
     )
 
     private val day = PremiumAggregationSnapshot(

@@ -5,18 +5,17 @@ import java.time.Instant
 /** embed 칸 하나. 이름 1~256자·값 1~1024자(UTF-16), 둘 다 공백만이면 안 된다. 빈 칸은 U+200B 한 글자(zero-width space — isBlank 가 false). */
 data class DiscordField(val name: String, val value: String, val inline: Boolean) {
     init {
-        require(name.isNotBlank() && name.length <= DiscordMessage.FIELD_NAME_MAX) { "field name must be 1..256 characters." }
-        require(value.isNotBlank() && value.length <= DiscordMessage.FIELD_VALUE_MAX) { "field value must be 1..1024 characters." }
+        require(name.isNotBlank() && name.length <= DiscordMessage.FIELD_NAME_MAX) {
+            "field name must be 1..256 characters."
+        }
+        require(value.isNotBlank() && value.length <= DiscordMessage.FIELD_VALUE_MAX) {
+            "field value must be 1..1024 characters."
+        }
     }
 }
 
 /** title·color·description 밖의 embed 요소. null 이면 그 요소를 보내지 않는다(fields 는 항상 보낸다). */
-data class DiscordLayout(
-    val author: String?,
-    val fields: List<DiscordField>,
-    val footer: String?,
-    val timestamp: Instant?,
-) {
+data class DiscordLayout(val author: String?, val fields: List<DiscordField>, val footer: String?, val timestamp: Instant?) {
     init {
         require(author == null || (author.isNotBlank() && author.length <= DiscordMessage.AUTHOR_MAX)) {
             "author must be 1..256 characters."
@@ -32,12 +31,7 @@ data class DiscordLayout(
  * Discord embed 1개. [layout] 이 있으면 adapter 는 description 을 보내지 않는다(description = 롤백용 대체 평문).
  * 길이는 UTF-16 code unit 기준. 기본 생성자는 상한을 검증만 하고, [of] 가 title·description 을 절단한다 (design §6.3).
  */
-data class DiscordMessage(
-    val title: String,
-    val description: String,
-    val color: Int,
-    val layout: DiscordLayout? = null,
-) {
+data class DiscordMessage(val title: String, val description: String, val color: Int, val layout: DiscordLayout? = null) {
     init {
         require(title.isNotBlank()) { "title must not be blank." }
         require(title.length <= TITLE_MAX) { "title must be at most $TITLE_MAX characters." }

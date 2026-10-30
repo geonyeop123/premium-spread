@@ -67,7 +67,11 @@ object AccountAlertContent {
         val koreaCell = if (alert.koreaChanged) {
             EmbedCell(KOREA_NAME, "$beforeKorea\n→ $afterKorea")
         } else {
-            val value = if (alert.after.korea.isEmpty) NONE else "${qty(alert.after.korea.quantity)}\n평단 ${krw(alert.after.korea)}"
+            val value = if (alert.after.korea.isEmpty) {
+                NONE
+            } else {
+                "${qty(alert.after.korea.quantity)}\n평단 ${krw(alert.after.korea)}"
+            }
             EmbedCell(KOREA_NAME + UNCHANGED, value)
         }
         val foreignCell = if (alert.foreignChanged) {
@@ -99,7 +103,8 @@ object AccountAlertContent {
             add(koreaBlock)
             add(foreignBlock)
             if (alert.hedgeMismatchWarning) {
-                add(MailBlock.Section("확인할 것", listOf(MailBlock.Text(listOf(HEDGE_GUIDE_HEAD, HEDGE_GUIDE_TAIL, "$HEDGE_FOOTER.")))))
+                val guide = listOf(HEDGE_GUIDE_HEAD, HEDGE_GUIDE_TAIL, "$HEDGE_FOOTER.")
+                add(MailBlock.Section("확인할 것", listOf(MailBlock.Text(guide))))
             } else {
                 add(MailBlock.Text(listOf("$BASELINE_FOOTER.")))
             }

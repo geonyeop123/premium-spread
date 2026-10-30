@@ -248,7 +248,14 @@ class AlertMessageSpecConformanceTest {
                 15, "김프 급등", marketPrefix, true, marketAuthor, true, listOf(3), marketAt,
                 market(
                     MarketNotice.Swing(
-                        pair, marketAt, MarketDirection.UP, Duration.ofMinutes(10), bd("2.00"), bd("2.60"), observed, bd("0.60"),
+                        pair,
+                        marketAt,
+                        MarketDirection.UP,
+                        Duration.ofMinutes(10),
+                        bd("2.00"),
+                        bd("2.60"),
+                        observed,
+                        bd("0.60"),
                     ),
                 ),
             ),
@@ -256,7 +263,14 @@ class AlertMessageSpecConformanceTest {
                 16, "김프 급락", marketPrefix, true, marketAuthor, true, listOf(3), marketAt,
                 market(
                     MarketNotice.Swing(
-                        pair, marketAt, MarketDirection.DOWN, Duration.ofMinutes(10), bd("2.60"), bd("2.00"), observed, bd("-0.60"),
+                        pair,
+                        marketAt,
+                        MarketDirection.DOWN,
+                        Duration.ofMinutes(10),
+                        bd("2.60"),
+                        bd("2.00"),
+                        observed,
+                        bd("-0.60"),
                     ),
                 ),
             ),
@@ -280,7 +294,14 @@ class AlertMessageSpecConformanceTest {
                 21, "일일 요약", marketPrefix, true, marketAuthor, true, listOf(3, 2, 2, 1), marketAt,
                 market(
                     MarketNotice.DailySummary(
-                        pair, marketAt, LocalDate.parse("2026-10-28"), summaryDay, Currency.USD, Currency.KRW, summaryFx, summaryPnl,
+                        pair,
+                        marketAt,
+                        LocalDate.parse("2026-10-28"),
+                        summaryDay,
+                        Currency.USD,
+                        Currency.KRW,
+                        summaryFx,
+                        summaryPnl,
                     ),
                 ),
             ),

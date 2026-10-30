@@ -209,5 +209,4 @@ class AccountPnlMonitorJobTemplateRowsTest {
     private class LastSuccess(private val clock: Clock) : JobLastSuccessReadPort {
         override fun findLastSuccess(jobId: JobId): Instant = clock.instant().minus(Duration.ofMinutes(10))
     }
-
 }

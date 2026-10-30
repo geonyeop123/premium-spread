@@ -16,7 +16,7 @@ data class EmbedDocument(
     val footer: String?,
     val timestamp: Instant,
 ) {
-    /** design §3.3 규칙 1~5. 결과 layout 의 fields 는 채움 칸 포함. */
+    // design §3.3 규칙 1~5. 결과 layout 의 fields 는 채움 칸 포함.
     init {
         require(rows.isNotEmpty()) { "rows must not be empty." }
         require(rows.all { it.size in 1..MAX_CELLS_PER_ROW }) { "each row must have 1..3 cells." }
