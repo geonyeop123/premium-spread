@@ -267,3 +267,12 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - GREEN: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDiscordLayoutIntegrationTest' --offline --no-daemon` → BUILD SUCCESSFUL(3개 시나리오 a·b·c).
 - 변이(RED): `DiscordWebhookSenderAdapter.embed` 의 layout 경로에 `description` 추가 → 같은 명령 `3 tests completed, 1 failed`((a) FAILED). 되돌린 뒤 GREEN.
 - 전체: `./gradlew :apps:batch:integrationTest --offline --no-daemon` → BUILD SUCCESSFUL(기존 IT 무수정 통과).
+
+### ⑨ 리뷰 재작업 1회차 (2026-10-30)
+
+- AC9(e): `grep -nE '@Value|@Service' apps/batch/src/main/kotlin/io/premiumspread/application/notification/PremiumThresholdDeliveryService.kt` → 출력 없음(rc=1). KDoc 의 `@Service` 를 "Service 스테레오타입" 으로 바꾸고 `@ConditionalOnProperty` 는 존치(직접 import 경로용 주석).
+- Locale: `OwnerMarketAlertContent` 의 `"%02d/%02d"`·`"%02d-%02d"` 를 `.format(Locale.ROOT, ...)` 로. 대상 5개 패키지의 나머지 `.format(` 은 Locale 지정됨 또는 `DateTimeFormatter`/`DecimalFormat`(Locale.ROOT).
+- 회원 메일 임계값: `AlertFormat.thresholdPercent` 신설, `PremiumThresholdMailContentTest` 에 5→`5.00%`·5.5→`5.50%`·1.2345→`1.2345%`·1.2300→`1.23%`·-1→`-1.00%`·100·0 고정.
+- `JdbcAccountPnlAlertStore.readLayout`: layout 없는 조립 실패는 shape 분류 없이 layout 유지, layout 포함 조립만 실패하면 `reason=shape`. `OwnerAlertDiscordLayoutStoreIntegrationTest` e3(혼합 배치)·g(65,535 바이트 저장) 추가 → `./gradlew :infrastructure:common:integrationTest --tests '*OwnerAlertDiscordLayoutStoreIntegrationTest'` BUILD SUCCESSFUL(9개).
+- golden 보강: 4개 Content 테스트 시나리오에 `layout.fields` 전체·author·timestamp `isEqualTo`(채움 칸 포함, 기대값은 message-spec·design §3.3 에서 손으로 작성).
+- runbook `account-pnl-alert.md:500,506` 새 문구 반영, `bash docs/check-documentation.sh` → passed.

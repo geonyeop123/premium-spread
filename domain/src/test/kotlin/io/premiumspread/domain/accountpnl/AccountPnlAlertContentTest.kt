@@ -1,7 +1,10 @@
 package io.premiumspread.domain.accountpnl
 
 import io.premiumspread.domain.alertmessage.EmbedCell
+import io.premiumspread.domain.alertmessage.GOLDEN_FILLER
+import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
+import io.premiumspread.domain.owneralert.DiscordField
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
@@ -111,6 +114,31 @@ class AccountPnlAlertContentTest {
         listOf(EmbedCell("순손익", "**+469,353원 (+1.11%)**")),
     )
 
+    /** 수익·정시 공통 fields — 행 [3,2,3,2,1], 2번째 행 뒤 채움 1개 = 12개 (design §3.3 규칙 1~2). */
+    private val profitFields: List<DiscordField> = listOf(
+        gf("현김프", "1.78%", true),
+        gf("매수김프", "0.53%", true),
+        gf("차이", "+1.25%p", true),
+        gf(
+            "빗썸 현물 · 0.266 BTC",
+            "평단 152,000,000원\n현재가 158,500,000원\n손익 +1,729,000원\n평가액 42,161,000원",
+            true,
+        ),
+        gf(
+            "바이낸스 선물 숏 · 0.266 BTC",
+            "평단 108,000 USDT\n현재가 111,200 USDT\n손익 -1,191,680원 (-851.20 USDT)\n" +
+                "평가액 41,410,880원 (29,579.20 USDT)",
+            true,
+        ),
+        GOLDEN_FILLER,
+        gf("가격 차익", "+537,320원", true),
+        gf("수수료 합계", "-73,847원", true),
+        gf("펀딩비", "+5,880원 (+4.20 USDT)", true),
+        gf("진입 수수료", "빗썸 -16,173원\n바이낸스 -20,104원 (14.36 USDT)", true),
+        gf("정리 수수료(예상)", "빗썸 -16,864원\n바이낸스 -20,705원 (14.79 USDT)", true),
+        gf("순손익", "**+469,353원 (+1.11%)**", false),
+    )
+
     @Test
     fun `수익 알림 golden`() {
         val message = AccountPnlAlertContent.profit(pnl(), zone)
@@ -126,7 +154,10 @@ class AccountPnlAlertContentTest {
         assertThat(embed.timestamp).isEqualTo(calculatedAt)
         assertThat(embed.rows).isEqualTo(profitRows)
         // 칸 11개 + 2번째 행 뒤 채움 1개
-        assertThat(embed.toDiscordMessage().layout!!.fields).hasSize(12)
+        val layout = embed.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(profitFields)
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(calculatedAt)
     }
 
     @Test
@@ -142,6 +173,10 @@ class AccountPnlAlertContentTest {
         assertThat(message.discord.footer).isEqualTo("매시 정각 발송 · 환율 1,400.00원/USD")
         assertThat(message.discord.rows).isEqualTo(profitRows)
         assertThat(message.discord.timestamp).isEqualTo(Instant.parse("2026-10-20T00:00:30Z"))
+        val layout = message.discord.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(profitFields)
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(Instant.parse("2026-10-20T00:00:30Z"))
     }
 
     @Test
@@ -176,6 +211,17 @@ class AccountPnlAlertContentTest {
             listOf(EmbedCell("마지막 성공", "없음"), EmbedCell("중단 감지", "12:10")),
             listOf(EmbedCell("확인할 것", "빗썸 Open API key의 허용 IP가 현재 공인 IP와 같은지 확인하세요.")),
         )
+        // 2칸 inline 행 다음 행이 1칸이라 채움 칸 없음
+        val layout = embed.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("마지막 성공", "없음", true),
+                gf("중단 감지", "12:10", true),
+                gf("확인할 것", "빗썸 Open API key의 허용 IP가 현재 공인 IP와 같은지 확인하세요.", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(now)
     }
 
     @Test
@@ -202,6 +248,10 @@ class AccountPnlAlertContentTest {
         assertThat(message.discord.rows).containsExactly(
             listOf(EmbedCell("마지막 성공", "12:00"), EmbedCell("중단 감지", "12:10")),
         )
+        val layout = message.discord.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(listOf(gf("마지막 성공", "12:00", true), gf("중단 감지", "12:10", true)))
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(now)
     }
 
     @Test
@@ -226,6 +276,10 @@ class AccountPnlAlertContentTest {
         assertThat(embed.footer).isNull()
         assertThat(embed.timestamp).isEqualTo(now)
         assertThat(embed.rows).containsExactly(listOf(EmbedCell("복구 시각", "12:15")))
+        val layout = embed.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(listOf(gf("복구 시각", "12:15", false)))
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(now)
     }
 
     // ---- 변형 ----

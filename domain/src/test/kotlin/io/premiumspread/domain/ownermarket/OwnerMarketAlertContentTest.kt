@@ -1,7 +1,9 @@
 package io.premiumspread.domain.ownermarket
 
 import io.premiumspread.domain.alertmessage.EmbedCell
+import io.premiumspread.domain.alertmessage.GOLDEN_FILLER
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
+import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.premium.PremiumAggregationSnapshot
@@ -94,6 +96,12 @@ class OwnerMarketAlertContentTest {
         assertThat(e.rows).containsExactly(
             listOf(cell("현재 김프", "+2.60%"), cell("10분 저점", "+2.00%"), cell("변화", "+0.60%p")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+2.60%", true), gf("10분 저점", "+2.00%", true), gf("변화", "+0.60%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -121,6 +129,12 @@ class OwnerMarketAlertContentTest {
         assertThat(e.rows).containsExactly(
             listOf(cell("현재 김프", "+2.00%"), cell("10분 고점", "+2.60%"), cell("변화", "-0.60%p")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+2.00%", true), gf("10분 고점", "+2.60%", true), gf("변화", "-0.60%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -147,6 +161,10 @@ class OwnerMarketAlertContentTest {
         assertThat(e.color).isEqualTo(0xE74C3C)
         assertThat(e.footer).isEqualTo("기준선 안쪽으로 0.1%p 이상 돌아온 뒤 다시 넘으면 다시 알림")
         assertThat(e.rows).containsExactly(listOf(cell("현재 김프", "+3.05%"), cell("상단 기준선", "+3.00%")))
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(listOf(gf("현재 김프", "+3.05%", true), gf("상단 기준선", "+3.00%", true)))
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -170,6 +188,10 @@ class OwnerMarketAlertContentTest {
         assertThat(e.title).isEqualTo("🔻 김프 하단 기준선 이탈 -1.04%")
         assertThat(e.color).isEqualTo(0x3498DB)
         assertThat(e.rows).containsExactly(listOf(cell("현재 김프", "-1.04%"), cell("하단 기준선", "-1.00%")))
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(listOf(gf("현재 김프", "-1.04%", true), gf("하단 기준선", "-1.00%", true)))
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -198,6 +220,12 @@ class OwnerMarketAlertContentTest {
         assertThat(e.rows).containsExactly(
             listOf(cell("현재 김프", "+2.70%"), cell("직전 24시간 고점", "+2.50%"), cell("차이", "+0.20%p")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+2.70%", true), gf("직전 24시간 고점", "+2.50%", true), gf("차이", "+0.20%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -226,6 +254,12 @@ class OwnerMarketAlertContentTest {
         assertThat(e.rows).containsExactly(
             listOf(cell("현재 김프", "+1.35%"), cell("직전 1시간 저점", "+1.50%"), cell("차이", "-0.15%p")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+1.35%", true), gf("직전 1시간 저점", "+1.50%", true), gf("차이", "-0.15%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -263,6 +297,23 @@ class OwnerMarketAlertContentTest {
             listOf(cell("환율 전일 마감", "1,385.20원/USD"), cell("환율 현재", "1,390.50원/USD")),
             listOf(cell("실계정 순수익률", "+1.23% (+123,457원)")),
         )
+        // 행 [3,2,2,1] — 2번째 행(2칸) 뒤에 칸 2개 이상인 행이 와서 채움 1개, 3번째 행 뒤는 1칸 행이라 채움 없음 = 9개
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("시가", "+2.10%", true),
+                gf("고가", "+2.80%", true),
+                gf("저가", "+1.90%", true),
+                gf("종가", "+2.50%", true),
+                gf("평균", "+2.35%", true),
+                GOLDEN_FILLER,
+                gf("환율 전일 마감", "1,385.20원/USD", true),
+                gf("환율 현재", "1,390.50원/USD", true),
+                gf("실계정 순수익률", "+1.23% (+123,457원)", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test

@@ -2,6 +2,7 @@ package io.premiumspread.domain.ownerops
 
 import io.premiumspread.domain.alertmessage.EmbedCell
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
+import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.job.JobId
 import io.premiumspread.domain.ticker.Currency
 import io.premiumspread.domain.ticker.Exchange
@@ -79,6 +80,12 @@ class OwnerOpsAlertContentTest {
         assertThat(e.footer).isEqualTo(realertFooter)
         assertThat(e.timestamp).isEqualTo(at)
         assertThat(e.rows).containsExactly(listOf(cell("마지막 성공", "08:29"), cell("장애 감지", "09:00"), cell("기준", "30분")))
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("마지막 성공", "08:29", true), gf("장애 감지", "09:00", true), gf("기준", "30분", true)),
+        )
+        assertThat(layout.author).isEqualTo("운영")
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -105,6 +112,12 @@ class OwnerOpsAlertContentTest {
         assertThat(e.color).isEqualTo(0xE67E22)
         assertThat(e.footer).isEqualTo(realertFooter)
         assertThat(e.rows).containsExactly(listOf(cell("마지막 시세", "08:54"), cell("장애 감지", "09:00"), cell("기준", "5분")))
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("마지막 시세", "08:54", true), gf("장애 감지", "09:00", true), gf("기준", "5분", true)),
+        )
+        assertThat(layout.author).isEqualTo("운영")
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -133,6 +146,12 @@ class OwnerOpsAlertContentTest {
         assertThat(e.color).isEqualTo(0xE67E22)
         assertThat(e.footer).isEqualTo("기준 3회 연속이고 5분 이상 · 6시간마다 다시 알림")
         assertThat(e.rows).containsExactly(listOf(cell("연속 실패", "4회"), cell("첫 실패", "02:55"), cell("지속", "6시간")))
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("연속 실패", "4회", true), gf("첫 실패", "02:55", true), gf("지속", "6시간", true)),
+        )
+        assertThat(layout.author).isEqualTo("운영")
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
@@ -163,6 +182,17 @@ class OwnerOpsAlertContentTest {
             listOf(cell("장애 감지", "10-27 21:00"), cell("복구 확인", "10-28 09:00"), cell("지속", "12시간")),
             listOf(cell("보낸 알림", "2회")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("장애 감지", "10-27 21:00", true),
+                gf("복구 확인", "10-28 09:00", true),
+                gf("지속", "12시간", true),
+                gf("보낸 알림", "2회", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("운영")
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     // ---- 변형 ----

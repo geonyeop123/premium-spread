@@ -4,6 +4,7 @@ import io.premiumspread.domain.accountpnl.AccountAlert.NetPercentSwing
 import io.premiumspread.domain.accountpnl.AccountAlert.PositionChanged
 import io.premiumspread.domain.accountpnl.AccountAlert.UnrecoveredReminder
 import io.premiumspread.domain.alertmessage.EmbedCell
+import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -155,6 +156,15 @@ class AccountAlertContentTest {
                 cell("바이낸스 선물 숏", "0.5 BTC · 평단 70,000 USDT\n→ 포지션 없음"),
             ),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("빗썸 현물 (변경 없음)", "0.6 BTC\n평단 101,000,000원", true),
+                gf("바이낸스 선물 숏", "0.5 BTC · 평단 70,000 USDT\n→ 포지션 없음", true),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(binanceClosedApi.detectedAt)
     }
 
     @Test
@@ -199,6 +209,22 @@ class AccountAlertContentTest {
                 ),
             ),
         )
+        // 2칸 행 다음 행이 1칸이라 채움 칸 없음
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("빗썸 현물", "0.5 BTC · 평단 100,000,000원\n→ 0.6 BTC · 평단 101,000,000원", true),
+                gf("바이낸스 선물 숏 (변경 없음)", "0.5 BTC · 평단 70,000 USDT", true),
+                gf(
+                    "확인할 것",
+                    "바이낸스는 수동 입력값 그대로입니다. 바이낸스 포지션도 바꿨다면 " +
+                        "BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch를 재시작하세요.",
+                    false,
+                ),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(bithumbChangedManual.detectedAt)
     }
 
     @Test
@@ -231,6 +257,17 @@ class AccountAlertContentTest {
             listOf(cell("기준선 (12:00)", "+0.40%"), cell("현재", "+0.90%"), cell("변화", "+0.50%p")),
             listOf(cell("순손익", "+123,457원")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("기준선 (12:00)", "+0.40%", true),
+                gf("현재", "+0.90%", true),
+                gf("변화", "+0.50%p", true),
+                gf("순손익", "+123,457원", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(swingUp.pnl.calculatedAt)
     }
 
     @Test
@@ -261,6 +298,17 @@ class AccountAlertContentTest {
             listOf(cell("기준선 (12:00)", "+0.40%"), cell("현재", "-0.10%"), cell("변화", "-0.50%p")),
             listOf(cell("순손익", "-12,345원")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("기준선 (12:00)", "+0.40%", true),
+                gf("현재", "-0.10%", true),
+                gf("변화", "-0.50%p", true),
+                gf("순손익", "-12,345원", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(swingDown.pnl.calculatedAt)
     }
 
     @Test
@@ -301,6 +349,19 @@ class AccountAlertContentTest {
             ),
             listOf(cell("오래된 항목", "• 수동 펀딩비 3일째 그대로 (+3.2 USDT, 10-17 09:30 변경)")),
         )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf(
+                    "순손익에 빠진 항목",
+                    "• 빗썸 진입 수수료 — 이력 없음\n• 바이낸스 진입 수수료 — 수동 미입력\n• 펀딩비 — 수동 미입력",
+                    false,
+                ),
+                gf("오래된 항목", "• 수동 펀딩비 3일째 그대로 (+3.2 USDT, 10-17 09:30 변경)", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(reminderFour.detectedAt)
     }
 
     // ---- 변형 ----
