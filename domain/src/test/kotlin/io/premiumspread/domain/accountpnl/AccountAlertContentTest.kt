@@ -3,6 +3,9 @@ package io.premiumspread.domain.accountpnl
 import io.premiumspread.domain.accountpnl.AccountAlert.NetPercentSwing
 import io.premiumspread.domain.accountpnl.AccountAlert.PositionChanged
 import io.premiumspread.domain.accountpnl.AccountAlert.UnrecoveredReminder
+import io.premiumspread.domain.alertmessage.EmbedCell
+import io.premiumspread.domain.alertmessage.gf
+import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
@@ -12,7 +15,7 @@ import java.time.ZoneId
 class AccountAlertContentTest {
 
     private val zone = ZoneId.of("Asia/Seoul")
-    private val runbook = "조치 안내: docs/runbooks/account-pnl-alert.md"
+    private val warn = "⚠️"
 
     private fun korea(quantity: String, average: String) = KoreaLeg.of(BigDecimal(quantity), BigDecimal(average))
     private fun foreign(quantity: String, entry: String) = ForeignLeg.of(BigDecimal(quantity), BigDecimal(entry))
@@ -115,201 +118,351 @@ class AccountAlertContentTest {
         detectedAt = Instant.parse("2026-10-20T06:00:00Z"),
     )
 
-    @Test
-    fun `포지션 변경 메일 - 빗썸만 manual 경고`() {
-        val mail = AccountAlertContent.mail(bithumbChangedManual, zone)
+    private fun msg(alert: AccountAlert): OwnerAlertMessage = AccountAlertContent.message(alert, zone)
 
-        assertThat(mail.eventKey).isEqualTo("account-pnl-position-1792465200000")
-        assertThat(mail.subject).isEqualTo("[김프 알림] 포지션 변경 — 빗썸 · 헤지 불일치 확인")
-        assertThat(mail.body).isEqualTo(
+    private fun cell(name: String, value: String) = EmbedCell(name, value)
+
+    @Test
+    fun `포지션 변경 바이낸스 청산 golden`() {
+        val m = msg(binanceClosedApi)
+
+        assertThat(m.eventKey).isEqualTo("account-pnl-position-1792465200000")
+        assertThat(m.mail.subject).isEqualTo("[실계정] 포지션 변경 — 바이낸스")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            실계정 포지션이 바뀌었습니다.
+
+            ■ 빗썸 현물 (변경 없음)
+            0.6 BTC · 평단 101,000,000원
+
+            ■ 바이낸스 선물 숏
+            변경 전  0.5 BTC · 평단 70,000 USDT
+            변경 후  포지션 없음
+
+            순수익률 급변 기준선은 다음 정시에 다시 잡습니다.
+
+            기준 시각 2026-10-20 12:00 KST
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.author).isEqualTo("실계정 · BTC")
+        assertThat(e.title).isEqualTo("🔄 포지션 변경 — 바이낸스")
+        assertThat(e.color).isEqualTo(0xF1C40F)
+        assertThat(e.footer).isEqualTo("순수익률 급변 기준선은 다음 정시에 다시 잡습니다")
+        assertThat(e.timestamp).isEqualTo(binanceClosedApi.detectedAt)
+        assertThat(e.rows).containsExactly(
             listOf(
-                "실계정 포지션 변경을 감지했습니다.",
-                "빗썸 현물: 0.5 BTC · 평단 100,000,000원 → 0.6 BTC · 평단 101,000,000원",
-                "바이낸스 선물(변경 없음): 숏 0.5 BTC · 진입가 70000 USDT",
-                "바이낸스 포지션 출처: 수동 입력(env)",
-                "감지 시각: 2026-10-20 12:00:00 (2026-10-20T03:00:00Z)",
-                "",
-                "⚠ 바이낸스 env 미갱신 — 헤지 불일치",
-                "빗썸 포지션만 바뀌었고 바이낸스 포지션은 수동 입력(env) 값 그대로입니다. 바이낸스 포지션도 바꿨다면 " +
-                    "BINANCE_MANUAL_SHORT_QUANTITY·BINANCE_MANUAL_ENTRY_PRICE 를 고치고 batch 를 재시작하세요. " +
-                    "이 경고는 바이낸스 값이 바뀔 때까지 다시 보내지 않습니다.",
-                "",
-                "순수익률 급변 기준선은 다음 정시 첫 성공 회차에 다시 잡습니다.",
-                runbook,
-            ).joinToString("\n"),
+                cell("빗썸 현물 (변경 없음)", "0.6 BTC\n평단 101,000,000원"),
+                cell("바이낸스 선물 숏", "0.5 BTC · 평단 70,000 USDT\n→ 포지션 없음"),
+            ),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("빗썸 현물 (변경 없음)", "0.6 BTC\n평단 101,000,000원", true),
+                gf("바이낸스 선물 숏", "0.5 BTC · 평단 70,000 USDT\n→ 포지션 없음", true),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(binanceClosedApi.detectedAt)
+    }
+
+    @Test
+    fun `포지션 변경 헤지 불일치 golden`() {
+        val m = msg(bithumbChangedManual)
+
+        assertThat(m.mail.subject).isEqualTo("[실계정] 포지션 변경 — 빗썸 · 헤지 불일치")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            실계정 포지션이 바뀌었습니다. 헤지가 맞지 않습니다.
+
+            ■ 빗썸 현물
+            변경 전  0.5 BTC · 평단 100,000,000원
+            변경 후  0.6 BTC · 평단 101,000,000원
+
+            ■ 바이낸스 선물 숏 (변경 없음)
+            0.5 BTC · 평단 70,000 USDT
+
+            ■ 확인할 것
+            바이낸스는 수동 입력값 그대로입니다. 바이낸스 포지션도 바꿨다면
+            BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch를 재시작하세요.
+            바이낸스 값이 바뀔 때까지 이 경고는 다시 보내지 않습니다.
+
+            기준 시각 2026-10-20 12:00 KST
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.author).isEqualTo("실계정 · BTC")
+        assertThat(e.title).isEqualTo("$warn 포지션 변경 — 빗썸 · 헤지 불일치")
+        assertThat(e.color).isEqualTo(0xE67E22)
+        assertThat(e.footer).isEqualTo("바이낸스 값이 바뀔 때까지 이 경고는 다시 보내지 않습니다")
+        assertThat(e.rows).containsExactly(
+            listOf(
+                cell("빗썸 현물", "0.5 BTC · 평단 100,000,000원\n→ 0.6 BTC · 평단 101,000,000원"),
+                cell("바이낸스 선물 숏 (변경 없음)", "0.5 BTC · 평단 70,000 USDT"),
+            ),
+            listOf(
+                cell(
+                    "확인할 것",
+                    "바이낸스는 수동 입력값 그대로입니다. 바이낸스 포지션도 바꿨다면 " +
+                        "BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch를 재시작하세요.",
+                ),
+            ),
+        )
+        // 2칸 행 다음 행이 1칸이라 채움 칸 없음
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("빗썸 현물", "0.5 BTC · 평단 100,000,000원\n→ 0.6 BTC · 평단 101,000,000원", true),
+                gf("바이낸스 선물 숏 (변경 없음)", "0.5 BTC · 평단 70,000 USDT", true),
+                gf(
+                    "확인할 것",
+                    "바이낸스는 수동 입력값 그대로입니다. 바이낸스 포지션도 바꿨다면 " +
+                        "BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch를 재시작하세요.",
+                    false,
+                ),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(bithumbChangedManual.detectedAt)
+    }
+
+    @Test
+    fun `순수익률 급등 golden`() {
+        val m = msg(swingUp)
+
+        assertThat(m.eventKey).isEqualTo("account-pnl-swing-up-1792465200000")
+        assertThat(m.mail.subject).isEqualTo("[실계정] 순수익률 급등 +0.50%p → +0.90%")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            순수익률이 이번 시간 기준선보다 0.50%p 이상 올랐습니다.
+
+            기준선 (12:00)  +0.40%
+            현재            +0.90%
+            변화            +0.50%p
+            순손익          +123,457원
+
+            같은 시간대에 같은 방향은 1번만 알립니다.
+
+            기준 시각 2026-10-20 12:00 KST
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.author).isEqualTo("실계정 · BTC")
+        assertThat(e.title).isEqualTo("📈 순수익률 급등 +0.50%p → +0.90%")
+        assertThat(e.color).isEqualTo(0x1ABC9C)
+        assertThat(e.footer).isEqualTo("기준 ±0.50%p · 같은 시간대 같은 방향은 1번만 알림")
+        assertThat(e.timestamp).isEqualTo(swingUp.pnl.calculatedAt)
+        assertThat(e.rows).containsExactly(
+            listOf(cell("기준선 (12:00)", "+0.40%"), cell("현재", "+0.90%"), cell("변화", "+0.50%p")),
+            listOf(cell("순손익", "+123,457원")),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("기준선 (12:00)", "+0.40%", true),
+                gf("현재", "+0.90%", true),
+                gf("변화", "+0.50%p", true),
+                gf("순손익", "+123,457원", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(swingUp.pnl.calculatedAt)
+    }
+
+    @Test
+    fun `순수익률 급락 golden`() {
+        val m = msg(swingDown)
+
+        assertThat(m.eventKey).isEqualTo("account-pnl-swing-down-1792465200000")
+        assertThat(m.mail.subject).isEqualTo("[실계정] 순수익률 급락 -0.50%p → -0.10%")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            순수익률이 이번 시간 기준선보다 0.50%p 이상 내렸습니다.
+
+            기준선 (12:00)  +0.40%
+            현재            -0.10%
+            변화            -0.50%p
+            순손익          -12,345원
+
+            같은 시간대에 같은 방향은 1번만 알립니다.
+
+            기준 시각 2026-10-20 12:00 KST
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.title).isEqualTo("📉 순수익률 급락 -0.50%p → -0.10%")
+        assertThat(e.color).isEqualTo(0xE91E63)
+        assertThat(e.footer).isEqualTo("기준 ±0.50%p · 같은 시간대 같은 방향은 1번만 알림")
+        assertThat(e.rows).containsExactly(
+            listOf(cell("기준선 (12:00)", "+0.40%"), cell("현재", "-0.10%"), cell("변화", "-0.50%p")),
+            listOf(cell("순손익", "-12,345원")),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("기준선 (12:00)", "+0.40%", true),
+                gf("현재", "-0.10%", true),
+                gf("변화", "-0.50%p", true),
+                gf("순손익", "-12,345원", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(swingDown.pnl.calculatedAt)
+    }
+
+    @Test
+    fun `미반영 리마인더 4건 golden`() {
+        val m = msg(reminderFour)
+
+        assertThat(m.eventKey).isEqualTo("account-pnl-reminder-1792422000000")
+        assertThat(m.mail.subject).isEqualTo("[실계정] 미반영 항목 4건")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            순손익 계산에 빠졌거나 오래된 항목이 있습니다.
+
+            ■ 순손익에 빠진 항목
+            - 빗썸 진입 수수료 — 이력 없음
+            - 바이낸스 진입 수수료 — 수동 미입력
+            - 펀딩비 — 수동 미입력
+
+            ■ 오래된 항목
+            - 수동 펀딩비 3일째 그대로 (+3.2 USDT, 2026-10-17 09:30 KST 변경)
+
+            하루 1번, 09:00 이후에 보냅니다.
+
+            기준 시각 2026-10-20 09:30 KST
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.author).isEqualTo("실계정 · BTC")
+        assertThat(e.title).isEqualTo("🗒️ 미반영 항목 4건")
+        assertThat(e.color).isEqualTo(0x7F8C8D)
+        assertThat(e.footer).isEqualTo("하루 1번, 09:00 이후 발송")
+        assertThat(e.timestamp).isEqualTo(reminderFour.detectedAt)
+        assertThat(e.rows).containsExactly(
+            listOf(
+                cell(
+                    "순손익에 빠진 항목",
+                    "• 빗썸 진입 수수료 — 이력 없음\n• 바이낸스 진입 수수료 — 수동 미입력\n• 펀딩비 — 수동 미입력",
+                ),
+            ),
+            listOf(cell("오래된 항목", "• 수동 펀딩비 3일째 그대로 (+3.2 USDT, 10-17 09:30 변경)")),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf(
+                    "순손익에 빠진 항목",
+                    "• 빗썸 진입 수수료 — 이력 없음\n• 바이낸스 진입 수수료 — 수동 미입력\n• 펀딩비 — 수동 미입력",
+                    false,
+                ),
+                gf("오래된 항목", "• 수동 펀딩비 3일째 그대로 (+3.2 USDT, 10-17 09:30 변경)", false),
+            ),
+        )
+        assertThat(layout.author).isEqualTo("실계정 · BTC")
+        assertThat(layout.timestamp).isEqualTo(reminderFour.detectedAt)
+    }
+
+    // ---- 변형 ----
+
+    @Test
+    fun `빗썸과 바이낸스가 둘 다 바뀌면 제목은 빗썸·바이낸스이고 두 칸 모두 변경 전후 두 줄이다`() {
+        val both = PositionChanged(
+            before = PositionLegs(korea("0.5", "100000000"), foreign("-0.5", "70000")),
+            after = PositionLegs(korea("0.6", "101000000"), foreign("-0.4", "71000.5")),
+            hedgeMismatchWarning = false,
+            source = ForeignPerpPositionSource.EXCHANGE_API,
+            detectedAt = Instant.parse("2026-10-20T03:00:00Z"),
+        )
+
+        val m = msg(both)
+
+        assertThat(m.mail.subject).isEqualTo("[실계정] 포지션 변경 — 빗썸·바이낸스")
+        assertThat(m.discord.title).isEqualTo("🔄 포지션 변경 — 빗썸·바이낸스")
+        assertThat(m.discord.rows).containsExactly(
+            listOf(
+                cell("빗썸 현물", "0.5 BTC · 평단 100,000,000원\n→ 0.6 BTC · 평단 101,000,000원"),
+                cell("바이낸스 선물 숏", "0.5 BTC · 평단 70,000 USDT\n→ 0.4 BTC · 평단 71,000.5 USDT"),
+            ),
+        )
+        assertThat(m.mail.body()).contains(
+            "■ 빗썸 현물\n변경 전  0.5 BTC · 평단 100,000,000원\n변경 후  0.6 BTC · 평단 101,000,000원",
+            "■ 바이낸스 선물 숏\n변경 전  0.5 BTC · 평단 70,000 USDT\n변경 후  0.4 BTC · 평단 71,000.5 USDT",
         )
     }
 
     @Test
-    fun `포지션 변경 메일 - 바이낸스만 API 청산`() {
-        val mail = AccountAlertContent.mail(binanceClosedApi, zone)
-
-        assertThat(mail.subject).isEqualTo("[김프 알림] 포지션 변경 — 바이낸스")
-        assertThat(mail.body).isEqualTo(
-            listOf(
-                "실계정 포지션 변경을 감지했습니다.",
-                "빗썸 현물(변경 없음): 0.6 BTC · 평단 101,000,000원",
-                "바이낸스 선물: 숏 0.5 BTC · 진입가 70000 USDT → 없음",
-                "바이낸스 포지션 출처: 거래소 API",
-                "감지 시각: 2026-10-20 12:00:00 (2026-10-20T03:00:00Z)",
-                "",
-                "순수익률 급변 기준선은 다음 정시 첫 성공 회차에 다시 잡습니다.",
-                runbook,
-            ).joinToString("\n"),
+    fun `바이낸스 leg 가 롱이면 값 앞에 롱 을 붙인다`() {
+        val long = PositionChanged(
+            before = PositionLegs(korea("0.6", "101000000"), ForeignLeg.FLAT),
+            after = PositionLegs(korea("0.6", "101000000"), foreign("0.3", "70000")),
+            hedgeMismatchWarning = false,
+            source = ForeignPerpPositionSource.EXCHANGE_API,
+            detectedAt = Instant.parse("2026-10-20T03:00:00Z"),
         )
+
+        val m = msg(long)
+
+        assertThat(m.discord.rows.single()[1])
+            .isEqualTo(cell("바이낸스 선물 숏", "포지션 없음\n→ 롱 0.3 BTC · 평단 70,000 USDT"))
+        assertThat(m.mail.body()).contains("변경 전  포지션 없음\n변경 후  롱 0.3 BTC · 평단 70,000 USDT")
     }
 
     @Test
-    fun `급변 상승 메일`() {
-        val mail = AccountAlertContent.mail(swingUp, zone)
-
-        assertThat(mail.eventKey).isEqualTo("account-pnl-swing-up-1792465200000")
-        assertThat(mail.subject).isEqualTo("[김프 알림] 순수익률 급변 ▲ 상승 +0.50%p · 현재 +0.90%")
-        assertThat(mail.body).isEqualTo(
-            listOf(
-                "순수익률이 이번 시간 기준선에서 0.50%p 이상 올랐습니다.",
-                "기준선(12:00 시간대 첫 성공 회차): +0.40%",
-                "현재: +0.90% (변화 +0.50%p)",
-                "순손익: +123,457원 · 체결가 기준 +0.85%",
-                "계산 시각: 2026-10-20 12:00:05 (2026-10-20T03:00:05Z)",
-                "",
-                "같은 시간대 안에서 같은 방향은 한 번만 알립니다. 기준선은 매시 첫 성공 회차에 다시 잡습니다.",
-            ).joinToString("\n"),
+    fun `안 바뀐 빗썸 leg 가 비어 있으면 포지션 없음 한 줄이다`() {
+        val emptyKorea = PositionChanged(
+            before = PositionLegs(KoreaLeg.EMPTY, foreign("-0.5", "70000")),
+            after = PositionLegs(KoreaLeg.EMPTY, ForeignLeg.FLAT),
+            hedgeMismatchWarning = false,
+            source = ForeignPerpPositionSource.EXCHANGE_API,
+            detectedAt = Instant.parse("2026-10-20T03:00:00Z"),
         )
+
+        val m = msg(emptyKorea)
+
+        assertThat(m.discord.rows.single()[0]).isEqualTo(cell("빗썸 현물 (변경 없음)", "포지션 없음"))
+        assertThat(m.mail.body()).contains("■ 빗썸 현물 (변경 없음)\n포지션 없음")
     }
 
     @Test
-    fun `급변 하락 메일`() {
-        val mail = AccountAlertContent.mail(swingDown, zone)
+    fun `리마인더에 오래된 항목만 있으면 빠진 항목 칸과 섹션이 없다`() {
+        val staleOnly = reminderFour.copy(items = listOf(ReminderItem.MANUAL_FUNDING_STALE))
 
-        assertThat(mail.eventKey).isEqualTo("account-pnl-swing-down-1792465200000")
-        assertThat(mail.subject).isEqualTo("[김프 알림] 순수익률 급변 ▼ 하락 -0.50%p · 현재 -0.10%")
-        assertThat(mail.body).isEqualTo(
-            listOf(
-                "순수익률이 이번 시간 기준선에서 0.50%p 이상 내렸습니다.",
-                "기준선(12:00 시간대 첫 성공 회차): +0.40%",
-                "현재: -0.10% (변화 -0.50%p)",
-                "순손익: -12,345원 · 체결가 기준 -0.12%",
-                "계산 시각: 2026-10-20 12:00:05 (2026-10-20T03:00:05Z)",
-                "",
-                "같은 시간대 안에서 같은 방향은 한 번만 알립니다. 기준선은 매시 첫 성공 회차에 다시 잡습니다.",
-            ).joinToString("\n"),
-        )
+        val m = msg(staleOnly)
+
+        assertThat(m.mail.subject).isEqualTo("[실계정] 미반영 항목 1건")
+        assertThat(m.discord.rows.map { it.single().name }).containsExactly("오래된 항목")
+        assertThat(m.mail.body()).doesNotContain("순손익에 빠진 항목").contains("■ 오래된 항목")
     }
 
     @Test
-    fun `리마인더 메일 4항목`() {
-        val mail = AccountAlertContent.mail(reminderFour, zone)
+    fun `리마인더에 빠진 항목만 있으면 오래된 항목 칸과 섹션이 없다`() {
+        val m = msg(reminderOne)
 
-        assertThat(mail.eventKey).isEqualTo("account-pnl-reminder-1792422000000")
-        assertThat(mail.subject).isEqualTo("[김프 알림] 미반영 항목 리마인더 2026-10-20 · 4건")
-        assertThat(mail.body).isEqualTo(
-            listOf(
-                "아래 항목이 순손익 계산에 반영되지 않았거나 오래 갱신되지 않았습니다.",
-                "- 진입 수수료(빗썸) 미반영 — 이력 없음",
-                "- 진입 수수료(바이낸스) 미반영 — 수동 미입력",
-                "- 펀딩비 미반영 — 수동 미입력",
-                "- 수동 펀딩비 3일째 미갱신 — 현재 값 +3.2 USDT, 마지막 변경 2026-10-17 09:30:00 (2026-10-17T00:30:00Z)",
-                "",
-                "하루 한 번, 09:00 이후 항목이 처음 확인된 회차에 보냅니다. $runbook",
-            ).joinToString("\n"),
-        )
+        assertThat(m.discord.title).isEqualTo("🗒️ 미반영 항목 1건")
+        assertThat(m.discord.rows).containsExactly(listOf(cell("순손익에 빠진 항목", "• 빗썸 진입 수수료 — 이력 없음")))
+        assertThat(m.mail.body()).doesNotContain("■ 오래된 항목")
+            .contains("■ 순손익에 빠진 항목\n- 빗썸 진입 수수료 — 이력 없음")
+        assertThat(m.mail.body()).contains("기준 시각 2026-10-20 15:00 KST")
     }
 
     @Test
-    fun `리마인더 메일 1항목`() {
-        val mail = AccountAlertContent.mail(reminderOne, zone)
+    fun `바이낸스 API 모드 리마인더는 바이낸스 진입 수수료와 펀딩비를 이력 없음으로 쓴다`() {
+        val api = reminderFour.copy(source = ForeignPerpPositionSource.EXCHANGE_API)
 
-        assertThat(mail.subject).isEqualTo("[김프 알림] 미반영 항목 리마인더 2026-10-20 · 1건")
-        assertThat(mail.body).isEqualTo(
-            listOf(
-                "아래 항목이 순손익 계산에 반영되지 않았거나 오래 갱신되지 않았습니다.",
-                "- 진입 수수료(빗썸) 미반영 — 이력 없음",
-                "",
-                "하루 한 번, 09:00 이후 항목이 처음 확인된 회차에 보냅니다. $runbook",
-            ).joinToString("\n"),
-        )
+        assertThat(msg(api).discord.rows.first().single().value)
+            .contains("• 바이낸스 진입 수수료 — 이력 없음", "• 펀딩비 — 이력 없음")
     }
 
     @Test
-    fun `포지션 변경 Discord - 빗썸만 manual 경고`() {
-        val message = AccountAlertContent.discord(bithumbChangedManual, zone)
+    fun `리마인더 시각은 reminderHour 에서 온다`() {
+        val seven = reminderFour.copy(reminderHour = 7)
 
-        assertThat(message.title).isEqualTo("⚠️ 포지션 변경 — 빗썸 · 헤지 불일치")
-        assertThat(message.description).isEqualTo(
-            listOf(
-                "빗썸 0.5 BTC · 평단 100,000,000원 → 0.6 BTC · 평단 101,000,000원",
-                "바이낸스 숏 0.5 BTC · 진입가 70000 USDT (변경 없음)",
-                "⚠ 바이낸스 env 미갱신 — 헤지 불일치. BINANCE_MANUAL_SHORT_QUANTITY·BINANCE_MANUAL_ENTRY_PRICE 갱신 후 재시작",
-                "바이낸스 포지션: 수동 입력(env) · 2026-10-20 12:00 KST",
-            ).joinToString("\n"),
-        )
-        assertThat(message.color).isEqualTo(15105570)
-    }
+        val m = msg(seven)
 
-    @Test
-    fun `포지션 변경 Discord - 바이낸스만 API 청산`() {
-        val message = AccountAlertContent.discord(binanceClosedApi, zone)
-
-        assertThat(message.title).isEqualTo("🔄 포지션 변경 — 바이낸스")
-        assertThat(message.description).isEqualTo(
-            listOf(
-                "빗썸 0.6 BTC · 평단 101,000,000원 (변경 없음)",
-                "바이낸스 숏 0.5 BTC · 진입가 70000 USDT → 없음",
-                "바이낸스 포지션: 거래소 API · 2026-10-20 12:00 KST",
-            ).joinToString("\n"),
-        )
-        assertThat(message.color).isEqualTo(15844367)
-    }
-
-    @Test
-    fun `급변 Discord 상승과 하락`() {
-        val up = AccountAlertContent.discord(swingUp, zone)
-        val down = AccountAlertContent.discord(swingDown, zone)
-
-        assertThat(up.title).isEqualTo("📈 순수익률 급등 +0.50%p")
-        assertThat(up.description).isEqualTo(
-            listOf(
-                "12:00 기준 +0.40% → 현재 +0.90%",
-                "순손익 +123,457원 · 체결가 기준 +0.85%",
-                "임계값 ±0.50%p · 2026-10-20 12:00 KST",
-            ).joinToString("\n"),
-        )
-        assertThat(up.color).isEqualTo(1752220)
-        assertThat(down.title).isEqualTo("📉 순수익률 급락 -0.50%p")
-        assertThat(down.description).isEqualTo(
-            listOf(
-                "12:00 기준 +0.40% → 현재 -0.10%",
-                "순손익 -12,345원 · 체결가 기준 -0.12%",
-                "임계값 ±0.50%p · 2026-10-20 12:00 KST",
-            ).joinToString("\n"),
-        )
-        assertThat(down.color).isEqualTo(15277667)
-    }
-
-    @Test
-    fun `리마인더 Discord 4항목과 1항목`() {
-        val four = AccountAlertContent.discord(reminderFour, zone)
-        val one = AccountAlertContent.discord(reminderOne, zone)
-
-        assertThat(four.title).isEqualTo("🗒️ 미반영 리마인더 · 4건")
-        assertThat(four.description).isEqualTo(
-            listOf(
-                "• 진입 수수료(빗썸) 미반영 — 이력 없음",
-                "• 진입 수수료(바이낸스) 미반영 — 수동 미입력",
-                "• 펀딩비 미반영 — 수동 미입력",
-                "• 수동 펀딩비 3일째 미갱신 — 현재 값 +3.2 USDT, 마지막 변경 2026-10-17 09:30:00 (2026-10-17T00:30:00Z)",
-                "바이낸스 포지션: 수동 입력(env) · 2026-10-20 09:30 KST",
-            ).joinToString("\n"),
-        )
-        assertThat(four.color).isEqualTo(8359053)
-        assertThat(one.title).isEqualTo("🗒️ 미반영 리마인더 · 1건")
-        assertThat(one.description).isEqualTo(
-            listOf(
-                "• 진입 수수료(빗썸) 미반영 — 이력 없음",
-                "바이낸스 포지션: 거래소 API · 2026-10-20 15:00 KST",
-            ).joinToString("\n"),
-        )
+        assertThat(m.discord.footer).isEqualTo("하루 1번, 07:00 이후 발송")
+        assertThat(m.mail.body()).contains("하루 1번, 07:00 이후에 보냅니다.").doesNotContain("09:00 이후")
     }
 
     @Test
@@ -322,8 +475,9 @@ class AccountAlertContentTest {
     }
 
     @Test
-    fun `eventKey 는 4종 형식이고 Message-ID 규칙에 맞는다`() {
-        val keys = listOf(bithumbChangedManual, swingUp, swingDown, reminderFour).map(AccountAlertContent::eventKey)
+    fun `eventKey 는 4종 형식이고 Message-ID 규칙에 맞고 message 의 eventKey 와 같다`() {
+        val alerts = listOf(bithumbChangedManual, swingUp, swingDown, reminderFour)
+        val keys = alerts.map(AccountAlertContent::eventKey)
 
         assertThat(keys).containsExactly(
             "account-pnl-position-1792465200000",
@@ -332,26 +486,20 @@ class AccountAlertContentTest {
             "account-pnl-reminder-1792422000000",
         )
         assertThat(keys).allSatisfy { assertThat(it).matches("[A-Za-z0-9._-]{1,128}") }
+        assertThat(alerts.map { msg(it).eventKey }).isEqualTo(keys)
     }
 
     @Test
     fun `모든 결과에 주소 webhook env 원문이 없다`() {
         val alerts = listOf(bithumbChangedManual, binanceClosedApi, swingUp, swingDown, reminderFour, reminderOne)
         val texts = alerts.flatMap {
-            val mail = AccountAlertContent.mail(it, zone)
-            val discord = AccountAlertContent.discord(it, zone)
-            listOf(mail.subject, mail.body, discord.title, discord.description)
+            val m = msg(it)
+            listOf(m.mail.subject, m.mail.body(), m.discord.title, m.discord.footer.orEmpty()) +
+                m.discord.rows.flatten().flatMap { c -> listOf(c.name, c.value) }
         }
 
         assertThat(texts).allSatisfy {
             assertThat(it).doesNotContain("example.test", "/api/webhooks/", "BINANCE_MANUAL_FUNDING_USDT=")
         }
-    }
-
-    @Test
-    fun `percentPoint 와 date`() {
-        assertThat(AccountPnlFormat.percentPoint(BigDecimal("0.5"))).isEqualTo("+0.50%p")
-        assertThat(AccountPnlFormat.percentPoint(BigDecimal("-0.5"))).isEqualTo("-0.50%p")
-        assertThat(AccountPnlFormat.date(Instant.parse("2026-10-19T15:00:00Z"), zone)).isEqualTo("2026-10-20")
     }
 }

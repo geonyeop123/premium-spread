@@ -12,9 +12,8 @@ import io.premiumspread.application.notification.owneralert.MutableClock
 import io.premiumspread.application.notification.owneralert.OwnerAlertDispatcher
 import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
-import io.premiumspread.domain.accountpnl.AccountPnlDiscordContent
+import io.premiumspread.domain.accountpnl.AccountPnlAlertContent
 import io.premiumspread.domain.accountpnl.AccountPnlMail
-import io.premiumspread.domain.accountpnl.AccountPnlMailContent
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.AccountReadException
@@ -24,6 +23,7 @@ import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
 import io.premiumspread.domain.accountpnl.OutageState
+import io.premiumspread.domain.accountpnl.OwnerAlertRows
 import io.premiumspread.domain.accountpnl.PnlAlertState
 import io.premiumspread.domain.accountpnl.PriceLevel
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
@@ -36,6 +36,7 @@ import io.premiumspread.domain.owneralert.DiscordTarget
 import io.premiumspread.domain.owneralert.OwnerAlertChannel
 import io.premiumspread.domain.owneralert.OwnerAlertChannels
 import io.premiumspread.domain.owneralert.OwnerAlertDiscordSender
+import io.premiumspread.domain.owneralert.OwnerAlertRoute
 import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import io.premiumspread.domain.owneralert.OwnerAlertSendException
 import io.premiumspread.domain.ticker.Currency
@@ -112,13 +113,13 @@ class AccountPnlMonitorJobOwnerAlertTest {
         // Job 과 같은 입력(호가·환율 관측 t0−1m·계산 시각 t0)으로 렌더러 결과를 만든다
         val pnl = expectedPnl()
         val email = store.rows[0].mail
-        assertThat(email.subject).startsWith("[김프 알림] 순수익률 +1.96%")
-        assertThat(email).isEqualTo(AccountPnlMailContent.profit(pnl, zone))
+        assertThat(email.subject).startsWith("[실계정] 수익 알림 +1.96%")
+        assertThat(email).isEqualTo(OwnerAlertRows.expand(AccountPnlAlertContent.profit(pnl, zone), OwnerAlertRoute(email = true, discord = null)).single())
         assertThat(mail.sent).containsExactly(email)
 
         val discordRow = store.rows[1].mail
-        val message = AccountPnlDiscordContent.profit(pnl, zone)
-        assertThat(message.title).startsWith("💰 수익 알림 · 순수익률 +1.96%")
+        val message = AccountPnlAlertContent.profit(pnl, zone).discord.toDiscordMessage()
+        assertThat(message.title).startsWith("💰 수익 알림 +1.96%")
         assertThat(discordRow).isEqualTo(
             AccountPnlMail(
                 key,
@@ -126,7 +127,8 @@ class AccountPnlMonitorJobOwnerAlertTest {
                 message.description,
                 OwnerAlertChannel.DISCORD,
                 DiscordRoute(DiscordTarget.PNL, DiscordPush.HERE),
-                AccountPnlDiscordContent.COLOR_PROFIT,
+                AccountPnlAlertContent.COLOR_PROFIT,
+                message.layout,
             ),
         )
         assertThat(discord.sent).containsExactly(DiscordRoute(DiscordTarget.PNL, DiscordPush.HERE) to message)
@@ -142,7 +144,7 @@ class AccountPnlMonitorJobOwnerAlertTest {
         assertThat(row.mail.eventKey).isEqualTo("account-pnl-hourly-$t0Millis")
         assertThat(row.mail.channel).isEqualTo(OwnerAlertChannel.DISCORD)
         assertThat(row.mail.discordRoute).isEqualTo(DiscordRoute(DiscordTarget.PNL, DiscordPush.SILENT))
-        assertThat(row.mail.subject).isEqualTo("📊 정시 보고 12:00")
+        assertThat(row.mail.subject).isEqualTo("📊 정시 보고 12:00 +0.50% +5,000원")
         assertThat(row.status).isEqualTo(Status.SENT)
     }
 
@@ -154,7 +156,7 @@ class AccountPnlMonitorJobOwnerAlertTest {
 
         assertThat(store.rows.map { it.mail.eventKey }).containsOnly("account-pnl-outage-$t0Millis")
         assertThat(store.rows.map { it.mail.channel }).containsExactly(OwnerAlertChannel.EMAIL, OwnerAlertChannel.DISCORD)
-        assertThat(store.rows[0].mail.subject).startsWith("[김프 알림] 모니터링 중단 — 빗썸 인증 실패")
+        assertThat(store.rows[0].mail.subject).startsWith("[실계정] 모니터링 중단 — 빗썸 인증 실패")
         assertThat(store.rows[1].mail.discordRoute).isEqualTo(DiscordRoute(DiscordTarget.OPS, DiscordPush.SOUND))
         assertThat(store.rows[1].mail.subject).startsWith("🚨 모니터링 중단 — 빗썸 인증 실패")
     }

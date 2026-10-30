@@ -1,21 +1,17 @@
 package io.premiumspread.domain.accountpnl
 
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.date
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.format
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.krw
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.percent
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.percentPoint
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.plain
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.plainKrw
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.shortTime
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.signedUsdt
-import io.premiumspread.domain.accountpnl.AccountPnlFormat.time
-import io.premiumspread.domain.owneralert.DiscordMessage
+import io.premiumspread.domain.alertmessage.AlertFormat
+import io.premiumspread.domain.alertmessage.EmbedCell
+import io.premiumspread.domain.alertmessage.EmbedDocument
+import io.premiumspread.domain.alertmessage.MailBlock
+import io.premiumspread.domain.alertmessage.MailDocument
+import io.premiumspread.domain.alertmessage.MailPair
+import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
 
-/** owner 계정 알림 3종의 메일·Discord 문구 (design §7). 숫자·시각 서식은 [AccountPnlFormat] 을 쓴다. */
+/** 계정 알림 3종(포지션 변경·순수익률 급변·미반영 리마인더)의 메일·Discord 문구. 문구 정본 message-spec.md "계정 알림", 값 출처 design §6.3. */
 object AccountAlertContent {
     const val COLOR_POSITION_CHANGED: Int = 0xF1C40F
     const val COLOR_HEDGE_MISMATCH: Int = 0xE67E22
@@ -23,12 +19,19 @@ object AccountAlertContent {
     const val COLOR_SWING_DOWN: Int = 0xE91E63
     const val COLOR_REMINDER: Int = 0x7F8C8D
 
-    private const val QUANTITY_UNIT = "BTC"
-    private const val NONE = "없음"
-    private const val RUNBOOK_LINE = "조치 안내: ${AccountPnlFormat.RUNBOOK}"
-    private const val WARNING_HEADLINE = "⚠ 바이낸스 env 미갱신 — 헤지 불일치"
+    private const val NONE = "포지션 없음"
+    private const val KOREA_NAME = "빗썸 현물"
+    private const val FOREIGN_NAME = "바이낸스 선물 숏"
+    private const val UNCHANGED = " (변경 없음)"
+    private const val BASELINE_FOOTER = "순수익률 급변 기준선은 다음 정시에 다시 잡습니다"
+    private const val HEDGE_FOOTER = "바이낸스 값이 바뀔 때까지 이 경고는 다시 보내지 않습니다"
+    private const val HEDGE_GUIDE_HEAD = "바이낸스는 수동 입력값 그대로입니다. 바이낸스 포지션도 바꿨다면"
+    private const val HEDGE_GUIDE_TAIL = "BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch를 재시작하세요."
 
-    /** design §3.6 — `account-pnl-position-{ms}` / `account-pnl-swing-{up|down}-{ms}` / `account-pnl-reminder-{ms}`. */
+    // 경고 이모지(variation selector 포함)
+    private const val WARNING = "⚠️"
+
+    /** 무변경 — `account-pnl-position-{ms}` / `account-pnl-swing-{up|down}-{bucketStart ms}` / `account-pnl-reminder-{dayStart ms}`. */
     fun eventKey(alert: AccountAlert): String = when (alert) {
         is AccountAlert.PositionChanged -> "account-pnl-position-${alert.detectedAt.toEpochMilli()}"
 
@@ -40,191 +43,206 @@ object AccountAlertContent {
         is AccountAlert.UnrecoveredReminder -> "account-pnl-reminder-${alert.dayStart.toEpochMilli()}"
     }
 
-    fun mail(alert: AccountAlert, zone: ZoneId): AccountPnlMail {
-        val (subject, lines) = when (alert) {
-            is AccountAlert.PositionChanged -> positionSubject(alert) to positionMailLines(alert, zone)
-            is AccountAlert.NetPercentSwing -> swingSubject(alert) to swingMailLines(alert, zone)
-            is AccountAlert.UnrecoveredReminder -> reminderSubject(alert, zone) to reminderMailLines(alert, zone)
-        }
-        return AccountPnlMail(eventKey(alert), subject, lines.joinToString("\n"))
-    }
-
-    fun discord(alert: AccountAlert, zone: ZoneId): DiscordMessage = when (alert) {
-        is AccountAlert.PositionChanged -> DiscordMessage.of(
-            if (alert.hedgeMismatchWarning) {
-                "⚠️ 포지션 변경 — ${changedLegs(alert)} · 헤지 불일치"
-            } else {
-                "🔄 포지션 변경 — ${changedLegs(alert)}"
-            },
-            positionDiscordLines(alert, zone).joinToString("\n"),
-            if (alert.hedgeMismatchWarning) COLOR_HEDGE_MISMATCH else COLOR_POSITION_CHANGED,
-        )
-
-        is AccountAlert.NetPercentSwing -> {
-            val up = alert.direction == SwingDirection.UP
-            DiscordMessage.of(
-                (if (up) "📈 순수익률 급등 " else "📉 순수익률 급락 ") + percentPoint(alert.delta),
-                swingDiscordLines(alert, zone).joinToString("\n"),
-                if (up) COLOR_SWING_UP else COLOR_SWING_DOWN,
-            )
-        }
-
-        is AccountAlert.UnrecoveredReminder -> DiscordMessage.of(
-            "🗒️ 미반영 리마인더 · ${alert.items.size}건",
-            reminderDiscordLines(alert, zone).joinToString("\n"),
-            COLOR_REMINDER,
-        )
+    /** basis: 포지션·리마인더 = detectedAt, 급변 = pnl.calculatedAt. author = [AccountPnlAlertContent.AUTHOR]. */
+    fun message(alert: AccountAlert, zone: ZoneId): OwnerAlertMessage = when (alert) {
+        is AccountAlert.PositionChanged -> positionChanged(alert, zone)
+        is AccountAlert.NetPercentSwing -> swing(alert, zone)
+        is AccountAlert.UnrecoveredReminder -> reminder(alert, zone)
     }
 
     // 포지션 변경
 
-    private fun changedLegs(alert: AccountAlert.PositionChanged): String = when {
-        alert.koreaChanged && alert.foreignChanged -> "빗썸·바이낸스"
-        alert.koreaChanged -> "빗썸"
-        else -> "바이낸스"
-    }
+    private fun positionChanged(alert: AccountAlert.PositionChanged, zone: ZoneId): OwnerAlertMessage {
+        val legs = when {
+            alert.koreaChanged && alert.foreignChanged -> "빗썸·바이낸스"
+            alert.koreaChanged -> "빗썸"
+            else -> "바이낸스"
+        }
+        val headline = "포지션 변경 — $legs" + if (alert.hedgeMismatchWarning) " · 헤지 불일치" else ""
+        val beforeKorea = koreaLeg(alert.before.korea)
+        val afterKorea = koreaLeg(alert.after.korea)
+        val beforeForeign = foreignLeg(alert.before.foreign)
+        val afterForeign = foreignLeg(alert.after.foreign)
 
-    private fun positionSubject(alert: AccountAlert.PositionChanged): String =
-        "[김프 알림] 포지션 변경 — ${changedLegs(alert)}" + if (alert.hedgeMismatchWarning) " · 헤지 불일치 확인" else ""
+        val koreaCell = if (alert.koreaChanged) {
+            EmbedCell(KOREA_NAME, "$beforeKorea\n→ $afterKorea")
+        } else {
+            val value = if (alert.after.korea.isEmpty) {
+                NONE
+            } else {
+                "${qty(alert.after.korea.quantity)}\n평단 ${krw(alert.after.korea)}"
+            }
+            EmbedCell(KOREA_NAME + UNCHANGED, value)
+        }
+        val foreignCell = if (alert.foreignChanged) {
+            EmbedCell(FOREIGN_NAME, "$beforeForeign\n→ $afterForeign")
+        } else {
+            EmbedCell(FOREIGN_NAME + UNCHANGED, afterForeign)
+        }
+        val rows = buildList {
+            add(listOf(koreaCell, foreignCell))
+            if (alert.hedgeMismatchWarning) add(listOf(EmbedCell("확인할 것", "$HEDGE_GUIDE_HEAD $HEDGE_GUIDE_TAIL")))
+        }
 
-    private fun positionMailLines(alert: AccountAlert.PositionChanged, zone: ZoneId): List<String> = buildList {
-        add("실계정 포지션 변경을 감지했습니다.")
-        add(
-            if (alert.koreaChanged) {
-                "빗썸 현물: ${koreaLeg(alert.before.korea)} → ${koreaLeg(alert.after.korea)}"
-            } else {
-                "빗썸 현물(변경 없음): ${koreaLeg(alert.after.korea)}"
-            },
-        )
-        add(
-            if (alert.foreignChanged) {
-                "바이낸스 선물: ${foreignLeg(alert.before.foreign)} → ${foreignLeg(alert.after.foreign)}"
-            } else {
-                "바이낸스 선물(변경 없음): ${foreignLeg(alert.after.foreign)}"
-            },
-        )
-        add("바이낸스 포지션 출처: ${source(alert.source)}")
-        add("감지 시각: ${time(alert.detectedAt, zone)}")
-        if (alert.hedgeMismatchWarning) {
-            add("")
-            add(WARNING_HEADLINE)
+        val koreaBlock = if (alert.koreaChanged) {
+            changedSection(KOREA_NAME, beforeKorea, afterKorea)
+        } else {
+            MailBlock.Section(KOREA_NAME + UNCHANGED, listOf(MailBlock.Text(listOf(afterKorea))))
+        }
+        val foreignBlock = if (alert.foreignChanged) {
+            changedSection(FOREIGN_NAME, beforeForeign, afterForeign)
+        } else {
+            MailBlock.Section(FOREIGN_NAME + UNCHANGED, listOf(MailBlock.Text(listOf(afterForeign))))
+        }
+        val mailBlocks = buildList {
             add(
-                "빗썸 포지션만 바뀌었고 바이낸스 포지션은 수동 입력(env) 값 그대로입니다. 바이낸스 포지션도 바꿨다면 " +
-                    "BINANCE_MANUAL_SHORT_QUANTITY·BINANCE_MANUAL_ENTRY_PRICE 를 고치고 batch 를 재시작하세요. " +
-                    "이 경고는 바이낸스 값이 바뀔 때까지 다시 보내지 않습니다.",
+                MailBlock.Text(
+                    listOf("실계정 포지션이 바뀌었습니다." + if (alert.hedgeMismatchWarning) " 헤지가 맞지 않습니다." else ""),
+                ),
             )
+            add(koreaBlock)
+            add(foreignBlock)
+            if (alert.hedgeMismatchWarning) {
+                val guide = listOf(HEDGE_GUIDE_HEAD, HEDGE_GUIDE_TAIL, "$HEDGE_FOOTER.")
+                add(MailBlock.Section("확인할 것", listOf(MailBlock.Text(guide))))
+            } else {
+                add(MailBlock.Text(listOf("$BASELINE_FOOTER.")))
+            }
         }
-        add("")
-        add("순수익률 급변 기준선은 다음 정시 첫 성공 회차에 다시 잡습니다.")
-        add(RUNBOOK_LINE)
+        return OwnerAlertMessage(
+            eventKey = eventKey(alert),
+            mail = MailDocument("[실계정] $headline", mailBlocks, alert.detectedAt, zone),
+            discord = EmbedDocument(
+                author = AccountPnlAlertContent.AUTHOR,
+                title = (if (alert.hedgeMismatchWarning) "$WARNING " else "🔄 ") + headline,
+                color = if (alert.hedgeMismatchWarning) COLOR_HEDGE_MISMATCH else COLOR_POSITION_CHANGED,
+                rows = rows,
+                footer = if (alert.hedgeMismatchWarning) HEDGE_FOOTER else BASELINE_FOOTER,
+                timestamp = alert.detectedAt,
+            ),
+        )
     }
 
-    private fun positionDiscordLines(alert: AccountAlert.PositionChanged, zone: ZoneId): List<String> = buildList {
-        add(
-            if (alert.koreaChanged) {
-                "빗썸 ${koreaLeg(alert.before.korea)} → ${koreaLeg(alert.after.korea)}"
-            } else {
-                "빗썸 ${koreaLeg(alert.after.korea)} (변경 없음)"
-            },
-        )
-        add(
-            if (alert.foreignChanged) {
-                "바이낸스 ${foreignLeg(alert.before.foreign)} → ${foreignLeg(alert.after.foreign)}"
-            } else {
-                "바이낸스 ${foreignLeg(alert.after.foreign)} (변경 없음)"
-            },
-        )
-        if (alert.hedgeMismatchWarning) {
-            add("$WARNING_HEADLINE. BINANCE_MANUAL_SHORT_QUANTITY·BINANCE_MANUAL_ENTRY_PRICE 갱신 후 재시작")
-        }
-        add("바이낸스 포지션: ${source(alert.source)} · ${shortTime(alert.detectedAt, zone)}")
-    }
+    private fun changedSection(title: String, before: String, after: String) = MailBlock.Section(
+        title,
+        listOf(MailBlock.Pairs(listOf(MailPair("변경 전", before), MailPair("변경 후", after)))),
+    )
 
     // 순수익률 급변
 
-    private fun swingSubject(alert: AccountAlert.NetPercentSwing): String {
-        val direction = if (alert.direction == SwingDirection.UP) "▲ 상승" else "▼ 하락"
-        return "[김프 알림] 순수익률 급변 $direction ${percentPoint(alert.delta)} · 현재 ${percent(alert.pnl.netPercent)}"
-    }
-
-    private fun swingMailLines(alert: AccountAlert.NetPercentSwing, zone: ZoneId): List<String> {
-        val verb = if (alert.direction == SwingDirection.UP) "올랐" else "내렸"
-        return listOf(
-            "순수익률이 이번 시간 기준선에서 ${format("0.00", alert.threshold)}%p 이상 ${verb}습니다.",
-            "기준선(${hour(alert.bucketStart, zone)}:00 시간대 첫 성공 회차): ${percent(alert.baselinePercent)}",
-            "현재: ${percent(alert.pnl.netPercent)} (변화 ${percentPoint(alert.delta)})",
-            "순손익: ${krw(alert.pnl.netKrw)} · 체결가 기준 ${percent(alert.pnl.netPercentAtLast)}",
-            "계산 시각: ${time(alert.pnl.calculatedAt, zone)}",
-            "",
-            "같은 시간대 안에서 같은 방향은 한 번만 알립니다. 기준선은 매시 첫 성공 회차에 다시 잡습니다.",
+    private fun swing(alert: AccountAlert.NetPercentSwing, zone: ZoneId): OwnerAlertMessage {
+        val up = alert.direction == SwingDirection.UP
+        val baselineLabel = "기준선 (${hour(alert.bucketStart, zone)}:00)"
+        val baseline = AlertFormat.percent(alert.baselinePercent)
+        val current = AlertFormat.percent(alert.pnl.netPercent)
+        val delta = AlertFormat.percentPoint(alert.delta)
+        val net = AlertFormat.krw(alert.pnl.netKrw)
+        val threshold = AlertFormat.format("0.00", alert.threshold)
+        val headline = "순수익률 ${if (up) "급등" else "급락"} $delta → $current"
+        val at = alert.pnl.calculatedAt
+        return OwnerAlertMessage(
+            eventKey = eventKey(alert),
+            mail = MailDocument(
+                subject = "[실계정] $headline",
+                blocks = listOf(
+                    MailBlock.Text(listOf("순수익률이 이번 시간 기준선보다 $threshold%p 이상 ${if (up) "올랐" else "내렸"}습니다.")),
+                    MailBlock.Pairs(
+                        listOf(
+                            MailPair(baselineLabel, baseline),
+                            MailPair("현재", current),
+                            MailPair("변화", delta),
+                            MailPair("순손익", net),
+                        ),
+                    ),
+                    MailBlock.Text(listOf("같은 시간대에 같은 방향은 1번만 알립니다.")),
+                ),
+                basis = at,
+                zone = zone,
+            ),
+            discord = EmbedDocument(
+                author = AccountPnlAlertContent.AUTHOR,
+                title = (if (up) "📈 " else "📉 ") + headline,
+                color = if (up) COLOR_SWING_UP else COLOR_SWING_DOWN,
+                rows = listOf(
+                    listOf(EmbedCell(baselineLabel, baseline), EmbedCell("현재", current), EmbedCell("변화", delta)),
+                    listOf(EmbedCell("순손익", net)),
+                ),
+                footer = "기준 ±$threshold%p · 같은 시간대 같은 방향은 1번만 알림",
+                timestamp = at,
+            ),
         )
     }
 
-    private fun swingDiscordLines(alert: AccountAlert.NetPercentSwing, zone: ZoneId): List<String> = listOf(
-        "${hour(alert.bucketStart, zone)}:00 기준 ${percent(alert.baselinePercent)} → " +
-            "현재 ${percent(alert.pnl.netPercent)}",
-        "순손익 ${krw(alert.pnl.netKrw)} · 체결가 기준 ${percent(alert.pnl.netPercentAtLast)}",
-        "임계값 ±${format("0.00", alert.threshold)}%p · ${shortTime(alert.pnl.calculatedAt, zone)}",
-    )
-
     // 미반영 리마인더
 
-    private fun reminderSubject(alert: AccountAlert.UnrecoveredReminder, zone: ZoneId): String =
-        "[김프 알림] 미반영 항목 리마인더 ${date(alert.dayStart, zone)} · ${alert.items.size}건"
-
-    private fun reminderItemText(
-        alert: AccountAlert.UnrecoveredReminder,
-        item: ReminderItem,
-        zone: ZoneId,
-    ): String {
+    private fun reminder(alert: AccountAlert.UnrecoveredReminder, zone: ZoneId): OwnerAlertMessage {
         val foreignReason = if (alert.source == ForeignPerpPositionSource.MANUAL_ENV) "수동 미입력" else "이력 없음"
-        return when (item) {
-            ReminderItem.KOREA_ENTRY_FEE -> "진입 수수료(빗썸) 미반영 — 이력 없음"
-
-            ReminderItem.FOREIGN_ENTRY_FEE -> "진입 수수료(바이낸스) 미반영 — $foreignReason"
-
-            ReminderItem.FUNDING -> "펀딩비 미반영 — $foreignReason"
-
-            ReminderItem.MANUAL_FUNDING_STALE -> {
-                val funding = requireNotNull(alert.manualFunding) { "manual funding staleness is required." }
-                "수동 펀딩비 ${funding.days}일째 미갱신 — 현재 값 ${signedUsdt(funding.fundingUsdt)}, " +
-                    "마지막 변경 ${time(funding.changedAt, zone)}"
+        val missing = alert.items.filter { it != ReminderItem.MANUAL_FUNDING_STALE }.map {
+            when (it) {
+                ReminderItem.KOREA_ENTRY_FEE -> "빗썸 진입 수수료 — 이력 없음"
+                ReminderItem.FOREIGN_ENTRY_FEE -> "바이낸스 진입 수수료 — $foreignReason"
+                else -> "펀딩비 — $foreignReason"
             }
         }
-    }
-
-    private fun reminderMailLines(alert: AccountAlert.UnrecoveredReminder, zone: ZoneId): List<String> = buildList {
-        add("아래 항목이 순손익 계산에 반영되지 않았거나 오래 갱신되지 않았습니다.")
-        alert.items.forEach { add("- ${reminderItemText(alert, it, zone)}") }
-        add("")
+        val staleFunding = if (ReminderItem.MANUAL_FUNDING_STALE in alert.items) {
+            requireNotNull(alert.manualFunding) { "manual funding staleness is required." }
+        } else {
+            null
+        }
+        val stale = staleFunding?.let {
+            { changed: String -> "수동 펀딩비 ${it.days}일째 그대로 (${AlertFormat.signedUsdt(it.fundingUsdt)}, $changed 변경)" }
+        }
         val hourText = "%02d".format(Locale.ROOT, alert.reminderHour)
-        add("하루 한 번, $hourText:00 이후 항목이 처음 확인된 회차에 보냅니다. $RUNBOOK_LINE")
-    }
 
-    private fun reminderDiscordLines(alert: AccountAlert.UnrecoveredReminder, zone: ZoneId): List<String> = buildList {
-        alert.items.forEach { add("• ${reminderItemText(alert, it, zone)}") }
-        add("바이낸스 포지션: ${source(alert.source)} · ${shortTime(alert.detectedAt, zone)}")
+        val mailBlocks = buildList {
+            add(MailBlock.Text(listOf("순손익 계산에 빠졌거나 오래된 항목이 있습니다.")))
+            if (missing.isNotEmpty()) add(MailBlock.Section("순손익에 빠진 항목", listOf(MailBlock.Bullets(missing))))
+            if (stale != null) {
+                val changed = AlertFormat.stamp(staleFunding.changedAt, zone)
+                add(MailBlock.Section("오래된 항목", listOf(MailBlock.Bullets(listOf(stale(changed))))))
+            }
+            add(MailBlock.Text(listOf("하루 1번, $hourText:00 이후에 보냅니다.")))
+        }
+        val rows = buildList {
+            if (missing.isNotEmpty()) add(listOf(EmbedCell("순손익에 빠진 항목", missing.joinToString("\n") { "• $it" })))
+            if (stale != null) {
+                val changed = AlertFormat.clock(staleFunding.changedAt, alert.detectedAt, zone)
+                add(listOf(EmbedCell("오래된 항목", "• ${stale(changed)}")))
+            }
+        }
+        val headline = "미반영 항목 ${alert.items.size}건"
+        return OwnerAlertMessage(
+            eventKey = eventKey(alert),
+            mail = MailDocument("[실계정] $headline", mailBlocks, alert.detectedAt, zone),
+            discord = EmbedDocument(
+                author = AccountPnlAlertContent.AUTHOR,
+                title = "🗒️ $headline",
+                color = COLOR_REMINDER,
+                rows = rows,
+                footer = "하루 1번, $hourText:00 이후 발송",
+                timestamp = alert.detectedAt,
+            ),
+        )
     }
 
     // 공용 표기
 
-    private fun koreaLeg(leg: KoreaLeg): String =
-        if (leg.isEmpty) NONE else "${plain(leg.quantity)} $QUANTITY_UNIT · 평단 ${plainKrw(leg.averageBuyPrice)}원"
+    private fun qty(value: java.math.BigDecimal): String = "${AlertFormat.plain(value)} BTC"
 
+    private fun krw(leg: KoreaLeg): String = AlertFormat.krwPrice(leg.averageBuyPrice)
+
+    private fun koreaLeg(leg: KoreaLeg): String =
+        if (leg.isEmpty) NONE else "${qty(leg.quantity)} · 평단 ${krw(leg)}"
+
+    /** 롱이면(A7) 앞에 `롱 `. flat 이면 [NONE]. */
     private fun foreignLeg(leg: ForeignLeg): String = when {
         leg.isFlat -> NONE
 
         else -> {
-            val side = if (leg.signedQuantity.signum() < 0) "숏" else "롱"
-            "$side ${plain(leg.signedQuantity.abs())} $QUANTITY_UNIT · 진입가 ${plain(leg.entryPrice)} USDT"
+            val prefix = if (leg.signedQuantity.signum() > 0) "롱 " else ""
+            "$prefix${qty(leg.signedQuantity.abs())} · 평단 ${AlertFormat.usdtPrice(leg.entryPrice)}"
         }
     }
 
-    private fun source(source: ForeignPerpPositionSource): String = when (source) {
-        ForeignPerpPositionSource.MANUAL_ENV -> "수동 입력(env)"
-        ForeignPerpPositionSource.EXCHANGE_API -> "거래소 API"
-    }
-
-    private fun hour(instant: Instant, zone: ZoneId): String =
-        "%02d".format(Locale.ROOT, instant.atZone(zone).hour)
+    private fun hour(instant: Instant, zone: ZoneId): String = "%02d".format(Locale.ROOT, instant.atZone(zone).hour)
 }

@@ -1,10 +1,14 @@
 package io.premiumspread.domain.ownermarket
 
+import io.premiumspread.domain.alertmessage.EmbedCell
+import io.premiumspread.domain.alertmessage.GOLDEN_FILLER
+import io.premiumspread.domain.alertmessage.OwnerAlertMessage
+import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.market.MarketPair
-import io.premiumspread.domain.ownerops.OwnerOpsAlertContent
 import io.premiumspread.domain.premium.PremiumAggregationSnapshot
 import io.premiumspread.domain.ticker.Currency
+import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -14,19 +18,15 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+/** 문구 정본 message-spec.md "시장 알림". 정렬은 design §3.2 규칙(표시 폭 최댓값 + 2)의 출력이다. */
 class OwnerMarketAlertContentTest {
     private val zone = ZoneId.of("Asia/Seoul")
     private val settings = MarketAlertSettings()
     private val pair = MarketPair.default(Symbol("BTC"))
     private val at = Instant.parse("2026-10-29T00:00:00Z")
-    private val observed = Instant.parse("2026-10-28T23:59:55Z")
-    private val runbook = "조치 안내: docs/runbooks/owner-market-alert.md"
-
-    // 메일 {t(x)} / Discord {st(x)} 표기
-    private val mailAt = "2026-10-29 09:00:00 (2026-10-29T00:00:00Z)"
-    private val mailObserved = "2026-10-29 08:59:55 (2026-10-28T23:59:55Z)"
-    private val discordAt = "2026-10-29 09:00 KST"
-    private val discordObserved = "2026-10-29 08:59 KST"
+    private val observed = Instant.parse("2026-10-28T23:59:00Z")
+    private val author = "시장 · BTC 빗썸/바이낸스"
+    private val basis = "기준 시각 2026-10-29 09:00 KST"
 
     private fun bd(value: String) = BigDecimal(value)
 
@@ -88,387 +88,330 @@ class OwnerMarketAlertContentTest {
     )
 
     private val day = PremiumAggregationSnapshot(
-        pair = pair,
-        high = bd("2.80"),
-        low = bd("1.90"),
-        open = bd("2.10"),
-        close = bd("2.50"),
-        avg = bd("2.35"),
-        count = 1440,
-        observedAt = Instant.parse("2026-10-28T14:59:00Z"),
-        fxRate = bd("1385.2"),
+        pair, bd("2.80"), bd("1.90"), bd("2.10"), bd("2.50"), bd("2.35"), 1440,
+        Instant.parse("2026-10-27T15:00:00Z"), bd("1385.20"),
     )
-    private val fx = ExchangeRateSnapshot("USD", "KRW", bd("1390.5"), Instant.parse("2026-10-28T23:59:30Z"))
-    private val value = SummaryPnl.Value(bd("1.2345"), bd("123456.7"), Instant.parse("2026-10-28T23:58:00Z"))
+    private val fx = ExchangeRateSnapshot("USD", "KRW", bd("1390.50"), Instant.parse("2026-10-28T23:59:00Z"))
+    private val pnl = SummaryPnl.Value(bd("1.23"), bd("123456.7"), Instant.parse("2026-10-28T23:58:00Z"))
 
-    private fun summary(day: PremiumAggregationSnapshot?, fx: ExchangeRateSnapshot?, pnl: SummaryPnl) =
-        MarketNotice.DailySummary(
-            pair,
-            at,
-            LocalDate.parse("2026-10-28"),
-            day,
-            Currency.USD,
-            Currency.KRW,
-            fx,
-            pnl,
-        )
+    private fun summary(
+        d: PremiumAggregationSnapshot? = day,
+        f: ExchangeRateSnapshot? = fx,
+        p: SummaryPnl = pnl,
+        base: Currency = Currency.USD,
+        quote: Currency = Currency.KRW,
+    ) = MarketNotice.DailySummary(pair, at, LocalDate.parse("2026-10-28"), d, base, quote, f, p)
 
-    private val full = summary(day, fx, value)
-    private val empty = summary(null, null, SummaryPnl.Unavailable)
-    private val noPosition = summary(day, fx, SummaryPnl.NoPosition(Instant.parse("2026-10-28T23:58:00Z")))
+    private fun msg(notice: MarketNotice): OwnerAlertMessage = OwnerMarketAlertContent.message(notice, settings, zone)
 
-    private val all = listOf(swingUp, swingDown, upper, lower, dayHigh, hourLow, full, empty, noPosition)
-
-    private fun mail(notice: MarketNotice) = OwnerMarketAlertContent.mail(notice, settings, zone)
-    private fun discord(notice: MarketNotice) = OwnerMarketAlertContent.discord(notice, settings, zone)
-
-    private fun lines(vararg lines: String) = lines.joinToString("\n")
-
-    private val swingBasis = "기준: 10분 안에서 ±0.5%p 이상 · 같은 방향은 30분 동안 다시 알리지 않습니다."
-    private val hysteresis = "기준선 안쪽으로 0.1%p 이상 돌아온 뒤 다시 넘으면 다시 알립니다."
-    private val summaryTitle = "김프 일일 요약 BTC BITHUMB/BINANCE 2026-10-28"
-    private val summaryDay = "대상일: 2026-10-28 00:00 ~ 24:00 (Asia/Seoul)"
-    private val summaryOhlc = "김프 시가 +2.10% · 고가 +2.80% · 저가 +1.90% · 종가 +2.50% · 평균 +2.35%"
-    private val unavailable = "실계정 순수익률: 없음 (PnL 모니터 꺼짐 또는 최근 10분 안에 계산 없음)"
+    private fun cell(name: String, value: String) = EmbedCell(name, value)
 
     @Test
-    fun `급등 메일`() {
-        val mail = mail(swingUp)
-        assertThat(mail.eventKey).isEqualTo("owner-market.btc-bithumb-binance.swing-up.1793232000000")
-        assertThat(mail.subject).isEqualTo("[시장] 김프 급등 BTC BITHUMB/BINANCE +0.60%p (10분)")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                "현재 김프: +2.60% ($mailObserved)",
-                "최근 10분 분봉 종가 저점: +2.00%",
-                "변화: +0.60%p",
-                swingBasis,
-                "알림 시각: $mailAt",
-                runbook,
+    fun `김프 급등 golden`() {
+        val m = msg(swingUp)
+
+        assertThat(m.eventKey).isEqualTo("owner-market.btc-bithumb-binance.swing-up.1793232000000")
+        assertThat(m.mail.subject).isEqualTo("[시장] 김프 급등 +0.60%p → +2.60% (BTC)")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            BTC 김프가 10분 사이 0.60%p 올랐습니다. (빗썸/바이낸스)
+
+            현재 김프  +2.60% (08:59 관측)
+            10분 저점  +2.00%
+            변화       +0.60%p
+
+            기준: 10분 안에서 ±0.5%p 이상. 같은 방향은 30분 동안 다시 알리지 않습니다.
+
+            $basis
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.author).isEqualTo(author)
+        assertThat(e.title).isEqualTo("📈 김프 급등 +0.60%p → +2.60%")
+        assertThat(e.color).isEqualTo(0xE74C3C)
+        assertThat(e.footer).isEqualTo("기준 10분 안 ±0.5%p · 같은 방향은 30분 동안 다시 알리지 않음")
+        assertThat(e.timestamp).isEqualTo(at)
+        assertThat(e.rows).containsExactly(
+            listOf(cell("현재 김프", "+2.60%"), cell("10분 저점", "+2.00%"), cell("변화", "+0.60%p")),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+2.60%", true), gf("10분 저점", "+2.00%", true), gf("변화", "+0.60%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
+    }
+
+    @Test
+    fun `김프 급락 golden`() {
+        val m = msg(swingDown)
+
+        assertThat(m.mail.subject).isEqualTo("[시장] 김프 급락 -0.60%p → +2.00% (BTC)")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            BTC 김프가 10분 사이 0.60%p 내렸습니다. (빗썸/바이낸스)
+
+            현재 김프  +2.00% (08:59 관측)
+            10분 고점  +2.60%
+            변화       -0.60%p
+
+            기준: 10분 안에서 ±0.5%p 이상. 같은 방향은 30분 동안 다시 알리지 않습니다.
+
+            $basis
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.title).isEqualTo("📉 김프 급락 -0.60%p → +2.00%")
+        assertThat(e.color).isEqualTo(0x3498DB)
+        assertThat(e.footer).isEqualTo("기준 10분 안 ±0.5%p · 같은 방향은 30분 동안 다시 알리지 않음")
+        assertThat(e.rows).containsExactly(
+            listOf(cell("현재 김프", "+2.00%"), cell("10분 고점", "+2.60%"), cell("변화", "-0.60%p")),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+2.00%", true), gf("10분 고점", "+2.60%", true), gf("변화", "-0.60%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
+    }
+
+    @Test
+    fun `김프 상단 기준선 돌파 golden`() {
+        val m = msg(upper)
+
+        assertThat(m.eventKey).isEqualTo("owner-market.btc-bithumb-binance.threshold-upper.1793232000000")
+        assertThat(m.mail.subject).isEqualTo("[시장] 김프 상단 기준선 돌파 +3.05% (BTC)")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            BTC 김프가 상단 기준선을 넘었습니다. (빗썸/바이낸스)
+
+            현재 김프    +3.05% (08:59 관측)
+            상단 기준선  +3.00%
+
+            기준선 안쪽으로 0.1%p 이상 돌아온 뒤 다시 넘으면 다시 알립니다.
+
+            $basis
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.author).isEqualTo(author)
+        assertThat(e.title).isEqualTo("🔺 김프 상단 기준선 돌파 +3.05%")
+        assertThat(e.color).isEqualTo(0xE74C3C)
+        assertThat(e.footer).isEqualTo("기준선 안쪽으로 0.1%p 이상 돌아온 뒤 다시 넘으면 다시 알림")
+        assertThat(e.rows).containsExactly(listOf(cell("현재 김프", "+3.05%"), cell("상단 기준선", "+3.00%")))
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(listOf(gf("현재 김프", "+3.05%", true), gf("상단 기준선", "+3.00%", true)))
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
+    }
+
+    @Test
+    fun `김프 하단 기준선 이탈 golden`() {
+        val m = msg(lower)
+
+        assertThat(m.mail.subject).isEqualTo("[시장] 김프 하단 기준선 이탈 -1.04% (BTC)")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            BTC 김프가 하단 기준선 아래로 내려갔습니다. (빗썸/바이낸스)
+
+            현재 김프    -1.04% (08:59 관측)
+            하단 기준선  -1.00%
+
+            기준선 안쪽으로 0.1%p 이상 돌아온 뒤 다시 넘으면 다시 알립니다.
+
+            $basis
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.title).isEqualTo("🔻 김프 하단 기준선 이탈 -1.04%")
+        assertThat(e.color).isEqualTo(0x3498DB)
+        assertThat(e.rows).containsExactly(listOf(cell("현재 김프", "-1.04%"), cell("하단 기준선", "-1.00%")))
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(listOf(gf("현재 김프", "-1.04%", true), gf("하단 기준선", "-1.00%", true)))
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
+    }
+
+    @Test
+    fun `김프 24시간 신고가 golden`() {
+        val m = msg(dayHigh)
+
+        assertThat(m.eventKey).isEqualTo("owner-market.btc-bithumb-binance.extreme-24h-high.1793232000000")
+        assertThat(m.mail.subject).isEqualTo("[시장] 김프 24시간 신고가 +2.70% (BTC)")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            BTC 김프가 24시간 고점을 새로 썼습니다. (빗썸/바이낸스)
+
+            현재 김프         +2.70% (08:59 관측)
+            직전 24시간 고점  +2.50%
+            차이              +0.20%p
+
+            최소 0.1%p 이상일 때만 알리고, 같은 기간·방향은 2시간 동안 다시 알리지 않습니다.
+
+            $basis
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.title).isEqualTo("⬆️ 김프 24시간 신고가 +2.70%")
+        assertThat(e.color).isEqualTo(0xE74C3C)
+        assertThat(e.footer).isEqualTo("최소 0.1%p · 같은 기간·방향은 2시간 동안 다시 알리지 않음")
+        assertThat(e.rows).containsExactly(
+            listOf(cell("현재 김프", "+2.70%"), cell("직전 24시간 고점", "+2.50%"), cell("차이", "+0.20%p")),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+2.70%", true), gf("직전 24시간 고점", "+2.50%", true), gf("차이", "+0.20%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
+    }
+
+    @Test
+    fun `김프 1시간 신저가 golden`() {
+        val m = msg(hourLow)
+
+        assertThat(m.eventKey).isEqualTo("owner-market.btc-bithumb-binance.extreme-1h-low.1793232000000")
+        assertThat(m.mail.subject).isEqualTo("[시장] 김프 1시간 신저가 +1.35% (BTC)")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            BTC 김프가 1시간 저점을 새로 썼습니다. (빗썸/바이낸스)
+
+            현재 김프        +1.35% (08:59 관측)
+            직전 1시간 저점  +1.50%
+            차이             -0.15%p
+
+            최소 0.1%p 이상일 때만 알리고, 같은 기간·방향은 30분 동안 다시 알리지 않습니다.
+
+            $basis
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.title).isEqualTo("⬇️ 김프 1시간 신저가 +1.35%")
+        assertThat(e.color).isEqualTo(0x3498DB)
+        assertThat(e.footer).isEqualTo("최소 0.1%p · 같은 기간·방향은 30분 동안 다시 알리지 않음")
+        assertThat(e.rows).containsExactly(
+            listOf(cell("현재 김프", "+1.35%"), cell("직전 1시간 저점", "+1.50%"), cell("차이", "-0.15%p")),
+        )
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(gf("현재 김프", "+1.35%", true), gf("직전 1시간 저점", "+1.50%", true), gf("차이", "-0.15%p", true)),
+        )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
+    }
+
+    @Test
+    fun `김프 일일 요약 golden`() {
+        val m = msg(summary())
+
+        assertThat(m.eventKey).isEqualTo("owner-market.btc-bithumb-binance.daily-summary.2026-10-28")
+        assertThat(m.mail.subject).isEqualTo("[시장] 김프 일일 요약 10/28 (BTC)")
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            2026-10-28 BTC 김프 요약입니다. (빗썸/바이낸스, 00:00 ~ 24:00 KST)
+
+            ■ 김프
+            시가 +2.10% · 고가 +2.80% · 저가 +1.90%
+            종가 +2.50% · 평균 +2.35%
+
+            ■ 환율 (USD/KRW)
+            전일 마감  1,385.20원
+            현재       1,390.50원
+
+            ■ 실계정
+            순수익률  +1.23% (+123,457원)
+
+            $basis
+            """.trimIndent(),
+        )
+        val e = m.discord
+        assertThat(e.author).isEqualTo(author)
+        assertThat(e.title).isEqualTo("🗓️ 김프 일일 요약 10/28")
+        assertThat(e.color).isEqualTo(0x95A5A6)
+        assertThat(e.footer).isEqualTo("대상 10-28 00:00 ~ 24:00 KST")
+        assertThat(e.rows).containsExactly(
+            listOf(cell("시가", "+2.10%"), cell("고가", "+2.80%"), cell("저가", "+1.90%")),
+            listOf(cell("종가", "+2.50%"), cell("평균", "+2.35%")),
+            listOf(cell("환율 전일 마감", "1,385.20원/USD"), cell("환율 현재", "1,390.50원/USD")),
+            listOf(cell("실계정 순수익률", "+1.23% (+123,457원)")),
+        )
+        // 행 [3,2,2,1] — 2번째 행(2칸) 뒤에 칸 2개 이상인 행이 와서 채움 1개, 3번째 행 뒤는 1칸 행이라 채움 없음 = 9개
+        val layout = e.toDiscordMessage().layout!!
+        assertThat(layout.fields).isEqualTo(
+            listOf(
+                gf("시가", "+2.10%", true),
+                gf("고가", "+2.80%", true),
+                gf("저가", "+1.90%", true),
+                gf("종가", "+2.50%", true),
+                gf("평균", "+2.35%", true),
+                GOLDEN_FILLER,
+                gf("환율 전일 마감", "1,385.20원/USD", true),
+                gf("환율 현재", "1,390.50원/USD", true),
+                gf("실계정 순수익률", "+1.23% (+123,457원)", false),
             ),
         )
+        assertThat(layout.author).isEqualTo(author)
+        assertThat(layout.timestamp).isEqualTo(at)
     }
 
     @Test
-    fun `급락 메일`() {
-        val mail = mail(swingDown)
-        assertThat(mail.eventKey).isEqualTo("owner-market.btc-bithumb-binance.swing-down.1793232000000")
-        assertThat(mail.subject).isEqualTo("[시장] 김프 급락 BTC BITHUMB/BINANCE -0.60%p (10분)")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                "현재 김프: +2.00% ($mailObserved)",
-                "최근 10분 분봉 종가 고점: +2.60%",
-                "변화: -0.60%p",
-                swingBasis,
-                "알림 시각: $mailAt",
-                runbook,
-            ),
+    fun `일일 요약 결측은 없음 표기다`() {
+        val m = msg(summary(d = null, f = null, p = SummaryPnl.Unavailable))
+
+        assertThat(m.mail.body()).isEqualTo(
+            """
+            2026-10-28 BTC 김프 요약입니다. (빗썸/바이낸스, 00:00 ~ 24:00 KST)
+
+            ■ 김프
+            전일 집계 없음
+
+            ■ 환율 (USD/KRW)
+            전일 마감  없음
+            현재       없음
+
+            ■ 실계정
+            순수익률  없음
+
+            $basis
+            """.trimIndent(),
+        )
+        assertThat(m.discord.rows).containsExactly(
+            listOf(cell("김프", "전일 집계 없음")),
+            listOf(cell("환율 전일 마감", "없음"), cell("환율 현재", "없음")),
+            listOf(cell("실계정 순수익률", "없음")),
         )
     }
 
     @Test
-    fun `상단 돌파 메일`() {
-        val mail = mail(upper)
-        assertThat(mail.eventKey).isEqualTo("owner-market.btc-bithumb-binance.threshold-upper.1793232000000")
-        assertThat(mail.subject).isEqualTo("[시장] 김프 상단 기준선 돌파 BTC BITHUMB/BINANCE +3.05% ≥ +3.00%")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                "현재 김프: +3.05% ($mailObserved)",
-                "상단 기준선: +3.00%",
-                hysteresis,
-                "알림 시각: $mailAt",
-                runbook,
-            ),
+    fun `일일 요약 NoPosition 은 포지션 없음 이고 KRW 가 quote 가 아니면 통화쌍을 붙인다`() {
+        val m = msg(summary(p = SummaryPnl.NoPosition(at), base = Currency.KRW, quote = Currency.USD))
+
+        assertThat(m.mail.body()).contains("■ 환율 (KRW/USD)").contains("전일 마감  1,385.20 USD")
+            .contains("순수익률  포지션 없음")
+        assertThat(m.discord.rows[2]).containsExactly(
+            cell("환율 전일 마감", "1,385.20 USD/KRW"),
+            cell("환율 현재", "1,390.50 USD/KRW"),
         )
+        assertThat(m.discord.rows[3]).containsExactly(cell("실계정 순수익률", "포지션 없음"))
     }
 
     @Test
-    fun `하단 이탈 메일`() {
-        val mail = mail(lower)
-        assertThat(mail.eventKey).isEqualTo("owner-market.btc-bithumb-binance.threshold-lower.1793232000000")
-        assertThat(mail.subject).isEqualTo("[시장] 김프 하단 기준선 이탈 BTC BITHUMB/BINANCE -1.04% ≤ -1.00%")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                "현재 김프: -1.04% ($mailObserved)",
-                "하단 기준선: -1.00%",
-                hysteresis,
-                "알림 시각: $mailAt",
-                runbook,
-            ),
-        )
+    fun `author 와 메일 거래소쌍은 알림 자신의 pair 에서 온다`() {
+        val other = MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)
+        val m = msg(swingUp.copy(pair = other))
+
+        assertThat(m.discord.author).isEqualTo("시장 · BTC 업비트/바이낸스")
+        assertThat(m.mail.body()).contains("(업비트/바이낸스)").doesNotContain("빗썸")
+        assertThat(m.eventKey).contains("btc-upbit-binance")
     }
 
     @Test
-    fun `24시간 신고가 메일`() {
-        val mail = mail(dayHigh)
-        assertThat(mail.eventKey).isEqualTo("owner-market.btc-bithumb-binance.extreme-24h-high.1793232000000")
-        assertThat(mail.subject).isEqualTo("[시장] 김프 24시간 신고가 BTC BITHUMB/BINANCE +2.70%")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                "현재 김프: +2.70% ($mailObserved)",
-                "직전 24시간 고점: +2.50% (차이 +0.20%p)",
-                "기준: 최소 0.1%p · 같은 창·방향은 2시간 동안 다시 알리지 않습니다.",
-                "알림 시각: $mailAt",
-                runbook,
-            ),
-        )
-    }
+    fun `시각은 KST 이고 UTC 원문이 없다`() {
+        val all = listOf(swingUp, swingDown, upper, lower, dayHigh, hourLow, summary()).map(::msg)
 
-    @Test
-    fun `1시간 신저가 메일`() {
-        val mail = mail(hourLow)
-        assertThat(mail.eventKey).isEqualTo("owner-market.btc-bithumb-binance.extreme-1h-low.1793232000000")
-        assertThat(mail.subject).isEqualTo("[시장] 김프 1시간 신저가 BTC BITHUMB/BINANCE +1.35%")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                "현재 김프: +1.35% ($mailObserved)",
-                "직전 1시간 저점: +1.50% (차이 -0.15%p)",
-                "기준: 최소 0.1%p · 같은 창·방향은 30분 동안 다시 알리지 않습니다.",
-                "알림 시각: $mailAt",
-                runbook,
-            ),
-        )
-    }
-
-    @Test
-    fun `요약 메일 - 전부 있음`() {
-        val mail = mail(full)
-        assertThat(mail.eventKey).isEqualTo("owner-market.btc-bithumb-binance.daily-summary.2026-10-28")
-        assertThat(mail.subject).isEqualTo("[시장] $summaryTitle")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                summaryDay,
-                summaryOhlc,
-                "환율(USD/KRW) 전일 마감: 1,385.20",
-                "환율(USD/KRW) 현재: 1,390.50 (2026-10-29 08:59:30 (2026-10-28T23:59:30Z))",
-                "실계정 순수익률: +1.23% (+123,457원) · 계산 2026-10-29 08:58:00 (2026-10-28T23:58:00Z)",
-                "요약 시각: $mailAt",
-                runbook,
-            ),
-        )
-    }
-
-    @Test
-    fun `요약 메일 - 일 집계 없음 fx 없음 Unavailable`() {
-        val mail = mail(empty)
-        assertThat(mail.subject).isEqualTo("[시장] $summaryTitle")
-        assertThat(mail.body).isEqualTo(
-            lines(
-                summaryDay,
-                "김프: 전일 집계 없음",
-                "환율(USD/KRW) 현재: 없음",
-                unavailable,
-                "요약 시각: $mailAt",
-                runbook,
-            ),
-        )
-    }
-
-    @Test
-    fun `요약 메일 - 포지션 없음`() {
-        assertThat(mail(noPosition).body).isEqualTo(
-            lines(
-                summaryDay,
-                summaryOhlc,
-                "환율(USD/KRW) 전일 마감: 1,385.20",
-                "환율(USD/KRW) 현재: 1,390.50 (2026-10-29 08:59:30 (2026-10-28T23:59:30Z))",
-                "실계정 순수익률: 포지션 없음 · 계산 2026-10-29 08:58:00 (2026-10-28T23:58:00Z)",
-                "요약 시각: $mailAt",
-                runbook,
-            ),
-        )
-    }
-
-    @Test
-    fun `일 집계의 fxRate 가 없으면 전일 마감 줄이 없음으로 대체된다`() {
-        val notice = summary(day.copy(fxRate = null), fx, SummaryPnl.Unavailable)
-        assertThat(mail(notice).body.lines()[2]).isEqualTo("환율(USD/KRW) 전일 마감: 없음")
-    }
-
-    private fun assertDiscord(notice: MarketNotice, title: String, color: Int, description: String) {
-        val message = discord(notice)
-        assertThat(message.title).isEqualTo(title)
-        assertThat(message.color).isEqualTo(color)
-        assertThat(message.description).isEqualTo(description)
-    }
-
-    @Test
-    fun `급등 Discord`() = assertDiscord(
-        swingUp,
-        "📈 김프 급등 BTC BITHUMB/BINANCE +0.60%p (10분)",
-        15158332,
-        lines(
-            "현재 김프: +2.60% ($discordObserved)",
-            "최근 10분 분봉 종가 저점: +2.00%",
-            "변화: +0.60%p",
-            swingBasis,
-            "알림 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `급락 Discord`() = assertDiscord(
-        swingDown,
-        "📉 김프 급락 BTC BITHUMB/BINANCE -0.60%p (10분)",
-        3447003,
-        lines(
-            "현재 김프: +2.00% ($discordObserved)",
-            "최근 10분 분봉 종가 고점: +2.60%",
-            "변화: -0.60%p",
-            swingBasis,
-            "알림 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `상단 돌파 Discord`() = assertDiscord(
-        upper,
-        "🔺 김프 상단 기준선 돌파 BTC BITHUMB/BINANCE +3.05% ≥ +3.00%",
-        15158332,
-        lines(
-            "현재 김프: +3.05% ($discordObserved)",
-            "상단 기준선: +3.00%",
-            hysteresis,
-            "알림 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `하단 이탈 Discord`() = assertDiscord(
-        lower,
-        "🔻 김프 하단 기준선 이탈 BTC BITHUMB/BINANCE -1.04% ≤ -1.00%",
-        3447003,
-        lines(
-            "현재 김프: -1.04% ($discordObserved)",
-            "하단 기준선: -1.00%",
-            hysteresis,
-            "알림 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `24시간 신고가 Discord`() = assertDiscord(
-        dayHigh,
-        "⬆️ 김프 24시간 신고가 BTC BITHUMB/BINANCE +2.70%",
-        15158332,
-        lines(
-            "현재 김프: +2.70% ($discordObserved)",
-            "직전 24시간 고점: +2.50% (차이 +0.20%p)",
-            "기준: 최소 0.1%p · 같은 창·방향은 2시간 동안 다시 알리지 않습니다.",
-            "알림 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `1시간 신저가 Discord`() = assertDiscord(
-        hourLow,
-        "⬇️ 김프 1시간 신저가 BTC BITHUMB/BINANCE +1.35%",
-        3447003,
-        lines(
-            "현재 김프: +1.35% ($discordObserved)",
-            "직전 1시간 저점: +1.50% (차이 -0.15%p)",
-            "기준: 최소 0.1%p · 같은 창·방향은 30분 동안 다시 알리지 않습니다.",
-            "알림 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `요약 Discord - 전부 있음`() = assertDiscord(
-        full,
-        "🗓️ $summaryTitle",
-        9807270,
-        lines(
-            summaryDay,
-            summaryOhlc,
-            "환율(USD/KRW) 전일 마감: 1,385.20",
-            "환율(USD/KRW) 현재: 1,390.50 (2026-10-29 08:59 KST)",
-            "실계정 순수익률: +1.23% (+123,457원) · 계산 2026-10-29 08:58 KST",
-            "요약 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `요약 Discord - 일 집계 없음 fx 없음 Unavailable`() = assertDiscord(
-        empty,
-        "🗓️ $summaryTitle",
-        9807270,
-        lines(
-            summaryDay,
-            "김프: 전일 집계 없음",
-            "환율(USD/KRW) 현재: 없음",
-            unavailable,
-            "요약 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `요약 Discord - 포지션 없음`() = assertDiscord(
-        noPosition,
-        "🗓️ $summaryTitle",
-        9807270,
-        lines(
-            summaryDay,
-            summaryOhlc,
-            "환율(USD/KRW) 전일 마감: 1,385.20",
-            "환율(USD/KRW) 현재: 1,390.50 (2026-10-29 08:59 KST)",
-            "실계정 순수익률: 포지션 없음 · 계산 2026-10-29 08:58 KST",
-            "요약 시각: $discordAt",
-            runbook,
-        ),
-    )
-
-    @Test
-    fun `색 상수 정수값`() {
-        assertThat(OwnerMarketAlertContent.UP_COLOR).isEqualTo(15158332)
-        assertThat(OwnerMarketAlertContent.DOWN_COLOR).isEqualTo(3447003)
-        assertThat(OwnerMarketAlertContent.SUMMARY_COLOR).isEqualTo(9807270)
-    }
-
-    @Test
-    fun `eventKey 는 4형식이고 허용 문자와 길이를 지킨다`() {
-        val regex = Regex("[A-Za-z0-9._-]{1,128}")
-        for (notice in all) assertThat(regex.matches(OwnerMarketAlertContent.eventKey(notice))).isTrue()
-        assertThat(OwnerMarketAlertContent.eventKey(dayHigh)).hasSize(63)
-        assertThat(OwnerMarketAlertContent.eventKey(full))
-            .isEqualTo("owner-market.btc-bithumb-binance.daily-summary.2026-10-28")
-    }
-
-    @Test
-    fun `금지 문자열이 어떤 결과에도 없다`() {
-        val forbidden = listOf("example.test", "/api/webhooks/", "@", "http", "Exception")
-        for (notice in all) {
-            val mail = mail(notice)
-            val discord = discord(notice)
-            val texts = listOf(mail.eventKey, mail.subject, mail.body, discord.title, discord.description)
-            for (text in texts) {
-                for (word in forbidden) assertThat(text).doesNotContain(word)
-            }
+        all.forEach {
+            assertThat(it.mail.body()).doesNotContain("UTC").doesNotContain("Z)").doesNotContain("T00")
+            assertThat(it.mail.body()).endsWith(basis)
         }
-    }
-
-    @Test
-    fun `급변 기준선 신고가 결과에는 원 금액이 없다`() {
-        for (notice in listOf(swingUp, swingDown, upper, lower, dayHigh, hourLow)) {
-            val mail = mail(notice)
-            val discord = discord(notice)
-            for (text in listOf(mail.subject, mail.body, discord.title, discord.description)) {
-                assertThat(text).doesNotContain("원")
-            }
-        }
-    }
-
-    @Test
-    fun `d 표기는 OwnerOpsAlertContent threshold 와 같다`() {
-        assertThat(OwnerOpsAlertContent.threshold(Duration.ofMinutes(30))).isEqualTo("30분")
-        assertThat(OwnerOpsAlertContent.threshold(Duration.ofHours(2))).isEqualTo("2시간")
-        assertThat(mail(swingUp).body).contains("같은 방향은 ${OwnerOpsAlertContent.threshold(Duration.ofMinutes(30))} 동안")
-        assertThat(mail(dayHigh).body).contains("${OwnerOpsAlertContent.threshold(Duration.ofHours(2))} 동안")
     }
 }

@@ -98,7 +98,7 @@ class OwnerAlertDispatcher(
         // DISCORD 행의 route·color 는 AccountPnlMail 생성 시 검증된다
         val route = checkNotNull(mail.discordRoute) { "discordRoute is missing on a DISCORD row." }
         val color = checkNotNull(mail.discordColor) { "discordColor is missing on a DISCORD row." }
-        sender.send(route, DiscordMessage(mail.subject, mail.body, color))
+        sender.send(route, DiscordMessage(mail.subject, mail.body, color, mail.discordLayout))
     }
 
     /**

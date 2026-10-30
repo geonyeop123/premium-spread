@@ -189,15 +189,15 @@ class OwnerMarketAlertIntegrationTest : BatchIntegrationTestBase() {
         val mail = mailSender.sent.single()
         assertThat(mail.eventKey).isEqualTo(eventKey)
         assertThat(mail.body)
-            .contains("환율(USD/KRW)")
-            .contains("실계정 순수익률: +")
+            .contains("■ 환율 (USD/KRW)")
+            .contains("순수익률  +")
             .contains("+2.20%")
             .contains("1,390.25")
             .doesNotContain("9.99")
             .doesNotContain("1,999.99")
         assertThat(discordSender.sent.map { it.first })
             .containsExactly(DiscordRoute(DiscordTarget.MARKET, DiscordPush.SILENT))
-        assertThat(discordSender.sent.single().second.description).contains("환율(USD/KRW)").doesNotContain("9.99")
+        assertThat(discordSender.sent.single().second.layout!!.fields.map { it.value }).noneMatch { it.contains("9.99") }
         assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT summary_date FROM owner_market_alert_state WHERE signal_key = ?",

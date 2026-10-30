@@ -2,12 +2,14 @@ package io.premiumspread.infrastructure.batch.notification
 
 import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
-import io.premiumspread.domain.accountpnl.AccountPnlMailContent
+import io.premiumspread.domain.accountpnl.AccountPnlAlertContent
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
 import io.premiumspread.domain.accountpnl.OutageNotice
+import io.premiumspread.domain.accountpnl.OwnerAlertRows
 import io.premiumspread.domain.accountpnl.PriceLevel
+import io.premiumspread.domain.owneralert.OwnerAlertRoute
 import io.premiumspread.email.JavaMailEmailSender
 import jakarta.mail.internet.MimeMessage
 import org.assertj.core.api.Assertions.assertThat
@@ -33,8 +35,11 @@ class AccountPnlEmailSenderAdapterTest {
     @Test
     fun `실제 eventKey 로 만든 중단·복구 메일이 예외 없이 SMTP 직전까지 간다`() {
         val mails = listOf(
-            AccountPnlMailContent.outage(OutageNotice.Outage(AccountReadFailureCategory.NETWORK, null), now, zone),
-            AccountPnlMailContent.recovered(now, zone),
+            OwnerAlertRows.expand(
+                AccountPnlAlertContent.outage(OutageNotice.Outage(AccountReadFailureCategory.NETWORK, null), now, zone),
+                OwnerAlertRoute(email = true, discord = null),
+            ).single(),
+            OwnerAlertRows.expand(AccountPnlAlertContent.recovered(now, zone), OwnerAlertRoute(email = true, discord = null)).single(),
         )
 
         mails.forEach(adapter::send)
@@ -50,7 +55,7 @@ class AccountPnlEmailSenderAdapterTest {
     @Test
     fun `실제 eventKey 로 만든 수익 메일이 예외 없이 SMTP 직전까지 간다`() {
         val pnl = AccountNetPnl.calculate(position(), BigDecimal("1400"), now.minusSeconds(60), now)
-        val mail = AccountPnlMailContent.profit(pnl, zone)
+        val mail = OwnerAlertRows.expand(AccountPnlAlertContent.profit(pnl, zone), OwnerAlertRoute(email = true, discord = null)).single()
 
         adapter.send(mail)
 

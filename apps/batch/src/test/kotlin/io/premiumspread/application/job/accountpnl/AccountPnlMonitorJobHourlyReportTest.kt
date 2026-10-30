@@ -49,7 +49,7 @@ class AccountPnlMonitorJobHourlyReportTest {
         job().run()
 
         assertThat(hourlyKeys()).containsExactly("account-pnl-hourly-1792465200000")
-        assertThat(sender.sent.single().subject).isEqualTo("[김프 알림] 정시 보고 12:00 · 순수익률 +0.50% · +5,000원")
+        assertThat(sender.sent.single().subject).isEqualTo("[실계정] 정시 보고 12:00 +0.50% +5,000원")
     }
 
     @Test

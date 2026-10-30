@@ -146,6 +146,8 @@ OwnerAlertDeliveryJob (60초, 위와 공용) → 메일·Discord(market 대상)
 
 김프 급변·기준선 돌파·신고가/신저가·일일 요약 4종을 판정한다. 근거 데이터가 부족하면 그 판정은 쉬고 상태를 바꾸지 않는다. 실계정 순수익률은 PnL 모니터가 매 회차 `account_pnl_latest`(V22, 단일 행)에 남긴 값을 요약이 읽는다. 운영 절차는 [`docs/runbooks/owner-market-alert.md`](../../docs/runbooks/owner-market-alert.md)를 따른다.
 
+알림 문구(owner 21종과 회원 김프 메일 1종)는 `domain.alertmessage` 템플릿 계층(`MailDocument`·`EmbedDocument`)이 만들고, Discord 는 embed author·fields·footer·timestamp 로 보낸다. 칸 배치는 outbox `account_pnl_mail.discord_layout`(V23)에 JSON 으로 저장하며 `NULL`·손상 행은 제목·설명 embed 로 보낸다. 문구 정본은 [message-spec](../../docs/work/alert-message-template/message-spec.md) 이다.
+
 ### 알림 구독과 전달
 
 ```text

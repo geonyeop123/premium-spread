@@ -84,7 +84,7 @@ class AccountPnlMonitorJobTest {
         assertThat(store.rows).hasSize(1)
         assertThat(store.rows.single().status).isEqualTo(Status.SENT)
         assertThat(sender.sent).hasSize(1)
-        assertThat(sender.sent.single().subject).startsWith("[김프 알림] 순수익률 +1.96%")
+        assertThat(sender.sent.single().subject).startsWith("[실계정] 수익 알림 +1.96%")
         assertThat(store.state.alert).isEqualTo(PnlAlertState(true, store.state.alert.positionFingerprint, t0))
         assertThat(store.state.outage.lastSuccessAt).isEqualTo(t0)
         assertThat(store.state.version).isEqualTo(1)
@@ -195,7 +195,7 @@ class AccountPnlMonitorJobTest {
 
         val completedAt = t0.plusSeconds(3)
         assertThat(store.rows.single().mail.eventKey).isEqualTo("account-pnl-profit-${completedAt.toEpochMilli()}")
-        assertThat(store.rows.single().mail.body).contains("계산 시각: 2026-10-20 12:00:03")
+        assertThat(store.rows.single().mail.body).contains("기준 시각 2026-10-20 12:00 KST")
     }
 
     @Test
@@ -244,7 +244,7 @@ class AccountPnlMonitorJobTest {
         assertThat(job.run()).isEqualTo(JobResult.Success)
 
         assertProfitMailSent()
-        assertThat(sender.sent.single().body).contains("환율 관측: 2026-10-17")
+        assertThat(sender.sent.single().body).contains("환율 1,400.00원/USD")
     }
 
     @Test
@@ -341,7 +341,7 @@ class AccountPnlMonitorJobTest {
 
         assertThat(job.run()).isEqualTo(JobResult.Success)
 
-        assertThat(sender.sent.map { it.subject }).containsExactly("[김프 알림] 모니터링 복구")
+        assertThat(sender.sent.map { it.subject }).containsExactly("[실계정] 모니터링 복구")
         assertThat(store.state.alert).isEqualTo(PnlAlertState.INITIAL)
         assertThat(store.state.outage).isEqualTo(OutageState(t0, t0.minus(Duration.ofHours(1)), false))
     }
@@ -396,12 +396,12 @@ class AccountPnlMonitorJobTest {
             OutageState(t0.minus(Duration.ofMinutes(10)), t0.minus(Duration.ofHours(1)), true),
             1,
         )
-        sender.failSubjects = { it.startsWith("[김프 알림] 순수익률") }
+        sender.failSubjects = { it.startsWith("[실계정] 수익 알림") }
 
         assertThat(job.run()).isEqualTo(JobResult.Success)
 
         assertThat(store.rows.map { it.status }).containsExactly(Status.PENDING, Status.SENT)
-        assertThat(sender.sent.map { it.subject }).containsExactly("[김프 알림] 모니터링 복구")
+        assertThat(sender.sent.map { it.subject }).containsExactly("[실계정] 모니터링 복구")
     }
 
     @Test
@@ -540,7 +540,7 @@ class AccountPnlMonitorJobTest {
         assertThat(restarted.run()).isEqualTo(JobResult.Success)
 
         assertOutageMail("네트워크")
-        assertThat(store.rows.single().mail.body).contains("마지막 성공: 2026-10-20 09:00:00")
+        assertThat(store.rows.single().mail.body).contains("마지막 성공  2026-10-20 09:00 KST")
         assertThat(sender.sent).hasSize(1)
         assertThat(store.state.outage.outageNotified).isTrue()
     }
@@ -620,15 +620,15 @@ class AccountPnlMonitorJobTest {
     }
 
     private fun assertNoProfitMail() {
-        assertThat(store.rows.map { it.mail.subject }).noneMatch { it.startsWith("[김프 알림] 순수익률") }
+        assertThat(store.rows.map { it.mail.subject }).noneMatch { it.startsWith("[실계정] 수익 알림") }
     }
 
     private fun assertProfitMailSent() {
-        assertThat(sender.sent.map { it.subject }).anyMatch { it.startsWith("[김프 알림] 순수익률") }
+        assertThat(sender.sent.map { it.subject }).anyMatch { it.startsWith("[실계정] 수익 알림") }
     }
 
     private fun assertOutageMail(label: String) {
-        val outage = store.rows.map { it.mail }.filter { it.subject.startsWith("[김프 알림] 모니터링 중단") }
+        val outage = store.rows.map { it.mail }.filter { it.subject.startsWith("[실계정] 모니터링 중단") }
         assertThat(outage).hasSize(1)
         assertThat(outage.single().subject).contains(label)
     }

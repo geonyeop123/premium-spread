@@ -5,26 +5,32 @@ import io.premiumspread.domain.notification.ActiveNotificationSubscription
 import io.premiumspread.domain.notification.ActiveNotificationSubscriptionPort
 import io.premiumspread.domain.notification.NewNotificationDelivery
 import io.premiumspread.domain.notification.NotificationEventKey
-import io.premiumspread.domain.notification.ThresholdDirection
+import io.premiumspread.domain.notification.PremiumThresholdMailContent
 import io.premiumspread.domain.premium.PremiumSnapshot
 import io.premiumspread.domain.premium.PremiumThresholdEvaluator
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 
-@Service
+/**
+ * Service 스테레오타입 없이 Configuration 의 `@Bean` 으로 등록된다. 클래스 수준 `@Transactional` 은 Kotlin spring allopen 이
+ * 클래스를 open 으로 만들어 CGLIB 프록시가 가능하게 한다(`evaluate` 가 유일한 public 진입점이다).
+ */
+@Transactional
+// 실제 등록 조건은 NotificationDeliveryConfiguration 의 @Bean 이 소유한다.
+// 이 애너테이션은 클래스를 직접 import 하는 경로(NotificationDisabledContextTest 등)용이다.
 @ConditionalOnProperty(prefix = "notification.email", name = ["enabled"], havingValue = "true")
 class PremiumThresholdDeliveryService(
     private val subscriptions: ActiveNotificationSubscriptionPort,
     private val transactions: NotificationDeliveryTransactionService,
     private val properties: NotificationDeliveryProperties,
     private val clock: Clock,
+    private val zone: ZoneId = ZoneId.of("Asia/Seoul"),
 ) : PremiumThresholdEvaluator {
     /** 활성 구독 조회와 unique event insert를 하나의 명시적 DB transaction에서 처리한다. */
-    @Transactional
     override fun evaluate(snapshot: PremiumSnapshot) {
         val now = clock.instant()
         val windowStart = cooldownWindowStart(snapshot.observedAt, properties.cooldownWindow.toMillis())
@@ -48,25 +54,7 @@ class PremiumThresholdDeliveryService(
         now: Instant,
     ): NewNotificationDelivery {
         val deliveryId = UUID.randomUUID().toString()
-        val directionText = when (direction) {
-            ThresholdDirection.ABOVE -> "${threshold.stripTrailingZeros().toPlainString()}% 이상 (ABOVE)"
-            ThresholdDirection.BELOW -> "${threshold.stripTrailingZeros().toPlainString()}% 이하 (BELOW)"
-        }
-        val subject = "[premium-spread] ${symbol.uppercase()} 프리미엄 ${snapshot.premiumRate}% 도달"
-        val payload = """
-            안녕하세요, ${memberNickname}님.
-
-            설정하신 알림 조건이 충족되었습니다.
-
-            심볼: ${symbol.uppercase()}
-            거래소 페어: ${pair.canonicalKey}
-            조건: $directionText
-            현재 프리미엄: ${snapshot.premiumRate}%
-            관측 시각: ${snapshot.observedAt}
-
-            --
-            premium-spread
-        """.trimIndent()
+        val mail = PremiumThresholdMailContent.render(this, snapshot, zone)
         return NewNotificationDelivery(
             deliveryId = deliveryId,
             subscriptionId = id,
@@ -80,8 +68,8 @@ class PremiumThresholdDeliveryService(
                 cooldownWindowStart = windowStart,
             ),
             recipientEmail = memberEmail,
-            subject = subject,
-            payload = payload,
+            subject = mail.subject,
+            payload = mail.body(),
             nextAttemptAt = now,
             createdAt = now,
         )

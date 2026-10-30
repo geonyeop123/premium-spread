@@ -9,7 +9,7 @@ data class SwingDecision(val next: SwingState, val alert: AccountAlert.NetPercen
 
 /** 순수익률 정시 기준선 급변 판정 (design §3.3 S1~S6). */
 object NetPercentSwingPolicy {
-    /** zone 정시 버킷 시작 — AccountPnlMailContent.hourly 와 같은 식. 범위 [bucketStart, +1h). */
+    /** zone 정시 버킷 시작 — AccountPnlAlertContent.hourly 와 같은 식. 범위 [bucketStart, +1h). */
     fun bucketStart(at: Instant, zone: ZoneId): Instant = at.atZone(zone).truncatedTo(ChronoUnit.HOURS).toInstant()
 
     /** [pnl] == null 은 포지션 없음. 비교는 compareTo, 경계 포함. */
