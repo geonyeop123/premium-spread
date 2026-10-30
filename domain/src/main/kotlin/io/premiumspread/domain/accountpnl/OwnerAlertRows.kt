@@ -23,6 +23,7 @@ object OwnerAlertRows {
                         channel = OwnerAlertChannel.DISCORD,
                         discordRoute = target,
                         discordColor = message.color,
+                        discordLayout = message.layout,
                     ),
                 )
             }

@@ -11,6 +11,7 @@ import io.premiumspread.domain.accountpnl.AccountPnlFormat.plain
 import io.premiumspread.domain.accountpnl.AccountPnlFormat.plainKrw
 import io.premiumspread.domain.accountpnl.AccountPnlFormat.signedUsdt
 import io.premiumspread.domain.accountpnl.AccountPnlFormat.time
+import io.premiumspread.domain.owneralert.DiscordLayout
 import io.premiumspread.domain.owneralert.DiscordRoute
 import io.premiumspread.domain.owneralert.OwnerAlertChannel
 import java.math.BigDecimal
@@ -31,11 +32,14 @@ data class AccountPnlMail(
     val channel: OwnerAlertChannel = OwnerAlertChannel.EMAIL,
     val discordRoute: DiscordRoute? = null,
     val discordColor: Int? = null,
+    /** DISCORD 행의 embed 레이아웃. null = 제목·설명만(V23 이전 행 포함). */
+    val discordLayout: DiscordLayout? = null,
 ) {
     init {
         val discord = channel == OwnerAlertChannel.DISCORD
         require(discord == (discordRoute != null)) { "discordRoute must be set only for DISCORD rows." }
         require(discord == (discordColor != null)) { "discordColor must be set only for DISCORD rows." }
+        require(discord || discordLayout == null) { "discordLayout must be set only for DISCORD rows." }
     }
 }
 

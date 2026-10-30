@@ -176,3 +176,9 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - 특성화 PASS: `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.PremiumThresholdDeliveryServiceMailTest' --offline --no-daemon` → 2건 통과(main 무변경).
 - 변이 확인: 기대 subject 의 `6%` → `7%` 로 바꾸면 같은 명령이 `2 tests completed, 1 failed`(`ABOVE 구독의 메일 제목과 본문 전문` assertion 실패, BUILD FAILED). 되돌린 뒤 PASS.
 - 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 2 — Discord 레이아웃 domain 타입 (AC1, 2026-10-30)
+
+- RED(stub: `DiscordField`·`DiscordLayout` 검증 없음): `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.DiscordLayoutTest' --offline --no-daemon` → `15 tests completed, 8 failed`(assertion 실패, BUILD FAILED). 나머지 7건(합계 6000/6001·`AccountPnlMail` 불변식 등)은 stub 단계에서 이미 구현돼 통과.
+- GREEN: `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` → BUILD SUCCESSFUL (기존 golden·`DiscordMessageTest`·`OwnerAlertRowsTest` 무수정).
+- 커밋 전 `./gradlew test architectureTest --offline --no-daemon` → BUILD SUCCESSFUL.
