@@ -264,6 +264,7 @@ R4 check-documentation exit 0 · R5 deploy-contract-test exit 0 · R6~R8 AC2 실
 | 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
 |---|---|---|---|---|
 | 범위 제외 — `apps/api` 전용 MySQL 컨테이너 2개(`TradePreparationConcurrencyIntegrationTest`·`TradePreparationActiveTrackingContractTest`) | 손대지 않는다 | 테스트 MySQL 내구성 튜닝(tmpfs·fsync 끄기)만 적용한다. 전용 컨테이너 설계와 `ddl-auto=validate` 는 그대로 둔다 | AC2(⑩ ≤ 7m) 측정에서 최장 경로가 `:apps:api:integrationTest` 였고, 같은 튜닝을 api·batch 공용 컨테이너에 넣으면서 이 두 파일에도 넣었다. **승인 전에 먼저 고쳤다(커밋 2447851) — 순서 규칙 위반을 여기 기록한다.** ⑨ spec-reviewer BLOCKER 1 로 드러남 | 사용자 승인 2026-10-30 (orchestrator ⑨ AskUserQuestion) |
+| AC3 | 8개 job 이 모두 success 이고 `min(job.startedAt)`~`max(job.completedAt)` ≤ 6m | 8개 job 이 모두 success 이고, `7. Docker image build` 를 뺀 7개 job 의 `min(startedAt)`~`max(completedAt)` ≤ 6m. Docker build 시간은 기록만 한다 | run 40997176643 에서 8 job success, 전체 390s 중 최장이 개선 범위 밖 `7. Docker image build`(390s, 기준선 run 172~231s 로 편차 큼). 테스트·검사 job 최장은 219s. Docker build 단축은 후속 이슈로 분리 | 사용자 승인 2026-10-30 (orchestrator ⑪ AskUserQuestion) |
 
 ## 최종 판정
 
