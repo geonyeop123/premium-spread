@@ -1,5 +1,6 @@
 package io.premiumspread.infrastructure.common.support
 
+import io.premiumspread.testcontainers.applyTestDurabilityTuning
 import org.testcontainers.containers.MySQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
@@ -21,14 +22,8 @@ object SharedMySqlContainer {
             .withDatabaseName(BOOTSTRAP_DATABASE)
             .withUsername(USERNAME)
             .withPassword(PASSWORD)
-            // 테스트 전용: DDL/commit fsync 비용을 줄인다. 내구성은 필요 없다.
-            .withTmpFs(mapOf("/var/lib/mysql" to "rw"))
-            .withCommand(
-                "--innodb-flush-log-at-trx-commit=0",
-                "--sync-binlog=0",
-                "--innodb-doublewrite=0",
-                "--skip-log-bin",
-            )
+            // 테스트 전용: DDL/commit fsync 비용을 줄인다. 플래그 목록은 api·batch 와 같은 MySqlTestTuning 하나다.
+            .apply { applyTestDurabilityTuning() }
 
     private val allocated: MutableSet<String> = mutableSetOf(BOOTSTRAP_DATABASE)
 

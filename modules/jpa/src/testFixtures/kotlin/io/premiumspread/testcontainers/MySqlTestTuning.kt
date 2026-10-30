@@ -5,6 +5,8 @@ import org.testcontainers.containers.MySQLContainer
 /**
  * 테스트 전용 MySQL 컨테이너 내구성 완화. 테스트 DB 는 내구성이 필요 없으므로 DDL(TRUNCATE)·commit 의
  * fsync 비용을 줄인다. data directory 를 tmpfs 에 두고 redo log·binlog flush 와 doublewrite 를 끈다.
+ * binlog 자체는 끄지 않는다(`--skip-log-bin` 미사용) — MySQL 8 기본값(binlog 활성)과 같은 서버 상태를 유지한다.
+ * api·batch(`MySqlTestContainersConfig`)와 infrastructure:common(`SharedMySqlContainer`)이 이 목록 하나를 쓴다.
  */
 object MySqlTestTuning {
     val TMPFS: Map<String, String> = mapOf("/var/lib/mysql" to "rw")
@@ -13,7 +15,6 @@ object MySqlTestTuning {
         "--innodb-flush-log-at-trx-commit=0",
         "--sync-binlog=0",
         "--innodb-doublewrite=0",
-        "--skip-log-bin",
     )
 }
 
