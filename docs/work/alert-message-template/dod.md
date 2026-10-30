@@ -276,3 +276,18 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - `JdbcAccountPnlAlertStore.readLayout`: layout 없는 조립 실패는 shape 분류 없이 layout 유지, layout 포함 조립만 실패하면 `reason=shape`. `OwnerAlertDiscordLayoutStoreIntegrationTest` e3(혼합 배치)·g(65,535 바이트 저장) 추가 → `./gradlew :infrastructure:common:integrationTest --tests '*OwnerAlertDiscordLayoutStoreIntegrationTest'` BUILD SUCCESSFUL(9개).
 - golden 보강: 4개 Content 테스트 시나리오에 `layout.fields` 전체·author·timestamp `isEqualTo`(채움 칸 포함, 기대값은 message-spec·design §3.3 에서 손으로 작성).
 - runbook `account-pnl-alert.md:500,506` 새 문구 반영, `bash docs/check-documentation.sh` → passed.
+
+### Task 16 — 최종 gate (QA ⑩, 2026-10-30, HEAD 9b4fedd, base 3d179e7)
+
+- `./gradlew cleanTest test architectureTest --offline --no-daemon` → exit 0 (2m24s), unit 1,371건/208 suite, skipped 0, failures 0, errors 0 (기준선 1,338). `architectureTest` 는 UP-TO-DATE 라 `./gradlew architectureTest --rerun --offline --no-daemon` 로 강제 재실행 → exit 0, 8 suite 35건, failures 0.
+- `./gradlew :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest --offline --no-daemon` → exit 0 (13m27s). verifyMigrations 실행·통과, common 통합 93건/18 suite, skipped 0, failures 0, errors 0.
+- `./gradlew :apps:batch:integrationTest --offline --no-daemon` → exit 0 (3m36s), 115건/42 suite, skipped 0, failures 0, errors 0.
+- `./gradlew :apps:api:integrationTest --offline --no-daemon` (R7) → exit 0 (2m40s), 174건/56 suite, skipped 0, failures 0, errors 0. 통합 3종 합계 382건(기준선 367).
+- `./gradlew harnessCheck harnessCheckTest --offline --no-daemon` (R9) → exit 0, 모든 케이스 통과.
+- `bash docs/check-documentation.sh` → exit 0, "documentation check passed (20 files, 15 required paths)".
+- `./gradlew jacocoTestReport jacocoTestCoverageVerification --offline --no-daemon` (R10) → exit 0, overall 70%·Domain 85%·Application 80% 게이트 통과. 로컬 raw line coverage: overall 80.06%, Domain 91.74%, Application 96.74% (exclusion 적용 전 원시값; 최종 증거는 CI artifact).
+- R4 `git diff --name-only --diff-filter=MDR 3d179e7 -- infrastructure/common/src/main/resources/db/migration` → 출력 없음. AC9(e) `grep -nE '@Value|@Service' …PremiumThresholdDeliveryService.kt` → 출력 없음(rc=1).
+- R3 `git diff --name-status 3d179e7 -- '*/src/test/*' '*/src/integrationTest/*'` → D 3건(허용 삭제), M 은 허용 목록 11개 파일 + `apps/batch/src/integrationTest/resources/batch-schema.sql`(fixture 스키마에 discord_layout 열·CHECK 추가). 후자는 plan Task 5 가 지시한 fixture 갱신이므로 오케스트레이터가 R3 PASS 로 판정. 나머지 A. `OwnerMarketSignalJobTest`·`NotificationDisabledContextTest` diff 없음.
+- R12 `git diff 3d179e7 -- domain/src/main` 의 eventKey 식: `account-pnl-$kind-${at.toEpochMilli()}` 새 파일로 이동·동일 형태, `owner-ops.`·`owner-market.` 식 변경 줄 없음.
+- 경계면: V23 DDL(`discord_layout TEXT NULL` + CHECK) ↔ `OwnerAlertOutboxRows`(INSERT 단일 지점, 3 store 공유)·`JdbcAccountPnlAlertStore` claim ↔ `batch-schema.sql` 일치. `DiscordLayoutJson`(v·author·fields·footer·timestamp) ↔ `DiscordWebhookSenderAdapter.embed` 일치(layout 있으면 description 없음·fields 항상, 없으면 title·description·color). runbook `account-pnl-alert.md:546-550` 배포 순서(API 먼저) ↔ `apps/api` flyway enabled / `apps/batch` flyway disabled 일치. message-spec `###` 22절 ↔ `AlertMessageSpecConformanceTest` dynamic test 22건(failures 0, skipped 0).
+- 판정: AC1~AC16 PASS, R1·R2·R3·R4~R10·R12·R13 PASS, R14 PASS(Task 7 증거 인용). AC17(T3 사람 사후 검토)·AC18(T4 owner 실 webhook·메일 확인)·R11(CI ktlint·detekt) AWAITING_HUMAN. Docker 사용 통합 테스트 전부 실행됨, ENV_ISSUE 없음.
