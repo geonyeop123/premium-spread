@@ -140,13 +140,27 @@ class DiscordWebhookSenderAdapter(
         }.getOrNull()
 
     private fun payload(push: DiscordPush, message: DiscordMessage): String {
-        val embed = linkedMapOf("title" to message.title, "description" to message.description, "color" to message.color)
+        val embed = embed(message)
         val root = linkedMapOf<String, Any>()
         if (push == DiscordPush.HERE) root["content"] = "@here"
         root["embeds"] = listOf(embed)
         root["allowed_mentions"] = mapOf("parse" to if (push == DiscordPush.HERE) listOf("everyone") else emptyList())
         if (push == DiscordPush.SILENT) root["flags"] = SUPPRESS_NOTIFICATIONS
         return MAPPER.writeValueAsString(root)
+    }
+
+    /** layout 이 없으면 title·description·color, 있으면 author·title·color·fields·footer·timestamp(description 없음, design §4). */
+    private fun embed(message: DiscordMessage): Map<String, Any> {
+        val layout = message.layout
+            ?: return linkedMapOf("title" to message.title, "description" to message.description, "color" to message.color)
+        val embed = linkedMapOf<String, Any>()
+        layout.author?.let { embed["author"] = mapOf("name" to it) }
+        embed["title"] = message.title
+        embed["color"] = message.color
+        embed["fields"] = layout.fields.map { linkedMapOf("name" to it.name, "value" to it.value, "inline" to it.inline) }
+        layout.footer?.let { embed["footer"] = mapOf("text" to it) }
+        layout.timestamp?.let { embed["timestamp"] = it.toString() }
+        return embed
     }
 
     private class Response(val status: Int, val retryAfterHeader: String?, val body: String)
