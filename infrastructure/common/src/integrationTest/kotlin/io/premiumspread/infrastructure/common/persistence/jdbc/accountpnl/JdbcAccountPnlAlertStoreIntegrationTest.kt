@@ -19,7 +19,6 @@ import io.premiumspread.domain.owneralert.OwnerAlertChannel
 import io.premiumspread.infrastructure.common.migration.V19OwnerAlertChannelMigrationIntegrationTest
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -27,6 +26,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
+import io.premiumspread.infrastructure.common.support.LatestSchemaFixture
 import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
 import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
@@ -50,7 +50,7 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        migrateLatest()
+        latestSchema.reset()
         val dataSource = DriverManagerDataSource(jdbcUrl, mysql.username, mysql.password)
         val transactionManager = DataSourceTransactionManager(dataSource)
         jdbcTemplate = JdbcTemplate(dataSource)
@@ -604,16 +604,6 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
         ),
     )
 
-    private fun migrateLatest() {
-        val flyway = Flyway.configure()
-            .dataSource(jdbcUrl, mysql.username, mysql.password)
-            .locations("classpath:db/migration")
-            .cleanDisabled(false)
-            .load()
-        flyway.clean()
-        flyway.migrate()
-    }
-
     private val jdbcUrl: String
         get() = mysql.jdbcUrl + if (mysql.jdbcUrl.contains('?')) {
             "&sslMode=DISABLED&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
@@ -654,6 +644,7 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
         )
 
         val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_account_pnl")
+        private val latestSchema = LatestSchemaFixture(mysql)
     }
 
     private class RollbackMarker : RuntimeException()

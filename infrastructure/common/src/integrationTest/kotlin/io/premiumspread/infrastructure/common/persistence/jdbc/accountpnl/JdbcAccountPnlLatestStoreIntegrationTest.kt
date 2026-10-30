@@ -2,12 +2,12 @@ package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 
 import io.premiumspread.domain.accountpnl.AccountPnlLatest
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import io.premiumspread.infrastructure.common.support.LatestSchemaFixture
 import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
 import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
@@ -24,13 +24,7 @@ class JdbcAccountPnlLatestStoreIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        val flyway = Flyway.configure()
-            .dataSource(jdbcUrl, mysql.username, mysql.password)
-            .locations("classpath:db/migration")
-            .cleanDisabled(false)
-            .load()
-        flyway.clean()
-        flyway.migrate()
+        latestSchema.reset()
         jdbcTemplate = JdbcTemplate(DriverManagerDataSource(jdbcUrl, mysql.username, mysql.password))
         store = JdbcAccountPnlLatestStore(jdbcTemplate, Clock.fixed(NOW, ZoneOffset.UTC))
     }
@@ -75,5 +69,6 @@ class JdbcAccountPnlLatestStoreIntegrationTest {
         private val CALCULATED = Instant.parse("2026-10-27T23:59:00Z")
 
         val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_account_latest")
+        private val latestSchema = LatestSchemaFixture(mysql)
     }
 }
