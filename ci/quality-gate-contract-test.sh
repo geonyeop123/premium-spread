@@ -260,7 +260,7 @@ grep -q 'tasks.register("resolveVerificationArtifacts")' "${root_dir}/build-logi
   fail "build-logic verification artifact resolver task is missing"
 # Gradle job 은 각자 --dependency-verification strict 로 의존성을 검증하고(아래 루프), PR 은 Gradle cache 를
 # 읽기만 하므로 compile job 을 기다리지 않아도 미검증 artifact 를 쓰거나 cache 를 오염시키지 않는다.
-[[ "$(grep -Ec '^    needs:' "${quality_workflow}" || true)" -eq 0 ]] ||
+[[ "$(grep -Ec '^[[:space:]]*needs:' "${quality_workflow}" || true)" -eq 0 ]] ||
   fail "Quality Gate jobs must start in parallel without needs"
 setup_gradle_line='      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1'
 cache_read_only_line="          cache-read-only: \${{ github.ref != 'refs/heads/dev' }}"
