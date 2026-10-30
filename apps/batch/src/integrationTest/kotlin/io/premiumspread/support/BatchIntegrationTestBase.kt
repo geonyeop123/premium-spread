@@ -55,6 +55,8 @@ abstract class BatchIntegrationTestBase {
         }
 
         // 공용 MockWebServer 초기화: 대기 응답 큐와 요청 기록
+        // 이전 dispatcher 를 닫아 take() 대기 중인 요청 스레드를 풀어 준 뒤 새 큐로 바꾼다.
+        sharedExchangeRateMockServer.dispatcher.shutdown()
         sharedExchangeRateMockServer.dispatcher = QueueDispatcher()
         while (sharedExchangeRateMockServer.takeRequest(0, TimeUnit.MILLISECONDS) != null) {
             // drain
