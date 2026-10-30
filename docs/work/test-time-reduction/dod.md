@@ -130,25 +130,92 @@ unit 클래스 tests: BithumbPrivateAccountAdapterTest=33 · ExchangeRateClientT
 비고: 측정 후반에 Task 5·6 subagent의 경량 작업(bash 계약 테스트·harnessCheck)이 겹쳤다.
 ```
 
+> 측정: 2026-10-30, HEAD c3693c6 콜드 스냅샷(git archive). 1·2회차(92a147d·2447851)는 batch 실패로 판정에 쓰지 않는다 —
+> 원인과 수정은 커밋 6d52c39(Redis reuse 공유)·c3693c6(Redis JVM 싱글턴)에 있다.
+
 ### AC1
+
+```
+[PASS] time ./gradlew :infrastructure:common:integrationTest --rerun --offline --no-daemon @ c3693c6
+exit 0, real 61s (≤ 240s). 기준선 889s.
+```
 
 ### AC2
 
+```
+[PASS] time ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon @ c3693c6 (콜드)
+exit 0, real 312s (≤ 420s). 기준선 B_wall 1516s.
+```
+
 ### AC3
+
+```
+[AWAITING] PR Quality Gate run 이 생긴 뒤 기록한다.
+```
 
 ### AC4
 
+```
+[PASS] 결과 XML 집계 @ c3693c6 (AC2 실행)
+unit   tests=1303 skipped=0 failures=0 errors=0  (= B_unit 1303)
+common tests=84   skipped=0 failures=0 errors=0  (= B_common 81 + 3)
+api    tests=174  skipped=0 failures=0 errors=0  (= B_api 174)
+batch  tests=114  skipped=0 failures=0 errors=0  (= B_batch 112 + 2)
+```
+
 ### AC5
+
+```
+[PASS] grep 'Started [^ ]* in [0-9.]* seconds' apps/batch/build/test-results/integrationTest/TEST-*.xml | wc -l @ c3693c6
+8 (≤ 9). 기준선 B_ctx 35.
+```
 
 ### AC6
 
+```
+[PASS] LatestSchemaFixtureIntegrationTest @ c3693c6 (AC2 실행 결과 XML)
+tests=3 skipped=0 failures=0 errors=0. RED 증거: task 3 구현 보고 — CHECK 복구 케이스 "expected 1 but was 0" 실패 후 지문 비교 추가로 GREEN.
+```
+
 ### AC7
+
+```
+[PASS] SharedContextIsolationIntegrationTest @ c3693c6 (AC2 실행 결과 XML)
+tests=2 skipped=0 failures=0 errors=0. RED 증거: task 4 구현 보고 — base 초기화 전 둘째 케이스 실패.
+범위: 같은 공유 context 안 두 테스트 메서드 사이의 초기화를 증명한다(클래스 사이도 같은 base @BeforeEach 경로).
+```
 
 ### AC8
 
+```
+[PASS] bash ci/quality-gate-contract-test.sh @ c3693c6 — exit 0
+```
+
 ### AC9
 
+```
+[PASS] grep 1: 7개 파일 각 1건 이상 — .claude/skills/qa-verification/SKILL.md, .claude/skills/orchestrator/SKILL.md,
+       .claude/skills/test-strategy/SKILL.md, .ai/rules/testing.md, AGENTS.md, .ai/instructions.md, .claude/agents/qa-agent.md
+       grep 2: 0건 (rc=1) @ c3693c6
+```
+
 ### AC10
+
+```
+[PASS] ./gradlew :infrastructure:batch:test --rerun --offline --no-daemon @ c3693c6
+tests: Bithumb 33 · ExchangeRate 19 (기준선과 같음). testcase time(기준선 → 변경 후, 감소량):
+  Bithumb `네트워크 실패와 타임아웃 예외에도 secret 이 없다` 2.008 → 1.005 (−1.003)
+  Bithumb `응답 시간이 초과되면 NETWORK` 2.004 → 1.003 (−1.001)
+  ExchangeRate `read timeout 은 설정한 횟수까지만 재시도한다` 2.222 → 1.223 (−0.999)
+  ExchangeRate `응답 헤더 지연으로 Netty responseTimeout 이 이기면 …` 3.436 → 2.261 (−1.175)
+```
+
+### 회귀 방어선 @ c3693c6
+
+```
+R1 verifyTestIsolationPolicy exit 0 · R2 harnessCheck harnessCheckTest exit 0 · R3 local-offline-contract-test exit 0
+R4 check-documentation exit 0 · R5 deploy-contract-test exit 0 · R6~R8 AC2 실행 exit 0 · R9·R10 은 AC3 run 에서 확인
+```
 
 ## 사람 확인 (T4)
 
