@@ -238,6 +238,17 @@ R4 check-documentation exit 0 · R5 deploy-contract-test exit 0 · R6~R8 AC2 실
         · src/main(apps/domain/infrastructure) diff 0
 ```
 
+### AC3 — PR #106 Quality Gate
+
+```
+[FAIL] run 40996195808 @ d9e95a1 — 구간 03:13:54→03:18:29 = 275s 이지만 failure 2(ktlint LatestSchemaFixture.kt:58,
+       unit ExchangeRateClientTest read timeout 단언이 Reactor/Netty timeout 경쟁에 좁음) → 8022e5d·96cba0a 로 수정
+[FAIL] run 40997176643 @ 96cba0a — 8 job 모두 success, 구간 03:24:14→03:30:44 = 390s (> 360s)
+       1 Compile 108s · 2 Unit 184s · 3 API IT 219s · 4 Batch IT 188s · 5 ktlint 28s · 6 Dep 24s · 7 Docker 390s · 8 Common IT 155s
+       최장 = 7. Docker image build 390s (직전 run 275s, 기준선 run 172~231s). 테스트 job 최장 = 3. API IT 219s (기준선 6.4~7.3m)
+       증거 앵커 https://github.com/geonyeop123/premium-spread/actions/runs/40997176643
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
