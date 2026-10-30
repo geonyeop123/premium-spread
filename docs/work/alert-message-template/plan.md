@@ -84,7 +84,7 @@ Discord 는 embed author·fields·footer·timestamp 로 보내고, 그 레이아
 
 **Files:** 없음 (dod `## 증거 로그` 에 append)
 
-- [ ] **Step 1:** 기준선 실행·기록.
+- [x] **Step 1:** 기준선 실행·기록.
   ```bash
   git rev-parse --short HEAD && git merge-base HEAD origin/dev | cut -c1-7                                   # base 3d179e7
   ./gradlew test architectureTest --offline --no-daemon                                                    # R1·R2 — 테스트 수 기록
@@ -104,7 +104,7 @@ Discord 는 embed author·fields·footer·timestamp 로 보내고, 그 레이아
   grep -rnE 'OwnerOpsAlertContent\.(RUNBOOK|elapsed)|OwnerMarketAlertContent\.RUNBOOK' --include=*.kt domain apps infrastructure   # (g10) Task 10·11 삭제 심볼의 외부 사용처
   grep -n 'PremiumThresholdDeliveryService' apps/batch/src/test/kotlin/io/premiumspread/application/notification/NotificationDisabledContextTest.kt   # (g11) Task 12 A14 근거
   ```
-- [ ] **Step 2: 예상 결과.** gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지).
+- [x] **Step 2: 예상 결과.** gradle 6건 exit 0(Docker 부재면 integration 3건 "미실행", green 금지).
   - (g1) `V22__create_owner_market_alert_state.sql`.
   - (g2) `com.fasterxml.jackson.core:jackson-databind` 한 줄.
   - (g3) `V19OwnerAlertChannelMigrationIntegrationTest.kt:34`, `AccountPnlFixtureSchemaIntegrationTest.kt:45`.
@@ -117,7 +117,7 @@ Discord 는 embed author·fields·footer·timestamp 로 보내고, 그 레이아
   - (g10) `domain/src/test/kotlin/io/premiumspread/domain/ownerops/OwnerOpsAlertContentTest.kt:264-266`(`elapsed`) 3줄만 — Task 10 이 교체하는 파일이다. main 사용처 없음.
   - (g11) `:33` `doesNotHaveBean(PremiumThresholdDeliveryService::class.java)`, `:52` `PremiumThresholdDeliveryService::class,`(`@Import`).
   **다르면 멈추고 보고한다** — (g1) 이 V22 가 아니면 V23 번호, (g2) 가 비면 D1 전제(전이 존재)가 깨진 것이므로 변경 요청, (g10) 에 main 사용처가 있으면 Task 10·11 의 삭제 범위.
-- [ ] **Step 3: Commit** — `docs: 알림 문구 템플릿화 Gate 1 기준선 기록` (dod 증거 로그만)
+- [x] **Step 3: Commit** — `docs: 알림 문구 템플릿화 Gate 1 기준선 기록` (dod 증거 로그만)
 
 ---
 
@@ -137,9 +137,9 @@ Discord 는 embed author·fields·footer·timestamp 로 보내고, 그 레이아
 
 payload 전문은 현재 `PremiumThresholdDeliveryService.kt:56-69` 의 `trimIndent()` 결과(인사·빈 줄·`설정하신 알림 조건이 충족되었습니다.`·`심볼: BTC`·`거래소 페어: BTC:BITHUMB:BINANCE`·위 3줄·빈 줄·`--`·`premium-spread`)를 그대로 적는다.
 
-- [ ] **Step 1:** 테스트 작성 → `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.PremiumThresholdDeliveryServiceMailTest' --offline --no-daemon` → PASS (특성화).
-- [ ] **Step 2: 변이 확인** — 기대 subject 의 `6%` 를 `7%` 로 바꿔 FAIL 을 보고 되돌린다. 로그를 증거 로그에.
-- [ ] **Step 3: Commit** — `test: 회원 김프 메일 문구 특성화 테스트`
+- [x] **Step 1:** 테스트 작성 → `./gradlew :apps:batch:test --tests 'io.premiumspread.application.notification.PremiumThresholdDeliveryServiceMailTest' --offline --no-daemon` → PASS (특성화).
+- [x] **Step 2: 변이 확인** — 기대 subject 의 `6%` 를 `7%` 로 바꿔 FAIL 을 보고 되돌린다. 로그를 증거 로그에.
+- [x] **Step 3: Commit** — `test: 회원 김프 메일 문구 특성화 테스트`
 
 ### Task 2: Discord 레이아웃 domain 타입 (AC1)
 
@@ -234,10 +234,10 @@ data class AccountPnlMail(
 
 **테스트가 재는 것:** dod AC1 (a)~(d) 의 경계값 전부(U+200B 한 글자 name·value 통과 포함 — 테스트도 `Char(0x200B).toString()` 으로 만든다). 합계 6000/6001 은 title 255 + author 256 + footer 2048 + 칸들로 맞춘다. description 4096 + layout 합계 6000 이 통과(description 제외 확인).
 
-- [ ] **Step 1:** `DiscordLayout`·`DiscordField` 를 검증 없는 stub 으로 두고 테스트 작성 → FAIL(거부 기대가 통과하지 않음) 로그.
-- [ ] **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` → PASS. 기존 golden·`DiscordMessageTest`·`OwnerAlertRowsTest` 무수정.
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `feat: Discord embed 레이아웃 domain 타입 추가`
+- [x] **Step 1:** `DiscordLayout`·`DiscordField` 를 검증 없는 stub 으로 두고 테스트 작성 → FAIL(거부 기대가 통과하지 않음) 로그.
+- [x] **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.owneralert.*' --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` → PASS. 기존 golden·`DiscordMessageTest`·`OwnerAlertRowsTest` 무수정.
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `feat: Discord embed 레이아웃 domain 타입 추가`
 
 ### Task 3: 템플릿 계층 `domain.alertmessage` (AC2·AC3)
 
@@ -374,10 +374,10 @@ fun expand(message: OwnerAlertMessage, route: OwnerAlertRoute): List<AccountPnlM
   **이식(dod AC3(d))** — Task 13 에서 삭제되는 `OwnerAlertRowsTest.kt` 의 비문구 계약을 같은 내용으로 이 파일에 둔다: `:24` 3인자 `AccountPnlMail` 은 EMAIL·`discordRoute`·`discordColor` null, `:31` 채널과 route·color 가 어긋난 4조합(`DISCORD`+route null, `DISCORD`+color null, `EMAIL`+route, `EMAIL`+color) 거부.
   (`:79` 의 "DISCORD 행을 mail 로 주면 거부" 는 옛 overload 전용 계약이라 overload 와 함께 사라진다.)
 
-- [ ] **Step 1:** 렌더 함수를 `""`·빈 fields 를 돌려주는 stub 으로 두고 테스트 작성 → FAIL 로그.
-- [ ] **Step 2:** 구현 → `./gradlew :domain:test --offline --no-daemon` → PASS. 기존 golden 무수정(R14).
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `feat: 알림 문구 템플릿 계층(메일·Discord 문서와 공용 서식) 추가`
+- [x] **Step 1:** 렌더 함수를 `""`·빈 fields 를 돌려주는 stub 으로 두고 테스트 작성 → FAIL 로그.
+- [x] **Step 2:** 구현 → `./gradlew :domain:test --offline --no-daemon` → PASS. 기존 golden 무수정(R14).
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `feat: 알림 문구 템플릿 계층(메일·Discord 문서와 공용 서식) 추가`
 
 ### Task 4: `AccountPnlBreakdown` (AC4)
 
@@ -445,9 +445,9 @@ data class AccountPnlBreakdown(
 **테스트가 재는 것:** dod AC4 — `AccountNetPnl.calculate(position, fx 1400, fxObservedAt 2026-10-19T23:59:00Z, calculatedAt 2026-10-20T00:00:00Z)` 로 만든 pnl 에서 표의 값 전부(`compareTo`),
 불변식 3개, 진입 수수료·펀딩 null 경우, 음수 김프(매수호가 150,000,000 → 현김프 음수), `toString` 세 개에 금액·수량 문자열(`0.266`·`152000000`·`469`) 없음.
 
-- [ ] **Step 1:** `of` 를 모든 값 0 인 stub 으로 두고 테스트 작성 → FAIL 로그.
-- [ ] **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` → PASS.
-- [ ] **Step 3: Commit** — `feat: 실계정 수익 알림 표시값 계산(AccountPnlBreakdown) 추가`
+- [x] **Step 1:** `of` 를 모든 값 0 인 stub 으로 두고 테스트 작성 → FAIL 로그.
+- [x] **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` → PASS.
+- [x] **Step 3: Commit** — `feat: 실계정 수익 알림 표시값 계산(AccountPnlBreakdown) 추가`
 
 ### Task 5: V23 migration 과 fixture (AC11)
 
@@ -473,10 +473,10 @@ batch fixture(Task 0 (g8) 위치): `discord_color  INT          NULL,`(:240) 다
 
 **테스트가 재는 것:** dod AC11 (a)~(c) — 기존 `V22OwnerMarketAlertStateMigrationIntegrationTest` 의 `flyway(target)`·`clean`·`appliedVersions` 패턴. (b) 는 V22 target 에 EMAIL 1행·DISCORD 1행 → latest → 두 행 `discord_layout` NULL·subject/body/discord_* 동일.
 
-- [ ] **Step 1:** 테스트 먼저 → `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V23OwnerAlertDiscordLayoutMigrationIntegrationTest' --offline --no-daemon` → FAIL(열 없음) 로그.
-- [ ] **Step 2:** DDL·fixture·허용 예외 2줄 → 같은 명령 + `:infrastructure:common:verifyMigrations` → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` → exit 0(V19 테스트 포함).
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0. `git diff --name-only --diff-filter=MDR 3d179e7 -- infrastructure/common/src/main/resources/db/migration` → 빈 출력.
-- [ ] **Step 4: Commit** — `feat: owner 알림 outbox 에 Discord 레이아웃 열 추가(V23)`
+- [x] **Step 1:** 테스트 먼저 → `./gradlew :infrastructure:common:integrationTest --tests 'io.premiumspread.infrastructure.common.migration.V23OwnerAlertDiscordLayoutMigrationIntegrationTest' --offline --no-daemon` → FAIL(열 없음) 로그.
+- [x] **Step 2:** DDL·fixture·허용 예외 2줄 → 같은 명령 + `:infrastructure:common:verifyMigrations` → PASS. `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` → exit 0(V19 테스트 포함).
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0. `git diff --name-only --diff-filter=MDR 3d179e7 -- infrastructure/common/src/main/resources/db/migration` → 빈 출력.
+- [x] **Step 4: Commit** — `feat: owner 알림 outbox 에 Discord 레이아웃 열 추가(V23)`
 
 ### Task 6: outbox 레이아웃 직렬화와 claim (AC12)
 
@@ -530,10 +530,10 @@ EMAIL 행은 값이 있어도 읽지 않는다(CHECK 가 막는다).
 **테스트가 재는 것:** dod AC12 (a)~(g). (a) write 기대 문자열은 design §5.2 예시 형식의 전문 `isEqualTo` 1건 + 빈 fields `"fields":[]` 1건 + 왕복 property 6건. (b)(c)(d)(e)(f) 는 실제 MySQL, `JdbcOwnerAlertOutboxIntegrationTest` 의 컨텍스트 구성 재사용,
 (d)(e) 는 `OutputCaptureExtension` 으로 WARN 문구·`reason=json`/`reason=shape` 와 컬럼 값 부재. (e) 는 subject 255자 DISCORD 행에 칸 값 합계가 6000 − 255 를 넘는 유효 JSON layout 을 SQL 로 넣는다.
 
-- [ ] **Step 1:** 테스트 먼저(코덱 stub 은 `"{}"`·빈 layout 반환) → unit FAIL, integration FAIL 로그.
-- [ ] **Step 2:** 구현 → `./gradlew :infrastructure:common:test --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.*' :infrastructure:common:integrationTest --offline --no-daemon` → PASS(기존 store IT 무수정).
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `feat: owner 알림 outbox 에 Discord 레이아웃 저장·복원`
+- [x] **Step 1:** 테스트 먼저(코덱 stub 은 `"{}"`·빈 layout 반환) → unit FAIL, integration FAIL 로그.
+- [x] **Step 2:** 구현 → `./gradlew :infrastructure:common:test --tests 'io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.*' :infrastructure:common:integrationTest --offline --no-daemon` → PASS(기존 store IT 무수정).
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `feat: owner 알림 outbox 에 Discord 레이아웃 저장·복원`
 
 ### Task 7: Discord adapter payload 와 dispatcher (AC13·AC14)
 
@@ -561,10 +561,10 @@ root 의 `content`·`embeds`·`allowed_mentions`·`flags` 규칙 무변경.
 **테스트가 재는 것:** AC13 — layout 있는 메시지 × push 3종의 요청 본문 JSON 전문 비교(기존 테스트의 `json(...)` 비교 방식), author·footer·timestamp null + 빈 fields 조합 1건(`"fields":[]`), 칸 3개 순서·inline.
 AC14 — fake store 의 DISCORD 행(layout 있음/없음)을 dispatch 하면 fake sender 가 받은 `DiscordMessage.layout` 이 행의 값과 같다.
 
-- [ ] **Step 1:** 테스트 먼저 → FAIL(layout 무시) 로그.
-- [ ] **Step 2:** 구현 → `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.*' :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.*' --offline --no-daemon` → PASS. `DiscordWebhookSenderAdapterTest`·`OwnerAlertDispatcherTest` 무수정.
-- [ ] **Step 3:** **A단계 종료 확인(R14)** — `git diff --name-status 3d179e7 -- domain/src/test infrastructure/batch/src/test apps/batch/src/test` 에 M·D 행이 없다. `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `feat: Discord webhook 으로 embed 레이아웃 발송`
+- [x] **Step 1:** 테스트 먼저 → FAIL(layout 무시) 로그.
+- [x] **Step 2:** 구현 → `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.notification.*' :apps:batch:test --tests 'io.premiumspread.application.notification.owneralert.*' --offline --no-daemon` → PASS. `DiscordWebhookSenderAdapterTest`·`OwnerAlertDispatcherTest` 무수정.
+- [x] **Step 3:** **A단계 종료 확인(R14)** — `git diff --name-status 3d179e7 -- domain/src/test infrastructure/batch/src/test apps/batch/src/test` 에 M·D 행이 없다. `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `feat: Discord webhook 으로 embed 레이아웃 발송`
 
 ---
 
@@ -647,11 +647,11 @@ private fun route(kind: OwnerAlertKind, message: OwnerAlertMessage): List<Accoun
 
 **Job 행(dod AC15(b)):** `AccountPnlMonitorJobTemplateRowsTest` — 같은 디렉터리 `AccountPnlMonitorJobOwnerAlertTest` 의 fake 구성을 복제. 시나리오 2개: 수익 회차(`PROFIT`), 중단 회차(`MONITORING_OUTAGE`). 단정은 B단계 공통 규칙.
 
-- [ ] **Step 1:** golden·이식 테스트·Job 행 테스트 먼저(템플릿은 빈 문서를 돌려주는 stub) → FAIL 로그.
-- [ ] **Step 2:** 구현·Job·허용 예외 → `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' :infrastructure:batch:test --offline --no-daemon` → PASS.
+- [x] **Step 1:** golden·이식 테스트·Job 행 테스트 먼저(템플릿은 빈 문서를 돌려주는 stub) → FAIL 로그.
+- [x] **Step 2:** 구현·Job·허용 예외 → `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' :infrastructure:batch:test --offline --no-daemon` → PASS.
   Job 테스트의 행 수·채널·eventKey·`JobResult` 단정 줄은 바꾸지 않았는지 diff 로 확인. `grep -rn 'AccountPnlMailContent\|AccountPnlDiscordContent' --include=*.kt domain apps infrastructure` → 출력 없음(KDoc 포함).
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `refactor: 실계정 순손익 알림 문구를 템플릿으로 전환`
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `refactor: 실계정 순손익 알림 문구를 템플릿으로 전환`
 
 ### Task 9: 계정 알림 (AC6)
 
@@ -694,9 +694,9 @@ private fun accountAlertRows(alert: AccountAlert): List<AccountPnlMail> = route(
 기존 `AccountPnlMonitorJobAccountAlertTest`(색 상수만 참조)는 무수정 통과.
 **Job 행(dod AC15(b)):** `AccountPnlMonitorJobTemplateRowsTest` 에 포지션 변경 회차(`POSITION_CHANGED`) 시나리오 추가.
 
-- [ ] **Step 1:** golden 먼저 → FAIL 로그. **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` → PASS.
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `refactor: 계정 알림 문구를 템플릿으로 전환`
+- [x] **Step 1:** golden 먼저 → FAIL 로그. **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` → PASS.
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `refactor: 계정 알림 문구를 템플릿으로 전환`
 
 ### Task 10: 운영 알림 (AC7)
 
@@ -736,9 +736,9 @@ OwnerAlertRows.expand(OwnerOpsAlertContent.message(notice, settings, zone), rout
 해소 바이낸스 BTC/USD incident `2026-10-27T12:00:00Z`·at `2026-10-28T00:00:00Z`·notifyCount 2) + 변형 4건. `OwnerOpsSignalJobTest` 무수정 통과.
 **Job 행(dod AC15(b)):** `OwnerOpsSignalJobTemplateRowsTest` — 같은 디렉터리 `OwnerOpsSignalJobTest` 의 fake 구성을 복제. 시나리오: 환율 수집 지연 첫 알림(`FX_INGESTION_DELAYED`).
 
-- [ ] **Step 1:** golden·Job 행 테스트 먼저 → FAIL. **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.*' --tests 'io.premiumspread.domain.ownermarket.*' :apps:batch:test --tests 'io.premiumspread.application.job.ownerops.*' --offline --no-daemon` → PASS.
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `refactor: 운영 알림 문구를 템플릿으로 전환`
+- [x] **Step 1:** golden·Job 행 테스트 먼저 → FAIL. **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.ownerops.*' --tests 'io.premiumspread.domain.ownermarket.*' :apps:batch:test --tests 'io.premiumspread.application.job.ownerops.*' --offline --no-daemon` → PASS.
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `refactor: 운영 알림 문구를 템플릿으로 전환`
 
 ### Task 11: 시장 알림 (AC8)
 
@@ -777,9 +777,9 @@ OwnerAlertRows.expand(OwnerMarketAlertContent.message(notice, settings, zone), r
 `MarketPair(Symbol("BTC"), Exchange.UPBIT, Exchange.BINANCE)` author 1건. 허용 예외: `OwnerMarketAlertIntegrationTest:189-200` 은 메일 body 에 `■ 환율 (USD/KRW)`·`순수익률  +`·`+2.20%`·`1,390.25` 포함, Discord 는 `layout.fields` 값에 `9.99` 가 없음으로.
 **Job 행(dod AC15(b)):** `OwnerMarketSignalJobTemplateRowsTest` — 같은 디렉터리 `OwnerMarketSignalJobTest` 의 fake 구성을 복제. 시나리오: 김프 급등 회차(`PREMIUM_SWING`), 일일 요약 회차(`DAILY_SUMMARY`).
 
-- [ ] **Step 1:** golden·Job 행 테스트 먼저 → FAIL. **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.*' :apps:batch:test --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` → PASS(`OwnerMarketSignalJobTest` 무수정).
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0. `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerMarketAlertIntegrationTest' --offline --no-daemon` → exit 0(Docker).
-- [ ] **Step 4: Commit** — `refactor: 시장 알림 문구를 템플릿으로 전환`
+- [x] **Step 1:** golden·Job 행 테스트 먼저 → FAIL. **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.ownermarket.*' :apps:batch:test --tests 'io.premiumspread.application.job.ownermarket.*' --offline --no-daemon` → PASS(`OwnerMarketSignalJobTest` 무수정).
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0. `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerMarketAlertIntegrationTest' --offline --no-daemon` → exit 0(Docker).
+- [x] **Step 4: Commit** — `refactor: 시장 알림 문구를 템플릿으로 전환`
 
 ### Task 12: 회원 김프 메일 (AC9-b·c·d·e)
 
@@ -833,11 +833,11 @@ fun premiumThresholdDeliveryService(
 **테스트가 재는 것:** AC9(b) 두 경우 전문(제목·본문), (c) `zone = ZoneId.of("UTC")` 인스턴스는 `관측 시각  2026-07-15 00:30 UTC`. domain 테스트는 같은 두 경우 + 닉네임이 본문 첫 줄에만 있음.
 (d) 기존 `PremiumThresholdDeliveryServiceTest`·`NotificationDisabledContextTest` 무수정 통과. (e) 서비스 소스에 `@Value`·`@Service` 없음.
 
-- [ ] **Step 1:** 특성화 테스트의 기대값을 새 문구로 바꾸고 → FAIL(현재 구현) 로그.
-- [ ] **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.notification.*' :apps:batch:test --tests 'io.premiumspread.application.notification.*' --offline --no-daemon` → PASS.
+- [x] **Step 1:** 특성화 테스트의 기대값을 새 문구로 바꾸고 → FAIL(현재 구현) 로그.
+- [x] **Step 2:** 구현 → `./gradlew :domain:test --tests 'io.premiumspread.domain.notification.*' :apps:batch:test --tests 'io.premiumspread.application.notification.*' --offline --no-daemon` → PASS.
   `grep -nE '@Value|@Service' apps/batch/src/main/kotlin/io/premiumspread/application/notification/PremiumThresholdDeliveryService.kt` → 출력 없음.
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0. `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.notification.*' --offline --no-daemon` → exit 0(Docker — enabled 컨텍스트의 빈 생성과 disabled 부재 확인).
-- [ ] **Step 4: Commit** — `refactor: 회원 김프 알림 메일 문구를 템플릿으로 전환`
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0. `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.notification.*' --offline --no-daemon` → exit 0(Docker — enabled 컨텍스트의 빈 생성과 disabled 부재 확인).
+- [x] **Step 4: Commit** — `refactor: 회원 김프 알림 메일 문구를 템플릿으로 전환`
 
 ### Task 13: 정리와 22종 전수 적합성 (AC10)
 
@@ -847,11 +847,11 @@ Test Create `domain/src/test/kotlin/io/premiumspread/domain/alertmessage/AlertMe
 **테스트가 재는 것:** dod AC10 — `@TestFactory` 로 dod "AC10 시나리오 표" 22행을 각각 dynamic test 로. 입력은 Task 8~12 golden 과 같은 fixture(테스트 안 private builder, 다른 테스트 파일에 의존하지 않음).
 행마다 (a)~(e). 금지어 정규식은 dod AC10 의 것 그대로.
 
-- [ ] **Step 1:** `AlertFormatTest` 의 `AccountPnlFormat` 직접 비교 블록을 실행해 얻은 출력값을 리터럴 기대값으로 바꾼다(PASS 확인) → 그 뒤 삭제.
+- [x] **Step 1:** `AlertFormatTest` 의 `AccountPnlFormat` 직접 비교 블록을 실행해 얻은 출력값을 리터럴 기대값으로 바꾼다(PASS 확인) → 그 뒤 삭제.
   `grep -rn 'AccountPnlFormat\|AccountPnlMailContent\|AccountPnlDiscordContent\|expand(.*) {' --include=*.kt domain apps infrastructure` → 출력 없음(KDoc·주석 포함).
-- [ ] **Step 2:** 적합성 테스트 → 변이 확인(한 템플릿의 접두어를 `[실계정 ]` 으로 바꿔 FAIL 을 보고 되돌림) → PASS. `./gradlew :domain:test --offline --no-daemon`.
-- [ ] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
-- [ ] **Step 4: Commit** — `refactor: 옛 알림 서식 제거와 22종 문구 적합성 테스트`
+- [x] **Step 2:** 적합성 테스트 → 변이 확인(한 템플릿의 접두어를 `[실계정 ]` 으로 바꿔 FAIL 을 보고 되돌림) → PASS. `./gradlew :domain:test --offline --no-daemon`.
+- [x] **Step 3:** `./gradlew test architectureTest --offline --no-daemon` → exit 0.
+- [x] **Step 4: Commit** — `refactor: 옛 알림 서식 제거와 22종 문구 적합성 테스트`
 
 ### Task 14: E2E — 실제 outbox 와 mock Discord (AC16)
 
@@ -870,9 +870,9 @@ mock Discord 는 `OwnerAlertDeliveryIntegrationTest` 방식(Task 0 (g5): `MockWe
 | b | SQL 로 `discord_layout` NULL DISCORD 행 1개(subject `t`, body `d`, color 1) | 요청 embed 키가 정확히 `title`·`description`·`color` |
 | c | (a) 와 같은 회차의 EMAIL 행(위 override 로 생성) | 메일 행 subject 가 `[시장] ` 접두, body 에 `기준 시각 ` 줄 |
 
-- [ ] **Step 1:** 작성 → `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDiscordLayoutIntegrationTest' --offline --no-daemon` → PASS(이미 구현됨 — 변이 확인: adapter 의 `description` 생략 조건을 뒤집어 (a) FAIL 을 보고 되돌림).
-- [ ] **Step 2:** `./gradlew :apps:batch:integrationTest --offline --no-daemon` → exit 0.
-- [ ] **Step 3: Commit** — `test: Discord embed 레이아웃 발송 E2E`
+- [x] **Step 1:** 작성 → `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.job.OwnerAlertDiscordLayoutIntegrationTest' --offline --no-daemon` → PASS(이미 구현됨 — 변이 확인: adapter 의 `description` 생략 조건을 뒤집어 (a) FAIL 을 보고 되돌림).
+- [x] **Step 2:** `./gradlew :apps:batch:integrationTest --offline --no-daemon` → exit 0.
+- [x] **Step 3: Commit** — `test: Discord embed 레이아웃 발송 E2E`
 
 ### Task 15: 문서 (AC17)
 
@@ -885,13 +885,13 @@ owner 실계정·운영·시장 알림 enqueue 와 기존 대기 행(EMAIL 포�
 (2) `discord_layout` NULL 행·손상 행(json·version·shape — 조립 실패 포함) 동작과 WARN 문구, (3) 대조 체크리스트의 `청산가(호가 VWAP)`·`체결가 기준` 을 `현재가`·`순수익률` 로.
 `docs/runbooks/account-pnl-alert.md:397` 의 로그 예시(`Account PnL observed: …`)는 로그 계약이므로 그대로 둔다.
 
-- [ ] **Step 1:** 수정 → `bash docs/check-documentation.sh` → exit 0. `grep -n '조치 안내: docs/runbooks\|BITHUMB/BINANCE\|(대조용)' docs/runbooks/account-pnl-alert.md docs/runbooks/owner-ops-alert.md docs/runbooks/owner-market-alert.md` → 출력 없음.
+- [x] **Step 1:** 수정 → `bash docs/check-documentation.sh` → exit 0. `grep -n '조치 안내: docs/runbooks\|BITHUMB/BINANCE\|(대조용)' docs/runbooks/account-pnl-alert.md docs/runbooks/owner-ops-alert.md docs/runbooks/owner-market-alert.md` → 출력 없음.
   `grep -n 'Unknown column' docs/runbooks/account-pnl-alert.md` → 1줄 이상.
-- [ ] **Step 2: Commit** — `docs: 알림 문구 템플릿화 runbook·상태 문서 갱신`
+- [x] **Step 2: Commit** — `docs: 알림 문구 템플릿화 runbook·상태 문서 갱신`
 
 ### Task 16: 최종 gate
 
-- [ ] **Step 1:**
+- [x] **Step 1:**
   ```bash
   ./gradlew test architectureTest --offline --no-daemon
   ./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
@@ -904,9 +904,9 @@ owner 실계정·운영·시장 알림 enqueue 와 기존 대기 행(EMAIL 포�
   git diff --name-status 3d179e7 -- '*/src/test/*' '*/src/integrationTest/*'        # R3 — M·D·R 행이 허용 목록 안
   git diff --name-only --diff-filter=MDR 3d179e7 -- infrastructure/common/src/main/resources/db/migration   # R4 — 빈 출력
   ```
-- [ ] **Step 2: 예상 결과.** 전부 exit 0(Docker 부재 시 "미실행" 기록, green 금지). R3 diff 의 M·D 행은 dod R3 목록과 이번 작업 신규 파일(Task 1·12 의 `PremiumThresholdDeliveryServiceMailTest.kt`, Task 3·13 의 `AlertFormatTest.kt`, Task 8·9 의 `AccountPnlMonitorJobTemplateRowsTest.kt`)의 수정뿐.
+- [x] **Step 2: 예상 결과.** 전부 exit 0(Docker 부재 시 "미실행" 기록, green 금지). R3 diff 의 M·D 행은 dod R3 목록과 이번 작업 신규 파일(Task 1·12 의 `PremiumThresholdDeliveryServiceMailTest.kt`, Task 3·13 의 `AlertFormatTest.kt`, Task 8·9 의 `AccountPnlMonitorJobTemplateRowsTest.kt`)의 수정뿐.
   `OwnerMarketSignalJobTest.kt`·`NotificationDisabledContextTest.kt` 는 diff 에 없다.
-- [ ] **Step 3:** 결과를 dod 증거 로그에 append. AC18 은 PR 에서 owner 에게 요청.
+- [x] **Step 3:** 결과를 dod 증거 로그에 append. AC18 은 PR 에서 owner 에게 요청.
 
 ---
 

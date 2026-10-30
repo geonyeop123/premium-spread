@@ -196,7 +196,8 @@ A단계에서는 기존 Content object 를 건드리지 않으므로 두 object 
 | `threshold(duration)` | `30분`·`6시간`·`90초` | 기존 `OwnerOpsAlertContent.threshold` 와 같은 동작 |
 | `duration(duration)` | `45분`·`6시간`·`6시간 5분` (음수 → `0분`) | 지속 시간 |
 | `exchange(Exchange)` / `exchangePair(pair, sep)` | `빗썸`·`바이낸스`·`업비트`·`환율 제공자` / `빗썸/바이낸스` | K8 |
-| `premium(value)` | `1.78%`, `-0.50%` (양수 부호 없음, 0.00) | 실계정 김프·회원 메일 |
+| `premium(value)` | `1.78%`, `-0.50%` (양수 부호 없음, 0.00) | 실계정 김프·회원 메일 현재 김프 |
+| `thresholdPercent(value)` | `1.23%`, `1.2345%` (최소 소수 2자리, 설정 정밀도 보존, 뒤 0 제거) | 회원 메일 조건 줄 임계값 |
 | `krwPrice(value)` | `158,500,000원` | 가격·평가액 |
 | `usdtPrice(value)` | `111,200 USDT`, `70,000.5 USDT` (`#,##0.####`) | 바이낸스 가격 |
 | `usdt2(value)` | `14.36 USDT` (부호 없음, `#,##0.00`) | 수수료·평가액 USDT |
@@ -367,7 +368,7 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 ### 6.6 회원 김프 메일 (`PremiumThresholdMailContent`, Discord 없음)
 
 - 제목 `[김프 알림] {SYMBOL} 김프 {premium(rate)} 도달`.
-- 본문: `Text("안녕하세요, {nickname}님.", "설정하신 김프 알림 조건에 도달했습니다.")` → `Pairs(종목 "{SYMBOL} ({exchange(korea)} / {exchange(foreign)})", 조건 "김프 {premium(threshold)} {이상|이하}", 현재 김프 premium(rate), 관측 시각 stamp(observedAt))` → signature `premium-spread`. basis 없음.
+- 본문: `Text("안녕하세요, {nickname}님.", "설정하신 김프 알림 조건에 도달했습니다.")` → `Pairs(종목 "{SYMBOL} ({exchange(korea)} / {exchange(foreign)})", 조건 "김프 {thresholdPercent(threshold)} {이상|이하}", 현재 김프 premium(rate), 관측 시각 stamp(observedAt))` → signature `premium-spread`. basis 없음.
 - 재료는 `ActiveNotificationSubscription`(pair·nickname·direction·threshold)과 `PremiumSnapshot`(premiumRate·observedAt). zone 은 서비스 생성자 인자로 받는다 — 값은 `NotificationDeliveryConfiguration` 이 `aggregation.zone` 을 읽어 넘긴다(§7, N1).
 - subject 는 V14 `VARCHAR(500)` 안이다(가장 긴 경우도 60자 미만).
 
@@ -491,3 +492,8 @@ runbook 예시는 message-spec 을 복제하지 않고 **각 runbook 이 다루�
 | ⑥-1 | §6.2 중단·복구 시각 출처 표, §6.3 리마인더 `reminderHour` 출처 | MINOR 6·7 |
 | ⑥-1 | §7 회원 zone 주입을 Configuration `@Bean` 으로(A14) | N1 |
 | ⑥-1 | §2 `NetPercentSwingPolicy.kt:12` KDoc, §11 Job 행 신규 테스트·이식 계약 | MINOR 10, MAJOR 4, MINOR 8 |
+| 구현 2026-10-30 | `PremiumThresholdDeliveryService` 의 `@Transactional` 을 클래스 수준으로 이동(public 진입점은 `evaluate` 하나라 동작 동일) | `@Service` 제거로 kotlin-spring allopen 대상에서 빠져 final 이 되자 메서드 수준 트랜잭션 프록시가 실패. 클래스 수준 `@Transactional` 은 allopen 대상이라 open |
+| 구현 2026-10-30 | 회원 메일 조건 줄 임계값을 `AlertFormat.thresholdPercent`(최소 소수 2자리, 설정 정밀도 보존, 뒤 0 제거)로 표기, §3.5 표·§6.6 정정 | DECIMAL(10,4) 설정값 1.2345 가 1.23% 로 보이던 문제(⑨ 리뷰) |
+| 구현 2026-10-30 | `JdbcAccountPnlAlertStore` claim 의 조립 실패 분류: layout 없이 조립이 성공하고 layout 포함 조립만 실패할 때만 `reason=shape` | ⑨ 리뷰 |
+| 구현 2026-10-30 | 저장 JSON 의 author·footer·timestamp 키 누락은 shape 처리 | 쓰기는 항상 키를 쓰므로 누락은 손상 |
+| 구현 2026-10-30 | 일일 요약 날짜 `String.format` 에 `Locale.ROOT` | ⑨ 리뷰 |
