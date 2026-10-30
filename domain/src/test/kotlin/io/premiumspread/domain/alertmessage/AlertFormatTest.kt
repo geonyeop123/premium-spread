@@ -1,6 +1,5 @@
 package io.premiumspread.domain.alertmessage
 
-import io.premiumspread.domain.accountpnl.AccountPnlFormat
 import io.premiumspread.domain.market.MarketPair
 import io.premiumspread.domain.ticker.Exchange
 import io.premiumspread.domain.ticker.Symbol
@@ -101,17 +100,23 @@ class AlertFormatTest {
     }
 
     @Test
-    fun `기존 AccountPnlFormat 과 같은 동작의 함수는 출력이 같다`() {
-        listOf("0", "-0.4", "0.5", "-0.5", "1234567.5").map(::bd).forEach { x ->
-            assertThat(AlertFormat.percent(x)).isEqualTo(AccountPnlFormat.percent(x))
-            assertThat(AlertFormat.percentPoint(x)).isEqualTo(AccountPnlFormat.percentPoint(x))
-            assertThat(AlertFormat.krw(x)).isEqualTo(AccountPnlFormat.krw(x))
-            assertThat(AlertFormat.krwOrZero(x)).isEqualTo(AccountPnlFormat.krwOrZero(x))
-            assertThat(AlertFormat.cost(x)).isEqualTo(AccountPnlFormat.cost(x))
-            assertThat(AlertFormat.plain(x)).isEqualTo(AccountPnlFormat.plain(x))
-            assertThat(AlertFormat.signedUsdt(x)).isEqualTo(AccountPnlFormat.signedUsdt(x))
-            assertThat(AlertFormat.sign(x)).isEqualTo(AccountPnlFormat.sign(x))
-            assertThat(AlertFormat.format("#,##0.00", x)).isEqualTo(AccountPnlFormat.format("#,##0.00", x))
+    fun `삭제된 옛 서식과 같은 출력을 리터럴로 고정한다`() {
+        val inputs = listOf("0", "-0.4", "0.5", "-0.5", "1234567.5")
+        val expected = listOf(
+            "+0.00%|+0.00%p|+0원|0원|0원|0|0 USDT|+|0.00",
+            "-0.40%|-0.40%p|+0원|0원|0원|-0.4|-0.4 USDT|-|-0.40",
+            "+0.50%|+0.50%p|+1원|+1원|-1원|0.5|+0.5 USDT|+|0.50",
+            "-0.50%|-0.50%p|-1원|-1원|-1원|-0.5|-0.5 USDT|-|-0.50",
+            "+1234567.50%|+1234567.50%p|+1,234,568원|+1,234,568원|-1,234,568원|1234567.5|+1234567.5 USDT|+|1,234,567.50",
+        )
+        inputs.zip(expected).forEach { (input, line) ->
+            val x = bd(input)
+            val actual = listOf(
+                AlertFormat.percent(x), AlertFormat.percentPoint(x), AlertFormat.krw(x), AlertFormat.krwOrZero(x),
+                AlertFormat.cost(x), AlertFormat.plain(x), AlertFormat.signedUsdt(x), AlertFormat.sign(x),
+                AlertFormat.format("#,##0.00", x),
+            ).joinToString("|")
+            assertThat(actual).`as`(input).isEqualTo(line)
         }
     }
 }

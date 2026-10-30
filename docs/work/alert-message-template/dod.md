@@ -254,3 +254,10 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 - `grep -nE '@Value|@Service' apps/batch/src/main/kotlin/io/premiumspread/application/notification/PremiumThresholdDeliveryService.kt` → 출력 없음.
 - 통합: `./gradlew :apps:batch:integrationTest --tests 'io.premiumspread.application.notification.*'` → 1차 FAILED(`Cannot subclass final class PremiumThresholdDeliveryService` — `@Service` 제거로 allopen 대상에서 빠져 `@Transactional` CGLIB 프록시 실패). `@Transactional` 을 메서드에서 클래스 수준으로 옮겨 allopen 이 클래스를 open 으로 만들게 한 뒤 BUILD SUCCESSFUL(enabled 컨텍스트 빈 생성·disabled 부재 확인).
 - 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
+
+### Task 13 — 정리와 22종 전수 적합성 (AC10, 2026-10-30)
+
+- Step 1: `AlertFormatTest` 의 `AccountPnlFormat` 직접 비교를 실행 출력(5개 입력 x 9개 함수)의 리터럴 고정으로 바꾼 뒤 PASS 를 보고 `AccountPnlFormat.kt`·옛 `expand(mail, route, discord)` overload·`OwnerAlertRowsTest` 삭제(계약은 `OwnerAlertRowsMessageTest` 로 이식됨). `grep -rn 'AccountPnlFormat\|AccountPnlMailContent\|AccountPnlDiscordContent' --include=*.kt domain apps infrastructure` → 출력 없음.
+- 변이(RED): `OwnerMarketAlertContent.kt:52` 접두어 `[시장]` → `[실계정 ]` → `./gradlew :domain:test --tests '*AlertMessageSpecConformanceTest'` → `22 tests completed, 7 failed`(15~21 시장 7종). 되돌린 뒤 GREEN.
+- GREEN: `./gradlew :domain:test --tests '*AlertMessageSpecConformanceTest' --tests '*AlertFormatTest' --offline --no-daemon` → BUILD SUCCESSFUL, 적합성 `tests="22" failures="0"`.
+- 커밋 전 `./gradlew test architectureTest compileIntegrationTestKotlin --offline --no-daemon` → BUILD SUCCESSFUL.
