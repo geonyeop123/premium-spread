@@ -98,7 +98,7 @@ class BithumbPrivateAccountAdapterTest {
 
     @Test
     fun `네트워크 실패와 타임아웃 예외에도 secret 이 없다`() {
-        responses["/v1/accounts"] = { json(accountsBody).setBodyDelay(2, java.util.concurrent.TimeUnit.SECONDS) }
+        responses["/v1/accounts"] = { json(accountsBody).setBodyDelay(1, java.util.concurrent.TimeUnit.SECONDS) }
         val timedOut = catchRead(adapter(timeout = Duration.ofMillis(200)))
         val slow = adapter()
         server.shutdown()
@@ -342,7 +342,7 @@ class BithumbPrivateAccountAdapterTest {
 
     @Test
     fun `응답 시간이 초과되면 NETWORK`() {
-        responses["/v1/accounts"] = { json(accountsBody).setBodyDelay(2, java.util.concurrent.TimeUnit.SECONDS) }
+        responses["/v1/accounts"] = { json(accountsBody).setBodyDelay(1, java.util.concurrent.TimeUnit.SECONDS) }
 
         assertCategory(AccountReadFailureCategory.NETWORK, adapter(timeout = Duration.ofMillis(200)))
     }

@@ -13,7 +13,7 @@ class MySqlTestContainersConfig {
                 withUsername("test")
                 withPassword("test")
                 withExposedPorts(3306)
-                withCommand(
+                applyTestDurabilityTuning(
                     "--character-set-server=utf8mb4",
                     "--collation-server=utf8mb4_general_ci",
                     "--skip-character-set-client-handshake",

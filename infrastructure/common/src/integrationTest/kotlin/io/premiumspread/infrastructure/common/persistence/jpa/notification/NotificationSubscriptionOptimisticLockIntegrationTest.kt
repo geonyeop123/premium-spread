@@ -7,7 +7,6 @@ import jakarta.persistence.OptimisticLockException
 import jakarta.persistence.RollbackException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
@@ -16,15 +15,14 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.LatestSchemaFixture
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Instant
 
 @Tag("integration")
-@Testcontainers
 class NotificationSubscriptionOptimisticLockIntegrationTest {
 
     private lateinit var entityManagerFactory: EntityManagerFactory
@@ -33,13 +31,7 @@ class NotificationSubscriptionOptimisticLockIntegrationTest {
     @BeforeEach
     fun setUp() {
         val dataSource = DriverManagerDataSource(jdbcUrl, mysql.username, mysql.password)
-        val flyway = Flyway.configure()
-            .dataSource(dataSource)
-            .locations("classpath:db/migration")
-            .cleanDisabled(false)
-            .load()
-        flyway.clean()
-        flyway.migrate()
+        latestSchema.reset()
         subscriptionId = insertSubscription(JdbcTemplate(dataSource))
         entityManagerFactory = createEntityManagerFactory(dataSource)
     }
@@ -131,11 +123,7 @@ class NotificationSubscriptionOptimisticLockIntegrationTest {
         }
 
     companion object {
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_notification_lock")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_notification_lock")
+        private val latestSchema = LatestSchemaFixture(mysql)
     }
 }

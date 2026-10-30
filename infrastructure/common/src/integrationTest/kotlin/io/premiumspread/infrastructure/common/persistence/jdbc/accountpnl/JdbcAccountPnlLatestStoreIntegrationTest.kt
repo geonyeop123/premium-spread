@@ -2,15 +2,14 @@ package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 
 import io.premiumspread.domain.accountpnl.AccountPnlLatest
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.MySQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
+import io.premiumspread.infrastructure.common.support.LatestSchemaFixture
+import io.premiumspread.infrastructure.common.support.SharedMySqlContainer
+import io.premiumspread.infrastructure.common.support.TestDatabase
 import java.math.BigDecimal
 import java.sql.Timestamp
 import java.time.Clock
@@ -18,7 +17,6 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 @Tag("integration")
-@Testcontainers
 class JdbcAccountPnlLatestStoreIntegrationTest {
 
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -26,13 +24,7 @@ class JdbcAccountPnlLatestStoreIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        val flyway = Flyway.configure()
-            .dataSource(jdbcUrl, mysql.username, mysql.password)
-            .locations("classpath:db/migration")
-            .cleanDisabled(false)
-            .load()
-        flyway.clean()
-        flyway.migrate()
+        latestSchema.reset()
         jdbcTemplate = JdbcTemplate(DriverManagerDataSource(jdbcUrl, mysql.username, mysql.password))
         store = JdbcAccountPnlLatestStore(jdbcTemplate, Clock.fixed(NOW, ZoneOffset.UTC))
     }
@@ -76,11 +68,7 @@ class JdbcAccountPnlLatestStoreIntegrationTest {
         private val NOW = Instant.parse("2026-10-28T00:00:00Z")
         private val CALCULATED = Instant.parse("2026-10-27T23:59:00Z")
 
-        @Container
-        @JvmStatic
-        val mysql: MySQLContainer<*> = MySQLContainer("mysql:8.0")
-            .withDatabaseName("premiumspread_account_latest")
-            .withUsername("test")
-            .withPassword("test")
+        val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_account_latest")
+        private val latestSchema = LatestSchemaFixture(mysql)
     }
 }

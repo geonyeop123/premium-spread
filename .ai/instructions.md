@@ -66,11 +66,7 @@ HTTP/Schedule → apps interfaces → apps application → domain ← infrastruc
 
 ```bash
 ./gradlew compileKotlin --offline --no-daemon
-./gradlew test architectureTest --offline --no-daemon
-./gradlew :infrastructure:common:integrationTest --offline --no-daemon
-./gradlew :apps:api:integrationTest --offline --no-daemon
-./gradlew :apps:batch:integrationTest --offline --no-daemon
-./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon
+./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
 bash docs/check-documentation.sh
 ```
 

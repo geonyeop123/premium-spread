@@ -11,6 +11,7 @@ import io.premiumspread.domain.tradeprep.TradePreparationRepository
 import io.premiumspread.domain.tradeprep.TradePreparationSpec
 import io.premiumspread.domain.tradeprep.TradePreparationStatus
 import io.premiumspread.testcontainers.RedisTestContainersConfig
+import io.premiumspread.testcontainers.applyTestDurabilityTuning
 import io.premiumspread.utils.DatabaseCleanUp
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -245,6 +246,7 @@ class TradePreparationConcurrencyIntegrationTest @Autowired constructor(
             .withDatabaseName("premiumspread_trade_prep_concurrency")
             .withUsername("test")
             .withPassword("test")
+            .apply { applyTestDurabilityTuning() }
 
         @JvmStatic
         @DynamicPropertySource

@@ -153,6 +153,10 @@ val verifyTestIsolationPolicy by tasks.registering {
             check(testTask.systemProperties["testcontainers.reuse.enable"] == "false") {
                 "${testTask.path} must disable Testcontainers reuse for isolated CI execution"
             }
+            // Testcontainers 는 system property 를 읽지 않는다. 실제로 reuse 를 끄는 것은 환경 변수다.
+            check(testTask.environment["TESTCONTAINERS_REUSE_ENABLE"] == "false") {
+                "${testTask.path} must set TESTCONTAINERS_REUSE_ENABLE=false (Testcontainers ignores the system property)"
+            }
         }
         check(allprojects.none { it.plugins.hasPlugin("org.gradle.test-retry") }) {
             "Test retry is forbidden because it can hide flaky or leaked-resource failures"
