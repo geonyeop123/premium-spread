@@ -3,7 +3,7 @@
 - slug: `alert-message-template` · base `origin/dev` `3d179e7` · branch `refactor/issue-102-alert-message-template`
 - 입력: issue #102 · ③ 사용자 합의(§0.1) · **확정 문구 정본 `docs/work/alert-message-template/message-spec.md`(22종)** ·
   `.ai/rules/{architecture,testing,naming}.md` · 직전 단위 `docs/work/owner-market-alerts/*`(동결 기록, 수정 대상 아님)
-- 상태: DRAFT
+- 상태: DRAFT (⑥ 스펙 리뷰 1차 반영 — 변경 내역은 §15)
 
 ## 0. 요약
 
@@ -50,11 +50,11 @@ owner 알림 21종과 회원 김프 메일 1종의 문구가 Content object 5개
 
 - domain `alertmessage`(신규): `AlertFormat`, `MailDocument`·`MailBlock`·`MailPair`, `EmbedDocument`·`EmbedCell`, `OwnerAlertMessage`, 렌더러
 - domain `owneralert`: `DiscordField`·`DiscordLayout`, `DiscordMessage.layout`
-- domain `accountpnl`: `AccountPnlMail.discordLayout`, `OwnerAlertRows.expand(message, route)`, `AccountPnlBreakdown`(신규), `AccountPnlAlertContent`(신규 — `AccountPnlMailContent`·`AccountPnlDiscordContent` 대체), `AccountAlertContent` 재작성, `AccountPnlFormat` 삭제
+- domain `accountpnl`: `AccountPnlMail.discordLayout`, `OwnerAlertRows.expand(message, route)`, `AccountPnlBreakdown`(신규), `AccountPnlAlertContent`(신규 — `AccountPnlMailContent`·`AccountPnlDiscordContent` 대체), `AccountAlertContent` 재작성, `AccountPnlFormat` 삭제, `NetPercentSwingPolicy` KDoc 참조 갱신
 - domain `ownerops`·`ownermarket`: `OwnerOpsAlertContent`·`OwnerMarketAlertContent` 재작성
 - domain `notification`: `PremiumThresholdMailContent`(신규)
-- apps:batch: 세 Job 의 호출 줄, `OwnerAlertDispatcher.sendDiscord`, `PremiumThresholdDeliveryService`(zone 주입·템플릿 호출)
-- infrastructure:common: V23, `OwnerAlertOutboxRows`(insert·validate), `JdbcAccountPnlAlertStore`(claim 읽기), `DiscordLayoutJson`(신규), batch fixture 스키마
+- apps:batch: 세 Job 의 호출 줄, `OwnerAlertDispatcher.sendDiscord`, `PremiumThresholdDeliveryService`(zone 생성자 인자·템플릿 호출), `config/NotificationDeliveryConfiguration`(서비스 빈 생성·zone 주입)
+- infrastructure:common: V23, `OwnerAlertOutboxRows`(insert·validate), `JdbcAccountPnlAlertStore`(claim 읽기), `DiscordLayoutJson`(신규), batch fixture 스키마, `build.gradle.kts`(jackson-databind 선언 — D1 승인)
 - infrastructure:batch: `DiscordWebhookSenderAdapter.payload`
 - 문서: `docs/runbooks/account-pnl-alert.md`·`owner-ops-alert.md`·`owner-market-alert.md` 예시, `.ai/PROJECT_STATUS.md`(V23), `.ai/architecture/ARCHITECTURE_DESIGN.md`(템플릿 계층 한 단락)
 
@@ -79,14 +79,17 @@ owner 알림 21종과 회원 김프 메일 1종의 문구가 Content object 5개
 | `ownerops/OwnerOpsAlertContent.kt`, `ownermarket/OwnerMarketAlertContent.kt` | 운영·시장 메일·Discord, `threshold`/`elapsed` 서식(`threshold` 는 시장이 빌려 씀) |
 | `owneralert/OwnerAlertDiscord.kt` | `DiscordMessage(title≤255, description≤4096, color)`, `of()` 절단, port `OwnerAlertDiscordSender` |
 | `accountpnl/OwnerAlertRows.kt` | 메일 행 + `DiscordMessage` → DISCORD 행(subject=title, body=description) |
+| `accountpnl/NetPercentSwingPolicy.kt:12` | KDoc 이 `AccountPnlMailContent.hourly` 를 참조(Task 8 에서 `AccountPnlAlertContent.hourly` 로) |
 | `apps/batch/.../owneralert/OwnerAlertDispatcher.kt:96-102` | DISCORD 행을 `DiscordMessage(subject, body, color)` 로 재조립 |
 | `infrastructure/batch/.../DiscordWebhookSenderAdapter.kt:142-150` | embed `{title, description, color}` |
 | `infrastructure/common/.../OwnerAlertOutboxRows.kt` | 행 검증(subject≤255, body≤65,535 B)·INSERT (세 store 공용) |
 | `JdbcAccountPnlAlertStore.kt:93-104,359-381` | claim SELECT 와 행 매핑 |
-| `apps/batch/.../PremiumThresholdDeliveryService.kt:51-69` | 회원 메일 subject/payload 하드코딩, 관측 시각 `Instant.toString()`(UTC) |
+| `apps/batch/.../PremiumThresholdDeliveryService.kt:51-69` | 회원 메일 subject/payload 하드코딩, 관측 시각 `Instant.toString()`(UTC). 빈 등록은 클래스의 `@Service` + `@ConditionalOnProperty(notification.email.enabled=true)` |
+| `apps/batch/.../config/NotificationDeliveryConfiguration.kt` | 같은 `@ConditionalOnProperty` 를 가진 빈 없는 Configuration(`NotificationDeliveryProperties` 활성화만) |
 
-zone 출처: `OwnerOpsSignalJob`·`OwnerMarketSignalJob` 은 `aggregation.zone`(`OwnerAlertDeliveryConfiguration.kt:153`, `OwnerMarketAlertConfiguration.kt:67`),
-`AccountPnlMonitorJob` 은 생성자 기본값 `Asia/Seoul`(`AccountPnlMonitorJob.kt:83`, 배선이 넘기지 않음). 회원 서비스는 zone 이 없다.
+zone 출처: `OwnerOpsSignalJob`·`OwnerMarketSignalJob` 은 `aggregation.zone` — 각 `config/*Configuration` 의 `@Bean` 메서드가 `@Value` 로 읽어 `ZoneId.of(zone)` 을 Job 생성자에 넘긴다
+(`OwnerAlertDeliveryConfiguration.kt:153,165`, `OwnerMarketAlertConfiguration.kt:67`). `AccountPnlMonitorJob` 은 생성자 기본값 `Asia/Seoul`(`AccountPnlMonitorJob.kt:83`, 배선이 넘기지 않음).
+회원 서비스는 zone 이 없다.
 
 ## 3. 템플릿 계층 (K1·K2·K7)
 
@@ -156,8 +159,10 @@ data class EmbedDocument(
 `toDiscordMessage()` 규칙:
 
 1. 칸 → `DiscordField`. 칸이 1개인 행은 `inline=false`(전체 폭), 2~3개인 행은 `inline=true`.
-2. 칸이 2개인 inline 행 **다음에 칸 2개 이상인 행이 오면** 빈 inline 칸 `("​", "​", true)` 하나를 덧붙여 행을 3칸으로 채운다
+2. 칸이 2개인 inline 행 **다음에 칸 2개 이상인 행이 오면** 빈 inline 칸 `EmbedDocument.SPACER` = `DiscordField(ZWSP, ZWSP, inline = true)` 하나를 덧붙여 행을 3칸으로 채운다
+   (ZWSP = 유니코드 U+200B zero-width space 한 글자. 문서·소스에 보이지 않는 문자를 직접 넣지 않고 소스에서는 `Char(0x200B).toString()` 으로 만든다 — plan Task 3).
    (Discord 는 inline 칸을 한 줄에 3개까지 흘려 넣으므로, 채우지 않으면 다음 행 첫 칸이 위 행으로 올라간다).
+   예: 수익 알림 행 [3,2,3,2,1] = 칸 11개 + 2번째 행 뒤 채움 1개 = **fields 12개**(4번째 행 뒤는 다음 행이 1칸이라 채우지 않는다).
 3. 절단: title 255, author 256, footer 2048, 칸 이름 256, 칸 값 1024 (`DiscordMessage.truncate`, UTF-16 기준·surrogate 보존).
 4. `description` = 대체 평문(§5.3): 칸마다 한 줄 `"{name}: {value 의 \n 을 ' / ' 로, ** 제거}"`(채움 칸 제외) + footer 가 있으면 마지막 줄. 4096 절단.
 5. `layout = DiscordLayout(author, fields, footer, timestamp)`.
@@ -180,6 +185,7 @@ Discord 렌더링은 `route.discord != null` 일 때만 한다(기존 lazy 규�
 
 기존 `AccountPnlFormat` 의 숫자 함수(`plain`·`format`·`sign`·`percent`·`krw`·`krwOrZero`·`cost`·`signedUsdt`·`percentPoint`)와 같은 동작을 두고 아래를 더한다.
 A단계에서는 기존 Content object 를 건드리지 않으므로 두 object 가 잠시 공존하고, B단계 정리 태스크가 `AccountPnlFormat` 과 UTC 병기 `time` 을 삭제한다. 시그니처는 plan Task 3 이 전문으로 둔다.
+두 object 모두 domain 모듈 internal 이라 domain 테스트에서 직접 호출해 출력을 비교할 수 있다(plan Task 3 `AlertFormatTest`).
 
 | 함수 | 출력 예 | 용도 |
 |---|---|---|
@@ -196,7 +202,7 @@ A단계에서는 기존 Content object 를 건드리지 않으므로 두 object 
 | `usdt2(value)` | `14.36 USDT` (부호 없음, `#,##0.00`) | 수수료·평가액 USDT |
 | `signedUsdt2(value)` | `+4.20 USDT`, `-851.20 USDT` | 손익·펀딩 USDT |
 | `rate(value)` | `1,400.00` | 환율 |
-| `displayWidth(text)` | 한글 2·그 밖 1 | 메일 정렬 |
+| `displayWidth(text)` | 한글 2·그 밖 1 (`마지막 성공` = 11, `10분 저점` = 9) | 메일 정렬 |
 
 `[ASSUMPTION] A2` Discord 칸의 시각은 `clock(instant, basis, zone)` 이다 — 기준 시각과 같은 날이면 `HH:mm`, 아니면 `MM-dd HH:mm`(리마인더 `10-17 09:30 변경` 이 이 규칙의 예).
 운영 해소 알림만 message-spec 대로 항상 `MM-dd HH:mm` 이다.
@@ -214,6 +220,7 @@ fun interface OwnerAlertDiscordSender { fun send(route: DiscordRoute, message: D
   `layout != null` 이면 title+author+footer+칸 이름·값 합계 ≤ 6000. 검증은 생성자, 절단은 렌더러(§3.3).
 - adapter payload: `layout == null` → 지금과 같은 `{title, description, color}`(기존 `DiscordWebhookSenderAdapterTest` 무수정 통과).
   `layout != null` → `{author:{name}?, title, color, fields:[{name,value,inline}], footer:{text}?, timestamp?}` — **description 은 보내지 않는다**(대체 평문은 롤백용).
+  `fields` 키는 **항상** 싣는다(빈 목록이면 `[]` — Discord 가 허용한다. 템플릿이 만든 layout 은 rows 가 비지 않으므로 실제로는 늘 1개 이상). `author`·`footer`·`timestamp` 만 null 이면 키를 뺀다.
   `content`(@here)·`allowed_mentions`·`flags`(SILENT 4096)는 push 규칙 그대로. timestamp 는 `Instant.toString()`(ISO-8601 UTC) — Discord 가 보는 사람 현지 시각으로 그린다.
 - `OwnerAlertDispatcher.sendDiscord` 는 `DiscordMessage(mail.subject, mail.body, color, mail.discordLayout)` 로 바뀌는 한 줄뿐이다.
 
@@ -232,33 +239,35 @@ fun interface OwnerAlertDiscordSender { fun send(route: DiscordRoute, message: D
 `ALTER TABLE account_pnl_mail ADD COLUMN discord_layout TEXT NULL` + CHECK(`discord_layout IS NULL OR channel = 'DISCORD'`). DDL 전문은 plan Task 5.
 순수 추가 — `verifyMigrations` 금지 목록(TRUNCATE·DROP TABLE·WHERE 없는 DELETE)과 무관, 기존 행은 NULL, 롤백 SQL 없음. API 만 Flyway 를 실행한다(batch 비활성).
 
-JSON 스키마(v1, infra 소유, 키 순서 고정):
+JSON 스키마(v1, infra 소유, 키 순서 고정, `fields` 는 빈 목록이어도 `[]` 로 항상 쓴다):
 
 ```json
 {"v":1,"author":"실계정 · BTC","fields":[{"name":"현김프","value":"1.78%","inline":true}],"footer":"환율 1,400.00원/USD","timestamp":"2026-10-20T00:00:00Z"}
 ```
 
 `author`·`footer`·`timestamp` 는 null 가능. 직렬화는 `infrastructure:common` 의 internal `DiscordLayoutJson`(Jackson tree API, Kotlin module·reflection 불필요).
-TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × UTF-8 최대 4바이트 + JSON 구조. 검증은 `OwnerAlertOutboxRows.validate`. `[DECISION_NEEDED] D1` — §13.
+TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × UTF-8 최대 4바이트 + JSON 구조. 검증은 `OwnerAlertOutboxRows.validate`.
+의존 선언은 D1(§13, **승인됨**)대로 `infrastructure:common` 에 `jackson-databind` 를 추가한다.
 
 ### 5.3 옛 행·롤백·배포
 
 | 상황 | 동작 |
 |---|---|
 | 배포 전에 쌓인 미발송 DISCORD 행 (`discord_layout` NULL) | 새 batch 가 `layout = null` 로 읽고 **옛 title/description embed** 로 보낸다(옛 문구). 재렌더하지 않는다 — outbox 는 렌더 결과의 정본이다 |
-| `discord_layout` 을 읽을 수 없음(JSON 오류·`v ≠ 1`·필수 키 누락·domain 불변식 위반) | 그 행만 `layout = null` 로 보고 대체 평문 description 으로 보낸다. WARN `Owner alert discord layout unreadable; sending plain description: id={}, reason={}` (reason ∈ `json`·`version`·`shape`, 내용·예외 메시지 없음). claim 전체를 실패시키지 않는다(독 행 방지) |
+| `discord_layout` 을 읽을 수 없음(JSON 오류·`v ≠ 1`·필수 키 누락·domain 불변식 위반) | 그 행만 `layout = null` 로 보고 대체 평문 description 으로 보낸다. WARN `Owner alert discord layout unreadable; sending plain description: id={}, reason={}` (reason ∈ `json`·`version`·`shape`, 내용·예외 메시지 없음). claim 전체를 실패시키지 않는다(독 행 방지). **shape 판정은 `DiscordLayout` 복원뿐 아니라 그 행의 `subject`·`body`·color 와 합쳐 `DiscordMessage(subject, body, color, layout)` 를 실제로 조립해 본 결과까지 포함한다** — 조립이 `IllegalArgumentException`(예: title+layout 합계 6000 초과)이면 `shape` 로 같은 처리. 그래야 dispatcher 의 `DiscordMessage` 생성이 그 행에서 예외를 내지 않는다 |
 | 구 batch 로 롤백 (V23 은 남음) | 구 INSERT 는 컬럼을 모름 → NULL. 구 claim 은 컬럼을 무시하고 `subject`/`body` 로 보낸다 → 새 행은 대체 평문으로 읽힌다 |
-| 배포 순서 | **API 먼저**(Flyway 는 API 만 실행) → batch. 새 batch 가 V23 전에 뜨면 INSERT 가 `Unknown column` 으로 실패해 Job 이 Failure 로 끝나고 운영 알림이 난다(데이터 손상 없음). runbook 에 적는다 |
+| 배포 순서 | **API 먼저**(Flyway 는 API 만 실행) → batch. 새 batch 가 V23 전에 뜨면 `account_pnl_mail` 의 INSERT(`OwnerAlertOutboxRows.kt:33-36` — 세 store 공용)와 claim SELECT(`JdbcAccountPnlAlertStore.kt:96-97`)가 `Unknown column 'discord_layout'` 로 실패한다 → 해당 batch Job 이 Failure(`OwnerOpsSignalJob.kt:156-158` 같은 store 실패 분기)로 끝나고 OperatorAlert(Slack)가 난다. **owner 실계정·운영·시장 알림 enqueue 와, 기존 대기 행(EMAIL 포함) 전달이 V23 적용 전까지 모두 멈춘다**(데이터 손상 없음 — 실패한 INSERT 는 상태 갱신과 같은 트랜잭션이라 롤백되고, 대기 행은 그대로 남아 V23 뒤 전달된다). 그래서 API(Flyway) 먼저 배포한다. runbook 에 적는다 |
 
 ## 6. 알림별 값 출처
 
-문구 형태(칸 이름·배치·제목 형식·footer·메일 섹션)는 message-spec 이 정본이다. 아래 표는 **각 자리에 무엇을 넣는가**만 정한다.
+문구 형태(칸 이름·배치·제목 형식·footer·메일 섹션·칸 값의 줄 구성)는 message-spec 이 정본이다. 아래 표는 **각 자리에 무엇을 넣는가**만 정한다.
 `basis` = 기준 시각(메일 끝 줄·embed timestamp).
 
 ### 6.1 `AccountPnlBreakdown` (K6, `io.premiumspread.domain.accountpnl`)
 
 `AccountPnlBreakdown.of(pnl: AccountNetPnl)` — 반올림 없음(나눗셈 `DECIMAL128`), 퍼센트만 scale 2 HALF_UP. 입력은 `pnl.position`·`koreaExitPrice`·`foreignExitPrice`·`fxRate`.
 "현재가" = 지금 정리 시 가격 = 순수익률 계산과 같은 값(빗썸 매수호가 VWAP·바이낸스 매도호가 VWAP). 문구에는 VWAP 라는 말을 쓰지 않는다(U5).
+바이낸스 leg 는 항상 숏이다 — `AccountHedgePosition.resolve`(`AccountHedgePosition.kt:19-20`)가 `foreign.signedQuantity < 0` 이 아니면 포지션을 만들지 않으므로 `AccountNetPnl` 에 롱이 오지 않는다. 그래서 breakdown 에 방향 필드를 두지 않는다.
 
 | 값 | 식 |
 |---|---|
@@ -279,7 +288,8 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 불변식 테스트: `korea.pnlKrw + foreign.pnlKrw == pnl.grossKrw`, `korea.exitFeeKrw + foreign.exitFeeKrw == pnl.exitFeeEstimateKrw`,
 `gross − feeTotal + fundingKrw == pnl.netKrw` (모두 `compareTo`).
 
-`[ASSUMPTION] A4` 금액은 각각 전체 정밀도에서 원 단위 HALF_UP 으로 표시한다. 표시값의 합이 표시된 합계와 1원 다를 수 있다
+`A4`(**사용자 승인**) 금액은 각 항목을 전체 정밀도 값에서 원 단위 HALF_UP 으로 표시한다. **합계(`수수료 합계`)·순손익도 반올림한 항목을 더하지 않고 각자의 전체 정밀도 값(`feeTotalKrw`·`netKrw`)을 반올림한다.**
+그래서 표시된 항목의 합이 표시된 합계·순손익과 ±1원 다를 수 있고, 이 차이는 허용한다
 (message-spec 예시의 `수수료 -73,846원`·`순손익 +469,354원` 은 반올림한 항목을 더한 값이고, 같은 입력의 실제 계산은 `-73,847원`·`+469,353원`).
 
 ### 6.2 실계정 순손익 (`AccountPnlAlertContent`, author `실계정 · BTC`)
@@ -288,13 +298,22 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 |---|---|---|---|
 | 수익 | `수익 알림 {percent(net%)} {krw(net)}` | `pnl.calculatedAt` | footer `환율 {rate(fx)}원/USD` |
 | 정시 | `정시 보고 {HH}:00 {percent} {krw}` (HH = calculatedAt 의 zone 정시) | `pnl.calculatedAt` | footer `매시 정각 발송 · 환율 …` |
-| 중단 | `모니터링 중단 — {label}` | `now` | footer `{threshold(MonitoringOutagePolicy.THRESHOLD)} 넘게 계산하지 못하면 알림`. `[확인할 것]` 칸·섹션은 `BITHUMB_AUTH` 만 |
-| 복구 | `모니터링 복구` | 메일 basis 없음(spec), embed timestamp = `now` | footer 없음 |
+| 중단 | `모니터링 중단 — {label}` | `now`(렌더 인자) | footer `{threshold(MonitoringOutagePolicy.THRESHOLD)} 넘게 계산하지 못하면 알림`. `[확인할 것]` 칸·섹션은 `BITHUMB_AUTH` 만 |
+| 복구 | `모니터링 복구` | 메일 basis 없음(spec), embed timestamp = `now`(렌더 인자) | footer 없음 |
+
+중단·복구 칸·메일 항목의 시각 출처:
+
+| 자리 | 값 | Discord 표기 | 메일 표기 |
+|---|---|---|---|
+| 중단 `[마지막 성공]` / `마지막 성공` | `OutageNotice.Outage.lastSuccessAt` (null 이면 `없음`) | `clock(lastSuccessAt, now, zone)` | `stamp(lastSuccessAt, zone)` |
+| 중단 `[중단 감지]` / `중단 감지` | 렌더 인자 `now` (`AccountPnlAlertContent.outage(notice, now, zone)`) | `clock(now, now, zone)` | `stamp(now, zone)` |
+| 복구 `[복구 시각]` / `복구 시각` | 렌더 인자 `now` (`AccountPnlAlertContent.recovered(now, zone)`) | `clock(now, now, zone)` | `stamp(now, zone)` |
 
 수익·정시 칸 값: §6.1 값을 `premium`·`percentPoint`·`krwPrice`·`krw`·`usdtPrice`·`usdt2`·`signedUsdt2`·`cost` 로 찍는다. 순손익 칸은 `**{krw} ({percent})**`.
 - `[ASSUMPTION] A5` 미반영 항목(진입 수수료·펀딩비 null)은 금액 자리에 `미반영 (이력 없음)` 또는 `미반영 (수동 미입력)`(바이낸스 수동 입력 모드)을 쓴다. 합계는 0 으로 계산된 값 그대로.
 - `[ASSUMPTION] A6` 실패 범주 label 은 `BITHUMB_AUTH` 만 `빗썸 인증 실패` 로 줄이고(허용 IP 안내는 "확인할 것"으로 이동), 나머지 6개는 그대로다.
 - 바이낸스 포지션 출처(거래소 API/수동 env)는 수익·정시 본문에 쓰지 않는다(U5).
+- D2(**승인됨 — 삭제**): 빗썸 평단 사용자 수정 표시(현재 `빗썸 평단 사용자 수정됨`)는 메일·Discord 어디에도 쓰지 않는다. 평단 값은 수정 여부와 무관하게 `평단 {krwPrice(avg)}` 로 같다.
 
 ### 6.3 계정 알림 (`AccountAlertContent`, author `실계정 · BTC`)
 
@@ -304,9 +323,15 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 | 순수익률 급변 | `순수익률 {급등\|급락} {pp(delta)} → {percent(net%)}` | `pnl.calculatedAt` | 기준선 칸 이름 `기준선 ({bucketStart 의 HH}:00)` |
 | 미반영 리마인더 | `미반영 항목 {items.size}건` | `detectedAt` | 빠진 항목 3종은 `[순손익에 빠진 항목]`, `MANUAL_FUNDING_STALE` 은 `[오래된 항목]`. 해당 항목이 없는 칸·섹션은 만들지 않는다 |
 
-- leg 표기: 빗썸 `{plain(qty)} BTC · 평단 {krwPrice(avg)}`, 비었으면 `포지션 없음`. 바이낸스 `{plain(|qty|)} BTC · 평단 {usdtPrice(entry)}`, flat 이면 `포지션 없음`,
-  `[ASSUMPTION] A7` 롱이면 앞에 `롱 `. `[ASSUMPTION] A8` 안 바뀐 leg 값은 한 줄(`수량 · 평단`)로 통일한다(spec 201행의 빗썸 칸 줄바꿈은 231행 바이낸스 칸과 맞춘다).
+- leg 표기 재료: 빗썸 `{plain(qty)} BTC`·`평단 {krwPrice(avg)}`, 비었으면 `포지션 없음`. 바이낸스 `{plain(|qty|)} BTC`·`평단 {usdtPrice(entry)}`, flat 이면 `포지션 없음`.
+- **칸 값·메일 줄의 줄 구성은 message-spec 그대로다**(design 이 바꾸지 않는다):
+  - 바뀐 leg — Discord 칸 `{수량} BTC · 평단 {가격} ⏎ → {변경 후}`(spec 201·231행), 메일 `변경 전  …`·`변경 후  …` Pairs(spec 214-215·242-243행).
+  - 안 바뀐 **빗썸** leg — Discord 칸 값 `{plain(qty)} BTC ⏎ 평단 {krwPrice(avg)}` 두 줄(spec 201행), 메일 `{plain(qty)} BTC · 평단 {krwPrice(avg)}` 한 줄(spec 211행).
+  - 안 바뀐 **바이낸스** leg — Discord 칸 값 `{plain(|qty|)} BTC · 평단 {usdtPrice(entry)}` 한 줄(spec 231행), 메일 같은 한 줄(spec 246행).
+  - `[ASSUMPTION] A13` 안 바뀐 leg 가 비었거나 flat 이면(spec 예시 없음) Discord·메일 모두 `포지션 없음` 한 줄.
+- `[ASSUMPTION] A7` 포지션 변경 알림의 바이낸스 leg 는 계정 원본 스냅샷(`PositionLegs.foreign` = `ForeignLeg`)이라 롱일 수 있다(수익·정시와 달리 `AccountHedgePosition.resolve` 를 거치지 않는다). 롱이면 값 앞에 `롱 ` 을 붙인다. 수익·정시 알림은 §6.1 대로 항상 숏이라 이 규칙이 없다.
 - 급변 footer `기준 ±{format("0.00", threshold)}%p · 같은 시간대 같은 방향은 1번만 알림`.
+- 리마인더 footer `하루 1번, {HH}:00 이후 발송`, 메일 안내 문장 `하루 1번, {HH}:00 이후에 보냅니다.` 의 `{HH}` 는 **`AccountAlert.UnrecoveredReminder.reminderHour`**(`AccountAlert.kt:56`, 설정 `account-pnl-monitor.account-alerts.reminder-hour` → `AccountAlertSettings.reminderHour`)를 `%02d`(`Locale.ROOT`)로 찍는다. 기존 `AccountAlertContent.kt:200` 과 같은 출처다. spec 의 `09:00` 을 **하드코딩하지 않는다**(golden 은 `reminderHour = 9` 입력의 결과 + `reminderHour = 7` 변형 1건).
 
 ### 6.4 운영 알림 (`OwnerOpsAlertContent`, author `운영`)
 
@@ -343,13 +368,19 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 
 - 제목 `[김프 알림] {SYMBOL} 김프 {premium(rate)} 도달`.
 - 본문: `Text("안녕하세요, {nickname}님.", "설정하신 김프 알림 조건에 도달했습니다.")` → `Pairs(종목 "{SYMBOL} ({exchange(korea)} / {exchange(foreign)})", 조건 "김프 {premium(threshold)} {이상|이하}", 현재 김프 premium(rate), 관측 시각 stamp(observedAt))` → signature `premium-spread`. basis 없음.
-- 재료는 `ActiveNotificationSubscription`(pair·nickname·direction·threshold)과 `PremiumSnapshot`(premiumRate·observedAt). zone 은 서비스 생성자에 `aggregation.zone` 으로 주입(§7).
+- 재료는 `ActiveNotificationSubscription`(pair·nickname·direction·threshold)과 `PremiumSnapshot`(premiumRate·observedAt). zone 은 서비스 생성자 인자로 받는다 — 값은 `NotificationDeliveryConfiguration` 이 `aggregation.zone` 을 읽어 넘긴다(§7, N1).
 - subject 는 V14 `VARCHAR(500)` 안이다(가장 긴 경우도 60자 미만).
 
 ## 7. 시간 계약
 
 - 모든 시각은 `Instant`. 표시 zone 은 호출자가 넘긴 `ZoneId` — owner 알림은 기존 그대로(운영·시장 = `aggregation.zone`, PnL 모니터 = 생성자 기본값 `Asia/Seoul`;
-  `[ASSUMPTION] A12` PnL 배선은 바꾸지 않는다). 회원 서비스는 `@Value("\${aggregation.zone:Asia/Seoul}")` 로 받는다(batch 의 `BatchZoneConsistencyValidator` 가 `batch.scheduling.zone` 과 같음을 보장하는 키).
+  `[ASSUMPTION] A12` PnL 배선은 바꾸지 않는다).
+- 회원 서비스(N1 — 기존 관례 `OwnerAlertDeliveryConfiguration.kt:153,165`·`OwnerMarketAlertConfiguration.kt:67` 를 따른다): 서비스 클래스에는 `@Value` 를 두지 않는다.
+  `PremiumThresholdDeliveryService` 는 생성자 끝에 `private val zone: ZoneId = ZoneId.of("Asia/Seoul")` 를 받고(기존 4인자 테스트 무수정 컴파일),
+  `apps/batch/src/main/kotlin/io/premiumspread/config/NotificationDeliveryConfiguration.kt` 의 새 `@Bean` 메서드가 `@Value("\${aggregation.zone:Asia/Seoul}") zone: String` 을 받아 `ZoneId.of(zone)` 으로 생성한다
+  (batch 의 `BatchZoneConsistencyValidator` 가 `batch.scheduling.zone` 과 같음을 보장하는 키). 이 Configuration 은 이미 서비스와 같은 `@ConditionalOnProperty(notification.email.enabled=true)` 를 갖는다.
+  서비스 클래스는 `@Service` 를 빼고 `@ConditionalOnProperty` 는 남긴다 — `[ASSUMPTION] A14` 기존 `NotificationDisabledContextTest.kt:49-52` 가 이 클래스를 `@Import` 하고 `:33` 에서 `doesNotHaveBean` 을 단정하므로,
+  조건까지 빼면 disabled 컨텍스트에 빈이 생겨 R3 밖 테스트가 깨진다. 조건을 남기면 그 테스트는 무수정 통과하고, 운영에서는 component scan 대상이 아니므로 Configuration 의 `@Bean` 하나만 등록된다.
 - 메일 표기 `yyyy-MM-dd HH:mm z`(`Locale.ROOT`, Asia/Seoul → `KST`). 초 단위·UTC 원문 병기 없음. Discord 칸은 §3.5 `clock`, embed `timestamp` 는 Instant.
 - 이 작업에는 **범위(`[from,to)`) 계산이 없다**. 정시 `{HH}:00`·요약 대상일은 기존 정책이 만든 값(`bucketStart`·`date`)을 표시만 한다.
 - 테스트는 고정 Instant + 명시 zone(`Asia/Seoul`)만 쓴다. 렌더러는 zone 인자 없이 시각을 찍지 않는다(시스템 default zone 무관).
@@ -366,10 +397,11 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 | 항목 | 판정 | 근거 |
 |---|---|---|
 | DB·캐시 순서 | 변경 없음 | 캐시를 쓰지 않는다. outbox INSERT 는 기존 트랜잭션(상태 + 행 한 트랜잭션, DB-first) 안에서 열 하나가 늘 뿐이다 |
-| 배치 lock·lease·timeout·`JobResult` | 변경 없음 | Job 은 렌더 함수 호출 줄만 바뀐다. 렌더 예외(Discord 합계 6000 초과 등 — 템플릿상 불가)는 지금과 같은 경로(회차 action 예외 → 기존 분기)다 |
+| 배치 lock·lease·timeout·`JobResult` | 변경 없음 | Job 은 렌더 함수 호출 줄만 바뀐다. 렌더 예외(Discord 합계 6000 초과 등 — 템플릿상 불가)는 지금과 같은 경로(회차 action 예외 → 기존 분기)다. 배포 순서 위반 시 동작은 §5.3 |
 | 공개 endpoint | 영향 없음 | API 코드 변경 없음(`PublicEndpointPolicy`·`docs/runbooks/auth-security.md` 무변경). API 는 V23 을 적용만 한다 |
 | Redis | 변경 없음 | key·TTL·payload 무관(`modules:redis`·`docs/runbooks/redis-contract.md` 무변경) |
 | 발송 조건·라우팅·eventKey | 변경 없음 | U7 |
+| 회원 서비스 빈 조건 | 변경 없음 | `notification.email.enabled=true` 일 때만 생성(§7). 빈 정의 위치만 클래스 → `NotificationDeliveryConfiguration` |
 
 ## 10. 비노출 (로그·toString)
 
@@ -387,15 +419,16 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 
 | 계층 | 무엇을 | 위치 |
 |---|---|---|
-| Domain 불변식 | `DiscordField`·`DiscordLayout`·`DiscordMessage` 한도 경계(255/256/1024/2048/25/6000), `AccountPnlMail` 의 layout 은 DISCORD 만 | `domain` unit |
-| 서식·렌더러 | `AlertFormat` 경계값, 메일 정렬·섹션·basis·signature, embed 칸 inline·채움 칸·절단·대체 평문 | `domain` unit |
+| Domain 불변식 | `DiscordField`·`DiscordLayout`·`DiscordMessage` 한도 경계(255/256/1024/2048/25/6000), `AccountPnlMail` 의 layout 은 DISCORD 만, 채널·route·color 불변식(삭제되는 `OwnerAlertRowsTest` 에서 이식) | `domain` unit |
+| 서식·렌더러 | `AlertFormat` 경계값과 `AccountPnlFormat` 직접 비교(A단계), 메일 정렬·섹션·basis·signature, embed 칸 inline·채움 칸·절단·대체 평문 | `domain` unit |
 | 순수 계산 | `AccountPnlBreakdown` — message-spec 수익 예시 입력으로 각 값, `AccountNetPnl` 과의 일치 | `domain` unit |
-| golden | 22종 각각 메일 subject·body `isEqualTo`, Discord author·title·color·fields(name·value·inline)·footer·timestamp `isEqualTo` + 결측·변형 시나리오 | `domain` unit, family 별 파일 |
+| golden | 22종 각각 메일 subject·body `isEqualTo`, Discord author·title·color·fields(name·value·inline)·footer·timestamp `isEqualTo` + 결측·변형 시나리오. 삭제되는 옛 테스트의 비문구 계약(Message-ID 형식·비밀 부재·정시 버킷 eventKey)도 여기로 이식 | `domain` unit, family 별 파일 |
 | 전수 적합성 | 22종 시나리오를 한 목록으로 — 금지어, 접두어, basis 줄 규칙, author 집합, 행별 칸 수, Discord 한도 | `domain` unit `AlertMessageSpecConformanceTest` |
+| Job 행 | 세 Job 이 만든 DISCORD 행 `discordLayout != null`, EMAIL 행 body == 템플릿 `mail.body()` (dod AC15(b)) | `apps:batch` unit, Job 별 신규 `*TemplateRowsTest` |
 | 회원 메일 | A단계 특성화(현재 문구 고정) → B단계 새 golden | `apps:batch` unit + `domain` unit |
 | 직렬화 | `DiscordLayoutJson` 왕복·null 키·읽기 실패 reason | `infrastructure:common` unit |
 | adapter | payload(layout 유무 × push 3종), 기존 테스트 무수정 | `infrastructure:batch` unit |
-| persistence | V23 경로(빈 DB·V22→V23·CHECK), insert→claim 왕복, NULL 옛 행, 손상 JSON | `infrastructure:common` integrationTest |
+| persistence | V23 경로(빈 DB·V22→V23·CHECK), insert→claim 왕복, NULL 옛 행, 손상 JSON·조립 실패(shape) | `infrastructure:common` integrationTest |
 | E2E | Job → MySQL outbox → 전달 Job → mock Discord 서버 payload 에 fields, 옛 NULL 행은 title/description | `apps:batch` integrationTest |
 | 경계 | `architectureTest` (domain 새 의존 없음·앱 main infra import 없음) | root |
 
@@ -407,31 +440,36 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 - **A단계 — 동작 보존** (plan Task 1~7): 회원 메일 특성화, Discord 레이아웃 타입, 템플릿 계층·공용 서식, `AccountPnlBreakdown`, V23, persistence, adapter·dispatcher.
   기존 Content object 의 문구 코드는 바뀌지 않는다. **기존 golden 테스트 무수정 통과**가 이 단계의 증거다(dod R14).
 - **B단계 — family 별 문구 전환** (plan Task 8~12): 커밋 하나 = family 하나(실계정 순손익 / 계정 알림 / 운영 / 시장 / 회원). 각 커밋의 diff 는 그 family 의
-  템플릿·golden·Job 호출 줄·문구 단정 줄뿐이라 message-spec 의 해당 절과 나란히 놓고 리뷰한다.
+  템플릿·golden·Job 호출 줄·문구 단정 줄·Job 행 신규 테스트뿐이라 message-spec 의 해당 절과 나란히 놓고 리뷰한다.
 - 정리·22종 적합성(Task 13), E2E(Task 14), 문서(Task 15), 최종 gate(Task 16).
 
-## 13. 가정과 결정 필요
+## 13. 가정과 결정
 
-| # | 내용 | 기본값(plan 이 따르는 것) |
+| # | 내용 | 상태 · 기본값(plan 이 따르는 것) |
 |---|---|---|
 | A1 | 메일 정렬은 표시 폭 규칙(§3.2), spec 공백 개수는 예시 | 규칙 |
 | A2 | Discord 칸 시각 `HH:mm`/`MM-dd HH:mm` 규칙(§3.5), 운영 해소만 항상 날짜 포함 | 규칙 |
 | A3 | 김프 차이 = 반올림한 두 값의 차 | §6.1 |
-| A4 | 금액은 항목별 반올림, 합계와 ±1원 차이 허용 | §6.1 |
+| A4 | 금액은 항목별 반올림, 합계·순손익은 전체 정밀도 값을 반올림, 항목 합과 ±1원 차이 허용 | **사용자 승인** · §6.1 |
 | A5 | 미반영 표기 `미반영 (이력 없음\|수동 미입력)` | §6.2 |
 | A6 | 중단 label 은 빗썸 인증만 변경 | §6.2 |
-| A7·A8 | 바이낸스 롱 `롱 ` 접두, 안 바뀐 leg 한 줄 | §6.3 |
+| A7 | 포지션 변경 알림의 바이낸스 leg 롱이면 `롱 ` 접두(수익·정시는 항상 숏 — 방향 필드 없음) | §6.1·§6.3 |
+| A8 | ~~안 바뀐 leg 한 줄 통일~~ | **철회** — 줄 구성은 message-spec 그대로(§6.3) |
 | A9·A10 | 운영 순번 접미사·안내 문장 신호 종류별, 해소 첫 줄 | §6.4 |
 | A11 | 요약 결측 표기 | §6.5 |
 | A12 | PnL 모니터 zone 배선 무변경 | §7 |
-| **D1** `[DECISION_NEEDED]` | `infrastructure:common` 에 `implementation("com.fasterxml.jackson.core:jackson-databind")` **선언 추가**. 버전은 Spring Boot BOM, 아티팩트는 이미 그 모듈 compile classpath(`modules:redis` 의 redisson `api` 전이)와 batch·api 런타임에 있다 — 해석된 의존 그래프는 바뀌지 않는다. 합의 "신규 의존성 없음"과 충돌하는지 확인 필요. 대안: 손으로 쓴 이스케이프 텍스트 코덱(의존 선언 없음, 코덱 코드·테스트 증가, 운영자가 SQL 로 읽기 어려움) | 선언 추가 (plan Task 0 (g2) 가 전이 존재를 확인) |
-| **D2** `[DECISION_NEEDED]` | 빗썸 평단 사용자 수정 표시(현재 `빗썸 평단 사용자 수정됨`)는 spec 에 자리가 없다. 삭제 / 빗썸 칸 `평단` 값 뒤 ` (수정됨)` | 삭제 |
+| A13 | 안 바뀐 leg 가 비었거나 flat 이면 `포지션 없음` 한 줄 (spec 예시 없음) | §6.3 |
+| A14 | 회원 서비스는 `@Service` 만 빼고 `@ConditionalOnProperty` 유지 (기존 `NotificationDisabledContextTest` 무수정) | §7 |
+| **D1** | `infrastructure:common` 에 `implementation("com.fasterxml.jackson.core:jackson-databind")` **선언 추가**. 버전은 Spring Boot BOM, 아티팩트는 이미 그 모듈 compile classpath(`modules:redis` 의 redisson `api` 전이)와 batch·api 런타임에 있다 — 해석된 의존 그래프는 바뀌지 않는다 | **결정됨(사용자 승인)** — 선언 추가. plan Task 0 (g2) 가 전이 존재를 확인 |
+| **D2** | 빗썸 평단 사용자 수정 표시(현재 `빗썸 평단 사용자 수정됨`)는 spec 에 자리가 없다 | **결정됨(사용자 승인)** — 삭제(§6.2) |
+| N1 | 회원 서비스 zone 주입 방식 | **결정됨** — `NotificationDeliveryConfiguration` 의 `@Bean` 이 `aggregation.zone` 을 읽어 생성자로 넘긴다(§7). 서비스에 `@Value` 없음 |
+| N2 | 최상위 data class(`MailDocument` 등) 구조 | **결정됨** — 현행 유지(변경 없음) |
 
 ## 14. 문서 갱신
 
 | 문서 | 갱신 |
 |---|---|
-| `docs/runbooks/account-pnl-alert.md` | 메일·Discord 예시(:149 부근 수익, :262·:281 계정 알림, :313 부근), 대조 체크리스트(:457·:483)의 "청산가(호가 VWAP)·체결가 기준" 문구를 "현재가·순수익률"로, V23 배포 순서(API 먼저)와 `discord_layout` 설명(:514 부근 테이블 설명), 옛 행·손상 행 동작 |
+| `docs/runbooks/account-pnl-alert.md` | 메일·Discord 예시(:149 부근 수익, :262·:281 계정 알림, :313 부근), 대조 체크리스트(:457·:483)의 "청산가(호가 VWAP)·체결가 기준" 문구를 "현재가·순수익률"로, V23 배포 순서(API 먼저)와 순서 위반 시 장애 범위(§5.3 배포 순서 행 그대로), `discord_layout` 설명(:514 부근 테이블 설명), 옛 행·손상 행 동작 |
 | `docs/runbooks/owner-ops-alert.md` | :123-158 예시 3개를 새 형식으로, :135·:146 `조치 안내` 줄 삭제, :184 부근 문구 |
 | `docs/runbooks/owner-market-alert.md` | :131-155 예시와 :133 의 "마지막 줄은 항상 조치 안내" 문장, :179 부근 |
 | `.ai/PROJECT_STATUS.md` | `Flyway V1~V23`(:13), V23 행(:128 다음) |
@@ -439,3 +477,17 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 
 runbook 예시는 message-spec 을 복제하지 않고 **각 runbook 이 다루는 알림 1~2개 예시 + message-spec 링크**로 둔다.
 로그 예시(`account-pnl-alert.md:397` `Account PnL observed: …`)는 로그 계약이라 바꾸지 않는다.
+
+## 15. 변경 내역
+
+| 라운드 | 바꾼 것 | 사유 |
+|---|---|---|
+| ⑥-1 | §13 D1·D2·A4 결정됨, N1·N2 추가, A8 철회 → §6.3 줄 구성 spec 기준·A13 신설 | 사용자 결정 |
+| ⑥-1 | §3.3 수익 알림 fields 12개 예시, SPACER 를 `U+200B`·`Char(0x200B)` 로 표기(보이지 않는 문자 직접 삽입 금지) | 스펙 리뷰 MAJOR 1·MINOR 13(e) |
+| ⑥-1 | §5.3 배포 순서 위반 장애 범위 정정(enqueue·기존 대기 행 전달 전부 정지) | MAJOR 5 |
+| ⑥-1 | §5.3 shape 판정에 `DiscordMessage` 조립 실패 포함 | MINOR 13(c) |
+| ⑥-1 | §4·§5.2 `fields` 키 항상 포함으로 통일 | MINOR 13(d) |
+| ⑥-1 | §6.1 바이낸스 leg 항상 숏(방향 필드 없음), §6.3 A7 범위 정리 | MINOR 13(b) |
+| ⑥-1 | §6.2 중단·복구 시각 출처 표, §6.3 리마인더 `reminderHour` 출처 | MINOR 6·7 |
+| ⑥-1 | §7 회원 zone 주입을 Configuration `@Bean` 으로(A14) | N1 |
+| ⑥-1 | §2 `NetPercentSwingPolicy.kt:12` KDoc, §11 Job 행 신규 테스트·이식 계약 | MINOR 10, MAJOR 4, MINOR 8 |
