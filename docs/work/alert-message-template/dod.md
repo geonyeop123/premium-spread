@@ -158,3 +158,15 @@ base = `3d179e7` (Task 0 확인). RED 면제 대상.
 ## 증거 로그
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### Task 0 — Gate 1 기준선 (2026-10-30)
+
+- HEAD `5846c72`, merge-base(origin/dev) `3d179e71e96d5f6a97070ac06462cf018add7c68` — base `3d179e7` 일치.
+- R1·R2 `./gradlew test architectureTest --offline --no-daemon` → exit 0, 테스트 1338건(skipped 0, failures 0, errors 0; build/test-results XML 합산).
+- R4 `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` → exit 0.
+- R5 `:infrastructure:common:integrationTest`, R6 `:apps:batch:integrationTest`, R7 `:apps:api:integrationTest` → 모두 exit 0 (Docker 사용). 세 모듈 합산 367건, failures 0, errors 0, skipped 0.
+- (g1) `V22__create_owner_market_alert_state.sql` — V23 번호 확인.
+- (g2) `com.fasterxml.jackson.core:jackson-databind:2.21.4` 전이 존재.
+- (g3) 예상 2건(`V19…:34`, `AccountPnlFixtureSchemaIntegrationTest:45`) 외에 `V20…:34`, `V21…:29` 가 더 걸렸으나 둘 다 account_pnl_mail 이 아닌 상태 테이블의 열 단언이다 — 영향 없음.
+- (g4) 예상 파일 외 걸린 줄: `OwnerAlertDispatcherTest.kt:198`(fake 의 title 비교), `OwnerAlertDeliveryIntegrationTest.kt:116`·`DiscordWebhookSenderAdapterTest.kt:89-95`(요청 body 읽기) — 변경되는 문구를 단정하는 줄이 아니므로 R3 목록 변경 불요로 판단.
+- (g5)~(g11) 예상과 일치(g5 `:63`·`:79`·`:84`·`:94`, g6 `:105`·`:119`·`:298`, g7 5개 파일, g8 `:225`·`:240`·`:242`, g9 `:153`·`:67`, g10 `OwnerOpsAlertContentTest:264-266` 3줄만, g11 `:33`·`:52`).
