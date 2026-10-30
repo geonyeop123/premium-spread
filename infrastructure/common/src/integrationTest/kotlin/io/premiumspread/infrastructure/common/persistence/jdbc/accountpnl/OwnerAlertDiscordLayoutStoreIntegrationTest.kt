@@ -130,6 +130,39 @@ class OwnerAlertDiscordLayoutStoreIntegrationTest {
     }
 
     @Test
+    fun `e3 layout 없이도 조립이 실패하는 행은 shape 분류 없이 layout 을 그대로 두고 같은 배치의 shape 행만 null 이다`(output: CapturedOutput) {
+        val big = DiscordLayout(
+            author = null,
+            fields = (1..6).map { DiscordField("n$it", "v".repeat(995), true) },
+            footer = null,
+            timestamp = null,
+        )
+        outbox.enqueue(
+            emptyList(),
+            listOf(
+                discordMail("plainBad", layout("평문불량")),
+                discordMail("shape", null, subject = "s".repeat(255)),
+                discordMail("good", layout("정상")),
+            ),
+        )
+        jdbcTemplate.update("UPDATE account_pnl_mail SET subject = ' ' WHERE event_key = 'plainBad'")
+        jdbcTemplate.update(
+            "UPDATE account_pnl_mail SET discord_layout = ? WHERE event_key = 'shape'",
+            DiscordLayoutJson.write(big),
+        )
+        val shapeId = idOf("shape")
+
+        val claimed = alertStore.claim("owner:test", 10, NOW).associate { it.mail.eventKey to it.mail.discordLayout }
+
+        assertThat(claimed["plainBad"]).isEqualTo(layout("평문불량"))
+        assertThat(claimed["shape"]).isNull()
+        assertThat(claimed["good"]).isEqualTo(layout("정상"))
+        assertThat(output.all)
+            .contains("id=$shapeId, reason=shape")
+            .doesNotContain("id=${idOf("plainBad")}, reason=shape")
+    }
+
+    @Test
     fun `e2 v 가 1 이 아닌 행은 reason version 이다`(output: CapturedOutput) {
         outbox.enqueue(emptyList(), listOf(discordMail("v2", null)))
         jdbcTemplate.update(
@@ -156,6 +189,35 @@ class OwnerAlertDiscordLayoutStoreIntegrationTest {
             .hasMessage("discordLayout must be at most 65535 bytes in UTF-8.")
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM account_pnl_mail", Int::class.java)).isZero()
+    }
+
+    @Test
+    fun `g 직렬화 결과가 정확히 65535 바이트인 layout 은 저장된다`() {
+        val exact = layoutOfSerializedBytes(65_535)
+        assertThat(DiscordLayoutJson.write(exact).toByteArray(Charsets.UTF_8)).hasSize(65_535)
+
+        assertThat(outbox.enqueue(emptyList(), listOf(discordMail("exact", exact)))).isTrue()
+
+        // embed 합계 6000자 상한 때문에 claim 은 이 크기를 shape 로 거른다. 여기서는 TEXT 컬럼 경계 저장만 고정한다.
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT OCTET_LENGTH(discord_layout) FROM account_pnl_mail WHERE event_key = 'exact'",
+                Int::class.java,
+            ),
+        ).isEqualTo(65_535)
+    }
+
+    /** 21 칸은 한글 1024자로 채우고, 22번째 칸의 한글 k 자 + ASCII a 자 조합으로 직렬화 크기를 정확히 [target] 에 맞춘다. */
+    private fun layoutOfSerializedBytes(target: Int): DiscordLayout {
+        val full = (1..21).map { DiscordField("n$it", "가".repeat(1024), true) }
+        for (k in 0..1024) {
+            for (a in 0..(1024 - k)) {
+                if (k + a == 0) continue
+                val candidate = DiscordLayout(null, full + DiscordField("last", "가".repeat(k) + "a".repeat(a), true), null, null)
+                if (DiscordLayoutJson.write(candidate).toByteArray(Charsets.UTF_8).size == target) return candidate
+            }
+        }
+        error("no layout serializes to exactly $target bytes")
     }
 
     private fun idOf(eventKey: String): Long =

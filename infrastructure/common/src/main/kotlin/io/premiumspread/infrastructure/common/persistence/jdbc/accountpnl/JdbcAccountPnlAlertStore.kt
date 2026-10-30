@@ -394,13 +394,15 @@ class JdbcAccountPnlAlertStore(
     }
 
     /**
-     * 복원과 `DiscordMessage` 조립 확인에 실패하면 그 행만 레이아웃 없이(대체 평문) 발송하도록 null 을 돌려준다.
+     * 복원과 `DiscordMessage` 조립 확인(layout 없이는 성공하고 layout 포함만 실패)에 실패하면 그 행만 레이아웃 없이(대체 평문) 발송하도록 null 을 돌려준다.
      * claim 전체를 실패시키지 않는다. 로그에는 id·reason 만 남긴다(컬럼 값·예외 메시지 금지).
      */
     private fun readLayout(id: Long, json: String?, subject: String, body: String, color: Int): DiscordLayout? {
         if (json == null) return null
         val reason = try {
             val layout = DiscordLayoutJson.read(json)
+            // layout 없이도 조립이 안 되는 행은 layout 탓이 아니다(layout 도입 전과 같이 발송 단계가 다룬다). layout 을 그대로 둔다.
+            if (!plainAssembles(subject, body, color)) return layout
             try {
                 DiscordMessage(subject, body, color, layout)
             } catch (_: IllegalArgumentException) {
@@ -416,6 +418,13 @@ class JdbcAccountPnlAlertStore(
             reason.name.lowercase(),
         )
         return null
+    }
+
+    private fun plainAssembles(subject: String, body: String, color: Int): Boolean = try {
+        DiscordMessage(subject, body, color)
+        true
+    } catch (_: IllegalArgumentException) {
+        false
     }
 
     private fun ResultSet.getInstantOrNull(column: String): Instant? = getTimestamp(column)?.toInstant()
