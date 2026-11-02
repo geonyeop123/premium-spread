@@ -1,0 +1,23 @@
+{
+  "totalWalletBalance": "10101.00",
+  "totalUnrealizedProfit": "-100.00",
+  "totalMarginBalance": "10001.00",
+  "availableBalance": "8000.25",
+  "assets": [
+    {
+      "asset": "BNB",
+      "walletBalance": "0.5",
+      "unrealizedProfit": "0.00",
+      "marginBalance": "0.5",
+      "availableBalance": "0.5"
+    },
+    {
+      "asset": "USDT",
+      "walletBalance": "10100.50",
+      "unrealizedProfit": "-100.00",
+      "marginBalance": "10000.50",
+      "availableBalance": "8000.25"
+    }
+  ],
+  "positions": []
+}

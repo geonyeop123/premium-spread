@@ -71,7 +71,10 @@ class BinanceFuturesManualAccountAdapterTest {
 
     @Test
     fun `출처는 MANUAL_ENV`() {
-        assertThat(adapter().read().positionSource).isEqualTo(ForeignPerpPositionSource.MANUAL_ENV)
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.positionSource).isEqualTo(ForeignPerpPositionSource.MANUAL_ENV)
+        assertThat(snapshot.balance).isNull()
     }
 
     @Test

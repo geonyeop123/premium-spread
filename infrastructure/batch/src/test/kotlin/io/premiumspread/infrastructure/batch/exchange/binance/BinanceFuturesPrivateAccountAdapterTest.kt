@@ -10,6 +10,9 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.web.reactive.function.client.WebClient
 import java.time.Clock
 import java.time.Instant
@@ -17,6 +20,7 @@ import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
+@ExtendWith(OutputCaptureExtension::class)
 class BinanceFuturesPrivateAccountAdapterTest {
     private lateinit var server: MockWebServer
     private val clock = Clock.fixed(Instant.parse("2026-10-20T00:00:00Z"), ZoneOffset.UTC)
@@ -31,6 +35,7 @@ class BinanceFuturesPrivateAccountAdapterTest {
     private val responses = mutableMapOf<String, () -> MockResponse>()
     private val requests = CopyOnWriteArrayList<RecordedRequest>()
     private var positionBody = positionRisk("BOTH", "-0.002", "61000")
+    private var accountBody = fixture("account.json")
     private var bnbPrice = "600"
     private var serverTimeOffset = 0L
 
@@ -53,6 +58,8 @@ class BinanceFuturesPrivateAccountAdapterTest {
                     "/fapi/v1/income" -> json(income(url))
 
                     "/fapi/v1/commissionRate" -> json(fixture("commission-rate.json"))
+
+                    "/fapi/v3/account" -> json(accountBody)
 
                     "/fapi/v1/depth" -> json(fixture("depth.json"))
 
@@ -430,6 +437,122 @@ class BinanceFuturesPrivateAccountAdapterTest {
         adapter().read()
 
         assertThat(requests.map { it.method }.toSet()).containsExactly("GET")
+    }
+
+    @Test
+    fun `USDT 잔고는 BNB 항목이 먼저여도 USDT 항목에서 읽는다`(output: CapturedOutput) {
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.balance!!.marginBalanceUsdt).isEqualByComparingTo("10000.50")
+        assertThat(snapshot.balance!!.availableBalanceUsdt).isEqualByComparingTo("8000.25")
+        assertSecretsAbsent(output)
+    }
+
+    @Test
+    fun `account 요청은 서명된 GET 한 건이다`() {
+        adapter().read()
+
+        val calls = requests.filter { it.requestUrl!!.encodedPath == "/fapi/v3/account" }
+        assertThat(calls).hasSize(1)
+        assertThat(calls.single().method).isEqualTo("GET")
+        assertThat(calls.single().getHeader("X-MBX-APIKEY")).isEqualTo("test-api-key")
+        assertThat(calls.single().requestUrl!!.encodedQuery).contains("recvWindow=", "timestamp=", "signature=")
+    }
+
+    @Test
+    fun `account 는 commissionRate 뒤 ticker 앞이고 depth 가 마지막이다`() {
+        adapter().read()
+
+        val paths = requests.map { it.requestUrl!!.encodedPath }.filterNot { it == "/fapi/v1/time" }
+        assertThat(paths.indexOf("/fapi/v3/account")).isGreaterThan(paths.indexOf("/fapi/v1/commissionRate"))
+        assertThat(paths.indexOf("/fapi/v3/account")).isLessThan(paths.indexOf("/fapi/v2/ticker/price"))
+        assertThat(paths.last()).isEqualTo("/fapi/v1/depth")
+    }
+
+    @Test
+    fun `account 요청 실패는 balance null 로 흡수하고 사유만 WARN 한다`(output: CapturedOutput) {
+        val cases = listOf<Triple<() -> MockResponse, String, String>>(
+            Triple(
+                { MockResponse().setResponseCode(401).setBody("""{"code":-2015,"msg":"Invalid API-key"}""") },
+                "category=BINANCE_AUTH",
+                "error=Unauthorized",
+            ),
+            Triple({ MockResponse().setResponseCode(503) }, "category=NETWORK", "error=ServiceUnavailable"),
+            Triple({ json("{not json") }, "category=UNEXPECTED", "error=JsonParseException"),
+        )
+        cases.forEach { (response, category, error) ->
+            responses["/fapi/v3/account"] = response
+            val before = output.all.length
+
+            val snapshot = adapter().read()
+
+            assertThat(snapshot.balance).isNull()
+            assertThat(snapshot.askLevels).isNotEmpty()
+            assertThat(snapshot.lastPrice).isEqualByComparingTo("6000.01")
+            assertThat(output.all.substring(before)).contains("item=BINANCE_USDT_ASSET", "reason=REQUEST_FAILED", category, error)
+        }
+        assertSecretsAbsent(output)
+    }
+
+    @Test
+    fun `account 해석 실패는 balance null 로 흡수하고 사유만 WARN 한다`(output: CapturedOutput) {
+        val cases = listOf(
+            """{"assets":[{"asset":"BNB","marginBalance":"1","availableBalance":"1"}]}""" to "MISSING",
+            """{"totalWalletBalance":"1"}""" to "MISSING",
+            """{"assets":[{"asset":"USDT","marginBalance":"1"}]}""" to "NOT_NUMBER",
+            """{"assets":[{"asset":"USDT","marginBalance":"1","availableBalance":"abc"}]}""" to "NOT_NUMBER",
+            """{"assets":[{"asset":"USDT","marginBalance":"-1","availableBalance":"1"}]}""" to "NEGATIVE",
+        )
+        cases.forEach { (body, reason) ->
+            accountBody = body
+            val before = output.all.length
+
+            val snapshot = adapter().read()
+
+            assertThat(snapshot.balance).isNull()
+            assertThat(snapshot.askLevels).isNotEmpty()
+            assertThat(output.all.substring(before))
+                .contains("item=BINANCE_USDT_ASSET", "reason=$reason", "category=-", "error=-")
+        }
+        assertSecretsAbsent(output)
+    }
+
+    @Test
+    fun `account 가 -1021 로 한 번 거부돼도 서버 시각을 다시 재고 balance 를 읽는다`() {
+        var rejected = 1
+        responses["/fapi/v3/account"] = {
+            if (rejected-- > 0) {
+                MockResponse().setResponseCode(400).setBody("""{"code":-1021,"msg":"outside of the recvWindow."}""")
+            } else {
+                json(accountBody)
+            }
+        }
+
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.balance!!.marginBalanceUsdt).isEqualByComparingTo("10000.50")
+        assertThat(requests.count { it.requestUrl!!.encodedPath == "/fapi/v1/time" }).isEqualTo(2)
+    }
+
+    @Test
+    fun `account 요청 중 취소되면 흡수하지 않고 던지며 depth 를 부르지 않는다`(output: CapturedOutput) {
+        val testThread = Thread.currentThread()
+        responses["/fapi/v3/account"] = {
+            testThread.interrupt()
+            json(fixture("account.json")).setBodyDelay(1, TimeUnit.SECONDS)
+        }
+        try {
+            catchRead()
+
+            assertThat(requests.none { it.requestUrl!!.encodedPath == "/fapi/v1/depth" }).isTrue()
+            assertThat(output.all).doesNotContain("reason=REQUEST_FAILED")
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    private fun assertSecretsAbsent(output: CapturedOutput) {
+        assertThat(output.all).doesNotContain("test-api-key", "test-secret-key", "signature=", "10000.50", "8000.25")
     }
 
     private fun adapter(clock: Clock = this.clock) = BinanceFuturesPrivateAccountAdapter(
