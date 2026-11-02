@@ -10,7 +10,7 @@
 
 **Spec:** `docs/work/account-balance-alert/design.md` · **DoD:** `docs/work/account-balance-alert/dod.md`
 
-**Discord 자산 행 배치:** 이 plan 은 design §5.2 **A안**(`[총 자산 | 증거금+손익 | USDT 원화가]` + `[잔여 금액]`)으로 쓴다. ⑦에서 **B안**(`[총 자산 | 증거금+손익]` + `[잔여 금액 | USDT 원화가]`)이 채택되면 각주 `[B안]` 이 붙은 지점만 바꾼다.
+**Discord 자산 행 배치 — ⑦ 결정 (2026-11-02): B안 채택.** 구현자는 본문의 A안 값 대신 `[B안]` 각주(Task 4 각주 1~4, Task 9 각주 5·6)를 적용한다. 본문 원문: 이 plan 은 design §5.2 **A안**(`[총 자산 | 증거금+손익 | USDT 원화가]` + `[잔여 금액]`)으로 쓴다. ⑦에서 **B안**(`[총 자산 | 증거금+손익]` + `[잔여 금액 | USDT 원화가]`)이 채택되면 각주 `[B안]` 이 붙은 지점만 바꾼다.
 
 ## Global Constraints
 

@@ -15,7 +15,7 @@ source: GitHub issue #105, orchestrator ③ 합의 범위(design.md §0)
 - 빗썸 `/v1/ticker?markets=KRW-BTC,KRW-USDT` 로 BTC 최근 체결가와 USDT 원화가(`usdtLastPriceKrw`)를 함께 받는다. 시장은 `market` 필드로 고른다.
 - 바이낸스 API 모드에서 `/fapi/v3/account` signed GET 1회로 USDT 자산 `marginBalance`·`availableBalance` 를 `ForeignPerpAccountSnapshot.balance` 로 싣는다.
 - Domain `AccountAssetBreakdown`(총 자산 = BTC 평가액 + KRW 잔고 + marginBalance × fxRate)과 `AccountPnlBreakdown.assets`.
-- 수익·정시 메일 `■ 자산` 섹션, Discord 순손익 뒤 2행(design §5 — 배치는 ⑦에서 A/B 중 사용자 결정).
+- 수익·정시 메일 `■ 자산` 섹션, Discord 순손익 뒤 2행(design §5.2 **B안** — ⑦ 결정).
 - 잔고·USDT 시세 실패의 adapter 내 흡수(해당 칸·총 자산 `없음`), WARN 로그 키, 취소 전파.
 - 수동 모드 표시 `수동 모드 — 표시 안 함`, 총 자산 `없음` (#102 U5 개정 — 합의 7).
 - `EmbedDocument` 행 끊기 칸을 non-inline U+200B 칸으로 교체(공통 렌더러).
@@ -62,11 +62,11 @@ source: GitHub issue #105, orchestrator ③ 합의 범위(design.md §0)
 
 **분할하지 않는 이유**: AC1~AC6 은 하나의 사용자 가시 변경(수익·정시 알림의 자산 칸)이 Domain 불변식 → 계산 → 문구 → 두 거래소 adapter 로 이어지는 한 줄기이고, 어느 하나만 배포하면 칸이 항상 `없음` 이거나 값이 표시되지 않는다. AC1(행 끊기)은 기술적으로 떼어낼 수 있지만, 사용자가 같은 이슈(#105)에서 함께 고치기로 합의했고 AC4 의 Discord golden(fields 16/17개)이 새 끊기 칸을 전제한다. AC7~AC9 는 같은 변경의 문서·사람 확인이다.
 
-**Gate 1 에서 함께 결정할 것**: design §5.2 Discord 자산 행 배치 A안 / B안(`[DECISION_NEEDED] Q1`). 결정에 따라 AC4·R2 의 기대값(fields 16/17, `cellsPerRow` 추가분 `[3,1]`/`[2,2]`)이 확정된다.
+**Gate 1 결정 (2026-11-02)**: Q1 = **B안** → AC4 fields 17개, R2 수익·정시 `cellsPerRow` = `[3,2,3,2,1,2,2]`, AC8 (d) 관찰 대상은 1/2 폭 행 6. 가정 A1~A4 수용. AC7 은 T2 로 확정.
 
 **티어 강등 사유** *(T1이 아닌 항목만. Gate 1에서 사람이 함께 승인한다)*
 
-- AC7 → T2: 문서 내용 계약이라 저장소에 이를 재는 이름 붙은 산출물이 없다. 재현 명령과 기대 출력을 적었다. 신규스크립트로 올릴지 Gate 1 에서 결정한다(문서 1회성 변경이라 T2 를 제안한다).
+- AC7 → T2: 문서 내용 계약이라 저장소에 이를 재는 이름 붙은 산출물이 없다. 재현 명령과 기대 출력을 적었다. Gate 1 에서 T2 로 확정했다(문서 1회성 변경).
 - AC8 → T4: Discord 클라이언트의 inline 칸 폭 계산은 우리 코드 밖이다. 렌더 결과는 실제 클라이언트에서만 관찰된다.
 - AC9 → T4: 운영 key 권한과 실 계정 응답은 테스트에 넣을 수 없다(`testing.md` "실제 거래소 주소를 test 에 넣지 않는다").
 
