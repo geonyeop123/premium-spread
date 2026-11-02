@@ -73,7 +73,8 @@
 ### D4. 실계정 금액을 담는 data class 는 모두 `toString()` 을 override 한다
 
 새 필드는 실계정 잔고다. 자동 `toString()` 이 로그·예외 메시지·assertion 출력에 금액을 흘리지 않게 한다. 기존 snapshot 두 개는
-지금도 자동 `toString()` 이 수량·평단을 노출하는데, 이번에 잔고가 같은 출력에 합류하므로 함께 override 한다(전문은 §3.1).
+지금도 자동 `toString()` 이 수량·평단을 노출하는데, 이번에 잔고가 같은 출력에 합류하므로 함께 override 한다(전문은 §3.1). 빗썸 adapter 의 private `Account`·`Prices`
+(잔고·USDT 시세를 담는다)도 같은 이유로 `toString()` 을 override 한다(구현 중 추가).
 이 override 는 snapshot 을 품는 `AccountHedgePosition`·`AccountNetPnl` 의 자동 `toString()` 출력도 함께 줄인다(둘은 이번에 고치지 않는다).
 
 ### D5. 표시 서식은 기존 `AlertFormat` 함수만 쓴다
@@ -95,6 +96,9 @@ architecture 스캔 대상에 들어가지 않지만, 이 파일도 HTTP 를 부
 ## 3. Domain 계약
 
 ### 3.1 snapshot 확장 (`domain/.../accountpnl/AccountSnapshots.kt`)
+
+아래 코드 블록은 **시그니처(이름·타입·기본값·불변식·`toString`)만 계약**이다. KDoc 은 설명용이며 구현에는 `ForeignPerpBalance`
+클래스·새 필드 3개의 KDoc 이 없다.
 
 ```kotlin
 /** 바이낸스 USDⓈ-M 계정의 USDT 자산 잔고. 둘 다 >= 0 (adapter 가 음수를 null 로 내린다). 실계정 금액이므로 toString 은 이름만. */
@@ -230,7 +234,7 @@ data class AccountPnlBreakdown(
 | `balance` 없음 / 숫자 아님 | `null` | `item=BITHUMB_KRW, reason=NOT_NUMBER` |
 | `balance < 0` | `null` | `item=BITHUMB_KRW, reason=NEGATIVE` |
 
-KRW 행 해석은 예외를 던지지 않는다. BTC 행 규칙(음수·평단 0 → `UNEXPECTED`)은 그대로다.
+숫자 해석(`lenientDecimal`)은 JSON 문자열뿐 아니라 JSON number 도 십진수로 받는다. KRW 행 해석은 예외를 던지지 않는다. BTC 행 규칙(음수·평단 0 → `UNEXPECTED`)은 그대로다.
 
 **최근 체결가 + USDT 원화가** — `/v1/ticker` query 를 `markets=KRW-BTC,KRW-USDT` 로 바꾸고, 응답 배열에서 **`market` 필드로**
 행을 고른다(지금의 "첫 행" 규칙을 대체한다).
@@ -242,7 +246,7 @@ KRW 행 해석은 예외를 던지지 않는다. BTC 행 규칙(음수·평단 0
 | `KRW-USDT` 행 없음 | 정상 | `null` | `item=BITHUMB_USDT_PRICE, reason=MISSING` |
 | `KRW-USDT` 의 `trade_price` 숫자 아님 | 정상 | `null` | `reason=NOT_NUMBER` |
 | `KRW-USDT` 의 `trade_price <= 0` | 정상 | `null` | `reason=NOT_POSITIVE` |
-| 묶음 요청이 `getJson` 단계에서 `UNEXPECTED` 로 실패(HTTP 응답 오류 400/404 등·빈 본문·JSON 해석 실패)하고 취소가 아님 | `markets=KRW-BTC` 로 **한 번 더** 요청한 결과(그 실패는 지금과 같이 전파) | `null` | `reason=TICKER_FALLBACK, category=UNEXPECTED, error={원인 체인 맨 끝 예외 simpleName}` `[ASSUMPTION A2]` |
+| 묶음 요청이 `getJson` 단계에서 `UNEXPECTED` 로 실패(HTTP 응답 오류 400/404 등·빈 본문·JSON 해석 실패)하고 취소가 아님 | `markets=KRW-BTC` 로 **한 번 더** 요청한 결과(그 실패는 지금과 같이 전파) | `null` | `item=BITHUMB_USDT_PRICE, reason=TICKER_FALLBACK, category=UNEXPECTED, error={원인 체인 맨 끝 예외 simpleName}` `[ASSUMPTION A2]` |
 | 묶음 요청이 `getJson` 단계에서 `NETWORK`·`BITHUMB_AUTH` | 지금과 같이 `read()` 실패(재시도 없음) | — | — |
 | 묶음 요청 중 취소(`AccountBalanceLog.isCancellation`) | 재요청·로그 없이 그대로 다시 던진다 | — | — |
 
@@ -264,7 +268,8 @@ depth 는 여전히 마지막이다(호가 skew 5초 계약).
 보낸다. `-1021` 은 `AccountReadException(NETWORK)` 로 바꿔 아래 요청 실패 행으로 흡수한다(⑨ code review).
 
 응답(바이낸스 공식 문서 `GET /fapi/v3/account` "Account Information V3"): 최상위 객체의 `assets` 배열, 항목 필드
-`asset`·`walletBalance`·`unrealizedProfit`·`marginBalance`·`availableBalance`(그 밖 필드도 오지만 읽지 않는다). 숫자는 문자열이다.
+`asset`·`walletBalance`·`unrealizedProfit`·`marginBalance`·`availableBalance`(그 밖 필드도 오지만 읽지 않는다). 숫자는 문자열이 정상이며, 해석(`decimalOrNull`)은
+JSON number 도 십진수로 받는다.
 이 adapter 는 `asset == "USDT"` 항목의 `marginBalance`·`availableBalance` 만 읽는다. `walletBalance`·`unrealizedProfit` 은
 읽지 않는다(`marginBalance = walletBalance + unrealizedProfit` 이므로 중복).
 
@@ -358,9 +363,10 @@ USDT 원화가           1,412원
 
 ### 5.2 Discord (순손익 행 뒤 2행) — ⑦ 결정: **B안 채택** (2026-11-02)
 
-두 안 모두 칸 이름·값 문자열(§5.3)은 같고 칸 배치만 다르다. 기존 1~5행은 무변경.
+채택·구현된 것은 B안이다. 아래 A안은 **기각안**으로 비교 근거만 남긴다. 두 안 모두 칸 이름·값 문자열(§5.3)은 같고 칸 배치만
+다르다. 기존 1~5행은 무변경.
 
-**A안 (합의 5 원안)**
+**A안 (합의 5 원안) — 기각**
 
 ```text
 행 6: [총 자산] 57,396,267원 | [바이낸스 증거금+손익] 14,000,700원 (10,000.50 USDT) | [USDT 원화가] 1,412원
@@ -371,7 +377,7 @@ USDT 원화가           1,412원
 - fields = 칸 15 + 행 끊기 1(2번째 행 뒤) = **16개**. 4번째 행(2칸) 뒤는 다음 행이 1칸이라 끊기 없음. 행 6 은 3칸이라 끊기 없음.
 - 위험: 행 6 은 1/3 폭이라 `바이낸스 증거금+손익` 값(약 29자)이 줄바꿈될 가능성이 높다(Q1).
 
-**B안 (Q1 해소 제안)**
+**B안 (Q1 해소, 채택)**
 
 ```text
 행 6: [총 자산] 57,396,267원 | [바이낸스 증거금+손익] 14,000,700원 (10,000.50 USDT)
@@ -435,12 +441,12 @@ inline 빈 칸(SPACER)을 붙여 3칸으로 채운다" 이다. 채움 칸이 그
 
 | 대상 | 영향 | 처리 |
 |---|---|---|
-| `EmbedDocumentTest` | SPACER 단정 4곳(`fields[5]`, `count`, 상수 검사, `[2,2]` 케이스) | `ROW_BREAK`·`inline=false` 로 갱신. inline 단정 목록의 6번째 값 `true → false` |
+| `EmbedDocumentTest` | SPACER 단정 4곳(`fields[5]`, `count`, 상수 검사, `[2,2]` 케이스) | `ROW_BREAK`·`inline=false` 로 갱신. inline 단정 목록의 6번째 값 `true → false`. 새 케이스 추가: 칸 `[2,3]` 에서 끊기 칸이 들어가는 경우, U+200B 칸은 inline 칸이 하나도 없다는 단정 |
 | `GoldenFields.kt` `GOLDEN_FILLER` | 구현과 독립인 기대값 상수(5행 KDoc 에 `SPACER` 언급) | `GOLDEN_ROW_BREAK = DiscordField(ZWSP, ZWSP, false)` 로 교체, KDoc 도 `ROW_BREAK` 로 |
 | `AccountPnlAlertContentTest` | `profitFields` 의 `GOLDEN_FILLER` 1곳 | `GOLDEN_ROW_BREAK` |
 | `OwnerMarketAlertContentTest:347` (일일 요약 `[3,2,2,1]`) | `GOLDEN_FILLER` 1곳 | `GOLDEN_ROW_BREAK` |
 | `AccountAlertContentTest`·`OwnerOpsAlertContentTest` 등 그 밖 golden | `GOLDEN_FILLER` 를 쓰지 않음(grep 확인 — 2칸 행 뒤가 1칸이거나 마지막) | 무변경 |
-| `AlertMessageSpecConformanceTest` | 행별 칸 수만 단정. 수익·정시 2행의 기대 `[3,2,3,2,1]` 은 자산 행 때문에 A안 `[3,2,3,2,1,3,1]` / B안 `[3,2,3,2,1,2,2]` 로 바뀐다(§5.2) | 그 2곳만 갱신 |
+| `AlertMessageSpecConformanceTest` | 행별 칸 수만 단정. 수익·정시 2행의 기대 `[3,2,3,2,1]` 은 자산 행 때문에 B안 `[3,2,3,2,1,2,2]` 로 바뀐다(§5.2, A안 병기는 정리했다) | 그 2곳만 갱신 |
 | `DiscordLayoutTest` | `DiscordField(zwsp, zwsp, true)` 생성 가능 여부만 검사 | 무변경 |
 | `DiscordLayoutJsonTest`·`OwnerAlertDiscordLayoutStoreIntegrationTest`·`V23…MigrationIntegrationTest` | 손으로 만든 fields 직렬화·저장 | 무변경 |
 | `OwnerAlertDiscordLayoutIntegrationTest` | 시장 급등(1행 3칸)만 보내 field 이름을 단정, 채움 칸 없음 | 무변경 |
@@ -511,7 +517,7 @@ Job 코드 변경 없음. 위 분리는 회귀 방어선 테스트 `AccountPnlMo
 | `docs/work/alert-message-template/message-spec.md` "실계정 순손익" 수익·정시 | Discord rows 6·7(⑦ 결정 안), 메일 `■ 자산` 섹션, `없음`·수동 모드 표기 메모. message-spec 은 이동하지 않았다 — 도메인 KDoc·runbook 3곳이 이 경로를 정본으로 가리킨다(grep 확인) |
 | `docs/work/alert-message-template/design.md` §3.3 | 규칙 2 아래 개정 메모 1단락(#105, 이 문서 §6.2 링크). 본문 규칙 문장은 고치지 않고 메모로 대체 관계를 적는다 |
 | `docs/work/alert-message-template/design.md` §6.2 (316행 U5) | U5 줄 아래 개정 메모 1단락 — 자산 칸의 바이낸스 값만 수동 모드에서 `수동 모드 — 표시 안 함` 으로 출처가 드러난다(#105, 합의 7, 이 문서 §12) |
-| `docs/runbooks/account-pnl-alert.md` (실계정 모니터 runbook) | Key 발급 표 바이낸스 행: `Enable Reading` 이 `/fapi/v3/account`(계정 잔고) 조회를 포함함을 명시. "알림 메시지 예" 메일·Discord 설명에 자산 묶음. `## 바이낸스 수동 입력 모드 (manual)` → `### 메일 표기` 350행·358행 문장 수정(자산 칸만 예외적으로 manual 모드가 드러남)과 표에 자산 행(열 머리와 맞춤). 동작 요약 표에 "자산 표시" 행. 중단 범주 표 아래 "잔고·USDT 시세 실패는 중단 알림이 아니다" 한 줄. #105 Discord 확인 체크리스트 절 |
+| `docs/runbooks/account-pnl-alert.md` (실계정 모니터 runbook) | Key 발급 표 바이낸스 행: `Enable Reading` 이 `/fapi/v3/account`(계정 잔고) 조회를 포함함을 명시. "알림 메시지 예" 메일·Discord 설명에 자산 묶음. `## 바이낸스 수동 입력 모드 (manual)` → `### 메일 표기` 350행·358행 문장 수정(자산 칸만 예외적으로 manual 모드가 드러남)과 표에 자산 행(열 머리와 맞춤). 동작 요약 표에 "자산 표시" 행. 중단 범주 표 아래 "잔고·USDT 시세 실패는 중단 알림이 아니다" 한 줄. #105 Discord 확인 체크리스트 절 — 이 새 절이 AC8 (a)~(e)(Discord 배치·자산 칸 육안 확인)와 AC9 (f)~(h)(실 key 값 검산·실패 시 표시) 체크리스트를 담는다 |
 | http 샘플·API 문서 | 변경 없음(공개 API 무변경) |
 
 `docs/check-documentation.sh` 의 정본 목록에 `account-pnl-alert.md` 는 없다. 하네스 파일(`.claude/**`, `CLAUDE.md`)은 건드리지 않는다.
@@ -522,7 +528,7 @@ Job 코드 변경 없음. 위 분리는 회귀 방어선 테스트 `AccountPnlMo
 - `[ASSUMPTION A2]` 묶음 ticker 요청이 `getJson` 단계에서 `UNEXPECTED` 로 실패하면 `KRW-BTC` 단독으로 1회 재요청한다(§4.1). 합의 2("한 번에 받는다")는 정상 경로 기준으로 지킨다. 합의 6 보호가 목적이다.
 - `[ASSUMPTION A3]` 메일 `잔여 금액` 부모 줄은 값 없이 라벨만 둔다(합계를 만들지 않는다). Discord 칸도 합계 없이 두 줄이다.
 - `[ASSUMPTION A4]` 음수 잔고(`marginBalance`·`availableBalance`·KRW `balance`)는 표시하지 않고 `없음` + WARN `reason=NEGATIVE` 다. 기존 서식(`krwPrice`·`usdt2`)이 부호를 지우므로 틀린 양수를 보이는 것보다 낫다고 판단했다.
-- `[DECIDED ⑦ 2026-11-02: B안]` Q1 — Discord 자산 행 배치 A안(합의 원안, 3칸 + 1칸, fields 16) / B안(2칸 + 2칸, fields 17)(§5.2). A안은 `바이낸스 증거금+손익` 값이 1/3 폭에서 줄바꿈될 가능성이 높다. B안은 합의 5 의 칸 구성을 바꾼다. plan 은 A안으로 쓰고 B안 채택 시 바뀌는 지점을 각주로 둔다.
+- `[DECIDED ⑦ 2026-11-02: B안]` Q1 — Discord 자산 행 배치는 B안(2칸 + 2칸, fields 17)으로 확정·구현했다(§5.2). A안(합의 원안, 3칸 + 1칸, fields 16)은 `바이낸스 증거금+손익` 값이 1/3 폭에서 줄바꿈될 가능성이 높아 기각했다. B안은 합의 5 의 칸 구성을 바꾸며 사용자 승인을 받았다.
 - **열린 질문 Q2** — 끊기 칸(non-inline ZWSP)이 만드는 세로 여백이 시장 일일 요약·실계정 수익 embed 에서 수용 가능한지는 실제 Discord 에서만 판정된다(dod AC8).
 
 ## 12. 합의 범위와의 충돌 점검
@@ -543,3 +549,4 @@ Job 코드 변경 없음. 위 분리는 회귀 방어선 테스트 `AccountPnlMo
 | 2026-11-02 | 초안 | orchestrator ④ |
 | 2026-11-02 | §1 근거 2행, §3.1 호출 수 43곳, §4.1 fallback 경계·취소·`error` 값, §4.2 취소 행·최악 +10초, §4.3 `rootErrorClass`, §5.2 A/B안, §5.3·§12 #102 U5 개정, §6.3 grep 5파일, §9 취소 테스트 방식, §10 문서 대상 추가, §11 Q1 → DECISION_NEEDED | ⑥ 스펙 리뷰 11건 반영 + Q1 해소안 |
 | 2026-11-02 | §4.2 요청·시간 상한(skew·age 근거), §8 최악 +6.5초 | ⑨ code review: 잔고 호출 전용 timeout·-1021 미재시도 |
+| 2026-11-02 | §2 D4 빗썸 private `Account`·`Prices`, §3.1 시그니처만 계약, §4.1·§4.2 JSON number 허용·fallback 로그 `item`, §5.2·§6.3·§11 B안 확정(A안 기각), §6.3 EmbedDocumentTest 새 케이스, §10 runbook AC8/AC9 | ⑪ 문서 동기화: ⑨ spec-reviewer 목록 반영 |

@@ -72,14 +72,14 @@
 
 **Files:** 없음 (dod `## 증거 로그` → `기준선` 에 append)
 
-- [ ] **Step 1: 기준선 실행·기록**
+- [x] **Step 1: 기준선 실행·기록**
   ```bash
   ./gradlew test architectureTest --parallel --offline --no-daemon
   grep -rln "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure
   grep -rln "KoreaSpotAccountSnapshot(\|ForeignPerpAccountSnapshot(" --include=*.kt domain apps infrastructure
   grep -rn "KoreaSpotAccountSnapshot(\|ForeignPerpAccountSnapshot(" --include=*.kt domain apps infrastructure
   ```
-- [ ] **Step 2: 예상 결과** — gradle exit 0.
+- [x] **Step 2: 예상 결과** — gradle exit 0.
   - 첫 grep 은 정확히 5개 파일(2026-11-02 설계 시 확인):
     ```text
     domain/src/main/kotlin/io/premiumspread/domain/alertmessage/EmbedDocument.kt
@@ -90,7 +90,7 @@
     ```
   - 두 번째 grep 은 24개 파일(`AccountSnapshots.kt` 선언 포함), 세 번째 grep 은 45줄 = 선언 2 + 생성자 호출 43(design §3.1).
   - **다르면 멈추고 보고한다** — design §6.3 영향표가 틀린 것이다. `--offline` 이 cache 부재로 실패하면 온라인 1회로 cache 를 채우고 그 사실을 기록한다.
-- [ ] **Step 3: Commit 제안** — `docs: 자산 알림 Gate 1 기준선 기록`
+- [x] **Step 3: Commit 제안** — `docs: 자산 알림 Gate 1 기준선 기록`
 
 ---
 
@@ -119,8 +119,8 @@ val ROW_BREAK: DiscordField = DiscordField(ZWSP, ZWSP, inline = false)
 internal val GOLDEN_ROW_BREAK: DiscordField = DiscordField(Char(0x200B).toString(), Char(0x200B).toString(), false)
 ```
 
-- [ ] **Step 1: stub** — `EmbedDocument.companion` 에 `ROW_BREAK` 상수만 추가한다(`toDiscordMessage()` 는 아직 `SPACER` 를 넣는다). `GoldenFields.kt` 에 `GOLDEN_ROW_BREAK` 를 추가한다(`GOLDEN_FILLER` 는 아직 둔다).
-- [ ] **Step 2: 테스트 갱신** (요건)
+- [x] **Step 1: stub** — `EmbedDocument.companion` 에 `ROW_BREAK` 상수만 추가한다(`toDiscordMessage()` 는 아직 `SPACER` 를 넣는다). `GoldenFields.kt` 에 `GOLDEN_ROW_BREAK` 를 추가한다(`GOLDEN_FILLER` 는 아직 둔다).
+- [x] **Step 2: 테스트 갱신** (요건)
   - `EmbedDocumentTest`
     - `행 3-2-3-2-1 …` : fields 12개, inline 목록 `T,T,T, T,T,F, T,T,T, T,T, F`(6번째 = 끊기 칸 false), `fields[5] == EmbedDocument.ROW_BREAK`, `fields.count { it == ROW_BREAK } == 1`. 테스트 이름에서 "채움" → "행 끊기".
     - 상수 검사: `ROW_BREAK.name`·`value` 가 각각 `Char(0x200B).toString()` 한 글자, `inline == false`.
@@ -129,14 +129,14 @@ internal val GOLDEN_ROW_BREAK: DiscordField = DiscordField(Char(0x200B).toString
     - 추가: `결과 fields 에 U+200B inline 칸이 없다` — rows `[3,2,3,2,1]`·`[2,2]`·`[2,3,2,2]` 각각 `fields.none { it.name == zwsp && it.inline }`.
     - `마지막 2칸 행 뒤…`·`2칸 행 뒤에 1칸 행…` 는 그대로 둔다.
   - `AccountPnlAlertContentTest.profitFields`·`OwnerMarketAlertContentTest`(일일 요약) : `GOLDEN_FILLER` → `GOLDEN_ROW_BREAK`. 주석의 "채움" → "행 끊기".
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
   ```bash
   ./gradlew :domain:test --tests io.premiumspread.domain.alertmessage.EmbedDocumentTest --tests io.premiumspread.domain.accountpnl.AccountPnlAlertContentTest --tests io.premiumspread.domain.ownermarket.OwnerMarketAlertContentTest --offline --no-daemon
   ```
   예상: FAIL — `EmbedDocumentTest` `행 3-2-3-2-1 …` 의 inline 목록 `containsExactly` 에서 **6번째 값 실제 `true` vs 기대 `false`**(assertion, `EmbedDocumentTest.kt:29-35` 가 `fields[5]` 단정보다 먼저 실패한다). golden 두 테스트도 끊기 칸 `inline` 차이로 실패. dod AC1 증거 로그에 붙인다.
-- [ ] **Step 4: 구현** — `toDiscordMessage()` 가 `ROW_BREAK` 를 넣게 바꾸고 `SPACER` 를 삭제한다. `EmbedDocument.kt` 주석의 `design §3.3 규칙 2` → `design §3.3 규칙 2(#105 개정: non-inline 행 끊기)`. `GoldenFields.kt` 의 `GOLDEN_FILLER` 를 삭제하고 **5행 KDoc** `구현의 SPACER 를 참조하지 않고 design §3.3 규칙 2 에서 따로 만든다` → `구현의 ROW_BREAK 를 참조하지 않고 design §3.3 규칙 2(#105 개정)에서 따로 만든다` 로 고친다.
-- [ ] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :domain:test --offline --no-daemon`. 예상: exit 0. `grep -rn "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure` 출력 없음.
-- [ ] **Step 6: Commit 제안** — `fix: Discord 2칸 행 뒤 채움 칸을 non-inline 행 끊기 칸으로 교체`
+- [x] **Step 4: 구현** — `toDiscordMessage()` 가 `ROW_BREAK` 를 넣게 바꾸고 `SPACER` 를 삭제한다. `EmbedDocument.kt` 주석의 `design §3.3 규칙 2` → `design §3.3 규칙 2(#105 개정: non-inline 행 끊기)`. `GoldenFields.kt` 의 `GOLDEN_FILLER` 를 삭제하고 **5행 KDoc** `구현의 SPACER 를 참조하지 않고 design §3.3 규칙 2 에서 따로 만든다` → `구현의 ROW_BREAK 를 참조하지 않고 design §3.3 규칙 2(#105 개정)에서 따로 만든다` 로 고친다.
+- [x] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :domain:test --offline --no-daemon`. 예상: exit 0. `grep -rn "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure` 출력 없음.
+- [x] **Step 6: Commit 제안** — `fix: Discord 2칸 행 뒤 채움 칸을 non-inline 행 끊기 칸으로 교체`
 
 ---
 
@@ -191,21 +191,21 @@ data class ForeignPerpAccountSnapshot(
 
 `toString()` 노출 프로퍼티(전문): `ForeignPerpBalance` 없음 · `KoreaSpotAccountSnapshot` `bidObservedAt` · `ForeignPerpAccountSnapshot` `positionSource`·`askObservedAt`.
 
-- [ ] **Step 1: stub** — 세 필드와 `ForeignPerpBalance` 를 **불변식·toString override 없이** 추가한다(컴파일만 되게).
-- [ ] **Step 2: 테스트 작성** — `AccountBalanceSnapshotTest` (요건; 고정 `Instant.parse("2026-10-20T00:00:00Z")`)
+- [x] **Step 1: stub** — 세 필드와 `ForeignPerpBalance` 를 **불변식·toString override 없이** 추가한다(컴파일만 되게).
+- [x] **Step 2: 테스트 작성** — `AccountBalanceSnapshotTest` (요건; 고정 `Instant.parse("2026-10-20T00:00:00Z")`)
   - 기본값: 새 필드를 생략한 두 snapshot 의 `krwBalance`·`usdtLastPriceKrw`·`balance` 가 `null`.
   - 경계: `krwBalance = 0` 허용, `-0.00000001` → `IllegalArgumentException`. `usdtLastPriceKrw = 0` → 예외, `0.0001` 허용. `ForeignPerpBalance(0, 0)` 허용, `(-0.01, 1)`·`(1, -0.01)` → 예외.
   - 예외 메시지에 입력 값 문자열(`-0.01`)이 없다.
   - toString: 모든 금액·수량·가격 필드를 sentinel `987654.321` 로 채운 세 객체의 `toString()` 이 `987654.321` 을 담지 않고, 각각 `"ForeignPerpBalance"`, `"KoreaSpotAccountSnapshot(bidObservedAt=2026-10-20T00:00:00Z)"`, `"ForeignPerpAccountSnapshot(positionSource=EXCHANGE_API, askObservedAt=2026-10-20T00:00:00Z)"` 와 같다.
   - `AccountHedgePosition(korea, foreign).toString()` 도 sentinel 을 담지 않는다.
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
   ```bash
   ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.AccountBalanceSnapshotTest --offline --no-daemon
   ```
   예상: FAIL — 음수 입력에 예외가 나지 않음(`Expecting code to raise a throwable`), toString 이 sentinel 포함(assertion).
-- [ ] **Step 4: 구현** — 계약대로 불변식·toString·port KDoc.
-- [ ] **Step 5: GREEN 확인** — Step 3 명령, 이어 `./gradlew :domain:test :infrastructure:batch:test :apps:batch:test --offline --no-daemon`(기본값이라 기존 생성자 호출 43곳 무변경). 예상: exit 0.
-- [ ] **Step 6: Commit 제안** — `feat: 실계정 snapshot 에 잔고·USDT 시세 필드 추가`
+- [x] **Step 4: 구현** — 계약대로 불변식·toString·port KDoc.
+- [x] **Step 5: GREEN 확인** — Step 3 명령, 이어 `./gradlew :domain:test :infrastructure:batch:test :apps:batch:test --offline --no-daemon`(기본값이라 기존 생성자 호출 43곳 무변경). 예상: exit 0.
+- [x] **Step 6: Commit 제안** — `feat: 실계정 snapshot 에 잔고·USDT 시세 필드 추가`
 
 ---
 
@@ -247,8 +247,8 @@ val assets: AccountAssetBreakdown,
 
 `of` 규칙은 design §3.3 표(값 전부). 반올림 없음.
 
-- [ ] **Step 1: stub** — `AccountAssetBreakdown` 과 `assets` 를 추가하고 `of` 는 7필드 모두 `null` 을 돌려준다(toString override 는 아직 없음).
-- [ ] **Step 2: 테스트 작성** — `AccountAssetBreakdownTest` (요건; fx `1400`, koreaValueKrw `42161000`)
+- [x] **Step 1: stub** — `AccountAssetBreakdown` 과 `assets` 를 추가하고 `of` 는 7필드 모두 `null` 을 돌려준다(toString override 는 아직 없음).
+- [x] **Step 2: 테스트 작성** — `AccountAssetBreakdownTest` (요건; fx `1400`, koreaValueKrw `42161000`)
   - 정상: krw `1234567`, balance `(10000.50, 8000.25)`, usdt `1412` → `totalKrw` `compareTo` `57396267.00` == 0, `marginBalanceKrw` `14000700.00`, `availableBalanceKrw` `11200350.00`, `bithumbKrwBalance` `1234567`, `usdtLastPriceKrw` `1412`, USDT 원값 그대로.
   - 정밀도: balance margin `0.00000001`, fx `1400.123456` → `marginBalanceKrw == 0.00000001 × 1400.123456` 이고 scale 이 곱의 scale 그대로(반올림 없음).
   - krw `0` → `totalKrw == koreaValueKrw + marginKrw`.
@@ -258,14 +258,14 @@ val assets: AccountAssetBreakdown,
   - usdt `null` → `totalKrw` 가 usdt 있을 때와 `compareTo == 0`.
   - toString: `"AccountAssetBreakdown"`.
   - 통합: message-spec 입력(`AccountPnlAlertContentTest` 의 0.266 BTC fixture + 위 잔고)으로 `AccountPnlBreakdown.of(pnl).assets.totalKrw` 가 `57396267` 과 `compareTo == 0`, `AccountPnlBreakdown.of(pnl).toString()` 은 기존 `AccountPnlBreakdown(calculatedAt=…)` 그대로.
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
   ```bash
   ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.AccountAssetBreakdownTest --offline --no-daemon
   ```
   예상: FAIL — `totalKrw` 기대 `57396267.00`, 실제 `null`(assertion).
-- [ ] **Step 4: 구현** — design §3.3 표대로 `of`, `toString`, `AccountPnlBreakdown.of` 배선.
-- [ ] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.AccountPnlBreakdownTest --offline --no-daemon`. 예상: exit 0.
-- [ ] **Step 6: Commit 제안** — `feat: 실계정 총 자산 계산 값 객체 추가`
+- [x] **Step 4: 구현** — design §3.3 표대로 `of`, `toString`, `AccountPnlBreakdown.of` 배선.
+- [x] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.AccountPnlBreakdownTest --offline --no-daemon`. 예상: exit 0.
+- [x] **Step 6: Commit 제안** — `feat: 실계정 총 자산 계산 값 객체 추가`
 
 ---
 
@@ -317,8 +317,8 @@ listOf(
 
 값 문자열 규칙은 design §5.3 표(값 전부). 두 함수가 문자열을 공유하면 private **일반 class**(data class 금지)로 둔다.
 
-- [ ] **Step 1: stub 없음** — 기존 코드가 컴파일된 상태에서 테스트만 갱신해 RED 를 만든다.
-- [ ] **Step 2: 테스트 갱신** (요건; zone `Asia/Seoul`, calculatedAt `2026-10-20T00:00:00Z`)
+- [x] **Step 1: stub 없음** — 기존 코드가 컴파일된 상태에서 테스트만 갱신해 RED 를 만든다.
+- [x] **Step 2: 테스트 갱신** (요건; zone `Asia/Seoul`, calculatedAt `2026-10-20T00:00:00Z`)
   - `pnl(...)` fixture 에 파라미터 추가: `krwBalance: BigDecimal? = BigDecimal("1234567")`, `usdtPrice: BigDecimal? = BigDecimal("1412")`, `balance: ForeignPerpBalance? = ForeignPerpBalance(BigDecimal("10000.50"), BigDecimal("8000.25"))` 를 snapshot 에 넘긴다.
   - `profitBody` 끝(`순손익` 줄 다음 빈 줄, `기준 시각` 앞)에 아래 블록을 넣는다. 정렬 폭은 `MailDocument` 규칙 출력이다(`총 자산` 뒤 공백 15, `바이낸스 증거금+손익` 뒤 2, `잔여 금액` 은 줄 끝 공백 제거로 라벨만, 자식 `빗썸` 뒤 6·`바이낸스` 뒤 2, `USDT 원화가` 뒤 11):
     ```text
@@ -342,14 +342,14 @@ listOf(
     - 반올림: KRW `1234567.5` → `1,234,568원`(HALF_UP).
   - 기존 비밀 부재 테스트는 그대로 통과해야 한다.
   - `AlertMessageSpecConformanceTest` 수익·정시 `cellsPerRow` 를 `listOf(3, 2, 3, 2, 1, 3, 1)` 로 `[B안]¹`.
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
   ```bash
   ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.AccountPnlAlertContentTest --tests io.premiumspread.domain.alertmessage.AlertMessageSpecConformanceTest --offline --no-daemon
   ```
   예상: FAIL — `mail.body()` 에 `■ 자산` 블록 없음, `rows` 크기 5 vs 7, `행별 칸 수` `[3,2,3,2,1]` vs `[3,2,3,2,1,3,1]`(assertion).
-- [ ] **Step 4: 구현** — 계약대로. `manual` 은 기존 지역 변수(`b.foreign.source == MANUAL_ENV`)를 넘긴다. KDoc 첫 줄의 "4종" 문구는 그대로 둔다.
-- [ ] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :domain:test --offline --no-daemon`. 예상: exit 0.
-- [ ] **Step 6: Commit 제안** — `feat: 수익·정시 알림에 자산 묶음 추가`
+- [x] **Step 4: 구현** — 계약대로. `manual` 은 기존 지역 변수(`b.foreign.source == MANUAL_ENV`)를 넘긴다. KDoc 첫 줄의 "4종" 문구는 그대로 둔다.
+- [x] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :domain:test --offline --no-daemon`. 예상: exit 0.
+- [x] **Step 6: Commit 제안** — `feat: 수익·정시 알림에 자산 묶음 추가`
 
 **`[B안]` 각주 (⑦에서 B안 채택 시에만)**
 1. `cellsPerRow` → `listOf(3, 2, 3, 2, 1, 2, 2)`. RED 예상도 `[3,2,3,2,1]` vs `[3,2,3,2,1,2,2]`.
@@ -420,8 +420,8 @@ private fun readPrices(): Prices   // readLastPrice() 를 대체
 
 fixture `ticker-btc-usdt.json`: 배열 2행, **순서를 `KRW-USDT` 먼저** 둔다(첫 행 규칙이 남아 있으면 깨지게). `KRW-USDT` `trade_price` `1412`, `KRW-BTC` `trade_price` 는 기존 `ticker.json` 과 같은 `8621000`.
 
-- [ ] **Step 1: stub** — `AccountBalanceLog.kt` 를 계약 시그니처로 만들고 본문은 빈 구현(`unavailable` 아무것도 안 함, `isCancellation` = false, `rootErrorClass` = `"-"`). adapter 는 아직 바꾸지 않는다.
-- [ ] **Step 2: 테스트 추가** — `BithumbPrivateAccountAdapterTest` (요건; 기존 dispatcher·`responses: MutableMap<String, () -> MockResponse>` 맵을 그대로 쓴다 — 시그니처 변경 없음. `@ExtendWith(OutputCaptureExtension::class)`. 요청 query 는 `recorded()`(기록된 `RecordedRequest`)의 `requestUrl!!.queryParameter("markets")` 로 단정한다)
+- [x] **Step 1: stub** — `AccountBalanceLog.kt` 를 계약 시그니처로 만들고 본문은 빈 구현(`unavailable` 아무것도 안 함, `isCancellation` = false, `rootErrorClass` = `"-"`). adapter 는 아직 바꾸지 않는다.
+- [x] **Step 2: 테스트 추가** — `BithumbPrivateAccountAdapterTest` (요건; 기존 dispatcher·`responses: MutableMap<String, () -> MockResponse>` 맵을 그대로 쓴다 — 시그니처 변경 없음. `@ExtendWith(OutputCaptureExtension::class)`. 요청 query 는 `recorded()`(기록된 `RecordedRequest`)의 `requestUrl!!.queryParameter("markets")` 로 단정한다)
   - `accountsBody = fixture("accounts.json")`(KRW `balance` `10981650.10635`, `locked` `98246`) → `krwBalance` `compareTo` `10981650.10635` == 0 (locked 미포함).
   - 기본 `accounts(balance, locked)` helper(BTC 행만) → `krwBalance == 0`, WARN 없음.
   - KRW 행 `balance` `"-1"` → `krwBalance == null`, `read()` 성공, 출력에 `item=BITHUMB_KRW, reason=NEGATIVE, category=-, error=-`. `"abc"` → `reason=NOT_NUMBER`.
@@ -435,14 +435,14 @@ fixture `ticker-btc-usdt.json`: 배열 2행, **순서를 `KRW-USDT` 먼저** 둔
   - **fallback 취소**: `val testThread = Thread.currentThread()`, `responses["/v1/ticker"] = { testThread.interrupt(); MockResponse().setResponseCode(404).setBodyDelay(500, TimeUnit.MILLISECONDS) }` → `read()` 가 `AccountReadException` 을 던지고, `/v1/ticker` 요청 1건, `/v1/orderbook` 요청 0건, 출력에 `TICKER_FALLBACK` 없음. `finally { Thread.interrupted() }`. (`getJson` 199-202행이 인터럽트를 `UNEXPECTED` 로 바꾸므로 `isCancellation` 검사만이 재요청을 막는다.)
   - 위 모든 출력에 `test-access-key`·`test-secret-key`·`10981650`·`1412`·`8621000` 이 없다.
   - 기존 `호가는 … 마지막으로 조회한다` 경로 목록 테스트는 그대로 통과.
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
   ```bash
   ./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapterTest --offline --no-daemon
   ```
   예상: FAIL — `krwBalance` 기대 `10981650.10635` 실제 `null`, `markets` 기대 `KRW-BTC,KRW-USDT` 실제 `KRW-BTC`, `ticker-btc-usdt.json` 에서 `lastPrice` 기대 `8621000` 실제 `1412`(assertion).
-- [ ] **Step 4: 구현** — `AccountBalanceLog` 본문, adapter 변경. `getJson` 의 예외 정규화·`statusCategory` 는 바꾸지 않는다.
-- [ ] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.bithumb.*' --offline --no-daemon` + `./gradlew architectureTest --offline --no-daemon`. 예상: exit 0.
-- [ ] **Step 6: Commit 제안** — `feat: 빗썸 KRW 잔고와 USDT 원화가를 계정 조회에 추가`
+- [x] **Step 4: 구현** — `AccountBalanceLog` 본문, adapter 변경. `getJson` 의 예외 정규화·`statusCategory` 는 바꾸지 않는다.
+- [x] **Step 5: GREEN 확인** — Step 3 명령 + `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.bithumb.*' --offline --no-daemon` + `./gradlew architectureTest --offline --no-daemon`. 예상: exit 0.
+- [x] **Step 6: Commit 제안** — `feat: 빗썸 KRW 잔고와 USDT 원화가를 계정 조회에 추가`
 
 ---
 
@@ -479,8 +479,8 @@ private sealed interface BalanceParse {
 
 fixture `account.json`(바이낸스 공식 문서 v3 응답 shape 축약): 최상위 `totalWalletBalance` 등 일부 + `assets` 2항목 — `BNB`(`marginBalance` `"0.5"`)를 **먼저**, 그다음 `USDT`(`walletBalance` `"10100.50"`, `unrealizedProfit` `"-100.00"`, `marginBalance` `"10000.50"`, `availableBalance` `"8000.25"`). `positions` 는 빈 배열. `maxWithdrawAmount` 필드는 fixture 에도 넣지 않는다.
 
-- [ ] **Step 1: stub 없음** — 새 필드는 Task 2 에서 이미 있다. 테스트만 추가하면 기존 코드에서 assertion 으로 실패한다.
-- [ ] **Step 2: 테스트 추가** — `BinanceFuturesPrivateAccountAdapterTest` (요건; 기존 dispatcher 에 `"/fapi/v3/account" -> json(accountBody)` 를 더하고 `accountBody` 기본값 = `account.json`. 기존 `responses` 맵으로 경로별 응답을 덮어쓴다. `OutputCaptureExtension`)
+- [x] **Step 1: stub 없음** — 새 필드는 Task 2 에서 이미 있다. 테스트만 추가하면 기존 코드에서 assertion 으로 실패한다.
+- [x] **Step 2: 테스트 추가** — `BinanceFuturesPrivateAccountAdapterTest` (요건; 기존 dispatcher 에 `"/fapi/v3/account" -> json(accountBody)` 를 더하고 `accountBody` 기본값 = `account.json`. 기존 `responses` 맵으로 경로별 응답을 덮어쓴다. `OutputCaptureExtension`)
   - 정상: `balance!!.marginBalanceUsdt` `compareTo` `10000.50`, `availableBalanceUsdt` `8000.25`(BNB 항목이 먼저여도 USDT 선택).
   - 요청: `/fapi/v3/account` 1건, 헤더 `X-MBX-APIKEY` 존재, query 에 `recvWindow=`·`timestamp=`·`signature=` 존재, 메서드 GET.
   - 순서: `/fapi/v1/time` 제외 경로 목록에서 `/fapi/v3/account` 가 `/fapi/v1/commissionRate` 뒤, `/fapi/v2/ticker/price` 앞, 마지막은 `/fapi/v1/depth`.
@@ -496,19 +496,19 @@ fixture `account.json`(바이낸스 공식 문서 v3 응답 shape 축약): 최�
   - 출력 비노출: 위 모든 경우 출력에 테스트 API key·secret 문자열, `signature=`, `10000.50`·`8000.25` 가 없다.
   - 기존 테스트는 dispatcher 에 경로가 추가된 것 외에는 수정하지 않는다.
   - `BinanceFuturesManualAccountAdapterTest` `출처는 MANUAL_ENV`: `assertThat(snapshot.balance).isNull()` 추가. `한 회차 요청은 ticker 다음 depth 두 건…` 은 그대로(R4).
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
   ```bash
   ./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest --offline --no-daemon
   ```
   예상: FAIL — `balance` 기대 not null 실제 `null`, `/fapi/v3/account` 요청 0건(assertion). 취소 테스트는 기존 코드에서 `/fapi/v3/account` 를 부르지 않으므로 `read()` 가 정상 종료해 "예외 기대" assertion 으로 실패한다.
-- [ ] **Step 4: 구현** — 계약대로.
-- [ ] **Step 5: GREEN 확인**
+- [x] **Step 4: 구현** — 계약대로.
+- [x] **Step 5: GREEN 확인**
   ```bash
   ./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.binance.*' --offline --no-daemon
   ./gradlew architectureTest --offline --no-daemon
   ```
   예상: 둘 다 exit 0.
-- [ ] **Step 6: Commit 제안** — `feat: 바이낸스 USDT 잔고를 v3 account 로 조회`
+- [x] **Step 6: Commit 제안** — `feat: 바이낸스 USDT 잔고를 v3 account 로 조회`
 
 ---
 
@@ -531,17 +531,17 @@ var balance: ForeignPerpBalance? = null
 // read(): ForeignPerpAccountSnapshot(..., balance = balance)
 ```
 
-- [ ] **Step 1: 테스트 작성** — `AccountPnlMonitorJobBalanceTest` (요건; `MutableClock(Instant.parse("2026-10-20T03:00:30Z"))`, zone 기본 `Asia/Seoul`, `hourlyReportEnabled = true`, 기존 `FakeStore`·`FakeSender`·mockk `JobExecutor` 패턴은 `AccountPnlMonitorJobHourlyReportTest` 와 같게)
+- [x] **Step 1: 테스트 작성** — `AccountPnlMonitorJobBalanceTest` (요건; `MutableClock(Instant.parse("2026-10-20T03:00:30Z"))`, zone 기본 `Asia/Seoul`, `hourlyReportEnabled = true`, 기존 `FakeStore`·`FakeSender`·mockk `JobExecutor` 패턴은 `AccountPnlMonitorJobHourlyReportTest` 와 같게)
   - 잔고·USDT 모두 `null`(기본) 1회 → `JobResult.Success`, 저장 행 eventKey 에 `account-pnl-profit-`·`account-pnl-hourly-` 가 있고, 수익 메일 본문에 `■ 자산` 과 `총 자산               없음` 이 있다.
   - 같은 상태로 1분 간격 7회(6분 경과) → 모든 회차 `Success`, `account-pnl-outage-` 행 0개, `store.state.outage.lastSuccessAt` == 마지막 회차 시각.
   - 잔고 채움(`krwBalance` `1000000`, `usdtPrice` `1412`, `balance` `(1000, 900)`) → 수익 메일 본문에 `없음` 이 `■ 자산` 섹션 안에 없다.
-- [ ] **Step 2: 실행**
+- [x] **Step 2: 실행**
   ```bash
   ./gradlew :apps:batch:test --tests io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobBalanceTest --offline --no-daemon
   ```
   예상: exit 0 (회귀 방어선 — RED 면제. Task 4 이전에 돌리면 `■ 자산` 단정이 실패한다는 점이 이 테스트가 무언가를 잰다는 근거다).
-- [ ] **Step 3:** `./gradlew :apps:batch:test --offline --no-daemon` exit 0.
-- [ ] **Step 4: Commit 제안** — `test: 잔고 조회 실패가 실계정 알림과 중단 판정에 영향 없음을 고정`
+- [x] **Step 3:** `./gradlew :apps:batch:test --offline --no-daemon` exit 0.
+- [x] **Step 4: Commit 제안** — `test: 잔고 조회 실패가 실계정 알림과 중단 판정에 영향 없음을 고정`
 
 ---
 
@@ -549,14 +549,16 @@ var balance: ForeignPerpBalance? = null
 
 **Files:** 없음 (dod 증거 로그 append)
 
-- [ ] **Step 1: 실행**
+> 완료 메모: 이 태스크는 ⑩ qa 실행(dod 증거 로그 커밋 `docs: 자산 알림 검증 증거 기록`)으로 흡수됐다.
+
+- [x] **Step 1: 실행**
   ```bash
   ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
   ./gradlew jacocoTestCoverageVerification --offline --no-daemon
   ```
-- [ ] **Step 2: 예상 결과** — 둘 다 exit 0. 통합 테스트 중 `OwnerAlertDiscordLayoutIntegrationTest`·`OwnerAlertDiscordLayoutStoreIntegrationTest`·`AccountPnlAlertDurabilityIntegrationTest`·`OwnerAlertDeliveryIntegrationTest`·`OwnerAccountAlertIntegrationTest` 는 무수정으로 통과해야 한다(design §6.3). Docker 부재로 못 돌린 task 는 green 으로 기록하지 않고 `BLOCKED` 로 적는다.
-- [ ] **Step 3:** ktlint·detekt 는 로컬 Gradle task 가 없다. `.ci-tools/` jar 가 있으면 `java -jar .ci-tools/ktlint.jar '**/src/**/*.kt' '!**/build/**'` 와 CI 와 같은 detekt 인자로 돌리고, 없으면 PR CI 결과(R9)로 판정한다고 기록한다.
-- [ ] **Step 4: Commit 제안** — 증거 로그만 있으면 `docs: 자산 알림 검증 증거 기록`
+- [x] **Step 2: 예상 결과** — 둘 다 exit 0. 통합 테스트 중 `OwnerAlertDiscordLayoutIntegrationTest`·`OwnerAlertDiscordLayoutStoreIntegrationTest`·`AccountPnlAlertDurabilityIntegrationTest`·`OwnerAlertDeliveryIntegrationTest`·`OwnerAccountAlertIntegrationTest` 는 무수정으로 통과해야 한다(design §6.3). Docker 부재로 못 돌린 task 는 green 으로 기록하지 않고 `BLOCKED` 로 적는다.
+- [x] **Step 3:** ktlint·detekt 는 로컬 Gradle task 가 없다. `.ci-tools/` jar 가 있으면 `java -jar .ci-tools/ktlint.jar '**/src/**/*.kt' '!**/build/**'` 와 CI 와 같은 detekt 인자로 돌리고, 없으면 PR CI 결과(R9)로 판정한다고 기록한다.
+- [x] **Step 4: Commit 제안** — 증거 로그만 있으면 `docs: 자산 알림 검증 증거 기록`
 
 ---
 
@@ -592,8 +594,8 @@ var balance: ForeignPerpBalance? = null
   - `## 동작 요약` 표 행 추가: `자산 표시` | `총 자산 = 빗썸 BTC 평가액 + 빗썸 KRW 잔고(주문 잠금 제외) + 바이낸스 증거금+손익 × 환율. USDT 원화가는 표시만. 잔고·USDT 시세 조회 실패는 그 칸만 '없음'(총 자산 포함)이고 알림·중단 판정에 영향 없음. 실패는 WARN 'Account balance unavailable: item=…, reason=…'`.
   - `## 중단 메일 범주별 조치` 표 아래 한 줄: 잔고·USDT 시세 실패는 중단 메일 범주가 아니다 — 로그 `Account balance unavailable` 를 본다.
   - 새 절 `## 자산 칸 Discord·잔고 확인 체크리스트 (#105, account-balance-alert AC8·AC9)`: dod AC8 (a)~(e), AC9 세 항목을 체크박스로. 결과는 PR 코멘트.
-- [ ] **Step 1:** 위 수정.
-- [ ] **Step 2: 확인(T2, dod AC7)**
+- [x] **Step 1:** 위 수정.
+- [x] **Step 2: 확인(T2, dod AC7)**
   ```bash
   grep -c "■ 자산" docs/work/alert-message-template/message-spec.md
   grep -n "/fapi/v3/account" docs/runbooks/account-pnl-alert.md
@@ -601,8 +603,8 @@ var balance: ForeignPerpBalance? = null
   grep -n "수동 모드 — 표시 안 함" docs/runbooks/account-pnl-alert.md
   ```
   예상: `2` 이상 / Key 발급 표 행 포함 1줄 이상 / 2줄 이상(§3.3 구간 1·§6.2 구간 1) / `### 메일 표기` 구간 1줄 이상. 결과를 dod AC7 증거 로그에 붙인다.
-- [ ] **Step 3:** `bash docs/check-documentation.sh` exit 0 (정본 문서를 건드리지 않았음을 재확인).
-- [ ] **Step 4: Commit 제안** — `docs: 자산 알림 문구 정본·runbook·#102 렌더 규칙과 U5 개정 메모 갱신`
+- [x] **Step 3:** `bash docs/check-documentation.sh` exit 0 (정본 문서를 건드리지 않았음을 재확인).
+- [x] **Step 4: Commit 제안** — `docs: 자산 알림 문구 정본·runbook·#102 렌더 규칙과 U5 개정 메모 갱신`
 
 **`[B안]` 각주 (⑦에서 B안 채택 시에만)**
 5. message-spec rows → `6. [총 자산] 57,396,267원 | [바이낸스 증거금+손익] 14,000,700원 (10,000.50 USDT)`, `7. [잔여 금액] 빗썸 1,234,567원 ⏎ 바이낸스 11,200,350원 (8,000.25 USDT) | [USDT 원화가] 1,412원`.
