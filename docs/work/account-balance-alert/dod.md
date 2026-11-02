@@ -108,6 +108,16 @@ $ grep -rn  "KoreaSpotAccountSnapshot(\|ForeignPerpAccountSnapshot(" ... → 45 
 ### AC1
 
 ```
+RED (stub: ROW_BREAK 상수만 추가, toDiscordMessage 는 SPACER 유지)
+$ ./gradlew :domain:test --tests ...EmbedDocumentTest --tests ...AccountPnlAlertContentTest --tests ...OwnerMarketAlertContentTest --offline --no-daemon
+38 tests completed, 7 failed (모두 AssertionFailedError)
+  EmbedDocumentTest 행 3-2-3-2-1 ... (EmbedDocumentTest.kt:29), 2칸 행 뒤에 2칸 행이 오면 (:68),
+  2칸 행 뒤에 3칸 행이 오면 끊는다 (:76), 결과 fields 에 U+200B inline 칸이 없다 (:83),
+  AccountPnlAlertContentTest 수익 알림 golden / 정시 보고 golden, OwnerMarketAlertContentTest 김프 일일 요약 golden
+GREEN
+$ 같은 명령 → BUILD SUCCESSFUL, exit 0
+$ ./gradlew :domain:test --offline --no-daemon → BUILD SUCCESSFUL, exit 0
+$ grep -rn "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure → 출력 없음
 ```
 
 ### AC2

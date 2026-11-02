@@ -21,27 +21,27 @@ class EmbedDocumentTest {
     }
 
     @Test
-    fun `행 3-2-3-2-1 은 채움 칸 하나가 들어간 fields 12개이다`() {
+    fun `행 3-2-3-2-1 은 행 끊기 칸 하나가 들어간 fields 12개이다`() {
         val message = doc(rowsOf(3, 2, 3, 2, 1)).toDiscordMessage()
         val fields = message.layout!!.fields
 
         assertThat(fields).hasSize(12)
         assertThat(fields.map { it.inline }).containsExactly(
             true, true, true,
-            true, true, true,
+            true, true, false,
             true, true, true,
             true, true,
             false,
         )
-        assertThat(fields[5]).isEqualTo(EmbedDocument.SPACER)
-        assertThat(fields.count { it == EmbedDocument.SPACER }).isEqualTo(1)
+        assertThat(fields[5]).isEqualTo(EmbedDocument.ROW_BREAK)
+        assertThat(fields.count { it == EmbedDocument.ROW_BREAK }).isEqualTo(1)
     }
 
     @Test
-    fun `채움 칸은 U+200B 한 글자 이름과 값의 inline 칸이다`() {
-        assertThat(EmbedDocument.SPACER.name).isEqualTo(Char(0x200B).toString()).hasSize(1)
-        assertThat(EmbedDocument.SPACER.value).isEqualTo(zwsp)
-        assertThat(EmbedDocument.SPACER.inline).isTrue()
+    fun `행 끊기 칸은 U+200B 한 글자 이름과 값의 non-inline 칸이다`() {
+        assertThat(EmbedDocument.ROW_BREAK.name).isEqualTo(Char(0x200B).toString()).hasSize(1)
+        assertThat(EmbedDocument.ROW_BREAK.value).isEqualTo(zwsp).hasSize(1)
+        assertThat(EmbedDocument.ROW_BREAK.inline).isFalse()
     }
 
     @Test
@@ -65,7 +65,23 @@ class EmbedDocumentTest {
     fun `2칸 행 뒤에 2칸 행이 오면 채운다`() {
         val fields = doc(rowsOf(2, 2)).toDiscordMessage().layout!!.fields
         assertThat(fields).hasSize(5)
-        assertThat(fields[2]).isEqualTo(EmbedDocument.SPACER)
+        assertThat(fields[2]).isEqualTo(EmbedDocument.ROW_BREAK)
+        assertThat(fields[0].inline && fields[1].inline && !fields[2].inline).isTrue()
+    }
+
+    @Test
+    fun `2칸 행 뒤에 3칸 행이 오면 끊는다`() {
+        val fields = doc(rowsOf(2, 3)).toDiscordMessage().layout!!.fields
+        assertThat(fields).hasSize(6)
+        assertThat(fields[2]).isEqualTo(EmbedDocument.ROW_BREAK)
+    }
+
+    @Test
+    fun `결과 fields 에 U+200B inline 칸이 없다`() {
+        listOf(intArrayOf(3, 2, 3, 2, 1), intArrayOf(2, 2), intArrayOf(2, 3, 2, 2)).forEach { sizes ->
+            val fields = doc(rowsOf(*sizes)).toDiscordMessage().layout!!.fields
+            assertThat(fields.none { it.name == zwsp && it.inline }).isTrue()
+        }
     }
 
     @Test

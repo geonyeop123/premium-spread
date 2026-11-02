@@ -1,7 +1,7 @@
 package io.premiumspread.domain.accountpnl
 
 import io.premiumspread.domain.alertmessage.EmbedCell
-import io.premiumspread.domain.alertmessage.GOLDEN_FILLER
+import io.premiumspread.domain.alertmessage.GOLDEN_ROW_BREAK
 import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import io.premiumspread.domain.owneralert.DiscordField
@@ -114,7 +114,7 @@ class AccountPnlAlertContentTest {
         listOf(EmbedCell("순손익", "**+469,353원 (+1.11%)**")),
     )
 
-    /** 수익·정시 공통 fields — 행 [3,2,3,2,1], 2번째 행 뒤 채움 1개 = 12개 (design §3.3 규칙 1~2). */
+    /** 수익·정시 공통 fields — 행 [3,2,3,2,1], 2번째 행 뒤 행 끊기 1개 = 12개 (design §3.3 규칙 1~2). */
     private val profitFields: List<DiscordField> = listOf(
         gf("현김프", "1.78%", true),
         gf("매수김프", "0.53%", true),
@@ -130,7 +130,7 @@ class AccountPnlAlertContentTest {
                 "평가액 41,410,880원 (29,579.20 USDT)",
             true,
         ),
-        GOLDEN_FILLER,
+        GOLDEN_ROW_BREAK,
         gf("가격 차익", "+537,320원", true),
         gf("수수료 합계", "-73,847원", true),
         gf("펀딩비", "+5,880원 (+4.20 USDT)", true),
@@ -153,7 +153,7 @@ class AccountPnlAlertContentTest {
         assertThat(embed.footer).isEqualTo("환율 1,400.00원/USD")
         assertThat(embed.timestamp).isEqualTo(calculatedAt)
         assertThat(embed.rows).isEqualTo(profitRows)
-        // 칸 11개 + 2번째 행 뒤 채움 1개
+        // 칸 11개 + 2번째 행 뒤 행 끊기 1개
         val layout = embed.toDiscordMessage().layout!!
         assertThat(layout.fields).isEqualTo(profitFields)
         assertThat(layout.author).isEqualTo("실계정 · BTC")
@@ -211,7 +211,7 @@ class AccountPnlAlertContentTest {
             listOf(EmbedCell("마지막 성공", "없음"), EmbedCell("중단 감지", "12:10")),
             listOf(EmbedCell("확인할 것", "빗썸 Open API key의 허용 IP가 현재 공인 IP와 같은지 확인하세요.")),
         )
-        // 2칸 inline 행 다음 행이 1칸이라 채움 칸 없음
+        // 2칸 inline 행 다음 행이 1칸이라 행 끊기 칸 없음
         val layout = embed.toDiscordMessage().layout!!
         assertThat(layout.fields).isEqualTo(
             listOf(
