@@ -454,7 +454,9 @@ class BithumbPrivateAccountAdapterTest {
 
         assertThat(snapshot.usdtLastPriceKrw).isNull()
         assertThat(snapshot.lastPrice).isEqualByComparingTo("8621000")
-        val markets = recorded().filter { it.requestUrl!!.encodedPath == "/v1/ticker" }.map { it.requestUrl!!.queryParameter("markets") }
+        val markets = recorded()
+            .filter { it.requestUrl!!.encodedPath == "/v1/ticker" }
+            .map { it.requestUrl!!.queryParameter("markets") }
         assertThat(markets).containsExactly("KRW-BTC,KRW-USDT", "KRW-BTC")
         assertThat(output.all).contains("item=BITHUMB_USDT_PRICE, reason=TICKER_FALLBACK, category=UNEXPECTED, error=NotFound")
         assertNoSensitive(output)
@@ -515,7 +517,8 @@ class BithumbPrivateAccountAdapterTest {
         """[{"market":"KRW-BTC","trade_price":8621000},{"market":"KRW-USDT","trade_price":$price}]"""
 
     private fun accountsWithKrw(balance: String) =
-        """[{"currency":"KRW","balance":"$balance","locked":"0","avg_buy_price":"0","avg_buy_price_modified":false,"unit_currency":"KRW"},""" +
+        """[{"currency":"KRW","balance":"$balance","locked":"0","avg_buy_price":"0",""" +
+            """"avg_buy_price_modified":false,"unit_currency":"KRW"},""" +
             accounts(balance = "0.003", locked = "0.002").removePrefix("[")
 
     private fun adapter(timeout: Duration = Duration.ofSeconds(3)) = BithumbPrivateAccountAdapter(

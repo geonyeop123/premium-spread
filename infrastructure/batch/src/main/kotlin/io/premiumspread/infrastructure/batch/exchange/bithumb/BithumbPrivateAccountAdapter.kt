@@ -142,7 +142,8 @@ class BithumbPrivateAccountAdapter(
     }
 
     private fun btcPrice(root: JsonNode): BigDecimal {
-        val row = root.requireArray("ticker").firstOrNull { it.path("market").asText() == "KRW-BTC" } ?: unexpected("ticker has no KRW-BTC row")
+        val row = root.requireArray("ticker").firstOrNull { it.path("market").asText() == "KRW-BTC" }
+            ?: unexpected("ticker has no KRW-BTC row")
         val price = row.dec("trade_price")
         if (price.signum() <= 0) unexpected("last price is not positive")
         return price
