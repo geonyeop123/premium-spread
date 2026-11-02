@@ -6,6 +6,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.mockwebserver.SocketPolicy
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -535,11 +536,21 @@ class BinanceFuturesPrivateAccountAdapterTest {
 
     @Test
     fun `account 가 잔고 전용 timeout 을 넘기면 balance null 로 흡수하고 depth 를 마지막에 부른다`(output: CapturedOutput) {
-        responses["/fapi/v3/account"] = { json(accountBody).setBodyDelay(3, TimeUnit.SECONDS) }
+        // 응답을 끝내 보내지 않는다(10초 이상 지연과 같다). setBodyDelay 는 서버 스레드를 재워 shutdown 이 5초 기다리다 실패하지만
+        // NO_RESPONSE 는 소켓만 열어 두므로 client 가 끊거나 shutdown 이 소켓을 닫으면 바로 끝나 다음 테스트로 새지 않는다
+        responses["/fapi/v3/account"] = { MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE) }
+        // 생성자 timeout 을 넘기지 않아 다른 호출은 운영 기본값 5초를 쓴다
+        val adapter = BinanceFuturesPrivateAccountAdapter(
+            WebClient.builder().baseUrl(server.url("/").toString().removeSuffix("/")).build(),
+            "test-api-key",
+            "test-secret-key",
+            clock,
+        )
 
-        // System.nanoTime 은 업무 시각이 아니라 잔고 timeout 이 회차를 얼마나 붙잡는지의 상한을 재는 데만 쓴다
+        // System.nanoTime 은 업무 시각이 아니라 timeout 상한을 재는 데만 쓴다. 회차 전체가 기본 timeout 5초보다 짧으면
+        // 응답 없는 잔고 호출을 기본값이 아니라 잔고 전용 1.5초 timeout 이 끊었다는 뜻이다
         val started = System.nanoTime()
-        val snapshot = adapter().read()
+        val snapshot = adapter.read()
         val elapsed = java.time.Duration.ofNanos(System.nanoTime() - started)
 
         assertThat(snapshot.balance).isNull()
@@ -547,7 +558,7 @@ class BinanceFuturesPrivateAccountAdapterTest {
         assertThat(requests.map { it.requestUrl!!.encodedPath }.last()).isEqualTo("/fapi/v1/depth")
         assertThat(output.all)
             .contains("item=BINANCE_USDT_ASSET", "reason=REQUEST_FAILED", "category=NETWORK", "error=TimeoutException")
-        assertThat(elapsed).isLessThan(java.time.Duration.ofSeconds(3))
+        assertThat(elapsed).isLessThan(java.time.Duration.ofSeconds(5))
         assertSecretsAbsent(output)
     }
 
