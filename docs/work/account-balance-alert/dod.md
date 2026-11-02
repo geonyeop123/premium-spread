@@ -3,7 +3,7 @@ feature: 실계정 알림 자산 칸 + Discord 2칸 행 폭 수정
 slug: account-balance-alert
 status: FROZEN
 frozen_at: 2026-11-02
-verdict_commit:
+verdict_commit: 5484173
 source: GitHub issue #105, orchestrator ③ 합의 범위(design.md §0)
 ---
 
@@ -103,6 +103,29 @@ $ grep -rln "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure
 5 files (EmbedDocument.kt, EmbedDocumentTest.kt, GoldenFields.kt, AccountPnlAlertContentTest.kt, OwnerMarketAlertContentTest.kt) — 예상과 일치
 $ grep -rln "KoreaSpotAccountSnapshot(\|ForeignPerpAccountSnapshot(" ... → 24 files
 $ grep -rn  "KoreaSpotAccountSnapshot(\|ForeignPerpAccountSnapshot(" ... → 45 lines — 예상과 일치
+
+```
+
+### 기준선 — 검증 단계(⑩, HEAD 5484173)
+
+```
+$ ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
+BUILD SUCCESSFUL in 3m 29s, exit 0 (76 actionable tasks: 27 executed, 49 up-to-date)
+  test XML 합계(unit 1416 / 실패 0 / skipped 0): domain 565 · apps:batch 315 · apps:api 143 · infrastructure:batch 239 ·
+    infrastructure:common 61 · infrastructure:api 31 · modules:redis 18 · supports:monitoring 16 · supports:email 12 ·
+    supports:logging 9 · modules:jpa 7
+  architectureTest 35 / 0 / 0 · verifyMigrations 실행됨(성공)
+  integrationTest: infrastructure:common 96/0/0 · apps:api 174/0/0 · apps:batch 117/0/0 (skipped 0)
+  이 실행에서 UP-TO-DATE 였던 unit/architecture task 는 입력 불변으로 재사용된 것이라, 같은 HEAD 에서 한 번 더 강제 재실행했다:
+$ ./gradlew test architectureTest --parallel --offline --no-daemon --rerun-tasks
+  unit 1416 / 실패 0 / skipped 0 (전 task 재실행). architecture-tests:architectureTest 는 35 중 1 실패:
+    ObservabilityCardinalityArchitectureTest > production metric tags never use pii or runtime identifiers —
+    NoSuchFileException (ObservabilityCardinalityArchitectureTest.kt:60, Files.walk 중 파일 소멸).
+    --rerun-tasks 가 병렬로 build 디렉터리를 비우는 사이 소스 트리를 걷다 난 환경 경합으로 판단. 코드 단정 실패가 아님.
+$ ./gradlew architectureTest --offline --no-daemon → BUILD SUCCESSFUL, exit 0, 35/0/0 (단독 재실행, 첫 전체 실행에서도 UP-TO-DATE 통과)
+$ ./gradlew jacocoTestCoverageVerification --offline --no-daemon → BUILD SUCCESSFUL, exit 0 (overall/domain/application 3 규칙 모두 통과)
+$ bash docs/check-documentation.sh → documentation check passed (20 files, 15 required paths), exit 0
+$ git diff --stat 9bcaefd..HEAD -- Flyway·JPA·http·redis·*IntegrationTest → 변경 파일 없음 (설계 §6.3 통합 테스트 5종 무수정)
 ```
 
 ### AC1
@@ -123,31 +146,78 @@ $ grep -rn "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure →
 ### AC2
 
 ```
+출처: .superpowers/sdd/plan/task-2-report.md
+RED (stub 후): $ ./gradlew :domain:test --tests ...AccountBalanceSnapshotTest --offline --no-daemon
+  → 6 tests completed, 5 failed (assertion), BUILD FAILED
+GREEN: 같은 명령 → BUILD SUCCESSFUL. `:domain:test :infrastructure:batch:test :apps:batch:test` → BUILD SUCCESSFUL
+검증 단계(HEAD 5484173): AccountBalanceSnapshotTest tests=6 skipped=0 failures=0 errors=0 (unit 전체 실행 exit 0)
 ```
 
 ### AC3
 
 ```
+출처: .superpowers/sdd/plan/task-3-report.md
+RED: stub 상태에서 8/9 assertion 실패(컴파일 실패 아님)
+GREEN: `:domain:test` 전체 560건 통과 (AccountAssetBreakdownTest 9개)
+검증 단계(HEAD 5484173): AccountAssetBreakdownTest tests=9 skipped=0 failures=0 errors=0
 ```
 
 ### AC4
 
 ```
+출처: .superpowers/sdd/plan/task-4-report.md (B안 적용, commit 043126f)
+RED: 9 assertion failures (golden 2, variants 5, conformance 2)
+GREEN: `:domain:test` 전체 통과
+검증 단계(HEAD 5484173): AccountPnlAlertContentTest tests=18/0/0/0 · AlertMessageSpecConformanceTest(R2) 22/0/0/0 ·
+  OwnerMarketAlertContentTest(R3) 11/0/0/0 · EmbedDocumentTest 14/0/0/0
 ```
 
 ### AC5
 
 ```
+출처: .superpowers/sdd/plan/task-5-report.md
+RED: 10 assertion failures (stub)
+GREEN: bithumb.* 전체, architectureTest, `:infrastructure:batch:test` 전체 통과
+Fix round 1: `./gradlew :infrastructure:batch:test --tests 'io.premiumspread.infrastructure.batch.exchange.bithumb.*' --offline --no-daemon` → BUILD SUCCESSFUL
+final-fix(F4): 음수/숫자아님/0 이하 3개 테스트에 assertNoSensitive 추가 (final-fix-report.md)
+검증 단계(HEAD 5484173): BithumbPrivateAccountAdapterTest tests=45 skipped=0 failures=0 errors=0
 ```
 
 ### AC6
 
 ```
+출처: .superpowers/sdd/plan/task-6-report.md, final-fix-report.md
+RED(task 6): 7 failed (assertions) before impl. GREEN: binance.* tests and architectureTest BUILD SUCCESSFUL
+RED(final-fix F1, 호출 전용 timeout·-1021 미재시도):
+  ... -1021 로 거부되면 ... FAILED AssertionFailedError at BinanceFuturesPrivateAccountAdapterTest.kt:529 expected: 1 but was: 2
+  ... 잔고 전용 timeout 을 넘기면 ... FAILED AssertionError at :550 Expecting actual: 3.72963623S to be less than: 3S
+  35 tests completed, 2 failed
+GREEN: `./gradlew :infrastructure:batch:test --offline --no-daemon` → BUILD SUCCESSFUL in 1m 30s
+Addendum(5484173): mutation check(BALANCE_TIMEOUT 임시 5000ms) → `Expecting actual: 6.212841209S to be less than: 5S`; 원복 후
+  `...binance.*` BUILD SUCCESSFUL in 52s
+검증 단계(HEAD 5484173): BinanceFuturesPrivateAccountAdapterTest tests=35/0/0/0 · BinanceFuturesManualAccountAdapterTest(R4) 16/0/0/0
+  `잔고 전용 timeout` 케이스 JUnit time = 2.236s (이 실행). 같은 클래스 최장 케이스는 `account 해석 실패는 …` 7.624s —
+  --rerun-tasks 이전 실행의 기록이며 timeout 케이스가 아니다. 관찰된 timeout 케이스 시간: 2.236s(이 실행) / 2.238s(구현자) / 5.575s(리뷰어 1회, 재현 못 함)
+  read elapsed 단정(<5s)은 2.2s 근방에서 통과; 5.575s 는 JUnit case time(서버 shutdown 포함) 이었는지 미확인 — 재현되지 않았음을 기록한다.
+R5: AccountPnlMonitorJobBalanceTest tests=3/0/0/0 (task-7-report.md: null 잔고여도 Success·enqueue, 6분 지속에도 outage 행 없음)
 ```
 
 ### AC7
 
 ```
+$ grep -c "■ 자산" docs/work/alert-message-template/message-spec.md
+2
+$ grep -n "/fapi/v3/account" docs/runbooks/account-pnl-alert.md
+20:| 바이낸스 (USDS-M 선물) — **api 모드에서만 필요** | **Enable Reading 만** — 포지션·체결·펀딩·수수료율과 계정 잔고(`/fapi/v3/account`) 조회가 모두 이 권한이다. … | 가능하면 IP 제한 |
+368:※ 자산 행의 "값 있음" 은 api 모드에서만 나온다 — manual 모드는 잔고를 조회하지 않으므로(/fapi/v3/account 미호출) 항상 오른쪽 열이다.
+523:  `네트워크·요청 한도 오류` 중단 메일로 나타난다. 단 잔고(`/fapi/v3/account`)는 재시도하지 않고 그 칸만 '없음' + WARN
+$ grep -n "#105" docs/work/alert-message-template/design.md
+167:> 개정 (#105, 2026-11-02): 채움 칸은 non-inline 행 끊기 칸 EmbedDocument.ROW_BREAK = … 근거·영향은 docs/work/account-balance-alert/design.md §6.
+320:> 개정 (#105, 2026-11-02, 사용자 합의 7): 예외 — 자산 칸의 바이낸스 두 값 … 그 밖 칸은 U5 그대로. docs/work/account-balance-alert/design.md §12.
+$ grep -n "수동 모드 — 표시 안 함" docs/runbooks/account-pnl-alert.md
+358:… 예외: 자산 칸(#105)의 바이낸스 두 값은 manual 모드에서 "수동 모드 — 표시 안 함" 으로 쓰므로 이 칸에서만 모드가 드러난다.
+365:| 메일 `■ 자산` → `바이낸스 증거금+손익`·`잔여 금액` 하위 `바이낸스` / Discord 같은 칸 | … | `없음` | `수동 모드 — 표시 안 함` |
+(출력 줄임 표시 …; 통과 조건: 2 ≥ 2 · 3줄 ≥ 1 · 2줄 ≥ 2(§3.3 167행·§6.2 320행) · 2줄 ≥ 1(358행 `### 메일 표기` 구간 포함))
 ```
 
 ## 사람 확인 (T4)
@@ -173,13 +243,13 @@ $ grep -rn "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure →
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: account-balance-alert @ <commit SHA>
+DoD VERDICT: account-balance-alert @ 5484173
   수용기준 표:     9개  (T1 6 · T2 1 · T3 0 · T4 2)
-  T1/T2 자동:      7개 중 <p>개 PASS
+  T1/T2 자동:      7개 중 7개 PASS
   T3 기록 제출:    0개 중 0건
-  T4 사람 확인:    2개 중 <r>건 완료, <2-r>건 대기
-  변경 요청:       <k>건
-  =>
+  T4 사람 확인:    2개 중 0건 완료, 2건 대기
+  변경 요청:       0건
+  => AWAITING_HUMAN (AC8, AC9) — 완료 아님. 회귀 방어선 R1~R8 PASS, R9(ktlint·detekt)는 PR CI(R9)로 판정(로컬 미실행).
 ```
 
 **사람 확인이 필요한 항목**
