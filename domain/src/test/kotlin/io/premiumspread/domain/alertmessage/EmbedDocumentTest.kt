@@ -52,21 +52,21 @@ class EmbedDocumentTest {
     }
 
     @Test
-    fun `마지막 2칸 행 뒤에는 채움 칸이 없다`() {
+    fun `마지막 2칸 행 뒤에는 행 끊기 칸이 없다`() {
         assertThat(doc(rowsOf(3, 2)).toDiscordMessage().layout!!.fields).hasSize(5)
     }
 
     @Test
-    fun `2칸 행 뒤에 1칸 행이 오면 채우지 않는다`() {
+    fun `2칸 행 뒤에 1칸 행이 오면 행 끊기 칸을 넣지 않는다`() {
         assertThat(doc(rowsOf(2, 1)).toDiscordMessage().layout!!.fields).hasSize(3)
     }
 
     @Test
-    fun `2칸 행 뒤에 2칸 행이 오면 채운다`() {
+    fun `2칸 행 뒤에 2칸 행이 오면 행 끊기 칸을 넣는다`() {
         val fields = doc(rowsOf(2, 2)).toDiscordMessage().layout!!.fields
         assertThat(fields).hasSize(5)
         assertThat(fields[2]).isEqualTo(EmbedDocument.ROW_BREAK)
-        assertThat(fields[0].inline && fields[1].inline && !fields[2].inline).isTrue()
+        assertThat(fields.take(3).map { it.inline }).containsExactly(true, true, false)
     }
 
     @Test

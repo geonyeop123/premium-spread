@@ -76,7 +76,7 @@ class AccountPnlMonitorJobBalanceTest {
         korea.usdtPrice = BigDecimal("1412")
         foreign.balance = ForeignPerpBalance(BigDecimal("1000"), BigDecimal("900"))
 
-        job.run()
+        assertThat(job.run()).isInstanceOf(JobResult.Success::class.java)
 
         val body = profitBody()
         val section = body.substring(body.indexOf("■ 자산")).lines().drop(1).takeWhile { !it.startsWith("■") }

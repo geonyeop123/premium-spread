@@ -395,6 +395,7 @@ class BithumbPrivateAccountAdapterTest {
 
         assertThat(snapshot.krwBalance).isNull()
         assertThat(output.all).contains("item=BITHUMB_KRW, reason=NEGATIVE, category=-, error=-")
+        assertNoSensitive(output)
     }
 
     @Test
@@ -405,6 +406,7 @@ class BithumbPrivateAccountAdapterTest {
 
         assertThat(snapshot.krwBalance).isNull()
         assertThat(output.all).contains("item=BITHUMB_KRW, reason=NOT_NUMBER, category=-, error=-")
+        assertNoSensitive(output)
     }
 
     @Test
@@ -440,6 +442,7 @@ class BithumbPrivateAccountAdapterTest {
         responses["/v1/ticker"] = { json(usdtTicker("\"x\"")) }
         assertThat(adapter().read().usdtLastPriceKrw).isNull()
         assertThat(output.all).contains("item=BITHUMB_USDT_PRICE, reason=NOT_NUMBER")
+        assertNoSensitive(output)
     }
 
     @Test

@@ -209,7 +209,7 @@ class AccountAlertContentTest {
                 ),
             ),
         )
-        // 2칸 행 다음 행이 1칸이라 채움 칸 없음
+        // 2칸 행 다음 행이 1칸이라 행 끊기 칸 없음
         val layout = e.toDiscordMessage().layout!!
         assertThat(layout.fields).isEqualTo(
             listOf(
