@@ -56,10 +56,14 @@ class BinanceFuturesPrivateAccountAdapter(
         )
     }
 
-    /** /fapi/v3/account 의 USDT 잔고. 요청 실패·해석 실패는 null + WARN. 취소는 다시 던진다. */
+    /**
+     * /fapi/v3/account 의 USDT 잔고. 요청 실패·해석 실패는 null + WARN. 취소는 다시 던진다.
+     * 이 호출은 깊이 조회 앞이라 회차 시세 신선도를 잡아먹지 않게 [BALANCE_TIMEOUT] 으로 한 번만 보낸다 —
+     * `-1021` 이어도 서버 시각을 다시 재거나 재시도하지 않고 요청 실패로 흡수한다.
+     */
     private fun readBalance(): ForeignPerpBalance? {
         val root = try {
-            signedGet("/fapi/v3/account", "")
+            sendBalance()
         } catch (e: AccountReadException) {
             if (AccountBalanceLog.isCancellation(e)) throw e
             AccountBalanceLog.unavailable(
@@ -77,6 +81,12 @@ class BinanceFuturesPrivateAccountAdapter(
                 null
             }
         }
+    }
+
+    private fun sendBalance(): JsonNode = try {
+        send("/fapi/v3/account", "", BALANCE_TIMEOUT)
+    } catch (e: BinanceTimestampRejectedException) {
+        throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance /fapi/v3/account timestamp rejected", e)
     }
 
     /** 응답 해석. 예외를 던지지 않고 사유를 돌려준다. */
@@ -314,11 +324,12 @@ class BinanceFuturesPrivateAccountAdapter(
         }
     }
 
-    private fun send(path: String, params: String): JsonNode {
+    private fun send(path: String, params: String, timeout: Duration? = null): JsonNode {
         val offset = serverOffsetMillis ?: measureOffset()
         val prefix = if (params.isEmpty()) "" else "$params&"
         val base = prefix + "recvWindow=$recvWindowMillis&timestamp=${clock.millis() + offset}"
-        return client.get(path, "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}", apiKey)
+        val query = "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}"
+        return if (timeout == null) client.get(path, query, apiKey) else client.get(path, query, apiKey, timeout)
     }
 
     private companion object {
@@ -327,5 +338,8 @@ class BinanceFuturesPrivateAccountAdapter(
         const val INCOME_LIMIT = 1000
         const val MAX_WINDOWS = 13
         const val WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000
+
+        /** 잔고 호출 전용 timeout. 다른 호출은 생성자 timeout(기본 5초)을 쓴다. */
+        val BALANCE_TIMEOUT: Duration = Duration.ofMillis(1500)
     }
 }

@@ -28,10 +28,11 @@ internal class BinanceFuturesReadClient(
     /**
      * [query] 를 재인코딩 없이 그대로 붙여 GET 한다(서명 문자열 = 전송 문자열). [apiKey] 가 null 이 아니면 `X-MBX-APIKEY` 헤더를 붙인다.
      * HTTP 오류 코드 `-1021` 은 [apiKey] 가 있을 때만 [BinanceTimestampRejectedException] 으로, 없으면 일반 매핑으로 간다.
+     * [timeout] 을 넘기면 그 호출만 기본값 대신 그 시간으로 끊는다(초과는 NETWORK).
      */
     // adapter 경계: 모든 실패를 AccountReadException 으로 정규화한다.
     @Suppress("TooGenericExceptionCaught")
-    fun get(path: String, query: String, apiKey: String? = null): JsonNode {
+    fun get(path: String, query: String, apiKey: String? = null, timeout: Duration = this.timeout): JsonNode {
         val body = try {
             webClient.get()
                 .uri { builder ->

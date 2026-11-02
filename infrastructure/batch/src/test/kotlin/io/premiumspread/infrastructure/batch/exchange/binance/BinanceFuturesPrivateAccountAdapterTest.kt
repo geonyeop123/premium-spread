@@ -518,20 +518,37 @@ class BinanceFuturesPrivateAccountAdapterTest {
     }
 
     @Test
-    fun `account 가 -1021 로 한 번 거부돼도 서버 시각을 다시 재고 balance 를 읽는다`() {
-        var rejected = 1
+    fun `account 가 -1021 로 거부되면 서버 시각을 다시 재지 않고 한 번만 보낸 뒤 balance null 로 흡수한다`(output: CapturedOutput) {
         responses["/fapi/v3/account"] = {
-            if (rejected-- > 0) {
-                MockResponse().setResponseCode(400).setBody("""{"code":-1021,"msg":"outside of the recvWindow."}""")
-            } else {
-                json(accountBody)
-            }
+            MockResponse().setResponseCode(400).setBody("""{"code":-1021,"msg":"outside of the recvWindow."}""")
         }
 
         val snapshot = adapter().read()
 
-        assertThat(snapshot.balance!!.marginBalanceUsdt).isEqualByComparingTo("10000.50")
-        assertThat(requests.count { it.requestUrl!!.encodedPath == "/fapi/v1/time" }).isEqualTo(2)
+        assertThat(snapshot.balance).isNull()
+        assertThat(requests.count { it.requestUrl!!.encodedPath == "/fapi/v3/account" }).isEqualTo(1)
+        // 첫 서명 요청 직전의 오프셋 측정 1회뿐 — 잔고 경로는 재측정하지 않는다
+        assertThat(requests.count { it.requestUrl!!.encodedPath == "/fapi/v1/time" }).isEqualTo(1)
+        assertThat(output.all).contains("item=BINANCE_USDT_ASSET", "reason=REQUEST_FAILED", "category=NETWORK")
+        assertSecretsAbsent(output)
+    }
+
+    @Test
+    fun `account 가 잔고 전용 timeout 을 넘기면 balance null 로 흡수하고 depth 를 마지막에 부른다`(output: CapturedOutput) {
+        responses["/fapi/v3/account"] = { json(accountBody).setBodyDelay(3, TimeUnit.SECONDS) }
+
+        // System.nanoTime 은 업무 시각이 아니라 잔고 timeout 이 회차를 얼마나 붙잡는지의 상한을 재는 데만 쓴다
+        val started = System.nanoTime()
+        val snapshot = adapter().read()
+        val elapsed = java.time.Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(snapshot.balance).isNull()
+        assertThat(snapshot.askLevels).isNotEmpty()
+        assertThat(requests.map { it.requestUrl!!.encodedPath }.last()).isEqualTo("/fapi/v1/depth")
+        assertThat(output.all)
+            .contains("item=BINANCE_USDT_ASSET", "reason=REQUEST_FAILED", "category=NETWORK", "error=TimeoutException")
+        assertThat(elapsed).isLessThan(java.time.Duration.ofSeconds(3))
+        assertSecretsAbsent(output)
     }
 
     @Test
@@ -546,6 +563,7 @@ class BinanceFuturesPrivateAccountAdapterTest {
 
             assertThat(requests.none { it.requestUrl!!.encodedPath == "/fapi/v1/depth" }).isTrue()
             assertThat(output.all).doesNotContain("reason=REQUEST_FAILED")
+            assertSecretsAbsent(output)
         } finally {
             Thread.interrupted()
         }
