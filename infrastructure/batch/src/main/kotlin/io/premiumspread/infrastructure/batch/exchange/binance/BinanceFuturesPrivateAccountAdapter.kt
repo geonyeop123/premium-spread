@@ -76,6 +76,7 @@ class BinanceFuturesPrivateAccountAdapter(
         }
         return when (val parsed = parseBalance(root)) {
             is BalanceParse.Ok -> parsed.balance
+
             is BalanceParse.Unavailable -> {
                 AccountBalanceLog.unavailable(BalanceItem.BINANCE_USDT_ASSET, parsed.reason)
                 null
