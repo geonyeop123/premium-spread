@@ -1,0 +1,32 @@
+[
+  {
+    "market": "KRW-USDT",
+    "trade_date": "20180418",
+    "trade_time": "102340",
+    "trade_date_kst": "20180418",
+    "trade_time_kst": "192340",
+    "trade_timestamp": 1524047020000,
+    "opening_price": 1400,
+    "high_price": 1420,
+    "low_price": 1395,
+    "trade_price": 1412,
+    "prev_closing_price": 1400,
+    "change": "RISE",
+    "timestamp": 1524047026072
+  },
+  {
+    "market": "KRW-BTC",
+    "trade_date": "20180418",
+    "trade_time": "102340",
+    "trade_date_kst": "20180418",
+    "trade_time_kst": "192340",
+    "trade_timestamp": 1524047020000,
+    "opening_price": 8450000,
+    "high_price": 8679000,
+    "low_price": 8445000,
+    "trade_price": 8621000,
+    "prev_closing_price": 8450000,
+    "change": "RISE",
+    "timestamp": 1524047026072
+  }
+]

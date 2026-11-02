@@ -11,6 +11,9 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.web.reactive.function.client.WebClient
 import java.net.URLDecoder
 import java.time.Clock
@@ -21,6 +24,7 @@ import java.util.Base64
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+@ExtendWith(OutputCaptureExtension::class)
 class BithumbPrivateAccountAdapterTest {
     private lateinit var server: MockWebServer
     private val clock = Clock.fixed(Instant.parse("2026-10-20T00:00:00Z"), ZoneOffset.UTC)
@@ -364,6 +368,155 @@ class BithumbPrivateAccountAdapterTest {
             assertThat(text).doesNotContain("test-secret-key").doesNotContain("test-access-key").doesNotContain("Bearer")
         }
     }
+
+    @Test
+    fun `KRW 잔고는 balance 만 읽고 locked 는 더하지 않는다`(output: CapturedOutput) {
+        accountsBody = fixture("accounts.json")
+
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.krwBalance!!.compareTo(java.math.BigDecimal("10981650.10635"))).isZero()
+        assertNoSensitive(output)
+    }
+
+    @Test
+    fun `KRW 행이 없으면 krwBalance 는 0 이고 경고가 없다`(output: CapturedOutput) {
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.krwBalance!!.signum()).isZero()
+        assertThat(output.all).doesNotContain("item=BITHUMB_KRW")
+    }
+
+    @Test
+    fun `KRW balance 가 음수이면 null 이고 NEGATIVE 로그를 남긴다`(output: CapturedOutput) {
+        accountsBody = accountsWithKrw("-1")
+
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.krwBalance).isNull()
+        assertThat(output.all).contains("item=BITHUMB_KRW, reason=NEGATIVE, category=-, error=-")
+    }
+
+    @Test
+    fun `KRW balance 가 숫자가 아니면 null 이고 NOT_NUMBER 로그를 남긴다`(output: CapturedOutput) {
+        accountsBody = accountsWithKrw("abc")
+
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.krwBalance).isNull()
+        assertThat(output.all).contains("item=BITHUMB_KRW, reason=NOT_NUMBER, category=-, error=-")
+    }
+
+    @Test
+    fun `묶음 ticker 는 market 필드로 BTC 와 USDT 행을 고른다`(output: CapturedOutput) {
+        responses["/v1/ticker"] = { json(fixture("ticker-btc-usdt.json")) }
+
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.lastPrice).isEqualByComparingTo("8621000")
+        assertThat(snapshot.usdtLastPriceKrw).isEqualByComparingTo("1412")
+        val tickers = recorded().filter { it.requestUrl!!.encodedPath == "/v1/ticker" }
+        assertThat(tickers).hasSize(1)
+        assertThat(tickers.single().requestUrl!!.queryParameter("markets")).isEqualTo("KRW-BTC,KRW-USDT")
+        assertNoSensitive(output)
+    }
+
+    @Test
+    fun `USDT 행이 없으면 null 이고 MISSING 로그를 남긴다`(output: CapturedOutput) {
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.usdtLastPriceKrw).isNull()
+        assertThat(snapshot.lastPrice).isEqualByComparingTo("8621000")
+        assertThat(output.all).contains("item=BITHUMB_USDT_PRICE, reason=MISSING, category=-, error=-")
+        assertNoSensitive(output)
+    }
+
+    @Test
+    fun `USDT trade_price 가 0 이면 NOT_POSITIVE 숫자가 아니면 NOT_NUMBER`(output: CapturedOutput) {
+        responses["/v1/ticker"] = { json(usdtTicker("0")) }
+        assertThat(adapter().read().usdtLastPriceKrw).isNull()
+        assertThat(output.all).contains("item=BITHUMB_USDT_PRICE, reason=NOT_POSITIVE")
+
+        responses["/v1/ticker"] = { json(usdtTicker("\"x\"")) }
+        assertThat(adapter().read().usdtLastPriceKrw).isNull()
+        assertThat(output.all).contains("item=BITHUMB_USDT_PRICE, reason=NOT_NUMBER")
+    }
+
+    @Test
+    fun `묶음 ticker 가 404 이면 BTC 만으로 한 번 더 요청한다`(output: CapturedOutput) {
+        var tickerCalls = 0
+        responses["/v1/ticker"] = {
+            tickerCalls += 1
+            if (tickerCalls == 1) MockResponse().setResponseCode(404) else json(fixture("ticker.json"))
+        }
+
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.usdtLastPriceKrw).isNull()
+        assertThat(snapshot.lastPrice).isEqualByComparingTo("8621000")
+        val markets = recorded().filter { it.requestUrl!!.encodedPath == "/v1/ticker" }.map { it.requestUrl!!.queryParameter("markets") }
+        assertThat(markets).containsExactly("KRW-BTC,KRW-USDT", "KRW-BTC")
+        assertThat(output.all).contains("item=BITHUMB_USDT_PRICE, reason=TICKER_FALLBACK, category=UNEXPECTED, error=NotFound")
+        assertNoSensitive(output)
+    }
+
+    @Test
+    fun `fallback 요청도 404 이면 UNEXPECTED 로 실패한다`() {
+        responses["/v1/ticker"] = { MockResponse().setResponseCode(404) }
+
+        assertCategory(AccountReadFailureCategory.UNEXPECTED)
+        assertThat(recorded().count { it.requestUrl!!.encodedPath == "/v1/ticker" }).isEqualTo(2)
+    }
+
+    @Test
+    fun `200 응답에 KRW-BTC 행이 없으면 fallback 없이 UNEXPECTED`(output: CapturedOutput) {
+        responses["/v1/ticker"] = { json("""[{"market":"KRW-USDT","trade_price":1412}]""") }
+
+        assertCategory(AccountReadFailureCategory.UNEXPECTED)
+        assertThat(recorded().count { it.requestUrl!!.encodedPath == "/v1/ticker" }).isEqualTo(1)
+        assertThat(output.all).doesNotContain("TICKER_FALLBACK")
+    }
+
+    @Test
+    fun `묶음 ticker 429 는 fallback 없이 NETWORK`() {
+        responses["/v1/ticker"] = { MockResponse().setResponseCode(429) }
+
+        assertCategory(AccountReadFailureCategory.NETWORK)
+        assertThat(recorded().count { it.requestUrl!!.encodedPath == "/v1/ticker" }).isEqualTo(1)
+    }
+
+    @Test
+    fun `묶음 ticker 중 취소되면 재요청도 로그도 없이 실패한다`(output: CapturedOutput) {
+        val testThread = Thread.currentThread()
+        responses["/v1/ticker"] = {
+            testThread.interrupt()
+            MockResponse().setResponseCode(404).setBodyDelay(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+
+        try {
+            catchRead()
+        } finally {
+            Thread.interrupted()
+        }
+
+        val requests = recorded()
+        assertThat(requests.count { it.requestUrl!!.encodedPath == "/v1/ticker" }).isEqualTo(1)
+        assertThat(requests.count { it.requestUrl!!.encodedPath == "/v1/orderbook" }).isZero()
+        assertThat(output.all).doesNotContain("TICKER_FALLBACK")
+    }
+
+    private fun assertNoSensitive(output: CapturedOutput) {
+        listOf("test-access-key", "test-secret-key", "10981650", "1412", "8621000").forEach {
+            assertThat(output.all).doesNotContain(it)
+        }
+    }
+
+    private fun usdtTicker(price: String) =
+        """[{"market":"KRW-BTC","trade_price":8621000},{"market":"KRW-USDT","trade_price":$price}]"""
+
+    private fun accountsWithKrw(balance: String) =
+        """[{"currency":"KRW","balance":"$balance","locked":"0","avg_buy_price":"0","avg_buy_price_modified":false,"unit_currency":"KRW"},""" +
+            accounts(balance = "0.003", locked = "0.002").removePrefix("[")
 
     private fun adapter(timeout: Duration = Duration.ofSeconds(3)) = BithumbPrivateAccountAdapter(
         WebClient.builder().baseUrl(server.url("/").toString().removeSuffix("/")).build(),

@@ -8,6 +8,9 @@ import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
 import io.premiumspread.domain.accountpnl.PriceLevel
+import io.premiumspread.infrastructure.batch.exchange.AccountBalanceLog
+import io.premiumspread.infrastructure.batch.exchange.BalanceItem
+import io.premiumspread.infrastructure.batch.exchange.BalanceUnavailableReason
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.WebClientRequestException
 import org.springframework.web.reactive.function.client.WebClientResponseException
@@ -41,7 +44,7 @@ class BithumbPrivateAccountAdapter(
     override fun read(): KoreaSpotAccountSnapshot {
         val account = readAccount()
         val sellFeeRate = readSellFeeRate()
-        val lastPrice = readLastPrice()
+        val prices = readPrices()
         val entryFee = if (account.quantity.signum() > 0) readEntryFee(account.quantity, account.averageBuyPrice) else null
         val orderbook = readOrderbook()
         return KoreaSpotAccountSnapshot(
@@ -51,12 +54,25 @@ class BithumbPrivateAccountAdapter(
             entryFeeKrw = entryFee,
             sellFeeRate = sellFeeRate,
             bidLevels = orderbook.first,
-            lastPrice = lastPrice,
+            lastPrice = prices.btc,
+            krwBalance = account.krwBalance,
+            usdtLastPriceKrw = prices.usdt,
             bidObservedAt = orderbook.second,
         )
     }
 
-    private data class Account(val quantity: BigDecimal, val averageBuyPrice: BigDecimal, val modified: Boolean)
+    private data class Account(
+        val quantity: BigDecimal,
+        val averageBuyPrice: BigDecimal,
+        val modified: Boolean,
+        val krwBalance: BigDecimal?,
+    ) {
+        override fun toString(): String = "Account"
+    }
+
+    private data class Prices(val btc: BigDecimal, val usdt: BigDecimal?) {
+        override fun toString(): String = "Prices"
+    }
 
     private data class FeeCache(
         val quantity: BigDecimal,
@@ -68,14 +84,15 @@ class BithumbPrivateAccountAdapter(
     private fun readAccount(): Account {
         val root = getJson("/v1/accounts", null, signed = true)
         val rows = root.requireArray("accounts")
+        val krwBalance = readKrwBalance(rows)
         val row = rows.firstOrNull { it.path("currency").asText() == "BTC" && it.path("unit_currency").asText() == "KRW" }
-            ?: return Account(BigDecimal.ZERO, BigDecimal.ZERO, false)
+            ?: return Account(BigDecimal.ZERO, BigDecimal.ZERO, false, krwBalance)
         val balance = row.dec("balance")
         val locked = row.dec("locked")
         val avg = row.dec("avg_buy_price")
         if (balance.signum() < 0 || locked.signum() < 0 || avg.signum() < 0) unexpected("account value is negative")
         if (balance.add(locked).signum() > 0 && avg.signum() == 0) unexpected("average buy price is zero for a held position")
-        return Account(balance.add(locked), avg, row.path("avg_buy_price_modified").asBoolean(false))
+        return Account(balance.add(locked), avg, row.path("avg_buy_price_modified").asBoolean(false), krwBalance)
     }
 
     private fun readOrderbook(): Pair<List<PriceLevel>, Instant> {
@@ -95,11 +112,63 @@ class BithumbPrivateAccountAdapter(
         return levels to Instant.ofEpochMilli(timestamp)
     }
 
-    private fun readLastPrice(): BigDecimal {
-        val root = getJson("/v1/ticker", "markets=KRW-BTC", signed = false)
-        val price = root.requireArray("ticker").firstOrNull()?.dec("trade_price") ?: unexpected("ticker is empty")
+    /** KRW 행 해석은 예외를 던지지 않는다. 행이 없으면 0, 값이 이상하면 null 과 사유 로그. */
+    private fun readKrwBalance(rows: JsonNode): BigDecimal? {
+        val row = rows.firstOrNull { it.path("currency").asText() == "KRW" } ?: return BigDecimal.ZERO
+        val balance = row.get("balance")?.let(::lenientDecimal)
+        val reason = when {
+            balance == null -> BalanceUnavailableReason.NOT_NUMBER
+            balance.signum() < 0 -> BalanceUnavailableReason.NEGATIVE
+            else -> null
+        }
+        if (reason != null) AccountBalanceLog.unavailable(BalanceItem.BITHUMB_KRW, reason)
+        return if (reason == null) balance else null
+    }
+
+    private fun readPrices(): Prices {
+        val root = try {
+            getJson("/v1/ticker", TICKER_QUERY, signed = false)
+        } catch (e: AccountReadException) {
+            if (e.category != AccountReadFailureCategory.UNEXPECTED || AccountBalanceLog.isCancellation(e)) throw e
+            AccountBalanceLog.unavailable(
+                BalanceItem.BITHUMB_USDT_PRICE,
+                BalanceUnavailableReason.TICKER_FALLBACK,
+                AccountReadFailureCategory.UNEXPECTED,
+                AccountBalanceLog.rootErrorClass(e),
+            )
+            return Prices(btcPrice(getJson("/v1/ticker", TICKER_FALLBACK_QUERY, signed = false)), null)
+        }
+        return Prices(btcPrice(root), usdtPrice(root))
+    }
+
+    private fun btcPrice(root: JsonNode): BigDecimal {
+        val row = root.requireArray("ticker").firstOrNull { it.path("market").asText() == "KRW-BTC" } ?: unexpected("ticker has no KRW-BTC row")
+        val price = row.dec("trade_price")
         if (price.signum() <= 0) unexpected("last price is not positive")
         return price
+    }
+
+    private fun usdtPrice(root: JsonNode): BigDecimal? {
+        val row = root.firstOrNull { it.path("market").asText() == "KRW-USDT" }
+        val price = row?.get("trade_price")?.let(::lenientDecimal)
+        val reason = when {
+            row == null -> BalanceUnavailableReason.MISSING
+            price == null -> BalanceUnavailableReason.NOT_NUMBER
+            price.signum() <= 0 -> BalanceUnavailableReason.NOT_POSITIVE
+            else -> null
+        }
+        if (reason != null) AccountBalanceLog.unavailable(BalanceItem.BITHUMB_USDT_PRICE, reason)
+        return if (reason == null) price else null
+    }
+
+    private fun lenientDecimal(node: JsonNode): BigDecimal? = try {
+        when {
+            node.isNumber -> node.decimalValue()
+            node.isTextual -> BigDecimal(node.asText())
+            else -> null
+        }
+    } catch (e: NumberFormatException) {
+        null
     }
 
     private fun readSellFeeRate(): BigDecimal {
@@ -235,6 +304,8 @@ class BithumbPrivateAccountAdapter(
 
     private companion object {
         const val ORDER_PAGE_SIZE = 100
+        const val TICKER_QUERY = "markets=KRW-BTC,KRW-USDT"
+        const val TICKER_FALLBACK_QUERY = "markets=KRW-BTC"
         const val MAX_ORDER_PAGES = 10
     }
 }
