@@ -97,6 +97,12 @@ source: GitHub issue #105, orchestrator ③ 합의 범위(design.md §0)
 ### 기준선 (Task 0)
 
 ```
+$ ./gradlew test architectureTest --parallel --offline --no-daemon
+BUILD SUCCESSFUL in 1m 33s (68 actionable tasks: 68 executed), exit 0
+$ grep -rln "GOLDEN_FILLER\|SPACER" --include=*.kt domain apps infrastructure
+5 files (EmbedDocument.kt, EmbedDocumentTest.kt, GoldenFields.kt, AccountPnlAlertContentTest.kt, OwnerMarketAlertContentTest.kt) — 예상과 일치
+$ grep -rln "KoreaSpotAccountSnapshot(\|ForeignPerpAccountSnapshot(" ... → 24 files
+$ grep -rn  "KoreaSpotAccountSnapshot(\|ForeignPerpAccountSnapshot(" ... → 45 lines — 예상과 일치
 ```
 
 ### AC1
