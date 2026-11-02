@@ -259,8 +259,9 @@ BTC 체결가까지 실패해 합의 6("USDT 시세 실패는 알림 발송을 �
 `read()` 순서: `positionRisk` → (이력: `userTrades`·`income`) → `commissionRate` → **`/fapi/v3/account`** → `ticker/price` → `depth`.
 depth 는 여전히 마지막이다(호가 skew 5초 계약).
 
-요청: 기존 `signedGet("/fapi/v3/account", "")` — 서명 query `recvWindow=…&timestamp=…&signature=…`, 헤더 `X-MBX-APIKEY`,
-`-1021` 이면 기존 규칙대로 서버 시각 재측정 후 1회 재시도.
+요청: 서명 GET 1건 — 서명 query `recvWindow=…&timestamp=…&signature=…`, 헤더 `X-MBX-APIKEY`. 다른 서명 호출과 달리
+`signedGet` 의 `-1021` 재측정·재시도를 타지 않고, 잔고 전용 timeout `BALANCE_TIMEOUT = 1.5초`(다른 호출은 5초)로 **한 번만**
+보낸다. `-1021` 은 `AccountReadException(NETWORK)` 로 바꿔 아래 요청 실패 행으로 흡수한다(⑨ code review).
 
 응답(바이낸스 공식 문서 `GET /fapi/v3/account` "Account Information V3"): 최상위 객체의 `assets` 배열, 항목 필드
 `asset`·`walletBalance`·`unrealizedProfit`·`marginBalance`·`availableBalance`(그 밖 필드도 오지만 읽지 않는다). 숫자는 문자열이다.
@@ -280,10 +281,15 @@ depth 는 여전히 마지막이다(호가 skew 5초 계약).
 - 잔고 조회 실패(취소 제외)는 이 회차의 나머지 호출(`price`·`depth`)을 막지 않는다.
 - weight: 공식 문서 기준 `GET /fapi/v3/account` request weight **5**. 회차 60초마다 1회 → 분당 +5. USDⓈ-M IP 한도 2,400/분 대비
   무시할 수준이다.
-- 회차 시간 상한: 이번 변경으로 늘어나는 최악 시간은 바이낸스 `/fapi/v3/account` 1회(client timeout 5초)와 빗썸 ticker
-  fallback 1회(client timeout 5초)를 더한 **+10초**다. 실행 timeout 40초(`application.yml:72`)는 기존 호출 전체와 공유한다 —
-  기존 호출이 이미 timeout 근처까지 걸리는 회차(이력 탐색이 긴 회차)에서는 이 10초가 timeout 을 넘길 수 있고, 그때는 기존과 같이
-  `JobExecutor` 가 취소해 저장 없이 끝난다(다음 회차 재시도). 정상 경로는 바이낸스 1회 추가분(수백 ms)만 늘어난다.
+- 회차 시간 상한과 시세 신선도: Job 은 `korea.read()` → `foreign.read()` 순서로 읽고, 두 거래소 호가 관측 시각 차(skew)
+  `MAX_QUOTE_SKEW` 5초와 조회 완료 시각 기준 호가 나이 `MAX_QUOTE_AGE` 10초를 검사한다(`AccountPnlMonitorJob`). 빗썸 호가 뒤의
+  바이낸스 호출 시간은 전부 skew·빗썸 호가 나이에 들어간다. 그래서 바이낸스 잔고 호출은 **최대 +1.5초**(`BALANCE_TIMEOUT`,
+  `-1021` 재측정 없음)로 묶는다 — 5초 timeout 이나 `-1021` 의 send→time→send(최대 15초)를 그대로 쓰면 잔고 하나 때문에 회차
+  전체가 `시세 지연`(STALE_MARKET_DATA)으로 실패해 중단 판정에 들어가 합의 6 을 깬다. 빗썸 ticker fallback 1회는 최대 +5초지만
+  `korea.read()` 안에서 빗썸 호가 **앞**에 돌아 skew·호가 나이에 들어가지 않는다. 실행 timeout 40초(`application.yml:72`)는 기존
+  호출 전체와 공유하며 이번 변경의 최악 추가분은 **+6.5초**(1.5 + 5)다. 기존 호출이 이미 timeout 근처까지 걸리는 회차(이력 탐색이
+  긴 회차)에서는 이 추가분이 timeout 을 넘길 수 있고, 그때는 기존과 같이 `JobExecutor` 가 취소해 저장 없이 끝난다(다음 회차
+  재시도). 정상 경로는 바이낸스 1회 추가분(수백 ms)만 늘어난다.
 - 조회 전용 architecture 스캔: `/fapi/v3/account` 는 금지 패턴이 아니다. 단 응답의 `maxWithdrawAmount` 같은 필드명을 소스·주석에
   쓰면 `(?i)withdraw` 규칙에 걸린다 — 읽지도 언급하지도 않는다.
 
@@ -472,7 +478,7 @@ Job 코드 변경 없음. 위 분리는 회귀 방어선 테스트 `AccountPnlMo
 | 시간·범위 계약 | 새 시각·범위 없음. 잔고·USDT 시세는 관측 시각을 갖지 않고 신선도 판정 대상이 아니다(표시 전용). `completedAt` 측정 시점 무변경(잔고 조회는 `read()` 안, depth 앞) |
 | DB·캐시 순서 | 해당 없음 — 잔고는 저장하지 않는다. outbox 에는 렌더된 문구만 들어간다(기존) |
 | Flyway | 불필요 — `account_pnl_latest` 는 요약만 저장(확인), 잔고 저장 없음. `discord_layout` JSON 형식 무변경 |
-| 배치 lock·lease·timeout·JobResult | 무변경 — `lock:account-pnl:monitor` / 50s / 40s. `JobResult` 분기(Success / Skipped(`state-version-conflict`·`cancelled`) / Failure(상태 저장소 예외)) 무변경. 잔고 실패는 어떤 분기도 만들지 않는다. 최악 +10초(§4.2) |
+| 배치 lock·lease·timeout·JobResult | 무변경 — `lock:account-pnl:monitor` / 50s / 40s. `JobResult` 분기(Success / Skipped(`state-version-conflict`·`cancelled`) / Failure(상태 저장소 예외)) 무변경. 잔고 실패는 어떤 분기도 만들지 않는다. 최악 +6.5초(잔고 1.5초·ticker fallback 5초, §4.2) |
 | 알림 event identity·claim/fencing | 무변경 — eventKey(`account-pnl-profit-{ms}`·`account-pnl-hourly-{정시 ms}`)·outbox claim 경로 그대로. 문구만 늘어난다 |
 | 공개 endpoint | 해당 없음 — `PublicEndpointPolicy`·`auth-security.md` 무변경 |
 | Redis key/TTL/payload | 해당 없음 |
@@ -536,3 +542,4 @@ Job 코드 변경 없음. 위 분리는 회귀 방어선 테스트 `AccountPnlMo
 |---|---|---|
 | 2026-11-02 | 초안 | orchestrator ④ |
 | 2026-11-02 | §1 근거 2행, §3.1 호출 수 43곳, §4.1 fallback 경계·취소·`error` 값, §4.2 취소 행·최악 +10초, §4.3 `rootErrorClass`, §5.2 A/B안, §5.3·§12 #102 U5 개정, §6.3 grep 5파일, §9 취소 테스트 방식, §10 문서 대상 추가, §11 Q1 → DECISION_NEEDED | ⑥ 스펙 리뷰 11건 반영 + Q1 해소안 |
+| 2026-11-02 | §4.2 요청·시간 상한(skew·age 근거), §8 최악 +6.5초 | ⑨ code review: 잔고 호출 전용 timeout·-1021 미재시도 |
