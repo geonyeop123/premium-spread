@@ -197,7 +197,10 @@ class AlertMessageSpecConformanceTest {
         val opsPrefix = "[운영]"
         val marketPrefix = "[시장]"
         return listOf(
-            Scenario(1, "수익", real, true, realAuthor, true, listOf(3, 2, 3, 2, 1, 2, 2), at, AccountPnlAlertContent.profit(pnl(), zone)),
+            Scenario(
+                1, "수익", real, true, realAuthor, true, listOf(3, 2, 3, 2, 1, 2, 2), at,
+                AccountPnlAlertContent.profit(pnl(), zone),
+            ),
             Scenario(
                 2, "정시 보고", real, true, realAuthor, true, listOf(3, 2, 3, 2, 1, 2, 2), hourlyAt,
                 AccountPnlAlertContent.hourly(pnl(hourlyAt), zone),
