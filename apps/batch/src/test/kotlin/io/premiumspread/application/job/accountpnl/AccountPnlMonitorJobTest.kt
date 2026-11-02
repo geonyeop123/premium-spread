@@ -16,6 +16,7 @@ import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.ClaimedAccountPnlMail
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
+import io.premiumspread.domain.accountpnl.ForeignPerpBalance
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
 import io.premiumspread.domain.accountpnl.OutageState
@@ -656,6 +657,8 @@ class AccountPnlMonitorJobTest {
         var age: Duration = Duration.ZERO
         var failure: Exception? = null
         var onRead: () -> Unit = {}
+        var krwBalance: BigDecimal? = null
+        var usdtPrice: BigDecimal? = null
 
         override fun read(): KoreaSpotAccountSnapshot {
             onRead()
@@ -669,6 +672,8 @@ class AccountPnlMonitorJobTest {
                 bidLevels = listOf(PriceLevel(bid, bidDepth)),
                 lastPrice = bid,
                 bidObservedAt = clock.instant().minus(age),
+                krwBalance = krwBalance,
+                usdtLastPriceKrw = usdtPrice,
             )
         }
     }
@@ -678,6 +683,7 @@ class AccountPnlMonitorJobTest {
         var age: Duration = Duration.ZERO
         var failure: Exception? = null
         var onRead: () -> Unit = {}
+        var balance: ForeignPerpBalance? = null
 
         override fun read(): ForeignPerpAccountSnapshot {
             onRead()
@@ -691,6 +697,7 @@ class AccountPnlMonitorJobTest {
                 askLevels = listOf(PriceLevel(BigDecimal("70000"), BigDecimal("1"))),
                 lastPrice = BigDecimal("70000"),
                 askObservedAt = clock.instant().minus(age),
+                balance = balance,
             )
         }
     }
