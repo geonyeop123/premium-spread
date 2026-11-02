@@ -1,8 +1,8 @@
 ---
 feature: 실계정 알림 자산 칸 + Discord 2칸 행 폭 수정
 slug: account-balance-alert
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-02
 verdict_commit:
 source: GitHub issue #105, orchestrator ③ 합의 범위(design.md §0)
 ---
