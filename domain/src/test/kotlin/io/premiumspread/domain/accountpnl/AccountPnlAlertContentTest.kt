@@ -1,7 +1,7 @@
 package io.premiumspread.domain.accountpnl
 
 import io.premiumspread.domain.alertmessage.EmbedCell
-import io.premiumspread.domain.alertmessage.GOLDEN_FILLER
+import io.premiumspread.domain.alertmessage.GOLDEN_ROW_BREAK
 import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import io.premiumspread.domain.owneralert.DiscordField
@@ -32,6 +32,9 @@ class AccountPnlAlertContentTest {
         source: ForeignPerpPositionSource = ForeignPerpPositionSource.EXCHANGE_API,
         modified: Boolean = false,
         at: Instant = calculatedAt,
+        krwBalance: BigDecimal? = BigDecimal("1234567"),
+        usdtPrice: BigDecimal? = BigDecimal("1412"),
+        balance: ForeignPerpBalance? = ForeignPerpBalance(BigDecimal("10000.50"), BigDecimal("8000.25")),
     ): AccountNetPnl {
         val korea = KoreaSpotAccountSnapshot(
             quantity = BigDecimal("0.266"),
@@ -42,6 +45,8 @@ class AccountPnlAlertContentTest {
             bidLevels = listOf(level("158500000")),
             lastPrice = BigDecimal("158500000"),
             bidObservedAt = observedAt,
+            krwBalance = krwBalance,
+            usdtLastPriceKrw = usdtPrice,
         )
         val foreign = ForeignPerpAccountSnapshot(
             signedQuantity = BigDecimal("-0.266"),
@@ -53,6 +58,7 @@ class AccountPnlAlertContentTest {
             lastPrice = BigDecimal("111200"),
             askObservedAt = observedAt,
             positionSource = source,
+            balance = balance,
         )
         return AccountNetPnl.calculate(AccountHedgePosition(korea, foreign), fx, fxObservedAt, at)
     }
@@ -86,6 +92,14 @@ class AccountPnlAlertContentTest {
         펀딩비     +5,880원 (+4.20 USDT)
         순손익     +469,353원 (+1.11%)
 
+        ■ 자산
+        총 자산               57,396,267원
+        바이낸스 증거금+손익  14,000,700원 (10,000.50 USDT)
+        잔여 금액
+          - 빗썸      1,234,567원
+          - 바이낸스  11,200,350원 (8,000.25 USDT)
+        USDT 원화가           1,412원
+
         기준 시각 2026-10-20 09:00 KST
     """.trimIndent()
 
@@ -112,9 +126,14 @@ class AccountPnlAlertContentTest {
             EmbedCell("정리 수수료(예상)", "빗썸 -16,864원\n바이낸스 -20,705원 (14.79 USDT)"),
         ),
         listOf(EmbedCell("순손익", "**+469,353원 (+1.11%)**")),
+        listOf(EmbedCell("총 자산", "57,396,267원"), EmbedCell("바이낸스 증거금+손익", "14,000,700원 (10,000.50 USDT)")),
+        listOf(
+            EmbedCell("잔여 금액", "빗썸 1,234,567원\n바이낸스 11,200,350원 (8,000.25 USDT)"),
+            EmbedCell("USDT 원화가", "1,412원"),
+        ),
     )
 
-    /** 수익·정시 공통 fields — 행 [3,2,3,2,1], 2번째 행 뒤 채움 1개 = 12개 (design §3.3 규칙 1~2). */
+    /** 수익·정시 공통 fields — 행 [3,2,3,2,1,2,2], 2번째·6번째 행 뒤 행 끊기 2개 = 17개 (design §3.3 규칙 1~2). */
     private val profitFields: List<DiscordField> = listOf(
         gf("현김프", "1.78%", true),
         gf("매수김프", "0.53%", true),
@@ -130,13 +149,18 @@ class AccountPnlAlertContentTest {
                 "평가액 41,410,880원 (29,579.20 USDT)",
             true,
         ),
-        GOLDEN_FILLER,
+        GOLDEN_ROW_BREAK,
         gf("가격 차익", "+537,320원", true),
         gf("수수료 합계", "-73,847원", true),
         gf("펀딩비", "+5,880원 (+4.20 USDT)", true),
         gf("진입 수수료", "빗썸 -16,173원\n바이낸스 -20,104원 (14.36 USDT)", true),
         gf("정리 수수료(예상)", "빗썸 -16,864원\n바이낸스 -20,705원 (14.79 USDT)", true),
         gf("순손익", "**+469,353원 (+1.11%)**", false),
+        gf("총 자산", "57,396,267원", true),
+        gf("바이낸스 증거금+손익", "14,000,700원 (10,000.50 USDT)", true),
+        GOLDEN_ROW_BREAK,
+        gf("잔여 금액", "빗썸 1,234,567원\n바이낸스 11,200,350원 (8,000.25 USDT)", true),
+        gf("USDT 원화가", "1,412원", true),
     )
 
     @Test
@@ -153,7 +177,7 @@ class AccountPnlAlertContentTest {
         assertThat(embed.footer).isEqualTo("환율 1,400.00원/USD")
         assertThat(embed.timestamp).isEqualTo(calculatedAt)
         assertThat(embed.rows).isEqualTo(profitRows)
-        // 칸 11개 + 2번째 행 뒤 채움 1개
+        // 칸 15개 + 2번째·6번째 행 뒤 행 끊기 2개
         val layout = embed.toDiscordMessage().layout!!
         assertThat(layout.fields).isEqualTo(profitFields)
         assertThat(layout.author).isEqualTo("실계정 · BTC")
@@ -211,7 +235,7 @@ class AccountPnlAlertContentTest {
             listOf(EmbedCell("마지막 성공", "없음"), EmbedCell("중단 감지", "12:10")),
             listOf(EmbedCell("확인할 것", "빗썸 Open API key의 허용 IP가 현재 공인 IP와 같은지 확인하세요.")),
         )
-        // 2칸 inline 행 다음 행이 1칸이라 채움 칸 없음
+        // 2칸 inline 행 다음 행이 1칸이라 행 끊기 칸 없음
         val layout = embed.toDiscordMessage().layout!!
         assertThat(layout.fields).isEqualTo(
             listOf(
@@ -314,6 +338,87 @@ class AccountPnlAlertContentTest {
         val body = message.mail.body()
         assertThat(body).contains("  - 바이낸스 진입       미반영 (수동 미입력)")
         assertThat(body).contains("펀딩비     미반영 (수동 미입력)")
+    }
+
+    // ---- 자산 묶음 변형 ----
+
+    private fun assetRows(message: OwnerAlertMessage) = message.discord.rows.takeLast(2)
+
+    @Test
+    fun `빗썸 KRW 잔고가 없으면 총 자산과 빗썸 잔여가 없음이다`() {
+        val message = AccountPnlAlertContent.profit(pnl(krwBalance = null), zone)
+
+        val body = message.mail.body()
+        assertThat(body).contains("총 자산               없음")
+        assertThat(body).contains("  - 빗썸      없음")
+        assertThat(assetRows(message)).isEqualTo(
+            listOf(
+                listOf(EmbedCell("총 자산", "없음"), EmbedCell("바이낸스 증거금+손익", "14,000,700원 (10,000.50 USDT)")),
+                listOf(
+                    EmbedCell("잔여 금액", "빗썸 없음\n바이낸스 11,200,350원 (8,000.25 USDT)"),
+                    EmbedCell("USDT 원화가", "1,412원"),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `바이낸스 잔고가 없으면 총 자산 증거금 바이낸스 잔여가 없음이다`() {
+        val message = AccountPnlAlertContent.profit(pnl(balance = null), zone)
+
+        val body = message.mail.body()
+        assertThat(body).contains("총 자산               없음")
+        assertThat(body).contains("바이낸스 증거금+손익  없음")
+        assertThat(body).contains("  - 빗썸      1,234,567원")
+        assertThat(body).contains("  - 바이낸스  없음")
+        assertThat(assetRows(message)).isEqualTo(
+            listOf(
+                listOf(EmbedCell("총 자산", "없음"), EmbedCell("바이낸스 증거금+손익", "없음")),
+                listOf(EmbedCell("잔여 금액", "빗썸 1,234,567원\n바이낸스 없음"), EmbedCell("USDT 원화가", "1,412원")),
+            ),
+        )
+    }
+
+    @Test
+    fun `USDT 원화가가 없으면 그 칸만 없음이고 총 자산은 유지된다`() {
+        val message = AccountPnlAlertContent.profit(pnl(usdtPrice = null), zone)
+
+        val body = message.mail.body()
+        assertThat(body).contains("USDT 원화가           없음")
+        assertThat(body).contains("총 자산               57,396,267원")
+        assertThat(assetRows(message)[0][0]).isEqualTo(EmbedCell("총 자산", "57,396,267원"))
+        assertThat(assetRows(message)[1][1]).isEqualTo(EmbedCell("USDT 원화가", "없음"))
+    }
+
+    @Test
+    fun `수동 모드는 바이낸스 칸을 표시하지 않고 총 자산은 없음이다`() {
+        val manual = "수동 모드 \u2014 표시 안 함"
+        listOf(null, ForeignPerpBalance(BigDecimal("10000.50"), BigDecimal("8000.25"))).forEach { balance ->
+            val message = AccountPnlAlertContent.profit(
+                pnl(source = ForeignPerpPositionSource.MANUAL_ENV, balance = balance),
+                zone,
+            )
+
+            val body = message.mail.body()
+            assertThat(body).contains("총 자산               없음")
+            assertThat(body).contains("바이낸스 증거금+손익  $manual")
+            assertThat(body).contains("  - 빗썸      1,234,567원")
+            assertThat(body).contains("  - 바이낸스  $manual")
+            assertThat(body).contains("USDT 원화가           1,412원")
+            assertThat(assetRows(message)).isEqualTo(
+                listOf(
+                    listOf(EmbedCell("총 자산", "없음"), EmbedCell("바이낸스 증거금+손익", manual)),
+                    listOf(EmbedCell("잔여 금액", "빗썸 1,234,567원\n바이낸스 $manual"), EmbedCell("USDT 원화가", "1,412원")),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `빗썸 KRW 잔고는 원 단위로 HALF_UP 반올림한다`() {
+        val message = AccountPnlAlertContent.profit(pnl(krwBalance = BigDecimal("1234567.5")), zone)
+
+        assertThat(assetRows(message)[1][0].value).startsWith("빗썸 1,234,568원\n")
     }
 
     @Test

@@ -1,7 +1,7 @@
 package io.premiumspread.domain.ownermarket
 
 import io.premiumspread.domain.alertmessage.EmbedCell
-import io.premiumspread.domain.alertmessage.GOLDEN_FILLER
+import io.premiumspread.domain.alertmessage.GOLDEN_ROW_BREAK
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import io.premiumspread.domain.alertmessage.gf
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
@@ -335,7 +335,7 @@ class OwnerMarketAlertContentTest {
             listOf(cell("환율 전일 마감", "1,385.20원/USD"), cell("환율 현재", "1,390.50원/USD")),
             listOf(cell("실계정 순수익률", "+1.23% (+123,457원)")),
         )
-        // 행 [3,2,2,1] — 2번째 행(2칸) 뒤에 칸 2개 이상인 행이 와서 채움 1개, 3번째 행 뒤는 1칸 행이라 채움 없음 = 9개
+        // 행 [3,2,2,1] — 2번째 행(2칸) 뒤에 칸 2개 이상인 행이 와서 행 끊기 1개, 3번째 행 뒤는 1칸 행이라 행 끊기 없음 = 9개
         val layout = e.toDiscordMessage().layout!!
         assertThat(layout.fields).isEqualTo(
             listOf(
@@ -344,7 +344,7 @@ class OwnerMarketAlertContentTest {
                 gf("저가", "+1.90%", true),
                 gf("종가", "+2.50%", true),
                 gf("평균", "+2.35%", true),
-                GOLDEN_FILLER,
+                GOLDEN_ROW_BREAK,
                 gf("환율 전일 마감", "1,385.20원/USD", true),
                 gf("환율 현재", "1,390.50원/USD", true),
                 gf("실계정 순수익률", "+1.23% (+123,457원)", false),

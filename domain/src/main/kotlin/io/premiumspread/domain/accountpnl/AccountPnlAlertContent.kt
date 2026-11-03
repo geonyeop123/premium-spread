@@ -7,6 +7,7 @@ import io.premiumspread.domain.alertmessage.MailBlock
 import io.premiumspread.domain.alertmessage.MailDocument
 import io.premiumspread.domain.alertmessage.MailPair
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
+import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
@@ -23,6 +24,8 @@ object AccountPnlAlertContent {
     private const val BITHUMB_AUTH_GUIDE = "빗썸 Open API key의 허용 IP가 현재 공인 IP와 같은지 확인하세요."
     private const val NOT_RECORDED_HISTORY = "이력 없음"
     private const val NOT_RECORDED_MANUAL = "수동 미입력"
+    private const val ASSET_NONE = "없음"
+    private const val ASSET_MANUAL_HIDDEN = "수동 모드 \u2014 표시 안 함"
 
     /** eventKey `account-pnl-profit-{calculatedAt ms}`. basis = pnl.calculatedAt. */
     fun profit(pnl: AccountNetPnl, zone: ZoneId): OwnerAlertMessage = pnlMessage(
@@ -204,6 +207,7 @@ object AccountPnlAlertContent {
                     ),
                 ),
             ),
+            assetSection(b, manual),
         )
         val rows = listOf(
             listOf(
@@ -221,7 +225,7 @@ object AccountPnlAlertContent {
                 EmbedCell("정리 수수료(예상)", "빗썸 $koreaExit\n바이낸스 $foreignExit"),
             ),
             listOf(EmbedCell("순손익", "**$net**")),
-        )
+        ) + assetRows(b, manual)
         val headline = "$titleHead ${AlertFormat.percent(b.netPercent)} ${AlertFormat.krw(b.netKrw)}"
         return OwnerAlertMessage(
             eventKey = eventKey,
@@ -235,6 +239,63 @@ object AccountPnlAlertContent {
                 timestamp = pnl.calculatedAt,
             ),
         )
+    }
+
+    private fun assetSection(b: AccountPnlBreakdown, manual: Boolean): MailBlock.Section {
+        val t = AssetTexts.of(b.assets, manual)
+        return MailBlock.Section(
+            "자산",
+            listOf(
+                MailBlock.Pairs(
+                    listOf(
+                        MailPair("총 자산", t.total),
+                        MailPair("바이낸스 증거금+손익", t.margin),
+                        MailPair("잔여 금액", "", listOf(MailPair("빗썸", t.bithumbKrw), MailPair("바이낸스", t.binanceAvailable))),
+                        MailPair("USDT 원화가", t.usdt),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    private fun assetRows(b: AccountPnlBreakdown, manual: Boolean): List<List<EmbedCell>> {
+        val t = AssetTexts.of(b.assets, manual)
+        return listOf(
+            listOf(EmbedCell("총 자산", t.total), EmbedCell("바이낸스 증거금+손익", t.margin)),
+            listOf(
+                EmbedCell("잔여 금액", "빗썸 ${t.bithumbKrw}\n바이낸스 ${t.binanceAvailable}"),
+                EmbedCell("USDT 원화가", t.usdt),
+            ),
+        )
+    }
+
+    /** 자산 칸 문자열(design §5.3). 금액 문자열을 담으므로 data class 로 두지 않는다. */
+    private class AssetTexts(
+        val total: String,
+        val margin: String,
+        val bithumbKrw: String,
+        val binanceAvailable: String,
+        val usdt: String,
+    ) {
+        companion object {
+            fun of(a: AccountAssetBreakdown, manual: Boolean): AssetTexts {
+                fun usdtPair(krw: BigDecimal?, usdt: BigDecimal?): String =
+                    if (manual) {
+                        ASSET_MANUAL_HIDDEN
+                    } else if (krw != null && usdt != null) {
+                        "${AlertFormat.krwPrice(krw)} (${AlertFormat.usdt2(usdt)})"
+                    } else {
+                        ASSET_NONE
+                    }
+                return AssetTexts(
+                    total = a.totalKrw?.let { AlertFormat.krwPrice(it) } ?: ASSET_NONE,
+                    margin = usdtPair(a.marginBalanceKrw, a.marginBalanceUsdt),
+                    bithumbKrw = a.bithumbKrwBalance?.let { AlertFormat.krwPrice(it) } ?: ASSET_NONE,
+                    binanceAvailable = usdtPair(a.availableBalanceKrw, a.availableBalanceUsdt),
+                    usdt = a.usdtLastPriceKrw?.let { AlertFormat.krwPrice(it) } ?: ASSET_NONE,
+                )
+            }
+        }
     }
 
     /**

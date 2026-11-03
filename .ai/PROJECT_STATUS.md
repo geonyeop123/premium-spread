@@ -105,6 +105,12 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   - PnL 최신값 기록 중 취소 시 `Skipped` 처리(현재는 기록을 건너뛰고 deliver 진행)
   - api integrationTest Tracking 계열 간헐 실패(`TrackingControllerE2ETest:90` 409, `TrackingArchiveIntegrationTest:130` — 단독 재실행 통과)
   - 태스크 리뷰에서 미룬 테스트 보강 묶음(창 경계 정각·KST 자정, 대칭 경로, 동시성 중간 예외 등)
+- 실계정 알림 자산 칸(#105, 구현·검증 완료, PR 예정, 사람 확인 AC8·AC9 머지 후 배포 환경에서 대기): 수익·정시 알림에
+  메일 `■ 자산`, Discord 2칸+2칸(총 자산·바이낸스 증거금+손익 / 잔여 금액·USDT 원화가)을 추가했다. 빗썸 `/v1/accounts`
+  KRW 잔고와 `/v1/ticker`(KRW-BTC,KRW-USDT), 바이낸스 `/fapi/v3/account` 1회(전용 timeout 1.5초, `-1021` 미재시도)를
+  쓰며 실패는 adapter 안에서 null + WARN 으로 흡수해 순손익·중단 판정에 영향이 없다. 공통 Discord 렌더러의 2칸 행 뒤
+  채움 칸을 non-inline 행 끊기 칸(U+200B)으로 바꿔 시장·운영 알림에도 적용된다. Flyway/Redis/API 무변경.
+  [설계](../docs/work/account-balance-alert/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다.
 - 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, PR #99, AC8 로컬 운영 실기동 관찰 완료 — 주말 동작 미관찰):
   수집 5분·허용 공백 30분(`FxIngestionFreshness`)·캐시 TTL 40분을 테스트와 기동 검증으로 묶었다.
   [설계](../docs/work/fx-provider-twelve-data/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다. 후속 후보:
@@ -150,6 +156,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 7. Docker app과 local `bootRun`을 동시에 실행하면 8080/8081 port가 충돌한다.
 8. Quality Gate 6번 잡의 `ci/run-npm-audit.sh`는 실시간 advisory DB를 조회한다. `apps/web` lockfile이 그대로여도
    새 advisory가 공개되면 다시 실패한다(#82에서 23건 해소). 주기적 의존성 갱신은 아직 도입하지 않았다.
+9. #105 자산 알림의 사람 확인 AC8(Discord 배치·세로 여백 육안)·AC9(실 key 값 검산)은 머지 후 배포 환경에서 수행한다(대기).
+   체크리스트는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)에 있다.
 
 ## 운영 정본
 

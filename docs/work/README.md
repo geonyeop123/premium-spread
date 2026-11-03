@@ -17,3 +17,4 @@
 - [owner 시장 알림 — 김프 급변·기준선 돌파·신고가/신저가·일일 요약](owner-market-alerts/README.md)
 - [알림 문구 템플릿화와 문구 정리](alert-message-template/README.md)
 - [테스트 실행 시간 단축](test-time-reduction/README.md)
+- [실계정 알림 자산 칸과 Discord 2칸 행 폭](account-balance-alert/README.md)

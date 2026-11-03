@@ -117,6 +117,8 @@ AccountPnlMonitorScheduler (1분) → AccountPnlMonitorJob (JobExecutor)
 
 outbox 행은 채널(EMAIL·DISCORD)별로 만들고, Discord 는 `infrastructure:batch` 의 webhook adapter 가 보낸다. 채널 라우팅은 Domain `OwnerAlertRouting` 이 정한다.
 
+같은 adapter 조회가 수익·정시 알림의 "자산" 묶음용 빗썸 KRW 잔고·KRW-USDT 시세와 바이낸스 USDT 잔고도 snapshot 의 nullable 필드로 싣는다. 이 값의 조회 실패는 adapter 안에서 null + WARN 으로 흡수되어 순손익·중단 판정에 영향이 없다.
+
 같은 회차가 계정 알림 3종(포지션 변경·순수익률 급변·미반영 리마인더)도 Domain 정책으로 판정하고, 상태는 `account_pnl_monitor_state`(V20 열)에 같은 트랜잭션·version 으로 저장한다.
 
 `notification_delivery`를 재사용하지 않는 전용 outbox다. 조회 전용 경계는 `PrivateAccountReadOnlyArchitectureTest`가

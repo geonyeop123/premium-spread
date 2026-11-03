@@ -5,6 +5,10 @@ import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
+import io.premiumspread.domain.accountpnl.ForeignPerpBalance
+import io.premiumspread.infrastructure.batch.exchange.AccountBalanceLog
+import io.premiumspread.infrastructure.batch.exchange.BalanceItem
+import io.premiumspread.infrastructure.batch.exchange.BalanceUnavailableReason
 import org.springframework.web.reactive.function.client.WebClient
 import java.math.BigDecimal
 import java.time.Clock
@@ -35,6 +39,7 @@ class BinanceFuturesPrivateAccountAdapter(
         val position = readPosition()
         val history = if (position.amount.signum() != 0) resolveHistory(position) else null
         val fee = readTakerFeeRate()
+        val balance = readBalance()
         val entryCommission = history?.let { commissionUsdt(it) }
         val lastPrice = client.price(SYMBOL)
         val depth = client.askDepth(SYMBOL)
@@ -47,7 +52,72 @@ class BinanceFuturesPrivateAccountAdapter(
             askLevels = depth.levels,
             lastPrice = lastPrice,
             askObservedAt = depth.observedAt,
+            balance = balance,
         )
+    }
+
+    /**
+     * /fapi/v3/account 의 USDT 잔고. 요청 실패·해석 실패는 null + WARN. 취소는 다시 던진다.
+     * 이 호출은 깊이 조회 앞이라 회차 시세 신선도를 잡아먹지 않게 [BALANCE_TIMEOUT] 으로 한 번만 보낸다 —
+     * `-1021` 이어도 서버 시각을 다시 재거나 재시도하지 않고 요청 실패로 흡수한다.
+     */
+    private fun readBalance(): ForeignPerpBalance? {
+        val root = try {
+            sendBalance()
+        } catch (e: AccountReadException) {
+            if (AccountBalanceLog.isCancellation(e)) throw e
+            AccountBalanceLog.unavailable(
+                BalanceItem.BINANCE_USDT_ASSET,
+                BalanceUnavailableReason.REQUEST_FAILED,
+                e.category,
+                AccountBalanceLog.rootErrorClass(e),
+            )
+            return null
+        }
+        return when (val parsed = parseBalance(root)) {
+            is BalanceParse.Ok -> parsed.balance
+
+            is BalanceParse.Unavailable -> {
+                AccountBalanceLog.unavailable(BalanceItem.BINANCE_USDT_ASSET, parsed.reason)
+                null
+            }
+        }
+    }
+
+    private fun sendBalance(): JsonNode = try {
+        send("/fapi/v3/account", "", BALANCE_TIMEOUT)
+    } catch (e: BinanceTimestampRejectedException) {
+        throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance /fapi/v3/account timestamp rejected", e)
+    }
+
+    /** 응답 해석. 예외를 던지지 않고 사유를 돌려준다. */
+    private fun parseBalance(root: JsonNode): BalanceParse {
+        val assets = root.get("assets")?.takeIf { it.isArray }
+        val usdt = assets?.firstOrNull { it.path("asset").asText() == "USDT" }
+            ?: return BalanceParse.Unavailable(BalanceUnavailableReason.MISSING)
+        val margin = usdt.get("marginBalance")?.let { decimalOrNull(it) }
+        val available = usdt.get("availableBalance")?.let { decimalOrNull(it) }
+        return when {
+            margin == null || available == null -> BalanceParse.Unavailable(BalanceUnavailableReason.NOT_NUMBER)
+            margin.signum() < 0 || available.signum() < 0 -> BalanceParse.Unavailable(BalanceUnavailableReason.NEGATIVE)
+            else -> BalanceParse.Ok(ForeignPerpBalance(margin, available))
+        }
+    }
+
+    private fun decimalOrNull(node: JsonNode): BigDecimal? = try {
+        when {
+            node.isNumber -> node.decimalValue()
+            node.isTextual -> BigDecimal(node.asText())
+            else -> null
+        }
+    } catch (_: NumberFormatException) {
+        null
+    }
+
+    private sealed interface BalanceParse {
+        class Ok(val balance: ForeignPerpBalance) : BalanceParse
+
+        class Unavailable(val reason: BalanceUnavailableReason) : BalanceParse
     }
 
     private data class Position(val amount: BigDecimal, val entryPrice: BigDecimal, val positionSide: String)
@@ -255,11 +325,12 @@ class BinanceFuturesPrivateAccountAdapter(
         }
     }
 
-    private fun send(path: String, params: String): JsonNode {
+    private fun send(path: String, params: String, timeout: Duration? = null): JsonNode {
         val offset = serverOffsetMillis ?: measureOffset()
         val prefix = if (params.isEmpty()) "" else "$params&"
         val base = prefix + "recvWindow=$recvWindowMillis&timestamp=${clock.millis() + offset}"
-        return client.get(path, "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}", apiKey)
+        val query = "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}"
+        return if (timeout == null) client.get(path, query, apiKey) else client.get(path, query, apiKey, timeout)
     }
 
     private companion object {
@@ -268,5 +339,8 @@ class BinanceFuturesPrivateAccountAdapter(
         const val INCOME_LIMIT = 1000
         const val MAX_WINDOWS = 13
         const val WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000
+
+        /** 잔고 호출 전용 timeout. 다른 호출은 생성자 timeout(기본 5초)을 쓴다. */
+        val BALANCE_TIMEOUT: Duration = Duration.ofMillis(1500)
     }
 }

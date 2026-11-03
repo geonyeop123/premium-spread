@@ -163,6 +163,8 @@ data class EmbedDocument(
    (ZWSP = 유니코드 U+200B zero-width space 한 글자. 문서·소스에 보이지 않는 문자를 직접 넣지 않고 소스에서는 `Char(0x200B).toString()` 으로 만든다 — plan Task 3).
    (Discord 는 inline 칸을 한 줄에 3개까지 흘려 넣으므로, 채우지 않으면 다음 행 첫 칸이 위 행으로 올라간다).
    예: 수익 알림 행 [3,2,3,2,1] = 칸 11개 + 2번째 행 뒤 채움 1개 = **fields 12개**(4번째 행 뒤는 다음 행이 1칸이라 채우지 않는다).
+
+> 개정 (#105, 2026-11-02): 채움 칸은 non-inline 행 끊기 칸 EmbedDocument.ROW_BREAK = DiscordField(ZWSP, ZWSP, inline = false) 로 바뀌었다. 조건은 같다. 근거·영향은 docs/work/account-balance-alert/design.md §6.
 3. 절단: title 255, author 256, footer 2048, 칸 이름 256, 칸 값 1024 (`DiscordMessage.truncate`, UTF-16 기준·surrogate 보존).
 4. `description` = 대체 평문(§5.3): 칸마다 한 줄 `"{name}: {value 의 \n 을 ' / ' 로, ** 제거}"`(채움 칸 제외) + footer 가 있으면 마지막 줄. 4096 절단.
 5. `layout = DiscordLayout(author, fields, footer, timestamp)`.
@@ -314,6 +316,8 @@ TEXT(최대 65,535 바이트) 안에 든다 — 레이아웃 합계 6000자 × U
 - `[ASSUMPTION] A5` 미반영 항목(진입 수수료·펀딩비 null)은 금액 자리에 `미반영 (이력 없음)` 또는 `미반영 (수동 미입력)`(바이낸스 수동 입력 모드)을 쓴다. 합계는 0 으로 계산된 값 그대로.
 - `[ASSUMPTION] A6` 실패 범주 label 은 `BITHUMB_AUTH` 만 `빗썸 인증 실패` 로 줄이고(허용 IP 안내는 "확인할 것"으로 이동), 나머지 6개는 그대로다.
 - 바이낸스 포지션 출처(거래소 API/수동 env)는 수익·정시 본문에 쓰지 않는다(U5).
+
+> 개정 (#105, 2026-11-02, 사용자 합의 7): 예외 — 자산 칸의 바이낸스 두 값(증거금+손익·바이낸스 잔여)은 수동 모드에서 "수동 모드 — 표시 안 함" 으로 쓰므로 manual 모드가 드러난다. 그 밖 칸은 U5 그대로. docs/work/account-balance-alert/design.md §12.
 - D2(**승인됨 — 삭제**): 빗썸 평단 사용자 수정 표시(현재 `빗썸 평단 사용자 수정됨`)는 메일·Discord 어디에도 쓰지 않는다. 평단 값은 수정 여부와 무관하게 `평단 {krwPrice(avg)}` 로 같다.
 
 ### 6.3 계정 알림 (`AccountAlertContent`, author `실계정 · BTC`)

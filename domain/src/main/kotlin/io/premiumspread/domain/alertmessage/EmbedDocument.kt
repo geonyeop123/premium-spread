@@ -16,7 +16,7 @@ data class EmbedDocument(
     val footer: String?,
     val timestamp: Instant,
 ) {
-    // design §3.3 규칙 1~5. 결과 layout 의 fields 는 채움 칸 포함.
+    // design §3.3 규칙 1~5, 규칙 2(#105 개정: non-inline 행 끊기). 결과 layout 의 fields 는 행 끊기 칸 포함.
     init {
         require(rows.isNotEmpty()) { "rows must not be empty." }
         require(rows.all { it.size in 1..MAX_CELLS_PER_ROW }) { "each row must have 1..3 cells." }
@@ -34,7 +34,7 @@ data class EmbedDocument(
                         ),
                     )
                 }
-                if (row.size == 2 && (rows.getOrNull(index + 1)?.size ?: 0) >= 2) add(SPACER)
+                if (row.size == 2 && (rows.getOrNull(index + 1)?.size ?: 0) >= 2) add(ROW_BREAK)
             }
         }
         val layout = DiscordLayout(
@@ -54,7 +54,7 @@ data class EmbedDocument(
         /** U+200B(zero-width space) 한 글자. 보이지 않는 문자를 소스에 직접 넣지 않고 코드값으로 만든다. */
         private val ZWSP: String = Char(0x200B).toString()
 
-        /** 2칸 행 뒤 채움 칸(design §3.3 규칙 2). */
-        val SPACER: DiscordField = DiscordField(ZWSP, ZWSP, inline = true)
+        /** 2칸 행 뒤 행 끊기 칸(design §6.2, #102 design §3.3 규칙 2 개정). 보이지 않는 non-inline 칸. */
+        val ROW_BREAK: DiscordField = DiscordField(ZWSP, ZWSP, inline = false)
     }
 }

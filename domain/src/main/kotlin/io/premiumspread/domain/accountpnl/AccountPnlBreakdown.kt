@@ -39,6 +39,47 @@ data class ForeignLegBreakdown(
     override fun toString(): String = "ForeignLegBreakdown(source=$source)"
 }
 
+/** 수익·정시 알림 "자산" 묶음 값 (#105). 금액은 전체 정밀도(표시 반올림은 템플릿). null = 표시 `없음` 또는 수동 모드 숨김. */
+@Suppress("LongParameterList")
+data class AccountAssetBreakdown(
+    val totalKrw: BigDecimal?,
+    val bithumbKrwBalance: BigDecimal?,
+    val marginBalanceUsdt: BigDecimal?,
+    val marginBalanceKrw: BigDecimal?,
+    val availableBalanceUsdt: BigDecimal?,
+    val availableBalanceKrw: BigDecimal?,
+    val usdtLastPriceKrw: BigDecimal?,
+) {
+    override fun toString(): String = "AccountAssetBreakdown"
+
+    companion object {
+        fun of(
+            korea: KoreaSpotAccountSnapshot,
+            foreign: ForeignPerpAccountSnapshot,
+            koreaValueKrw: BigDecimal,
+            fxRate: BigDecimal,
+        ): AccountAssetBreakdown {
+            val bal = if (foreign.positionSource == ForeignPerpPositionSource.MANUAL_ENV) null else foreign.balance
+            val marginKrw = bal?.marginBalanceUsdt?.multiply(fxRate)
+            val krwBalance = korea.krwBalance
+            val total = if (krwBalance != null && marginKrw != null) {
+                koreaValueKrw.add(krwBalance).add(marginKrw)
+            } else {
+                null
+            }
+            return AccountAssetBreakdown(
+                totalKrw = total,
+                bithumbKrwBalance = krwBalance,
+                marginBalanceUsdt = bal?.marginBalanceUsdt,
+                marginBalanceKrw = marginKrw,
+                availableBalanceUsdt = bal?.availableBalanceUsdt,
+                availableBalanceKrw = bal?.availableBalanceUsdt?.multiply(fxRate),
+                usdtLastPriceKrw = korea.usdtLastPriceKrw,
+            )
+        }
+    }
+}
+
 /** 수익·정시 알림의 값 (design §6.1). 실계정 금액이므로 toString 은 calculatedAt 만. */
 @Suppress("LongParameterList")
 data class AccountPnlBreakdown(
@@ -55,6 +96,7 @@ data class AccountPnlBreakdown(
     val netPercent: BigDecimal,
     val fxRate: BigDecimal,
     val calculatedAt: Instant,
+    val assets: AccountAssetBreakdown,
 ) {
     override fun toString(): String = "AccountPnlBreakdown(calculatedAt=$calculatedAt)"
 
@@ -122,6 +164,7 @@ data class AccountPnlBreakdown(
                 netPercent = pnl.netPercent,
                 fxRate = fx,
                 calculatedAt = pnl.calculatedAt,
+                assets = AccountAssetBreakdown.of(koreaSnapshot, foreignSnapshot, korea.valueKrw, fx),
             )
         }
 
