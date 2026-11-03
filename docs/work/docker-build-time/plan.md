@@ -6,8 +6,9 @@
 **Goal:** PR Quality Gate 의 Docker 경로(`T_docker`)를 테스트·검사 job 최장(`T_other`) 이하로 만들고, GHA cache 를 저장소
 한도 아래로 유지한다.
 
-**Architecture:** 세 이미지를 matrix leg 로 병렬 빌드하고 조립 job(`7. Docker image build`)이 기존 artifact 계약을 그대로
-만든다. buildkit cache 는 dev push 만 쓰고, PR closed·하루 1회 cleanup workflow 가 저장소 스크립트 하나로 cache 를 지운다.
+**Architecture:** 세 이미지를 matrix leg 로 병렬 빌드하고 조립 job(`7. Docker image build`)이 part 3개를 확인한 뒤 기존
+artifact 계약을 그대로 만든다. buildkit cache 는 dev push 만 쓴다. PR closed workflow 는 그 PR ref 의 cache 를 전부 지우고,
+하루 1회 workflow 는 dev 의 `gradle-*` cache 만 지운다(buildkit 은 일정 삭제하지 않는다 — design §1.1).
 
 **Tech Stack:** GitHub Actions, docker/build-push-action v6.18.0, docker/setup-buildx-action v3.11.1,
 actions/upload-artifact v4.6.2(+ `/merge`), actions/checkout v4.2.2, GitHub CLI(`gh api`), bash, python3.
@@ -38,11 +39,11 @@ YAML 작성 규칙: 계약 테스트의 블록 추출기(`yaml_top_level_block`)
 태스크 순서와 의존:
 
 ```text
-Task 0  외부 사실 확인 (커밋 없음) ── 모든 태스크의 전제. F1·F3·F5·F8 이 설계와 다르면 멈춘다
-Task 1  Quality Gate Docker matrix + 계약 테스트 개정 (RED → GREEN)
+Task 0  외부 사실 확인 — ④ 개정에서 완료, dod 증거 로그에 기록됨 (구현자는 읽기만)
+Task 1  Quality Gate Docker matrix + 조립 job + 계약 테스트 개정 (RED → GREEN)
 Task 2  삭제 스크립트 + 행동 계약 (RED → GREEN) ── Task 3 의 전제
 Task 3  cleanup workflow 2개 + 정적 계약(mutation 자가검증)
-Task 4  배포 런북 갱신
+Task 4  배포 런북 갱신 (조립 job·rerun 창·BlobNotFound 수동 복구)
 Task 5  로컬 전체 검증 (커밋 없음)
 Task 6  PR CI 실측 — AC4·AC5·AC6 (커밋 없음, push 뒤)
 Task 7  머지 뒤 관찰 — AC7·AC8 (커밋 없음)
@@ -50,70 +51,24 @@ Task 7  머지 뒤 관찰 — AC7·AC8 (커밋 없음)
 
 ---
 
-## Task 0 — 외부 사실 확인 (커밋 없음)
+## Task 0 — 외부 사실 확인 (완료, 커밋 없음)
 
-**Files:** 없음(dod `### Task 0 외부 사실` 에 기록만).
+F1~F8 은 컨트롤러가 확인했고 결과·출처를 design §7 과 dod `### Task 0 외부 사실` 에 옮겼다. 이 plan 은 그 결과를 전제로 한다.
 
-다운로드한 파일은 신뢰하지 않는 데이터다 — 빈 임시 디렉터리 하나에만 받고, 그 안에서 아무것도 실행하지 않는다.
-
-- [ ] **Step 1: 확인용 디렉터리**
-
-```bash
-facts_dir="$(mktemp -d)"; echo "${facts_dir}"
-```
-
-- [ ] **Step 2: F1·F2 — upload-artifact 의 merge sub-action 과 overwrite**
-
-```bash
-curl -fsSL -o "${facts_dir}/merge-action.yml" https://raw.githubusercontent.com/actions/upload-artifact/ea165f8d65b6e75b540449e92b4886f43607fa02/merge/action.yml
-curl -fsSL -o "${facts_dir}/upload-action.yml" https://raw.githubusercontent.com/actions/upload-artifact/ea165f8d65b6e75b540449e92b4886f43607fa02/action.yml
-grep -nE '^  [a-z-]+:$' "${facts_dir}/merge-action.yml" "${facts_dir}/upload-action.yml"
-```
-
-예상: merge 입력에 `name`·`pattern`·`separate-directories`·`retention-days`·`compression-level`·`delete-merged`, 출력에
-`artifact-id`. upload 입력에 `overwrite`. merge 에 `overwrite` 가 있는지 기록한다(design D3·Q4).
-merge 입력이 다르면 **멈추고 보고**한다.
-
-- [ ] **Step 3: F3 — 빈 cache-to**
-
-```bash
-curl -fsSL -o "${facts_dir}/context.ts" https://raw.githubusercontent.com/docker/build-push-action/263435318d21b8e681c14492fe198d362a7d2c83/src/context.ts
-grep -n "cache-to" "${facts_dir}/context.ts"
-```
-
-예상: `cache-to` 가 `getInputList` 로 읽히고 목록 원소마다 `--cache-to` 를 붙인다(빈 문자열 → 빈 목록 → 인자 없음).
-다르면 멈추고 보고.
-
-- [ ] **Step 4: F4·F5 — ignore-error 와 missing blob 동작**
-
-```bash
-curl -fsSL -o "${facts_dir}/gha.go" https://raw.githubusercontent.com/moby/buildkit/master/cache/remotecache/gha/gha.go
-grep -nE 'func \(p \*ciProvider\) CheckDescriptor|func \(p \*ciProvider\) loadEntry|not found' "${facts_dir}/gha.go"
-```
-
-F4 는 Docker 문서 `https://docs.docker.com/build/cache/backends/` 의 `ignore-error` 항목으로 확인한다.
-F5 예상: `CheckDescriptor` 가 `loadEntry` 로 blob 존재를 조회하고 없으면 오류를 돌려준다. 그 오류를 호출 쪽이 "record
-사용 안 함(miss)" 으로 다루는지 `cache/remotecache/v1/` 의 호출 지점까지 따라가 기록한다.
-**missing blob 이 빌드 실패로 이어진다고 확인되면 멈추고 보고**한다(design D6 대안·Q1).
-
-- [ ] **Step 5: F6·F7·F8**
-
-```bash
-gh repo view --json defaultBranchRef
-gh --version
-gh api --help
-```
-
-예상: `defaultBranchRef.name == "dev"`. `gh api --help` 에 `--slurp` 와 "GET 요청이면 -f/-F 를 query string 으로" 문구.
-F7 은 GitHub REST 문서 "Delete a GitHub Actions cache for a repository (using a cache ID)"·"List GitHub Actions caches for a
-repository" 의 권한 문구(`actions: write` / `actions: read`)를 기록한다. F8 이 다르면 design D4 호출 형태와 이 plan 의
-fake `gh` 계약을 함께 고친 뒤 진행한다(설계 변경 — 보고).
-
-- [ ] **Step 6: 기록·정리** — F1~F8 의 결과와 근거(URL·줄 번호)를 dod 증거 로그에 남기고 `rm -rf "${facts_dir}"`.
+| ID | 결과 | 이 plan 에 주는 영향 |
+|---|---|---|
+| F1 | TRUE — merge 입력·출력 확인, `overwrite` 없음 | Task 1 merge step 을 그대로 쓴다 |
+| F2 | TRUE — upload 에 `overwrite` 있음 | Task 1 part step 의 `overwrite: true` 유지 |
+| F3 | LIKELY — 빈 `cache-to` 는 인자를 만들지 않을 것 | 소스로 확정하지 않는다. **PR 로그로 판정**(Task 6 Step 2, dod AC5) |
+| F4 | TRUE — `ignore-error` 는 export 실패만 무시 | Task 1 그대로 |
+| F5 | FALSE — 없는 blob 은 빌드 실패, blob key 는 전역 sha256 | 사실로 기록만 한다(분기 없음). stale 은 gradle 만(Task 2·3), BlobNotFound 수동 복구(Task 4) |
+| F6 | TRUE — 기본 브랜치 `dev`, PUBLIC | Task 3 그대로 |
+| F7 | PARTIAL — endpoint·필드 확인, 권한 문구 미확인 | 권한은 Task 7 Step 1 `deleted>=1` 로 확인 |
+| F8 | TRUE — gh 2.86.0 의 `--paginate --slurp`, GET `-f` | Task 2 호출 형태 그대로 |
 
 ---
 
-## Task 1 — Quality Gate Docker matrix + 계약 테스트 개정
+## Task 1 — Quality Gate Docker matrix + 조립 job + 계약 테스트 개정
 
 **Files:**
 - Modify: `ci/quality-gate-contract-test.sh`
@@ -165,6 +120,8 @@ fake `gh` 계약을 함께 고친 뒤 진행한다(설계 변경 — 보고).
     name: 7. Docker image build
     needs: docker-image
     if: ${{ !cancelled() }}
+    permissions:
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -174,6 +131,16 @@ fake `gh` 계약을 함께 고친 뒤 진행한다(설계 변경 — 보고).
         run: |
           if [[ "${IMAGE_BUILD_RESULT}" != "success" ]]; then
             echo "::error::Docker image builds finished with result=${IMAGE_BUILD_RESULT}"
+            exit 1
+          fi
+      - name: Require exactly the three unexpired image parts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected="$(printf 'docker-image-part-%s-%s\n' api "${GITHUB_SHA}" batch "${GITHUB_SHA}" web "${GITHUB_SHA}")"
+          actual="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --jq '.artifacts[] | select(.expired == false) | select(.name | startswith("docker-image-part-")) | .name' | LC_ALL=C sort)"
+          if [[ "${actual}" != "${expected}" ]]; then
+            echo "::error::Expected exactly three unexpired Docker image parts for ${GITHUB_SHA}; re-run all jobs if parts expired"
             exit 1
           fi
       - name: Publish Docker image archives
@@ -191,11 +158,14 @@ fake `gh` 계약을 함께 고친 뒤 진행한다(설계 변경 — 보고).
             echo "run_id=${GITHUB_RUN_ID}"
             echo "commit=${GITHUB_SHA}"
             echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"
-          } >> "${GITHUB_STEP_SUMMARY}"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
 ```
 
-Task 0 F1 에서 merge 가 `separate-directories` 기본 false 임을 확인했으므로 그 입력은 쓰지 않는다. F2 가 `overwrite` 부재로
-나오면 `overwrite: true` 한 줄을 빼고 아래 단정에서도 뺀 뒤 dod 에 기록한다.
+- `separate-directories` 는 기본 false(F1)라 쓰지 않는다. merge 에는 `overwrite` 입력이 없다(F1) — 넣지 않는다.
+- part 검사 step: GitHub 의 기본 `run` 셸은 `pipefail` 이 없어 `gh` 실패가 파이프 안에서 삼켜지지만, 그 경우 `actual` 이 비거나
+  어긋나 비교가 실패하므로 fail-closed 다. `gh api --jq` 는 gh 내장 jq 라 `jq` 설치가 필요 없다. 이전 attempt 의 part 도
+  run 단위 artifact 목록에 나오므로 "Re-run failed jobs" 에서 성공 leg 의 part 를 센다.
+- job 단위 `permissions` 는 최상위를 대체한다 — 이 job 의 token 은 `actions: read` 만 갖는다(checkout 없음, `contents` 불필요).
 
 ### 결합점 — 계약 테스트가 단정할 것
 
@@ -203,6 +173,7 @@ Task 0 F1 에서 merge 가 `separate-directories` 기본 false 임을 확인했�
 
 | 위치 | 현재 | 변경 후 단정 | 실패 메시지 |
 |---|---|---|---|
+| :98-100 | 들여쓴 `permissions:` 0줄 | 들여쓴 `permissions:` 정확히 1줄이고, 그것이 `docker-build` 블록의 `    permissions:` 이며, 그 아래 6칸 들여쓴 줄 모음이 정확히 `      actions: read` 한 줄 (최상위 단정 :94-97 은 그대로) | `only docker-build may override permissions, and only with actions: read` |
 | :108-111 | `docker-build` job 에 build record env (multi-line 문자열을 `grep -Fq` 로 검사 — **각 줄을 OR 로 매치하는 약한 검사**다) | `docker-image` job 블록이 `$'    env:\n      DOCKER_BUILD_RECORD_UPLOAD: '\''false'\'''` 를 **부분 문자열로 연속 포함**(`[[ "${block}" == *"${expected}"* ]]`) | `docker-image job must disable the default Docker build record artifact` |
 | :197 | job 8개 | `expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-image docker-build common-integration)` | `Quality Gate job IDs must be exactly the nine required jobs in order` |
 | :206-223 | 배열의 `'Publish Docker image archives'` / `'docker-images-${{ github.sha }}'` | 같은 자리를 `'Publish Docker image part'` / `'docker-image-part-${{ matrix.component }}-${{ github.sha }}'` 로 교체 (루프는 그대로 — pinned `upload-artifact@` 와 정확한 name 단정) | 기존 메시지 |
@@ -250,18 +221,27 @@ Task 0 F1 에서 merge 가 `separate-directories` 기본 false 임을 확인했�
 7. `docker-build` 블록에 `actions/checkout@`·`docker/` 가 없다 — `docker-build must assemble archives without rebuilding`
 8. `Require every image build to succeed` step 에 `          IMAGE_BUILD_RESULT: ${{ needs.docker-image.result }}`,
    `          if [[ "${IMAGE_BUILD_RESULT}" != "success" ]]; then`, `            exit 1` 정확 일치 — `docker-build must fail when any image leg did not succeed`
-9. `Publish Docker image archives` step 에 정확 일치 줄 — `Docker archive merge contract is broken`
+9. `Require exactly the three unexpired image parts` step 에 정확 일치 줄 — `docker-build must verify exactly three unexpired image parts before merging`
    ```text
-           id: docker-archives
-           uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-             name: docker-images-${{ github.sha }}
-             pattern: docker-image-part-*-${{ github.sha }}
-             compression-level: 0
-             retention-days: 14
-             delete-merged: true
+             GH_TOKEN: ${{ github.token }}
+             expected="$(printf 'docker-image-part-%s-%s\n' api "${GITHUB_SHA}" batch "${GITHUB_SHA}" web "${GITHUB_SHA}")"
+             actual="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --jq '.artifacts[] | select(.expired == false) | select(.name | startswith("docker-image-part-")) | .name' | LC_ALL=C sort)"
+             if [[ "${actual}" != "${expected}" ]]; then
+               exit 1
    ```
-10. `docker-build` 블록 안 step 순서: `Require every image build to succeed` < `Publish Docker image archives` < `Record Docker artifact provenance`, 각 step 이름 정확히 1회 — `Docker assembly steps must run check, merge, provenance in order`
-11. provenance step 단정(현재 :367-374 의 4개)을 `workflow_job_step_block docker-build "Record Docker artifact provenance"` 대상으로 그대로 유지.
+10. `Publish Docker image archives` step 에 정확 일치 줄 — `Docker archive merge contract is broken`
+    ```text
+            id: docker-archives
+            uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              name: docker-images-${{ github.sha }}
+              pattern: docker-image-part-*-${{ github.sha }}
+              compression-level: 0
+              retention-days: 14
+              delete-merged: true
+    ```
+    (10 이상은 목록 들여쓰기가 4칸이다 — 실제 줄은 그 4칸을 뺀 값)
+11. `docker-build` 블록 안 step 순서: `Require every image build to succeed` < `Require exactly the three unexpired image parts` < `Publish Docker image archives` < `Record Docker artifact provenance`, 각 step 이름 정확히 1회 — `Docker assembly steps must run result check, part check, merge, provenance in order`
+12. provenance step(`workflow_job_step_block docker-build "Record Docker artifact provenance"`): 현재 :367-372 의 `echo "run_id=…"`·`echo "commit=…"`·`echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"` 세 단정 유지, :373-374 를 `} | tee -a "${GITHUB_STEP_SUMMARY}"` 포함으로 교체 — `Docker provenance must be written to both GITHUB_STEP_SUMMARY and the step log`
 
 :375 이후(Dockerfile·materializer 단정)는 바꾸지 않는다.
 
@@ -273,9 +253,9 @@ Task 0 F1 에서 merge 가 `separate-directories` 기본 false 임을 확인했�
 bash ci/quality-gate-contract-test.sh
 ```
 
-예상: exit 1, stderr `quality gate contract failed: docker-image job must disable the default Docker build record artifact`
-(첫 Docker 단정 — 현재 workflow 에 `docker-image` job 이 없다). 다른 메시지(문법 오류·unbound variable)면 RED 가 아니다 —
-고친 뒤 다시. 출력과 HEAD SHA 를 dod `### AC1` 에 `[RED]` 로 붙인다.
+예상: exit 1, stderr `quality gate contract failed: only docker-build may override permissions, and only with actions: read`
+(파일 안에서 가장 먼저 도는 바뀐 단정 :98 — 현재 workflow 에 job 단위 permissions 가 0개다). 다른 메시지(문법 오류·unbound
+variable)면 RED 가 아니다 — 고친 뒤 다시. 출력과 HEAD SHA 를 dod `### AC1` 에 `[RED]` 로 붙인다.
 
 - [ ] **Step 3: workflow 교체** — 위 "새 Docker job 전문" 대로.
 
@@ -292,9 +272,10 @@ bash docker/deploy-contract-test.sh
 
 ```bash
 git add .github/workflows/quality-gate.yml ci/quality-gate-contract-test.sh
-git commit -m "ci: Docker 이미지 matrix 병렬 빌드와 dev 전용 cache 기록" -m "- API·Batch·Web 를 matrix leg 로 병렬 빌드하고 7. Docker image build 가 기존 docker-images artifact 로 조립
+git commit -m "ci: Docker 이미지 matrix 병렬 빌드와 dev 전용 cache 기록" -m "- API·Batch·Web 를 matrix leg 로 병렬 빌드하고 7. Docker image build 가 part 3개 확인 뒤 기존 docker-images artifact 로 조립
 - buildkit cache-to 는 dev push 에서만, PR 은 cache-from 만
-- 계약 테스트의 Docker·업로드·needs 단정을 새 구조로 개정"
+- 조립 job 에만 actions: read, provenance 를 summary 와 로그에 함께 기록
+- 계약 테스트의 Docker·업로드·needs·permissions 단정을 새 구조로 개정"
 ```
 
 ---
@@ -308,29 +289,34 @@ git commit -m "ci: Docker 이미지 matrix 병렬 빌드와 dev 전용 cache 기
 
 ### 결합점 — 스크립트 인터페이스
 
-design D4 의 인터페이스·검증 규칙·호출 형태·rank 표·로그 계약을 그대로 구현한다. 다시 적으면 갈리므로 여기서는 design D4 를
+design D4·D6 의 인터페이스·검증 규칙·호출 형태·rank 표·경계 조건·로그 계약을 그대로 구현한다. 다시 적으면 갈리므로 design 을
 정본으로 하고, 테스트가 의존하는 정확한 문자열만 반복한다.
 
 ```text
 argv:     pr-ref <ref> | stale <ref> <days>
 env:      GH_REPO, DRY_RUN ('true'|'false'), GH_TOKEN(읽지 않음)
-exit:     0 성공 · 1 API 실패 · 2 검증 실패(gh 호출 0회)
+exit:     0 성공 · 1 API 실패 또는 stale 의 해석 불가 시간 · 2 검증 실패(gh 호출 0회)
 GET:      gh api --method GET --paginate --slurp repos/<GH_REPO>/actions/caches -f ref=<ref> -F per_page=100
 DELETE:   gh api --method DELETE repos/<GH_REPO>/actions/caches/<id>
+대상:     pr-ref = 그 ref 의 rank 0~4 전부 · stale = 그 ref 의 rank 2·3 중 last_accessed_at < cutoff
 stdout:   cache action=<delete|would-delete|already-gone> id=<id> rank=<0-4> key=<key> size_bytes=<n> last_accessed_at=<원문>
           cache-cleanup summary mode=<pr-ref|stale> ref=<ref> listed=<n> selected=<n> deleted=<n> would_delete=<n> already_gone=<n> freed_bytes=<n> cutoff=<YYYY-MM-DDTHH:MM:SSZ|none>
 stderr:   cache-cleanup error: <사유>
 ```
 
 - `listed` = 응답 entry 중 `ref` 가 요청 ref 와 같은 것의 수. 다른 ref entry 는 세지도, 기준점(최근 접근) 계산에 쓰지도 않는다.
+- 기준점은 rank 와 무관하게 요청 ref entry 전체의 최댓값이다(buildkit index 포함).
 - `freed_bytes` = `deleted` 된 entry 의 `size_in_bytes` 합(dry-run·already-gone 제외).
-- pr-ref 모드의 `cutoff=none`.
+- `cutoff=none`: pr-ref 모드, 그리고 stale 모드에서 `listed=0` 일 때.
 - 소수 초 내림: `2026-10-31T05:48:00.999Z` → `2026-10-31T05:48:00Z`.
+- stale 모드에서 요청 ref entry 중 하나라도 `last_accessed_at` 이 없거나 해석 불가면 DELETE 0회, stderr
+  `cache-cleanup error: unparsable last_accessed_at id=<id>`(가장 작은 해당 id), summary 없이 exit 1. pr-ref 모드는 시간을 해석하지 않는다.
 
 구현 요건(전문 아님):
 
 - `set -euo pipefail`. 인자·env 검증을 gh 호출 전에 끝낸다.
-- 목록 → 선별 → 정렬(rank, id) 은 python3 한 번(`python3 -I`)으로 하고, 결과를 탭 구분 줄로 bash 에 넘긴다.
+- 목록 → 선별 → 정렬(rank, id) 은 python3 한 번(`python3 -I`)으로 하고, 결과를 탭 구분 줄로 bash 에 넘긴다. 해석 불가 시간은
+  이 단계에서 판정해 삭제 루프에 들어가기 전에 끝낸다.
 - 삭제 루프: DRY_RUN=true 면 `would-delete` 만 출력. gh 실패 시 stderr 를 변수로 받아 `HTTP 404` 를 포함하면 `already-gone`,
   아니면 `cache-cleanup error: delete failed id=<id> status=<HTTP 코드|unknown>` 후 summary 를 출력하고 exit 1.
 - key 출력 전 0x20~0x7E 밖 문자를 `?` 로 치환.
@@ -357,19 +343,20 @@ F-stale (`stale refs/heads/dev 3`, 단일 page). dev 최근 접근 = id 105 → 
 | id | ref | key | last_accessed_at | size | 기대 |
 |---|---|---|---|---|---|
 | 101 | refs/heads/dev | `gradle-dependencies-v1-aaa` | `2026-10-25T01:00:00.1234567Z` | 1000 | 삭제 rank 3 |
-| 102 | refs/heads/dev | `buildkit-blob-1-sha256:old1` | `2026-10-30T03:18:00.103452Z` | 200 | 삭제 rank 1 |
-| 103 | refs/heads/dev | `index-buildkit-api-old` | `2026-10-29T00:00:00Z` | 10 | 삭제 rank 0 |
+| 102 | refs/heads/dev | `buildkit-blob-1-sha256:old1` | `2026-10-30T03:18:00.103452Z` | 200 | **유지** — rank 1, stale 대상 아님 (cutoff 이전이어도) |
+| 103 | refs/heads/dev | `index-buildkit-api-old` | `2026-10-29T00:00:00Z` | 10 | **유지** — rank 0, stale 대상 아님 |
 | 104 | refs/heads/dev | `gradle-home-v1\|Linux-X64\|unit-coverage[h]-old` | `2026-10-28T00:00:00Z` | 30 | 삭제 rank 2 |
 | 105 | refs/heads/dev | `index-buildkit-api-new` | `2026-11-03T05:48:00.5Z` | 10 | 유지(기준점) |
-| 106 | refs/heads/dev | `buildkit-blob-1-sha256:boundary` | `2026-10-31T05:48:00.999Z` | 200 | 유지(내림하면 cutoff 와 같음) |
+| 106 | refs/heads/dev | `gradle-transforms-v1-boundary` | `2026-10-31T05:48:00.999Z` | 200 | 유지 — rank 3, 내림하면 cutoff 와 같음(경계) |
 | 107 | refs/heads/dev | `quality-tools-Linux-x` | `2026-10-20T00:00:00Z` | 50 | 유지(rank 4) |
-| 108 | refs/pull/9/merge | `buildkit-blob-1-sha256:pr` | `2026-11-10T00:00:00Z` | 200 | 유지(타 ref — 기준점에 쓰면 cutoff 가 11-07 로 밀려 105·110 까지 지워진다) |
-| 109 | refs/heads/dev | `buildkit-blob-1-sha256:old2` | `2026-10-30T23:59:59Z` | 300 | 삭제 rank 1 |
+| 108 | refs/pull/9/merge | `gradle-dependencies-v1-pr` | `2026-11-10T00:00:00Z` | 200 | 유지(타 ref — 기준점에 쓰면 cutoff 가 `2026-11-07T00:00:00Z` 로 밀려 106·110 까지 지워진다) |
+| 109 | refs/heads/dev | `buildkit-blob-1-sha256:old2` | `2026-10-30T23:59:59Z` | 300 | **유지** — rank 1, stale 대상 아님 |
 | 110 | refs/heads/dev | `gradle-transforms-v1-bbb` | `2026-11-02T00:00:00Z` | 400 | 유지 |
 
-기대 DELETE 순서 `103 102 109 104 101`, summary `mode=stale ref=refs/heads/dev listed=9 selected=5 deleted=5 would_delete=0 already_gone=0 freed_bytes=1540 cutoff=2026-10-31T05:48:00Z`.
+기대 DELETE 순서 `104 101`, summary `mode=stale ref=refs/heads/dev listed=9 selected=2 deleted=2 would_delete=0 already_gone=0 freed_bytes=1030 cutoff=2026-10-31T05:48:00Z`.
 
-F-pr (`pr-ref refs/pull/42/merge`, 단일 page).
+F-pr (`pr-ref refs/pull/42/merge`, 단일 page). 시간을 해석하지 않음을 보이려고 201 의 `last_accessed_at` 은 `null`, 나머지는
+`2026-11-01T00:00:00Z`.
 
 | id | ref | key | 기대 |
 |---|---|---|---|
@@ -385,13 +372,20 @@ F-pr (`pr-ref refs/pull/42/merge`, 단일 page).
 F-paged (`stale refs/heads/dev 3`, page 2개): page 1 = id 301 dev `index-buildkit-batch` `2026-11-03T00:00:00Z`;
 page 2 = id 302 dev `gradle-dependencies-v1-old` `2026-10-20T00:00:00Z`. 기대 DELETE `302`.
 
-테스트 케이스 11개(각각 무엇을 재는가):
+F-empty (`stale refs/heads/dev 3`): 단일 page, entry 1개 id 401 ref `refs/pull/9/merge` key `gradle-dependencies-v1-x`
+`2026-10-01T00:00:00Z`. 기대 DELETE 없음.
+
+F-badtime (`stale refs/heads/dev 3`): 단일 page, id 501 dev `index-buildkit-api` `not-a-date`, id 502 dev
+`gradle-dependencies-v1-old` `2026-10-01T00:00:00Z`, id 503 dev `gradle-transforms-v1-new` `2026-11-03T00:00:00Z`. 501 은 rank 0 이지만
+기준점 계산에 쓰이므로 검사 대상이다. 기대 DELETE 없음.
+
+테스트 케이스 13개(각각 무엇을 재는가):
 
 | # | 케이스 | 단정 |
 |---|---|---|
-| 1 | stale 선별·순서 (F-stale, DRY_RUN=false) | exit 0, FAKE_GH_LOG 의 DELETE id 열이 `103 102 109 104 101`, summary 줄이 위 문자열과 정확히 같다 |
-| 2 | stale dry-run (F-stale, DRY_RUN=true) | exit 0, DELETE 0회, `action=would-delete` 5줄, summary `deleted=0 would_delete=5 … freed_bytes=0` |
-| 3 | pr-ref 전체 (F-pr) | exit 0, DELETE id 열 `203 202 205 201 206`, 204 미호출 |
+| 1 | stale 선별·순서 (F-stale, DRY_RUN=false) | exit 0, FAKE_GH_LOG 의 DELETE id 열이 정확히 `104 101`, **102·103·109(dev buildkit, cutoff 이전) 와 106·107·108·110 의 DELETE 가 없다**, summary 줄이 위 문자열과 정확히 같다 |
+| 2 | stale dry-run (F-stale, DRY_RUN=true) | exit 0, DELETE 0회, `action=would-delete` 2줄(id 104·101), summary `deleted=0 would_delete=2 … freed_bytes=0` |
+| 3 | pr-ref 전체 (F-pr) | exit 0, DELETE id 열 `203 202 205 201 206`, 204 미호출, `last_accessed_at` 이 `null` 인 201 도 삭제됨, summary `cutoff=none` |
 | 4 | pr-ref 거부 | `refs/heads/dev`·`refs/pull/42/head`·`refs/pull/0/merge`·`refs/pull/42/merge;x`·빈 문자열 각각 exit 2, FAKE_GH_LOG 비어 있음 |
 | 5 | stale 거부 | ref `refs/heads/main`, days `0`·`7`·`3x`·생략 각각 exit 2, gh 호출 0 |
 | 6 | env 거부 | DRY_RUN 미설정·`yes`, GH_REPO `premium` 각각 exit 2, gh 호출 0 |
@@ -400,8 +394,10 @@ page 2 = id 302 dev `gradle-dependencies-v1-old` `2026-10-20T00:00:00Z`. 기대 
 | 9 | 목록 실패 (`FAKE_GH_LIST_FAIL=1`) | exit 1, DELETE 0회, stderr `cache-cleanup error: list failed ref=refs/heads/dev` |
 | 10 | 로그 위생 (케이스 3·8 의 출력 재사용) | stdout·stderr 어디에도 `token-sentinel-6f1c` 없음, `::` 로 시작하는 줄 없음, `key=evil?::warning::injected` 존재 |
 | 11 | pagination (F-paged) | exit 0, DELETE id 열 `302`, summary `listed=2` |
+| 12 | dev entry 0개 (F-empty) | exit 0, DELETE 0회, summary `mode=stale ref=refs/heads/dev listed=0 selected=0 deleted=0 would_delete=0 already_gone=0 freed_bytes=0 cutoff=none` |
+| 13 | 해석 불가 시간 (F-badtime, DRY_RUN=false) | exit 1, DELETE 0회(502 도 지우지 않는다), stderr `cache-cleanup error: unparsable last_accessed_at id=501`, stdout 에 summary 줄 없음 |
 
-마지막 줄 출력 `delete-actions-caches behavioral contract verified (cases: 11)`.
+마지막 줄 출력 `delete-actions-caches behavioral contract verified (cases: 13)`.
 
 - [ ] **Step 1: 테스트 작성** — `ci/delete-actions-caches-test.sh`. 형태는 `ci/dependency-bootstrap-contract-test.sh` 를 따른다
   (`set -euo pipefail`, `mktemp -d` + `trap` 정리, `fail()` 은 `delete-actions-caches behavioral contract failed: <사유>`).
@@ -416,7 +412,7 @@ page 2 = id 302 dev `gradle-dependencies-v1-old` `2026-10-20T00:00:00Z`. 기대 
 bash ci/delete-actions-caches-test.sh
 ```
 
-예상: exit 1, `delete-actions-caches behavioral contract failed:` 뒤에 케이스 1 의 DELETE id 열 불일치(기대 `103 102 109 104 101`).
+예상: exit 1, `delete-actions-caches behavioral contract failed:` 뒤에 케이스 1 의 DELETE id 열 불일치(기대 `104 101`, 실제 빈 열).
 dod `### AC3` 에 `[RED]`.
 
 - [ ] **Step 4: 구현 → GREEN**
@@ -425,11 +421,15 @@ dod `### AC3` 에 `[RED]`.
 bash ci/delete-actions-caches-test.sh
 ```
 
-예상: exit 0, 마지막 줄 `delete-actions-caches behavioral contract verified (cases: 11)`. dod `### AC3` 에 `[GREEN]`.
+예상: exit 0, 마지막 줄 `delete-actions-caches behavioral contract verified (cases: 13)`. dod `### AC3` 에 `[GREEN]`.
 
-- [ ] **Step 5: 위반 표본 증명(커밋하지 않음)** — 아래 일시 변형을 하나씩 적용해 테스트를 돌리고 실패를 확인한 뒤 `git checkout -- ci/delete-actions-caches.sh` 로 되돌린다.
-  (a) 정렬을 id 만으로 → 케이스 1 실패 (b) 응답 entry 의 ref 재확인 제거 → 케이스 1(108 이 기준점이 됨)·3 실패 (c) 비교를 `<=` 로 → 케이스 1(106 삭제) 실패.
-  세 결과를 dod `## 검사 산출물` 증명 칸 근거로 `### AC3` 에 남긴다.
+- [ ] **Step 5: 위반 표본 증명(커밋하지 않음)** — 아래 일시 변형을 하나씩 적용해 테스트를 돌리고 실패를 확인한 뒤
+  `git checkout -- ci/delete-actions-caches.sh` 로 되돌린다.
+  - (a) 정렬을 id 만으로 → 케이스 1 실패(`101 104`)
+  - (b) 응답 entry 의 ref 재확인 제거 → 케이스 1 실패(108 이 기준점이 돼 cutoff `2026-11-07T00:00:00Z`, 106·110 삭제, `listed=10`)
+  - (c) 비교를 `<=` 로 → 케이스 1 실패(106 삭제)
+  - (d) stale 대상에 rank 0·1 포함 → 케이스 1 실패(103·102·109 삭제) — F5 판정의 회귀 방어선
+  네 결과를 dod `## 검사 산출물` 증명 칸 근거로 `### AC3` 에 남긴다.
 
 - [ ] **Step 6: Quality Gate 계약에 연결** — `ci/quality-gate-contract-test.sh` :195(`bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"`) 다음 줄에 `bash "${root_dir}/ci/delete-actions-caches-test.sh"`.
 
@@ -443,9 +443,10 @@ bash ci/quality-gate-contract-test.sh
 
 ```bash
 git add ci/delete-actions-caches.sh ci/delete-actions-caches-test.sh ci/quality-gate-contract-test.sh
-git commit -m "ci: Actions cache 삭제 스크립트와 행동 계약 추가" -m "- PR merge ref 전체 삭제와 dev 의 활동 기준 3일 미접근 entry 삭제를 한 스크립트로
-- index→blob→gradle-home→gradle 순서, 404 는 이미 삭제로 간주, 그 밖 실패는 즉시 중단
-- fake gh 로 선별·순서·거부·로그 위생 11개 케이스 검증"
+git commit -m "ci: Actions cache 삭제 스크립트와 행동 계약 추가" -m "- PR merge ref 전체 삭제와 dev gradle cache 의 활동 기준 3일 미접근 entry 삭제를 한 스크립트로
+- stale 모드는 buildkit index·blob 을 지우지 않는다 (없는 blob 은 빌드 실패)
+- 404 는 이미 삭제로 간주, 그 밖 실패·해석 불가 시간은 즉시 중단
+- fake gh 로 선별·순서·거부·경계·로그 위생 13개 케이스 검증"
 ```
 
 ---
@@ -507,7 +508,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Report stale caches without deleting them
+        description: Report stale dev Gradle caches without deleting them
         type: boolean
         default: true
 
@@ -521,20 +522,22 @@ concurrency:
 
 jobs:
   delete-stale-dev-caches:
-    name: Delete stale dev caches
+    name: Delete stale dev Gradle caches
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Delete dev caches idle for three days of dev activity
+      - name: Delete dev Gradle caches idle for three days of dev activity
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
         run: bash ci/delete-actions-caches.sh stale refs/heads/dev 3
 ```
+
+stale 대상이 gradle 뿐이라는 것은 스크립트(rank 2·3)가 보장하고 Task 2 케이스 1 이 단정한다. workflow 는 모드·ref·일수만 넘긴다.
 
 ### 결합점 — 정적 계약 단정과 mutation
 
@@ -619,7 +622,7 @@ bash ci/quality-gate-contract-test.sh
 ```bash
 git add .github/workflows/actions-cache-pr-cleanup.yml .github/workflows/actions-cache-stale-cleanup.yml ci/actions-cache-cleanup-contract-test.sh ci/quality-gate-contract-test.sh
 git commit -m "ci: PR 종료·일일 Actions cache 정리 workflow 추가" -m "- PR 종료 시 pull_request_target 로 그 merge ref cache 를 전부 삭제, PR 코드는 checkout 하지 않는다
-- 매일 KST 03:17 dev 의 gradle·buildkit cache 중 활동 기준 3일 미접근 entry 삭제, 수동 실행은 기본 dry-run
+- 매일 KST 03:17 dev 의 gradle cache 중 활동 기준 3일 미접근 entry 삭제, 수동 실행은 기본 dry-run
 - actions: write 를 두 workflow 에만 두고 mutation 9종으로 정적 계약을 자가검증"
 ```
 
@@ -627,15 +630,23 @@ git commit -m "ci: PR 종료·일일 Actions cache 정리 workflow 추가" -m "-
 
 ## Task 4 — 배포 런북 갱신
 
-**Files:** Modify: `docs/runbooks/deployment.md` (`## 불변 배포 단위` 절, :14-31)
+**Files:** Modify: `docs/runbooks/deployment.md` (`## 불변 배포 단위` 절 :14-31, 그리고 그 절 끝에 새 하위 절)
 
 요건:
 
 - :17-18 문장 뒤에 추가: 세 이미지는 `7a. Docker image (<component>)` job 이 병렬로 build 하고 `7. Docker image build` job 이
-  `docker-images-${{ github.sha }}` 하나로 조립한다. `docker-image-part-*` 는 조립용 임시 artifact(1일 보존, 조립 직후 삭제)이며
-  배포 후보·검증 대상이 아니다.
-- :26 의 "Quality Gate summary" 를 "`7. Docker image build` job summary" 로 구체화한다(run ID·commit·artifact ID 확인 절차는 그대로).
+  만료되지 않은 part 3개를 확인한 뒤 `docker-images-${{ github.sha }}` 하나로 조립한다. `docker-image-part-*` 는 조립용 임시
+  artifact(1일 보존, 조립 직후 삭제)이며 배포 후보·검증 대상이 아니다.
+- :26 의 "Quality Gate summary" 를 "`7. Docker image build` job summary(같은 값이 그 job 의 `Record Docker artifact provenance`
+  step 로그에도 있다)" 로 구체화한다. run ID·commit·artifact ID 확인 절차는 그대로.
 - archive 이름·tag·OCI revision·ReleaseCandidate 조건(:31-32)은 바꾸지 않는다.
+- 새 하위 절 `### Quality Gate Docker 재실행과 cache 복구` — 아래 두 내용(design D3·D6.1):
+  1. **rerun 창**: part 는 1일 보존이다. 원 run 뒤 1일이 지나 실패 job 만 다시 돌리면 part 검사가 실패한다 — "Re-run all jobs" 로 다시 만든다.
+  2. **BlobNotFound 수동 복구**: 증상 — `7a.` leg 가 gha cache import 중 `BlobNotFound`/404 로 실패. 원인 — GitHub 의 7일 미사용
+     만료·한도 초과 LRU 축출이 blob 을 지우고 index 는 남겼다. 같은 job 을 다시 돌려도 회복되지 않는다. 절차 — 실패 leg 의 scope
+     (`api`·`batch`·`web`) 확인 → `gh cache list --ref refs/heads/dev --key index- --json id,key` 로 그 scope 의 dev index entry 를
+     찾아 `gh cache delete <id>` (scope 를 특정할 수 없으면 dev `index-*` 전부) → 실패 job 재실행(cache 없이 빌드) → 다음 dev push
+     export 가 index 와 blob 을 다시 쓴다. 일정 cleanup 은 buildkit 을 지우지 않는다는 사실도 한 줄 적는다.
 - placeholder 단어 금지(`docs/check-documentation.sh` 가 막는다).
 - `docs/deploy/aws-setup.md` :89-95 는 "Quality Gate summary" 라는 일반 표현이라 바꾸지 않는다.
 
@@ -651,8 +662,9 @@ bash docs/check-documentation.sh
 
 ```bash
 git add docs/runbooks/deployment.md
-git commit -m "docs: Docker archive 조립 job 과 임시 part artifact 설명" -m "- 세 이미지 병렬 build 와 7. Docker image build 조립 job 을 런북에 반영
-- provenance 확인 위치를 조립 job summary 로 명시"
+git commit -m "docs: Docker archive 조립 job 과 cache 복구 절차 설명" -m "- 세 이미지 병렬 build 와 7. Docker image build 조립 job·part 검사를 런북에 반영
+- provenance 확인 위치를 조립 job summary 와 step 로그로 명시
+- part 1일 rerun 창과 BlobNotFound 수동 복구 절차 추가"
 ```
 
 ---
@@ -688,18 +700,20 @@ design D8 정의로 `T_docker`·`T_leg(api|batch|web)`·`T_merge`·`T_other`(와
 기록. 판정 `T_docker ≤ T_other`. 실패하면 leg 로그의 레이어 시간(`DONE <n>s`)으로 원인(cache miss·merge 시간)을 함께 적고 보고한다.
 A5(merge 30~50s) 실측값도 여기 적는다.
 
-- [ ] **Step 2: AC5 PR 의 cache 무기록**
+- [ ] **Step 2: AC5 PR 의 cache 무기록 (F3 판정 포함)**
 
 ```bash
-gh cache list --ref refs/pull/<n>/merge --key buildkit-blob- --json id
-gh cache list --ref refs/pull/<n>/merge --key index- --json id
+gh run view <run-id> --json createdAt,jobs
+gh cache list --ref refs/pull/<n>/merge --key buildkit-blob- --json id,createdAt
+gh cache list --ref refs/pull/<n>/merge --key index- --json id,createdAt
 gh run view <run-id> --job <api-leg-job-id> --log
 gh run view <run-id> --job <batch-leg-job-id> --log
 gh run view <run-id> --job <web-leg-job-id> --log
 ```
 
-예상: 앞 둘 `[]`, 각 leg 로그에 `exporting to GitHub Actions Cache` 0건. 같은 PR 의 이전 push(이 변경 전)가 남긴 entry 가 있으면
-`created_at` 이 이 run 시작 이전임을 함께 기록한다(이 run 이 쓴 것이 아님을 구분).
+예상: 두 cache 목록에서 `createdAt` 이 run 시작(세 leg 의 `startedAt` 최솟값) 이후인 entry 0개. 그 이전 entry(이 변경 전 push 가
+남긴 것)가 있으면 개수와 `createdAt` 을 함께 기록한다. 세 leg 로그의 `Build image` step 에 `--cache-to` 인자(build-push-action 이
+출력하는 `docker buildx build` 명령줄)와 `exporting to GitHub Actions Cache` 가 각각 0건 — 이것이 F3(LIKELY) 의 판정이다.
 
 - [ ] **Step 3: AC6 최종 artifact**
 
@@ -714,12 +728,12 @@ docker load -i "${art_dir}/web.tar"
 docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/<owner>/<repo>/api:<sha>
 docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/<owner>/<repo>/batch:<sha>
 docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/<owner>/<repo>/web:<sha>
-gh run view <run-id> --job <docker-build-job-id>
+gh run view <run-id> --log --job <docker-build-job-id>
 ```
 
 예상: artifact 목록에 `docker-images-<sha>` 1개·`docker-image-part-` 0개(A2 확인), `ls` 결과 정확히 `api.tar batch.tar web.tar`,
-`docker load` 가 각 tag 를 로드, revision 3개 모두 `<sha>`, summary 의 `artifact_id` == 목록의 id. 확인 뒤 로드한 이미지와
-`${art_dir}` 를 지운다.
+`docker load` 가 각 tag 를 로드, revision 3개 모두 `<sha>`, 마지막 명령의 `Record Docker artifact provenance` step 로그에
+`run_id=<run-id>`·`commit=<sha>`·`artifact_id=<목록의 id>` 세 줄, part 검사 step 성공. 확인 뒤 로드한 이미지와 `${art_dir}` 를 지운다.
 
 ---
 
@@ -733,7 +747,8 @@ gh run view <run-id> --log
 gh cache list --ref refs/pull/<n>/merge --json id
 ```
 
-예상: success, 로그에 `cache-cleanup summary mode=pr-ref ref=refs/pull/<n>/merge`, 목록 `[]`.
+예상: success, 로그에 `cache-cleanup summary mode=pr-ref ref=refs/pull/<n>/merge` 이고 **`deleted>=1`**(F7 PARTIAL 의 권한 판정 —
+그 PR 이 cache 를 하나도 남기지 않았으면 판정에 쓰지 않고 다음 PR 을 본다), 목록 `[]`.
 
 - [ ] **Step 2: AC8** — dry-run 수동 실행 → 다음 schedule 실행 → 다음 dev push:
 
@@ -745,6 +760,7 @@ gh run view <scheduled-run-id> --log
 gh run view <dev-push-run-id> --json jobs
 ```
 
-예상: dry-run 로그 summary `mode=stale ref=refs/heads/dev … deleted=0 … cutoff=<ISO>`(would_delete 값 기록), schedule run success
-(deleted·freed_bytes 기록), 그 뒤 dev push run 의 세 `7a.` leg 와 `7. Docker image build` success. dev push leg 로그의 export 시간도 기록.
-schedule run 이 blob 을 지운 뒤 Docker leg 가 실패하면 design D6·Q1 경로로 즉시 보고한다.
+예상: dry-run 로그 summary `mode=stale ref=refs/heads/dev … deleted=0 … cutoff=<ISO>`(would_delete 값 기록), 모든 `action=` 줄의
+`rank` 가 2 또는 3. schedule run success(deleted·freed_bytes 기록). 그 뒤 dev push run 의 세 `7a.` leg 와 `7. Docker image build`
+success. dev push leg 로그의 export 시간도 기록. leg 가 `BlobNotFound` 로 실패하면 런북의 수동 복구 절차를 따르고 그 사실을 기록한다
+(일정 cleanup 이 buildkit 을 지우지 않으므로 원인은 GitHub 자체 축출이다 — design D6.1).
