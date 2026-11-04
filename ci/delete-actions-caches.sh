@@ -4,7 +4,8 @@
 #   delete-actions-caches.sh stale refs/heads/dev <days>  gradle-* caches (rank 2-3) not accessed for <days>
 #                                                         before the most recent access on that ref
 # env: GH_REPO (owner/repo), DRY_RUN (true|false), GH_TOKEN (read by gh only, never by this script)
-# exit: 0 ok, 1 API failure or unparsable last_accessed_at, 2 invalid arguments or environment
+# exit: 0 ok, 1 API failure, malformed list (id not a positive integer) or unparsable last_accessed_at,
+#       2 invalid arguments or environment
 set -euo pipefail
 
 usage_error() {
@@ -44,7 +45,8 @@ try:
     entries = [e for page in pages for e in page["actions_caches"]]
     entries = [e for e in entries if e["ref"] == ref]
     for e in entries:
-        int(e["id"])
+        if not (isinstance(e["id"], int) and not isinstance(e["id"], bool) and e["id"] > 0):
+            raise ValueError("id must be a positive integer")
         str(e["key"])
 except Exception:
     sys.exit(3)
@@ -154,7 +156,7 @@ while IFS=$'\t' read -r tag a b c d e; do
         echo "cache action=would-delete ${line}"
         continue
       fi
-      if err="$(gh api --method DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>&1 >/dev/null)"; then
+      if err="$(gh api --method DELETE "repos/${GH_REPO}/actions/caches/${id}" 2>&1 >/dev/null </dev/null)"; then
         deleted=$((deleted + 1))
         freed_bytes=$((freed_bytes + size))
         echo "cache action=delete ${line}"

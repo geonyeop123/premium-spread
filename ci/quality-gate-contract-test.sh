@@ -423,6 +423,22 @@ docker_archive_lines=(
 for docker_line in "${docker_archive_lines[@]}"; do
   grep -Fxq -- "${docker_line}" <<< "${docker_archive_step}" || fail "Docker archive merge contract is broken"
 done
+# Exact step: any extra input (separate-directories, overwrite, include-hidden-files) would change the runbook layout
+# (api.tar, batch.tar and web.tar at the archive root) or the rerun behavior.
+expected_docker_archive_step="$(cat <<'STEP'
+      - name: Publish Docker image archives
+        id: docker-archives
+        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-images-${{ github.sha }}
+          pattern: docker-image-part-*-${{ github.sha }}
+          compression-level: 0
+          retention-days: 14
+          delete-merged: true
+STEP
+)"
+[[ "${docker_archive_step}" == "${expected_docker_archive_step}" ]] ||
+  fail "Docker archive merge step must keep api.tar, batch.tar and web.tar at the archive root"
 docker_step_names=(
   'Require every image build to succeed'
   'Require exactly the three unexpired image parts'
@@ -458,6 +474,7 @@ for docker_syntax_job in docker-image docker-build; do
       workflow_job_step_block "${docker_syntax_job}" "${docker_syntax_step}" |
         awk '
           $0 == "        run: |" { inside = 1; next }
+          inside && $0 ~ /^[[:space:]]*$/ { print ""; next }
           inside && $0 ~ /^          / { print substr($0, 11); next }
           inside { exit }
         '

@@ -35,6 +35,8 @@ fi
 if [[ "${1:-}" == api && "${2:-}" == --method && "${3:-}" == DELETE && $# -eq 4 ]]; then
   [[ "$4" =~ ^repos/${GH_REPO}/actions/caches/([0-9]+)$ ]] || unexpected
   id="${BASH_REMATCH[1]}"
+  # Like the real gh, read stdin: a DELETE call that inherits the plan loop's stdin swallows the remaining entries.
+  [[ -t 0 ]] || cat > /dev/null
   for candidate in ${FAKE_GH_DELETE_404:-}; do
     if [[ "${candidate}" == "${id}" ]]; then
       echo "gh: Not Found (HTTP 404)" >&2
@@ -100,6 +102,7 @@ cat > "${fixtures}/badtime.json" <<'JSON'
 JSON
 
 # run_case <name> <fixture> <argv...>; env knobs come from the caller's environment.
+# GH_REPO is always premium/spread (never inherited from the caller); only case 6 overrides it via CASE_GH_REPO.
 # Results: ${tmp_dir}/<name>.{out,err,log}; exit status in run_status.
 run_status=0
 run_case() {
@@ -107,7 +110,7 @@ run_case() {
   shift 2
   : > "${tmp_dir}/${name}.log"
   run_status=0
-  PATH="${bin_dir}:${PATH}" GH_REPO="${GH_REPO-premium/spread}" GH_TOKEN="token-sentinel-6f1c" \
+  PATH="${bin_dir}:${PATH}" GH_REPO="${CASE_GH_REPO:-premium/spread}" GH_TOKEN="token-sentinel-6f1c" \
     FAKE_GH_LOG="${tmp_dir}/${name}.log" \
     FAKE_GH_LIST_FIXTURE="${fixtures}/${fixture}.json" \
     "$script" "$@" > "${tmp_dir}/${name}.out" 2> "${tmp_dir}/${name}.err" || run_status=$?
@@ -200,7 +203,7 @@ assert_no_gh_calls rej6_unset
 DRY_RUN=yes run_case rej6_yes pr pr-ref refs/pull/42/merge
 assert_status rej6_yes 2
 assert_no_gh_calls rej6_yes
-DRY_RUN=false GH_REPO=premium run_case rej6_repo pr pr-ref refs/pull/42/merge
+DRY_RUN=false CASE_GH_REPO=premium run_case rej6_repo pr pr-ref refs/pull/42/merge
 assert_status rej6_repo 2
 assert_no_gh_calls rej6_repo
 
@@ -256,4 +259,21 @@ assert_status badtime 1
 assert_stderr_has badtime "cache-cleanup error: unparsable last_accessed_at id=501"
 if grep -q '^cache-cleanup summary ' "${tmp_dir}/badtime.out"; then fail "badtime: summary must not be printed"; fi
 
-echo "delete-actions-caches behavioral contract verified (cases: 13)"
+# Case 14: an id that is not a positive integer makes the whole list malformed: no deletion at all.
+case_no=0
+for bad_id in 101.9 true 0 -5 '"101"'; do
+  case_no=$((case_no + 1))
+  cat > "${fixtures}/badid_${case_no}.json" <<JSON
+[{"total_count":2,"actions_caches":[
+{"id":601,"ref":"refs/pull/42/merge","key":"index-buildkit-api","version":"v","last_accessed_at":null,"created_at":"2026-11-01T00:00:00Z","size_in_bytes":1},
+{"id":${bad_id},"ref":"refs/pull/42/merge","key":"gradle-dependencies-v1-x","version":"v","last_accessed_at":null,"created_at":"2026-11-01T00:00:00Z","size_in_bytes":2}
+]}]
+JSON
+  DRY_RUN=false run_case "badid_${case_no}" "badid_${case_no}" pr-ref refs/pull/42/merge
+  assert_status "badid_${case_no}" 1
+  [[ "$(delete_count "badid_${case_no}")" -eq 0 ]] || fail "badid ${bad_id}: DELETE must not be called"
+  assert_stderr_has "badid_${case_no}" "cache-cleanup error: list failed ref=refs/pull/42/merge"
+  if grep -q '^cache-cleanup summary ' "${tmp_dir}/badid_${case_no}.out"; then fail "badid ${bad_id}: no summary"; fi
+done
+
+echo "delete-actions-caches behavioral contract verified (cases: 14)"

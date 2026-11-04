@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Static contract of the two Actions cache cleanup workflows (design D5, D6, D7).
-# It also proves itself: nine mutated copies of the workflows must each be rejected with the expected message.
+# It also proves itself: ten mutated copies of the workflows must each be rejected with the expected message.
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -9,7 +9,6 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 pr_file="actions-cache-pr-cleanup.yml"
 stale_file="actions-cache-stale-cleanup.yml"
-checkout_line='      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2'
 
 block() {
   local file="$1" key="$2"
@@ -31,6 +30,12 @@ check_workflows() {
     }
     has_line() { grep -Fxq -- "$1" "$2"; }
     [[ -f "${pr}" && -f "${stale}" ]] || violation "cleanup workflow files must exist"
+
+    # The cleanup checkout must be the exact pinned line Quality Gate uses (design D7), not a copy kept here.
+    local checkout_line
+    checkout_line="$(grep -E '^      - uses: actions/checkout@' "${dir}/quality-gate.yml" | sort -u || true)"
+    [[ "${checkout_line}" =~ ^'      - uses: actions/checkout@'[0-9a-f]{40}' # v'[0-9.]+$ ]] ||
+      violation "quality gate must pin exactly one actions/checkout line"
 
     [[ "$(block "${pr}" on)" == $'  pull_request_target:\n    types:\n      - closed' ]] ||
       violation "pr cleanup trigger must be exactly pull_request_target closed"
@@ -87,7 +92,7 @@ ON
     done < <(grep -o 'github\.event\.pull_request\.[A-Za-z_.]*' "${pr}" || true)
 
     for f in "${pr}" "${stale}"; do
-      ! grep -E '^[[:space:]]*(-[[:space:]]+)?run:' "${f}" | grep -Fq '${{' ||
+      ! grep -Eq '^[[:space:]]*(-[[:space:]]+)?run:.*\$\{\{' "${f}" ||
         violation "cleanup run steps must not interpolate expressions"
     done
 
@@ -111,14 +116,59 @@ ON
       has_line '  cancel-in-progress: false' "${pr}" && has_line '  cancel-in-progress: false' "${stale}" ||
       violation "cleanup workflows must not cancel an in-flight deletion"
 
-    local writers
-    writers="$(cd "${dir}" && grep -l 'actions: write' ./*.yml | sed 's|^\./||' | sort | tr '\n' ' ' || true)"
+    local writers wf workflow_files
+    shopt -s nullglob
+    workflow_files=("${dir}"/*.yml "${dir}"/*.yaml)
+    shopt -u nullglob
+    writers="$(
+      for wf in "${workflow_files[@]}"; do
+        if grep -Eq "actions[[:space:]]*:[[:space:]]*[\"']?write|write-all" "${wf}"; then basename "${wf}"; fi
+      done | LC_ALL=C sort | tr '\n' ' '
+    )"
     [[ "${writers}" == "${pr_file} ${stale_file} " ]] ||
       violation "actions: write is allowed only in the two cleanup workflows"
 
-    [[ "$(block "${pr}" jobs | grep -E '^  [^[:space:]#][^:]*:$')" == '  delete-pr-caches:' &&
-      "$(block "${stale}" jobs | grep -E '^  [^[:space:]#][^:]*:$')" == '  delete-stale-dev-caches:' ]] ||
-      violation "cleanup workflows must define exactly one reviewed job"
+    # Whole-block compare: no step, key or expression syntax (for example github.event['pull_request'][...])
+    # can be added under jobs without review. __CHECKOUT__ is the Quality Gate checkout line read above.
+    local expected_pr_jobs expected_stale_jobs
+    expected_pr_jobs="$(cat <<'JOBS'
+  delete-pr-caches:
+    name: Delete closed PR caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+__CHECKOUT__
+        with:
+          persist-credentials: false
+      - name: Delete every Actions cache of the closed PR merge ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: 'false'
+          PR_MERGE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: bash ci/delete-actions-caches.sh pr-ref "${PR_MERGE_REF}"
+JOBS
+)"
+    expected_stale_jobs="$(cat <<'JOBS'
+  delete-stale-dev-caches:
+    name: Delete stale dev Gradle caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+__CHECKOUT__
+        with:
+          persist-credentials: false
+      - name: Delete dev Gradle caches idle for three days of dev activity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: bash ci/delete-actions-caches.sh stale refs/heads/dev 3
+JOBS
+)"
+    [[ "$(block "${pr}" jobs)" == "${expected_pr_jobs/__CHECKOUT__/${checkout_line}}" &&
+      "$(block "${stale}" jobs)" == "${expected_stale_jobs/__CHECKOUT__/${checkout_line}}" ]] ||
+      violation "cleanup jobs must be exactly the reviewed jobs block"
   )
 }
 
@@ -165,6 +215,8 @@ mutate() {
     M7) printf '%s\n' '      - uses: example/third-party@0123456789abcdef0123456789abcdef01234567' >> "$2/${stale_file}" ;;
     M8) insert_after "$2/quality-gate.yml" '  contents: read' '  actions: write' ;;
     M9) replace_line "$2/${stale_file}" '        default: true' '        default: false' ;;
+    M10) printf '%s\n' '      - name: Echo' '        run: |' \
+      "          echo \"\${{ github.event['pull_request']['head']['ref'] }}\"" >> "$2/${pr_file}" ;;
   esac
 }
 expected_message() {
@@ -178,11 +230,12 @@ expected_message() {
     M7) echo "cleanup workflows may only use the pinned checkout action" ;;
     M8) echo "actions: write is allowed only in the two cleanup workflows" ;;
     M9) echo "stale cleanup manual runs must default to dry_run true" ;;
+    M10) echo "cleanup jobs must be exactly the reviewed jobs block" ;;
   esac
 }
 
 rejected=0
-for id in M1 M2 M3 M4 M5 M6 M7 M8 M9; do
+for id in M1 M2 M3 M4 M5 M6 M7 M8 M9 M10; do
   mutant_dir="${tmp_dir}/${id}"
   mkdir -p "${mutant_dir}"
   cp "${root_dir}"/.github/workflows/*.yml "${mutant_dir}/"
