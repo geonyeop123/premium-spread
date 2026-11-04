@@ -198,10 +198,14 @@ jobs:
       - name: Audit the complete web lockfile at high severity
         run: bash ci/run-npm-audit.sh
 
-  docker-build:
-    name: 7. Docker image build
+  docker-image:
+    name: 7a. Docker image (${{ matrix.component }})
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [api, batch, web]
     env:
       DOCKER_BUILD_RECORD_UPLOAD: 'false'
     steps:
@@ -209,54 +213,70 @@ jobs:
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       - name: Prepare immutable image archive directory
         run: mkdir -p "${RUNNER_TEMP}/docker-images"
-      - name: Build API image
+      - name: Build image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
-          file: apps/api/Dockerfile
+          file: apps/${{ matrix.component }}/Dockerfile
           push: false
-          tags: ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.component }}:${{ github.sha }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
-          outputs: type=docker,dest=${{ runner.temp }}/docker-images/api.tar
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
-      - name: Build Batch image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: .
-          file: apps/batch/Dockerfile
-          push: false
-          tags: ghcr.io/${{ github.repository }}/batch:${{ github.sha }}
-          labels: org.opencontainers.image.revision=${{ github.sha }}
-          outputs: type=docker,dest=${{ runner.temp }}/docker-images/batch.tar
-          cache-from: type=gha,scope=batch
-          cache-to: type=gha,mode=max,scope=batch
-      - name: Build Web image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          push: false
-          tags: ghcr.io/${{ github.repository }}/web:${{ github.sha }}
-          labels: org.opencontainers.image.revision=${{ github.sha }}
-          outputs: type=docker,dest=${{ runner.temp }}/docker-images/web.tar
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
-      - name: Publish Docker image archives
-        id: docker-archives
+          outputs: type=docker,dest=${{ runner.temp }}/docker-images/${{ matrix.component }}.tar
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && format('type=gha,mode=max,scope={0},ignore-error=true', matrix.component) || '' }}
+      - name: Publish Docker image part
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: docker-images-${{ github.sha }}
-          path: ${{ runner.temp }}/docker-images/*.tar
+          name: docker-image-part-${{ matrix.component }}-${{ github.sha }}
+          path: ${{ runner.temp }}/docker-images/${{ matrix.component }}.tar
           if-no-files-found: error
           compression-level: 0
+          retention-days: 1
+          overwrite: true
+
+  docker-build:
+    name: 7. Docker image build
+    needs: docker-image
+    if: ${{ !cancelled() }}
+    permissions:
+      actions: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require every image build to succeed
+        env:
+          IMAGE_BUILD_RESULT: ${{ needs.docker-image.result }}
+        run: |
+          if [[ "${IMAGE_BUILD_RESULT}" != "success" ]]; then
+            echo "::error::Docker image builds finished with result=${IMAGE_BUILD_RESULT}"
+            exit 1
+          fi
+      - name: Require exactly the three unexpired image parts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected="$(printf 'docker-image-part-%s-%s\n' api "${GITHUB_SHA}" batch "${GITHUB_SHA}" web "${GITHUB_SHA}")"
+          actual="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --jq '.artifacts[] | select(.expired == false) | select(.name | startswith("docker-image-part-")) | .name' | LC_ALL=C sort)"
+          if [[ "${actual}" != "${expected}" ]]; then
+            echo "::error::Expected exactly three unexpired Docker image parts for ${GITHUB_SHA}; re-run all jobs if parts expired"
+            exit 1
+          fi
+      - name: Publish Docker image archives
+        id: docker-archives
+        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-images-${{ github.sha }}
+          pattern: docker-image-part-*-${{ github.sha }}
+          compression-level: 0
           retention-days: 14
+          delete-merged: true
       - name: Record Docker artifact provenance
         run: |
           {
             echo "run_id=${GITHUB_RUN_ID}"
             echo "commit=${GITHUB_SHA}"
             echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   common-integration:
