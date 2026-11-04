@@ -142,7 +142,16 @@ F8 TRUE    gh 2.86.0(로컬): --paginate, --slurp, -f(GET → query string), --m
 ### AC1
 
 ```
-[PENDING]
+[RED] HEAD 5fa9259 (개정한 ci/quality-gate-contract-test.sh, 현재 workflow)
+$ bash ci/quality-gate-contract-test.sh
+quality gate contract failed: only docker-build may override permissions, and only with actions: read
+exit 1
+
+[GREEN, Task 1 범위] (AC2·AC3 스크립트 실행은 Task 2·3 에서 추가)
+$ bash ci/quality-gate-contract-test.sh
+dependency bootstrap behavioral contracts verified
+quality gate and supply-chain contracts verified
+$ bash docker/deploy-contract-test.sh   -> deploy contracts verified
 ```
 
 ### AC2
