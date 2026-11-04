@@ -219,6 +219,7 @@ DoD VERDICT: docker-build-time @ <commit SHA>
 
 **사람 확인이 필요한 항목 (Gate 1)**
 
+- **Gate 1 결정 (2026-11-04, 사용자)**: N4 승인 · N5 승인 · N1 상대 기준 · N3 이 dod 에 포함(머지 뒤 AWAITING_HUMAN) · 닫힌 PR #106·#108·#109 cache 수동 삭제 승인. N2(AC2 RED = mutation 거부)·티어 강등 사유는 사용자에게 따로 묻지 않았다 — 컨트롤러 판단으로 설계안대로 두고 최종 보고에 명시한다.
 - **N4 — F5 범위 조정 승인**: 합의 ③-3 의 "dev buildkit(index/blob) 미접근 entry 일정 삭제" 를 뺀다. 근거 F5 = FALSE(없는 blob 은
   빌드 실패, moby/buildkit#7283). 일정 cleanup 은 `gradle-*` 만, dev buildkit 은 GitHub 7일 만료에 맡기고, GitHub 축출로 생기는
   BlobNotFound 는 런북 수동 복구(rerun 으로 회복 안 됨)로 처리한다(design §1.1·D6.1).

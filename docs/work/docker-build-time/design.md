@@ -385,14 +385,14 @@ PR 은 **push 마다** 의존성 레이어를 다시 만든다(+113s, 병렬이�
 - [ASSUMPTION] A4 — 복원 조회도 `last_accessed_at` 을 갱신한다(D6). 틀려도 상대 기준이 피해를 제한한다.
 - [ASSUMPTION] A5 — merge 30~50s(§4). Task 6 실측.
 - [ASSUMPTION] A6 — GitHub 7일 만료로 같은 scope 의 index 와 blob 이 어긋나는 일은 드물다(D6.1). 발생하면 수동 복구.
-- [DECISION_NEEDED] N1 — stale 기준점을 "dev cache 최근 접근 − 3일"(상대)로 둔다. 합의 ③-3 의 "최근 N일 미접근" 을 벽시계가
+- [DECIDED 2026-11-04: 상대 기준] N1 — stale 기준점을 "dev cache 최근 접근 − 3일"(상대)로 둔다. 합의 ③-3 의 "최근 N일 미접근" 을 벽시계가
   아닌 활동 기준으로 해석한 것이다(D6 근거). 벽시계 기준을 원하면 바꾼다.
-- [DECISION_NEEDED] N2 — dod AC2 의 RED 를 "mutation 사본이 기대 메시지로 실패" 로 대신한다(새 파일의 정적 계약은 구현 전에
+- [컨트롤러 판단 — 설계안 유지] N2 — dod AC2 의 RED 를 "mutation 사본이 기대 메시지로 실패" 로 대신한다(새 파일의 정적 계약은 구현 전에
   돌리면 "파일 없음" 실패만 나서 skill 정의상 RED 가 아니다). dod 참조.
-- [DECISION_NEEDED] N3 — 머지 뒤에만 관찰 가능한 AC7·AC8 을 이 dod 에 둔다(판정은 머지 뒤까지 `AWAITING_HUMAN`). 대안은 후속 이슈로 분리.
-- [DECISION_NEEDED] N4 — §1.1 범위 조정(F5): 일정 cleanup 은 gradle 만, dev buildkit 은 7일 만료에 맡기고 BlobNotFound 는
+- [DECIDED 2026-11-04: 이 dod 에 포함] N3 — 머지 뒤에만 관찰 가능한 AC7·AC8 을 이 dod 에 둔다(판정은 머지 뒤까지 `AWAITING_HUMAN`). 대안은 후속 이슈로 분리.
+- [DECIDED 2026-11-04: 승인] N4 — §1.1 범위 조정(F5): 일정 cleanup 은 gradle 만, dev buildkit 은 7일 만료에 맡기고 BlobNotFound 는
   수동 복구(D6.1). 합의 ③-3 의 buildkit 일정 삭제를 빼는 것이므로 사용자 승인이 필요하다.
-- [DECISION_NEEDED] N5 — 조립 job 에 job 단위 `permissions: actions: read` 를 둔다(D3). 기존 정책 "job 단위 permissions 금지" 의
+- [DECIDED 2026-11-04: 승인] N5 — 조립 job 에 job 단위 `permissions: actions: read` 를 둔다(D3). 기존 정책 "job 단위 permissions 금지" 의
   예외 1건이다. 대안(새 action `actions/download-artifact` 고정 후 내려받아 확인)은 새 SHA 를 들이고 권한은 같거나 크다.
 - Q1 — required status check 를 쓰기 시작한다면 `7. Docker image build` 하나만 걸면 된다(D2). 현재는 branch protection 이 없다고
   기록돼 있다(`.ai/PROJECT_STATUS.md:32`).

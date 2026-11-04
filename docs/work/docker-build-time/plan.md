@@ -642,6 +642,7 @@ git commit -m "ci: PR 종료·일일 Actions cache 정리 workflow 추가" -m "-
 - archive 이름·tag·OCI revision·ReleaseCandidate 조건(:31-32)은 바꾸지 않는다.
 - 새 하위 절 `### Quality Gate Docker 재실행과 cache 복구` — 아래 두 내용(design D3·D6.1):
   1. **rerun 창**: part 는 1일 보존이다. 원 run 뒤 1일이 지나 실패 job 만 다시 돌리면 part 검사가 실패한다 — "Re-run all jobs" 로 다시 만든다.
+     조립 job(`7. Docker image build`)이 merge 성공 뒤(part 가 `delete-merged` 로 지워진 뒤) 실패했으면 1일 안이어도 "Re-run all jobs" 가 필요하다.
   2. **BlobNotFound 수동 복구**: 증상 — `7a.` leg 가 gha cache import 중 `BlobNotFound`/404 로 실패. 원인 — GitHub 의 7일 미사용
      만료·한도 초과 LRU 축출이 blob 을 지우고 index 는 남겼다. 같은 job 을 다시 돌려도 회복되지 않는다. 절차 — 실패 leg 의 scope
      (`api`·`batch`·`web`) 확인 → `gh cache list --ref refs/heads/dev --key index- --json id,key` 로 그 scope 의 dev index entry 를
