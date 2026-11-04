@@ -1,8 +1,8 @@
 ---
 feature: Quality Gate Docker image build 시간 단축 (issue #107)
 slug: docker-build-time
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-04
 verdict_commit:
 source: GitHub issue #107 · orchestrator ③ 합의 범위 · design.md
 ---
