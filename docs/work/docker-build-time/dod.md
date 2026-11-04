@@ -3,7 +3,7 @@ feature: Quality Gate Docker image build 시간 단축 (issue #107)
 slug: docker-build-time
 status: FROZEN
 frozen_at: 2026-11-04
-verdict_commit:
+verdict_commit: 9c08851
 source: GitHub issue #107 · orchestrator ③ 합의 범위 · design.md
 ---
 
@@ -161,6 +161,18 @@ $ bash ci/dependency-bootstrap-contract-test.sh -> dependency bootstrap behavior
 변별: 임시 repo 복사본에서 중복 줄 재삽입 -> "Docker provenance must not keep the old closing line",
 `}` 만 추가 -> "Docker provenance group must have exactly one closing brace line",
 stray `fi` 추가 -> "run script has a shell syntax error in docker-build step: Record Docker artifact provenance"
+
+[⑩ 검증 2026-11-04, HEAD 9c08851, 코드 변경 = workflow 3 + ci 스크립트 4 + docs 만 (git diff --name-only origin/dev...HEAD: 11개 파일)]
+커밋: Task1 e03222f/df4c4ce · 최종 수정 bae70ba/39d7f41
+$ bash ci/quality-gate-contract-test.sh    exit 0, 마지막 줄: quality gate and supply-chain contracts verified
+$ bash docker/deploy-contract-test.sh      exit 0: deploy contracts verified
+$ bash ci/local-offline-contract-test.sh   exit 0: offline Gradle configuration is independent of CI-only tools
+$ bash ci/dependency-bootstrap-contract-test.sh  exit 0: dependency bootstrap behavioral contracts verified
+$ bash -n (ci 스크립트 4개) 통과 · YAML 3개 safe_load 통과
+$ bash docs/check-documentation.sh         documentation check passed (20 files, 15 required paths)
+$ ./gradlew harnessCheck --offline --no-daemon   하네스 검사 통과: 파일 22개 / BUILD SUCCESSFUL
+[판정 AC1] PASS (T1)
+[Gradle 전체 gate 미실행 사유] 컨트롤러 판정: Kotlin·Gradle 변경 없음 -> test/architectureTest/integrationTest 대상 없음. 근거 = 위 파일 목록.
 ```
 
 ### AC2
@@ -232,36 +244,49 @@ $ bash ci/delete-actions-caches-test.sh -> exit 0
   ad59bb6 스크립트 -> exit 1 "stale: DELETE id column expected '104 101', got '104'" (stdin 소비)
   bae70ba 에서 </dev/null 만 제거 -> exit 1 같은 메시지 / id 검사만 int() 로 복원 -> exit 1 "badid_1: expected exit 1, got 0"
   호출자 GH_REPO=evil/other 또는 bad -> 수정 테스트 exit 0 (cases: 14)
+
+[⑩ 검증 2026-11-04, HEAD 9c08851]
+$ bash ci/delete-actions-caches-test.sh   exit 0, 마지막 줄: delete-actions-caches behavioral contract verified (cases: 14)
+$ bash ci/actions-cache-cleanup-contract-test.sh   exit 0, 마지막 줄: actions cache cleanup contracts verified (mutations rejected: 11)
+[판정 AC3] PASS (T1) — 단, 통과 조건 문구의 "cases: 13"은 최종 수정 bae70ba 의 case 14 추가로 실측 14 이다(아래 문구 불일치 참조).
+[판정 AC2] PASS (T1) — 통과 조건 문구 "mutations rejected: 9"는 최종 수정 bae70ba/39d7f41 로 M10·M11 이 추가되어 실측 11 이다.
+[문구 불일치 — 변경 요청 대상 아님, 사람 확인 요청] 동결 AC2/AC3 의 마지막 줄 리터럴(9, 13)과 실측(11, 14)이 다르다. 검증이 더 강해진 방향이며
+  동결 문구를 이 로그에서 고치지 않았다. 사람이 Gate 에서 "리터럴 갱신" 또는 "강화 수용"으로 확정해야 한다.
 ```
 
 ### AC4
 
 ```
 [AWAITING] PR Quality Gate run 이 생긴 뒤 기록한다.
+[PENDING — PR CI 실측 전] ⑩ 시점(HEAD 9c08851)에 PR 없음·push 없음. 판정하지 않는다.
 ```
 
 ### AC5
 
 ```
 [AWAITING]
+[PENDING — PR CI 실측 전] PR run 로그·gh cache list 관찰이 필요하다(T2). 판정하지 않는다.
 ```
 
 ### AC6
 
 ```
 [AWAITING]
+[PENDING — PR CI 실측 전] artifact 목록·load·provenance 로그 관찰이 필요하다(T2). 판정하지 않는다.
 ```
 
 ### AC7
 
 ```
 [AWAITING] 머지 뒤
+[AWAITING_HUMAN] Gate 1 N3 — pull_request_target 은 머지 뒤에만 실행된다. 이 ⑩ 에서 판정 불가.
 ```
 
 ### AC8
 
 ```
 [AWAITING] 머지 뒤
+[AWAITING_HUMAN] Gate 1 N3 — schedule·workflow_dispatch 는 머지 뒤에만 실행된다. 이 ⑩ 에서 판정 불가.
 ```
 
 ## 사람 확인 (T4)
@@ -285,13 +310,13 @@ $ bash ci/delete-actions-caches-test.sh -> exit 0
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: docker-build-time @ <commit SHA>
+DoD VERDICT: docker-build-time @ 9c08851
   수용기준 표:     8개  (T1 3 · T2 2 · T3 3 · T4 0)
-  T1/T2 자동:      5개 중 <p>개 PASS
-  T3 기록 제출:    3개 중 <q>건
+  T1/T2 자동:      5개 중 3개 PASS  (AC1~AC3 PASS · AC5·AC6 PENDING — PR CI 실측 전)
+  T3 기록 제출:    3개 중 0건  (AC4 PENDING · AC7·AC8 AWAITING_HUMAN, 머지 뒤)
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
   변경 요청:       0건
-  =>
+  => AWAITING_HUMAN  (완료 아님: AC4~AC6 PR CI 미관찰, AC7·AC8 머지 뒤 관찰, AC2/AC3 리터럴 불일치 확정 대기)
 ```
 
 **사람 확인이 필요한 항목 (Gate 1)**
