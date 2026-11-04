@@ -16,6 +16,9 @@ migration 파일을 수정하거나 `flyway_schema_history`를 수동 repair해 
 운영 배포 단위는 Git branch나 서버 source tree가 아니라 green `Quality Gate artifact`가 가리키는 정확한 40자리
 `github.sha`다. Quality Gate는 아래 세 이미지를 같은 commit tag로 build하되 registry로 push하지 않고
 `docker-images-${{ github.sha }}` archive로 보존한다. 각 image의 `OCI revision` label도 같은 `github.sha`여야 한다.
+세 이미지는 `7a. Docker image (<component>)` job이 병렬로 build하고 `7. Docker image build` job이 만료되지 않은
+part 3개를 확인한 뒤 `docker-images-${{ github.sha }}` 하나로 조립한다. `docker-image-part-*`는 조립용 임시
+artifact(1일 보존, 조립 직후 삭제)이며 배포 후보·검증 대상이 아니다.
 
 ```text
 ghcr.io/<owner>/<repository>/api:<commit-sha>
@@ -23,13 +26,38 @@ ghcr.io/<owner>/<repository>/batch:<commit-sha>
 ghcr.io/<owner>/<repository>/web:<commit-sha>
 ```
 
-Quality Gate summary의 run ID, commit과 `artifact ID`를 함께 확인해 artifact 이름, image tag와 OCI revision이 같은
+`7. Docker image build` job summary(같은 값이 그 job의 `Record Docker artifact provenance` step 로그에도 있다)의
+run ID, commit과 `artifact ID`를 함께 확인해 artifact 이름, image tag와 OCI revision이 같은
 commit을 가리키는지 대조한다. operator는 검증된 archive를 확보해 load하고 host에서만 사용할 수 있는 registry
 credential로 선택한 registry에 같은 SHA tag를 publish한다. 같은 commit의 compose와 `docker/deploy.sh`로 구성한
 operator-owned 배포 bundle을 host에 배치한다. 서버에서 `git pull`, Gradle/npm build, mutable `latest` tag 사용을 금지한다.
 
 실제 ReleaseCandidate는 green Quality Gate 중 정확히 `event=push`, `branch=dev`인 merged `dev` push run만 허용한다.
 pull_request artifact는 배포 후보가 아니다. PR artifact는 변경 검토를 위한 review evidence로만 사용한다.
+
+### Quality Gate Docker 재실행과 cache 복구
+
+**rerun 창.** `docker-image-part-*`는 1일 보존이다. 원 run 뒤 1일이 지나 실패한 job만 다시 돌리면
+`7. Docker image build`의 part 검사가 실패하므로 "Re-run all jobs"로 part부터 다시 만든다. 조립 job이 merge에 성공해
+part가 `delete-merged`로 지워진 뒤 실패했다면 1일 안이어도 "Re-run all jobs"가 필요하다.
+
+**BlobNotFound 수동 복구.** 증상은 `7a. Docker image (<component>)` leg가 gha cache import 중 `BlobNotFound`/404로
+실패하는 것이다. 원인은 GitHub의 7일 미사용 만료나 한도 초과 LRU 축출이 blob을 지우고 index는 남긴 것이며, 같은 job을
+다시 돌려도 회복되지 않는다. 절차는 다음과 같다.
+
+1. 실패한 leg의 scope(`api`·`batch`·`web`)를 확인한다.
+2. dev ref의 index entry를 찾아 삭제한다. scope를 특정할 수 없으면 dev `index-*` 전부를 삭제한다.
+
+   ```bash
+   gh cache list --ref refs/heads/dev --key index- --json id,key
+   gh cache delete <id>
+   ```
+
+3. 실패한 job을 다시 실행한다(cache 없이 build한다).
+4. 다음 dev push의 cache export가 index와 blob을 다시 쓴다.
+
+일정 cleanup(`actions-cache-stale-cleanup`)은 `gradle-*`만 지우고 buildkit cache는 지우지 않는다. PR 종료 cleanup은 그 PR
+ref의 cache만 지운다.
 
 ## Host secret source
 
