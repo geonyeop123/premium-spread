@@ -147,11 +147,20 @@ $ bash ci/quality-gate-contract-test.sh
 quality gate contract failed: only docker-build may override permissions, and only with actions: read
 exit 1
 
-[GREEN, Task 1 범위] (AC2·AC3 스크립트 실행은 Task 2·3 에서 추가)
+[GREEN 무효] e03222f 의 첫 GREEN 은 무효다 — provenance step 에 닫는 줄이 중복되어(`} | tee ...` 다음 `} >> ...`)
+bash 문법 오류였는데 계약 테스트가 새 줄만 확인해 통과했다. 중복 줄 제거 + 단정 강화(중복 줄 0개, `}` 줄 정확히 1개,
+docker-image·docker-build 의 run 본문 `bash -n`) 뒤의 실행이 유효 증거다.
+
+[GREEN, Task 1 범위 — 수정 후] (AC2·AC3 스크립트 실행은 Task 2·3 에서 추가)
 $ bash ci/quality-gate-contract-test.sh
 dependency bootstrap behavioral contracts verified
 quality gate and supply-chain contracts verified
 $ bash docker/deploy-contract-test.sh   -> deploy contracts verified
+$ bash ci/local-offline-contract-test.sh -> offline Gradle configuration is independent of CI-only tools
+$ bash ci/dependency-bootstrap-contract-test.sh -> dependency bootstrap behavioral contracts verified
+변별: 임시 repo 복사본에서 중복 줄 재삽입 -> "Docker provenance must not keep the old closing line",
+`}` 만 추가 -> "Docker provenance group must have exactly one closing brace line",
+stray `fi` 추가 -> "run script has a shell syntax error in docker-build step: Record Docker artifact provenance"
 ```
 
 ### AC2

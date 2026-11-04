@@ -277,7 +277,6 @@ jobs:
             echo "commit=${GITHUB_SHA}"
             echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"
           } | tee -a "${GITHUB_STEP_SUMMARY}"
-          } >> "${GITHUB_STEP_SUMMARY}"
 
   common-integration:
     name: 8. Common integration

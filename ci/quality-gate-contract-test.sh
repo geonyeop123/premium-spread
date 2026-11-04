@@ -445,6 +445,26 @@ grep -Fq 'echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"' <
   fail "Docker provenance summary must record the platform artifact ID"
 grep -Fq '} | tee -a "${GITHUB_STEP_SUMMARY}"' <<< "${docker_provenance_step}" ||
   fail "Docker provenance must be written to both GITHUB_STEP_SUMMARY and the step log"
+[[ "$(grep -Fc '} >> "${GITHUB_STEP_SUMMARY}"' <<< "${docker_provenance_step}" || true)" -eq 0 ]] ||
+  fail "Docker provenance must not keep the old closing line"
+[[ "$(grep -Ec '^[[:space:]]*\}' <<< "${docker_provenance_step}" || true)" -eq 1 ]] ||
+  fail "Docker provenance group must have exactly one closing brace line"
+for docker_syntax_job in docker-image docker-build; do
+  docker_syntax_block="$(workflow_job_block "${docker_syntax_job}")"
+  while IFS= read -r docker_syntax_step; do
+    docker_syntax_body="$(
+      workflow_job_step_block "${docker_syntax_job}" "${docker_syntax_step}" |
+        awk '
+          $0 == "        run: |" { inside = 1; next }
+          inside && $0 ~ /^          / { print substr($0, 11); next }
+          inside { exit }
+        '
+    )"
+    [[ -z "${docker_syntax_body}" ]] && continue
+    bash -n <<< "${docker_syntax_body}" 2> /dev/null ||
+      fail "run script has a shell syntax error in ${docker_syntax_job} step: ${docker_syntax_step}"
+  done < <(sed -n 's/^      - name: //p' <<< "${docker_syntax_block}")
+done
 for dockerfile in "${root_dir}/apps/api/Dockerfile" "${root_dir}/apps/batch/Dockerfile"; do
   gradle_lines="$(grep 'RUN ./gradlew' "${dockerfile}")"
   [[ -n "${gradle_lines}" ]] || fail "${dockerfile} must contain Gradle build steps"
