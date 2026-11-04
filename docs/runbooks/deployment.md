@@ -41,23 +41,29 @@ pull_request artifact는 배포 후보가 아니다. PR artifact는 변경 검�
 `7. Docker image build`의 part 검사가 실패하므로 "Re-run all jobs"로 part부터 다시 만든다. 조립 job이 merge에 성공해
 part가 `delete-merged`로 지워진 뒤 실패했다면 1일 안이어도 "Re-run all jobs"가 필요하다.
 
+merge step은 `overwrite`를 쓰지 않는다. 그래서 앞선 attempt가 이미 `docker-images-<sha>`를 만든 run에서 "Re-run all
+jobs"를 하면 `7. Docker image build`의 merge가 같은 이름의 artifact가 있다는 이유로 실패할 수 있다. 이때는 같은 run을
+다시 돌리지 말고 새 commit(변경이 없으면 `git commit --allow-empty`)을 push해 새 run을 만든다.
+
 **BlobNotFound 수동 복구.** 증상은 `7a. Docker image (<component>)` leg가 gha cache import 중 `BlobNotFound`/404로
 실패하는 것이다. 원인은 GitHub의 7일 미사용 만료나 한도 초과 LRU 축출이 blob을 지우고 index는 남긴 것이며, 같은 job을
 다시 돌려도 회복되지 않는다. 절차는 다음과 같다.
 
 1. 실패한 leg의 scope(`api`·`batch`·`web`)를 확인한다.
-2. dev ref의 index entry를 찾아 삭제한다. scope를 특정할 수 없으면 dev `index-*` 전부를 삭제한다.
+2. dev ref의 `index-*` entry 중 key에 실패한 scope 이름(`api`·`batch`·`web`)이 들어 있는 것만 삭제한다. scope를
+   특정할 수 없으면 dev `index-*` 전부를 삭제한다.
 
    ```bash
-   gh cache list --ref refs/heads/dev --key index- --json id,key
+   gh cache list --ref refs/heads/dev --key index- --limit 100 --json id,key
    gh cache delete <id>
    ```
 
 3. 실패한 job을 다시 실행한다(cache 없이 build한다).
 4. 다음 dev push의 cache export가 index와 blob을 다시 쓴다.
 
-일정 cleanup(`actions-cache-stale-cleanup`)은 `gradle-*`만 지우고 buildkit cache는 지우지 않는다. PR 종료 cleanup은 그 PR
-ref의 cache만 지운다.
+일정 cleanup `Actions cache stale cleanup`(`.github/workflows/actions-cache-stale-cleanup.yml`)은 dev `gradle-*`만
+지우고 buildkit cache는 지우지 않는다. PR 종료 cleanup `Actions cache PR cleanup`
+(`.github/workflows/actions-cache-pr-cleanup.yml`)은 닫힌 PR merge ref의 cache만 지운다.
 
 ## Host secret source
 

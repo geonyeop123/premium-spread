@@ -180,6 +180,15 @@ mutation M9 rejected: stale cleanup manual runs must default to dry_run true
 actions cache cleanup contracts verified (mutations rejected: 9)
 $ bash ci/quality-gate-contract-test.sh -> exit 0 (위 스크립트 포함), 마지막 줄 quality gate and supply-chain contracts verified
 delete-actions-caches-test / deploy-contract-test / local-offline / dependency-bootstrap 모두 통과. 두 workflow YAML 파싱 확인.
+[PRE 정정] 파일 없음 사전 실행은 하지 않았다(workflow 를 먼저 만들었다). AC2 RED 는 N2 에 따라 mutation 거부로만 증명한다.
+[최종 수정 bae70ba — F1] jobs 블록 전체 정확 비교 추가. bracket 표현식 주입 step(M10) 재현:
+  FIX_BASE ad59bb6 스크립트 + M10 임시 복사본 -> exit 0 (mutations rejected: 9)  ← 구멍 재현
+  수정 스크립트 + M10 임시 복사본 -> exit 1 "cleanup jobs must be exactly the reviewed jobs block"
+$ bash ci/actions-cache-cleanup-contract-test.sh   (exit 0, M1~M9 메시지 변화 없음)
+mutation M10 rejected: cleanup jobs must be exactly the reviewed jobs block
+actions cache cleanup contracts verified (mutations rejected: 10)
+F2 (*.yaml·write-all·actions:write 변형) / F3 (checkout 줄을 Quality Gate 에서 읽음) 임시 복사본 변별은
+.superpowers/sdd/plan/final-fix-report.md 에 기록.
 ```
 
 ### AC3
@@ -195,6 +204,14 @@ delete-actions-caches-test / deploy-contract-test / local-offline / dependency-b
   (b) ref 재확인 제거 → expected '104 101', got '104 101 106 110'
   (c) 경계 <= → expected '104 101', got '104 101 106'
   (d) stale 대상에 rank 0·1 포함 → expected '104 101', got '103 102 109 104 101'
+[최종 수정 bae70ba — F6] 양의 정수가 아닌 id 는 목록 손상(list failed, exit 1, 삭제 0건). DELETE 호출 stdin </dev/null.
+  GH_REPO 기본값 premium/spread 고정(case 6 만 덮어씀). case 14 추가(id 101.9 · true · 0 · -5 · "101").
+$ bash ci/delete-actions-caches-test.sh -> exit 0
+  delete-actions-caches behavioral contract verified (cases: 14)
+[MUTATION] 임시 복사본(커밋 없음)
+  (e) 수정 스크립트에서 </dev/null 제거 -> stale: DELETE id column expected '104 101', got '104'
+  (f) 수정 스크립트의 id 검사를 이전 int() 로 되돌림 -> badid_1: expected exit 1, got 0
+  (g) FIX_BASE 테스트 + 호출자 GH_REPO=bad -> stale: expected exit 0, got 2 (수정 테스트는 같은 조건에서 exit 0)
 ```
 
 ### AC4

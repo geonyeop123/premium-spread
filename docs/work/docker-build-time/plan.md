@@ -751,6 +751,15 @@ gh cache list --ref refs/pull/<n>/merge --json id
 예상: success, 로그에 `cache-cleanup summary mode=pr-ref ref=refs/pull/<n>/merge` 이고 **`deleted>=1`**(F7 PARTIAL 의 권한 판정 —
 그 PR 이 cache 를 하나도 남기지 않았으면 판정에 쓰지 않고 다음 PR 을 본다), 목록 `[]`.
 
+AC7 표본 선택 절차: PR 을 닫기 **전에** 그 PR merge ref 의 cache 수를 확인한다.
+
+```bash
+gh cache list --ref refs/pull/<n>/merge --json id --limit 100
+```
+
+entry 가 1개 이상인 PR 만 AC7 표본으로 쓴다. 그런 PR 이 닫히지 않으면 AC7 은 AWAITING_HUMAN 으로 남는다. 이 변경 뒤 PR run 은
+cache 를 거의 쓰지 않으므로(buildkit export 꺼짐, Gradle cache read-only) 표본은 드물다.
+
 - [ ] **Step 2: AC8** — dry-run 수동 실행 → 다음 schedule 실행 → 다음 dev push:
 
 ```bash
