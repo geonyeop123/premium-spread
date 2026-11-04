@@ -172,7 +172,16 @@ stray `fi` 추가 -> "run script has a shell syntax error in docker-build step: 
 ### AC3
 
 ```
-[PENDING]
+[RED] skeleton 스크립트(삭제 안 함)에 대해 `bash ci/delete-actions-caches-test.sh` → exit 1
+  delete-actions-caches behavioral contract failed: stale: DELETE id column expected '104 101', got ''
+[GREEN] 구현 후 `bash ci/delete-actions-caches-test.sh` → exit 0
+  delete-actions-caches behavioral contract verified (cases: 13)
+  `bash ci/quality-gate-contract-test.sh` → exit 0 (위 줄 포함)
+[MUTATION] 임시 복사본에 변형 적용(커밋 없음), 모두 케이스 1 에서 실패
+  (a) 정렬을 id 만으로 → expected '104 101', got '101 104'
+  (b) ref 재확인 제거 → expected '104 101', got '104 101 106 110'
+  (c) 경계 <= → expected '104 101', got '104 101 106'
+  (d) stale 대상에 rank 0·1 포함 → expected '104 101', got '103 102 109 104 101'
 ```
 
 ### AC4
