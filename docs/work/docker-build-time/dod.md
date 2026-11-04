@@ -189,6 +189,22 @@ mutation M10 rejected: cleanup jobs must be exactly the reviewed jobs block
 actions cache cleanup contracts verified (mutations rejected: 10)
 F2 (*.yaml·write-all·actions:write 변형) / F3 (checkout 줄을 Quality Gate 에서 읽음) 임시 복사본 변별은
 .superpowers/sdd/plan/final-fix-report.md 에 기록.
+[F2 요약] 임시 복사본, bash ci/actions-cache-cleanup-contract-test.sh: extra.yaml `actions: write` · quality-gate
+  `permissions: write-all` · `actions:write` · extra.yaml `permissions: write-all` -> ad59bb6 스크립트 exit 0 (구멍),
+  bae70ba 스크립트 exit 1 "actions: write is allowed only in the two cleanup workflows" (4건 모두)
+[F3 요약] 임시 복사본: Quality Gate checkout SHA 만 변경 -> exit 1 "cleanup workflows may only use the pinned checkout action";
+  세 workflow 함께 변경 -> exit 0; stale cleanup 만 변경 -> exit 1 같은 메시지; Quality Gate 에 SHA 2종 -> exit 1
+  "quality gate must pin exactly one actions/checkout line"
+[최종 수정 39d7f41 — 파일 전체 비교, M11] jobs 블록만 비교하면 jobs: 앞 최상위 키 주입이 통과했다. 임시 복사본:
+  bae70ba 스크립트 + pr `env: BASH_ENV: ${{ github.event['pull_request']['title'] }}` (jobs 앞) -> exit 0 (구멍 재현)
+  39d7f41 스크립트 + 같은 변형 -> exit 1 "cleanup workflows must be exactly the reviewed files"
+  같은 결과(구 exit 0 -> 신 exit 1): pr `defaults: run: shell` (jobs 앞), stale `env: BASH_ENV` (jobs 앞),
+  stale jobs 뒤 최상위 `defaults:`, extra.yml `"actions": write` · `'actions': write` (신: actions: write 메시지)
+  pr jobs 뒤 최상위 `env:` -> 구 스크립트는 M10 이 jobs 밖에 붙어 "mutation M10 was not rejected", 신 스크립트 exit 1 파일 비교
+  자가검증 가드: M10 을 jobs 앞으로 옮긴 임시 복사본 -> exit 1 "mutation M10 landed in the wrong block"
+$ bash ci/actions-cache-cleanup-contract-test.sh   (exit 0, M1~M10 메시지 변화 없음)
+mutation M11 rejected: cleanup workflows must be exactly the reviewed files
+actions cache cleanup contracts verified (mutations rejected: 11)
 ```
 
 ### AC3
@@ -212,6 +228,10 @@ $ bash ci/delete-actions-caches-test.sh -> exit 0
   (e) 수정 스크립트에서 </dev/null 제거 -> stale: DELETE id column expected '104 101', got '104'
   (f) 수정 스크립트의 id 검사를 이전 int() 로 되돌림 -> badid_1: expected exit 1, got 0
   (g) FIX_BASE 테스트 + 호출자 GH_REPO=bad -> stale: expected exit 0, got 2 (수정 테스트는 같은 조건에서 exit 0)
+[F6 요약] DELETE_CACHES_SCRIPT=<임시 복사본> bash ci/delete-actions-caches-test.sh
+  ad59bb6 스크립트 -> exit 1 "stale: DELETE id column expected '104 101', got '104'" (stdin 소비)
+  bae70ba 에서 </dev/null 만 제거 -> exit 1 같은 메시지 / id 검사만 int() 로 복원 -> exit 1 "badid_1: expected exit 1, got 0"
+  호출자 GH_REPO=evil/other 또는 bad -> 수정 테스트 exit 0 (cases: 14)
 ```
 
 ### AC4
