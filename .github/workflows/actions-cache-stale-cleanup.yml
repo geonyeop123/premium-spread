@@ -1,0 +1,35 @@
+name: Actions cache stale cleanup
+
+on:
+  schedule:
+    - cron: '17 18 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report stale dev Gradle caches without deleting them
+        type: boolean
+        default: true
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: actions-cache-stale-cleanup
+  cancel-in-progress: false
+
+jobs:
+  delete-stale-dev-caches:
+    name: Delete stale dev Gradle caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Delete dev Gradle caches idle for three days of dev activity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: bash ci/delete-actions-caches.sh stale refs/heads/dev 3

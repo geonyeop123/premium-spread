@@ -1,0 +1,31 @@
+name: Actions cache PR cleanup
+
+on:
+  pull_request_target:
+    types:
+      - closed
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: actions-cache-pr-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  delete-pr-caches:
+    name: Delete closed PR caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Delete every Actions cache of the closed PR merge ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: 'false'
+          PR_MERGE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: bash ci/delete-actions-caches.sh pr-ref "${PR_MERGE_REF}"

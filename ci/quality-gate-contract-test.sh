@@ -204,6 +204,7 @@ grep -q 'trusted-keys' "${bootstrap_output_validator}" ||
   fail "bootstrap output validation must reject alternate trusted-key paths"
 bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"
 bash "${root_dir}/ci/delete-actions-caches-test.sh"
+bash "${root_dir}/ci/actions-cache-cleanup-contract-test.sh"
 
 expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-image docker-build common-integration)
 jobs_block="$(yaml_top_level_block jobs)"

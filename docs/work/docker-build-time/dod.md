@@ -166,7 +166,20 @@ stray `fi` 추가 -> "run script has a shell syntax error in docker-build step: 
 ### AC2
 
 ```
-[PENDING]
+[PRE] 파일 없음 — skill 정의상 RED 아님(design N2). 계약 스크립트를 workflow 보다 먼저 작성했고 workflow 생성 후 실행.
+[GREEN + RED-대체: mutation] $ bash ci/actions-cache-cleanup-contract-test.sh   (exit 0)
+mutation M1 rejected: pr cleanup trigger must be exactly pull_request_target closed
+mutation M2 rejected: cleanup workflows must not override the checkout ref
+mutation M3 rejected: cleanup workflow permissions must be exactly actions: write and contents: read
+mutation M4 rejected: cleanup checkout must not persist credentials
+mutation M5 rejected: cleanup run steps must not interpolate expressions
+mutation M6 rejected: stale cleanup must invoke the script with refs/heads/dev and 3 days
+mutation M7 rejected: cleanup workflows may only use the pinned checkout action
+mutation M8 rejected: actions: write is allowed only in the two cleanup workflows
+mutation M9 rejected: stale cleanup manual runs must default to dry_run true
+actions cache cleanup contracts verified (mutations rejected: 9)
+$ bash ci/quality-gate-contract-test.sh -> exit 0 (위 스크립트 포함), 마지막 줄 quality gate and supply-chain contracts verified
+delete-actions-caches-test / deploy-contract-test / local-offline / dependency-bootstrap 모두 통과. 두 workflow YAML 파싱 확인.
 ```
 
 ### AC3
