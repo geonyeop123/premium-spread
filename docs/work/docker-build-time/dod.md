@@ -303,6 +303,10 @@ $ bash ci/actions-cache-cleanup-contract-test.sh   exit 0, 마지막 줄: action
 
 | 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
 |---|---|---|---|---|
+| AC2 통과 조건 | `mutations rejected: 9` (M1~M9) | `mutations rejected: 11` (M1~M11) | ⑨ 리뷰가 `pull_request_target` 주입 우회를 실측 재현 — `run: \|` 블록·bracket 문법(M10), workflow 최상위 `env: BASH_ENV`(M11). cleanup workflow 파일 전체 정확 비교로 막았다(bae70ba·39d7f41). 검사 강화 방향 | 사용자 승인 2026-11-06 |
+| AC3 통과 조건 | `cases: 13` | `cases: 14` | 삭제 대상 id 정수 엄격 검증(비정수·bool·0 이하 → list failed, 삭제 0회) 케이스 14 추가(bae70ba). 검사 강화 방향 | 사용자 승인 2026-11-06 |
+
+> 순서 기록: 위 두 강화는 ⑨ 리뷰 수정으로 **먼저 구현**됐고, 이 개정은 ⑩ 검증에서 동결 문구와의 차이가 드러난 뒤 사후에 승인받았다. 기준을 낮춘 것이 아니라 같은 계약을 더 넓게 검사한다.
 
 ## 최종 판정
 
