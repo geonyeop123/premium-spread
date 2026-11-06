@@ -95,9 +95,19 @@ permissions_block="$(yaml_top_level_block permissions)"
 [[ "$(grep -c '^permissions:$' "${quality_workflow}")" -eq 1 ]] ||
   fail "Quality Gate must define exactly one top-level permissions block"
 [[ "${permissions_block}" == "  contents: read" ]] || fail "Quality Gate permissions must be contents: read only"
-if grep -Eq '^[[:space:]]+permissions:' "${quality_workflow}"; then
-  fail "job and nested permission overrides are forbidden"
-fi
+docker_assembly_job="$(workflow_job_block docker-build)"
+indented_permissions="$(grep -E '^[[:space:]]+permissions:' "${quality_workflow}" || true)"
+assembly_permissions="$(grep -Fx '    permissions:' <<< "${docker_assembly_job}" || true)"
+assembly_permission_entries="$(
+  awk '
+    $0 == "    permissions:" { inside = 1; next }
+    inside && $0 ~ /^      [^[:space:]]/ { print; next }
+    inside { exit }
+  ' <<< "${docker_assembly_job}"
+)"
+[[ "${indented_permissions}" == "    permissions:" && "${assembly_permissions}" == "    permissions:" &&
+  "${assembly_permission_entries}" == "      actions: read" ]] ||
+  fail "only docker-build may override permissions, and only with actions: read"
 if grep -Eq '\$\{\{[[:space:]]*secrets\.|^[[:space:]]+contents:[[:space:]]+write|^[[:space:]]+id-token:' \
   "${quality_workflow}"; then
   fail "Quality Gate must not consume secrets or request contents-write/id-token permissions"
@@ -105,10 +115,10 @@ fi
 if grep -Eqi 'packages:|workflow_run|ssh-action|scp-action|EC2_SSH_KEY' "${quality_workflow}"; then
   fail "Quality Gate must not publish packages, deploy over SSH, or consume workflow_run"
 fi
-docker_job="$(workflow_job_block docker-build)"
+docker_image_job="$(workflow_job_block docker-image)"
 expected_build_record_env=$'    env:\n      DOCKER_BUILD_RECORD_UPLOAD: '\''false'\'''
-grep -Fq "${expected_build_record_env}" <<< "${docker_job}" ||
-  fail "docker-build job must disable the default Docker build record artifact"
+[[ "${docker_image_job}" == *"${expected_build_record_env}"* ]] ||
+  fail "docker-image job must disable the default Docker build record artifact"
 
 compile_job="$(workflow_job_block compile-architecture)"
 grep -q 'persist-credentials: false' <<< "${compile_job}" || fail "compile checkout must not retain push credentials"
@@ -193,15 +203,17 @@ grep -q 'each artifact must use SHA-256 and no other trust mechanism' "${bootstr
 grep -q 'trusted-keys' "${bootstrap_output_validator}" ||
   fail "bootstrap output validation must reject alternate trusted-key paths"
 bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"
+bash "${root_dir}/ci/delete-actions-caches-test.sh"
+bash "${root_dir}/ci/actions-cache-cleanup-contract-test.sh"
 
-expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-build common-integration)
+expected_jobs=(compile-architecture unit-coverage api-integration batch-integration static-analysis dependency-security docker-image docker-build common-integration)
 jobs_block="$(yaml_top_level_block jobs)"
 mapfile -t actual_jobs < <(
   awk '/^  [^[:space:]#][^:]*:$/ { value = $0; sub(/^  /, "", value); sub(/:$/, "", value); print value }' \
     <<< "${jobs_block}"
 )
 [[ "${actual_jobs[*]}" == "${expected_jobs[*]}" ]] ||
-  fail "Quality Gate job IDs must be exactly the eight required jobs in order"
+  fail "Quality Gate job IDs must be exactly the nine required jobs in order"
 
 upload_step_names=(
   'Publish dependency bootstrap review bundle'
@@ -209,7 +221,7 @@ upload_step_names=(
   'Publish API integration evidence'
   'Publish Batch integration evidence'
   'Publish static-analysis evidence'
-  'Publish Docker image archives'
+  'Publish Docker image part'
   'Publish common integration evidence'
 )
 upload_artifact_names=(
@@ -218,7 +230,7 @@ upload_artifact_names=(
   'api-integration-${{ github.sha }}'
   'batch-integration-${{ github.sha }}'
   'static-analysis-${{ github.sha }}'
-  'docker-images-${{ github.sha }}'
+  'docker-image-part-${{ matrix.component }}-${{ github.sha }}'
   'common-integration-${{ github.sha }}'
 )
 upload_action_line='        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2'
@@ -231,7 +243,9 @@ for index in "${!upload_step_names[@]}"; do
     fail "upload step has the wrong exact artifact name: ${upload_step_names[${index}]}"
 done
 [[ "$(grep -c 'uses: actions/upload-artifact@' "${quality_workflow}")" -eq 7 ]] ||
-  fail "Quality Gate must publish exactly seven review/evidence artifacts"
+  fail "Quality Gate must publish exactly seven upload-artifact steps"
+[[ "$(grep -c 'uses: actions/upload-artifact/merge@' "${quality_workflow}")" -eq 1 ]] ||
+  fail "Quality Gate must assemble exactly one merged artifact"
 
 mapfile -d '' -t workflow_files < <(
   find "${root_dir}/.github/workflows" -maxdepth 1 -type f \
@@ -260,8 +274,10 @@ grep -q 'tasks.register("resolveVerificationArtifacts")' "${root_dir}/build-logi
   fail "build-logic verification artifact resolver task is missing"
 # Gradle job 은 각자 --dependency-verification strict 로 의존성을 검증하고(아래 루프), PR 은 Gradle cache 를
 # 읽기만 하므로 compile job 을 기다리지 않아도 미검증 artifact 를 쓰거나 cache 를 오염시키지 않는다.
-[[ "$(grep -Ec '^[[:space:]]*needs:' "${quality_workflow}" || true)" -eq 0 ]] ||
-  fail "Quality Gate jobs must start in parallel without needs"
+# Docker 조립 job 만 matrix 를 기다린다.
+[[ "$(grep -Ec '^[[:space:]]*needs:' "${quality_workflow}" || true)" -eq 1 ]] &&
+  [[ "$(grep -Fx '    needs: docker-image' <<< "$(workflow_job_block docker-build)" || true)" == "    needs: docker-image" ]] ||
+  fail "only docker-build may wait, and only for docker-image"
 setup_gradle_line='      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1'
 cache_read_only_line="          cache-read-only: \${{ github.ref != 'refs/heads/dev' }}"
 for gradle_job in compile-architecture unit-coverage api-integration batch-integration common-integration; do
@@ -332,46 +348,142 @@ for contract_command in \
 done
 
 
+docker_image_job="$(workflow_job_block docker-image)"
 docker_job="$(workflow_job_block docker-build)"
-[[ "$(grep -c 'outputs: type=docker,dest=${{ runner.temp }}/docker-images/' <<< "${docker_job}")" -eq 3 ]] ||
-  fail "Docker job must export API, Batch and Web as loadable archives"
-for component in api batch web; do
-  case "${component}" in
-    api) image_step="$(workflow_job_step_block docker-build "Build API image")" ;;
-    batch) image_step="$(workflow_job_step_block docker-build "Build Batch image")" ;;
-    web) image_step="$(workflow_job_step_block docker-build "Build Web image")" ;;
-  esac
-  grep -Fxq "          tags: ghcr.io/\${{ github.repository }}/${component}:\${{ github.sha }}" <<< "${image_step}" ||
-    fail "Docker ${component} archive must carry the event github.sha tag"
-  grep -Fxq '          labels: org.opencontainers.image.revision=${{ github.sha }}' <<< "${image_step}" ||
-    fail "Docker ${component} image must carry the standard OCI revision"
-  grep -Fxq "          outputs: type=docker,dest=\${{ runner.temp }}/docker-images/${component}.tar" <<< "${image_step}" ||
-    fail "Docker ${component} archive output is missing"
+docker_matrix=$'    strategy:\n      fail-fast: false\n      matrix:\n        component: [api, batch, web]'
+[[ "${docker_image_job}" == *"${docker_matrix}"* ]] ||
+  fail "Docker image job must build the api/batch/web matrix without fail-fast"
+[[ "$(grep -c 'uses: docker/build-push-action@' "${quality_workflow}")" -eq 1 &&
+  "$(grep -c 'uses: docker/setup-buildx-action@' "${quality_workflow}")" -eq 1 &&
+  "$(grep -c 'uses: docker/build-push-action@' <<< "${docker_image_job}")" -eq 1 &&
+  "$(grep -c 'uses: docker/setup-buildx-action@' <<< "${docker_image_job}")" -eq 1 ]] ||
+  fail "Docker images must be built only by the docker-image matrix"
+docker_build_step="$(workflow_job_step_block docker-image "Build image")"
+docker_build_lines=(
+  '          file: apps/${{ matrix.component }}/Dockerfile'
+  '          push: false'
+  '          tags: ghcr.io/${{ github.repository }}/${{ matrix.component }}:${{ github.sha }}'
+  '          labels: org.opencontainers.image.revision=${{ github.sha }}'
+  '          outputs: type=docker,dest=${{ runner.temp }}/docker-images/${{ matrix.component }}.tar'
+  '          cache-from: type=gha,scope=${{ matrix.component }}'
+  "          cache-to: \${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && format('type=gha,mode=max,scope={0},ignore-error=true', matrix.component) || '' }}"
+)
+for docker_line in "${docker_build_lines[@]}"; do
+  grep -Fxq -- "${docker_line}" <<< "${docker_build_step}" || fail "Docker image step is missing: ${docker_line}"
+done
+[[ "$(grep -c 'cache-to:' "${quality_workflow}")" -eq 1 ]] ||
+  fail "Docker cache may be written only by dev pushes"
+docker_part_step="$(workflow_job_step_block docker-image "Publish Docker image part")"
+docker_part_lines=(
+  '          path: ${{ runner.temp }}/docker-images/${{ matrix.component }}.tar'
+  '          if-no-files-found: error'
+  '          compression-level: 0'
+  '          retention-days: 1'
+  '          overwrite: true'
+)
+for docker_line in "${docker_part_lines[@]}"; do
+  grep -Fxq -- "${docker_line}" <<< "${docker_part_step}" || fail "Docker image part upload contract is broken"
+done
+docker_assembly_head=$'  docker-build:\n    name: 7. Docker image build\n    needs: docker-image\n    if: ${{ !cancelled() }}'
+[[ "${docker_job}" == *"${docker_assembly_head}"* ]] ||
+  fail "docker-build must assemble after every image leg, even when a leg fails"
+if grep -Fq 'actions/checkout@' <<< "${docker_job}" || grep -Fq 'docker/' <<< "${docker_job}"; then
+  fail "docker-build must assemble archives without rebuilding"
+fi
+docker_result_step="$(workflow_job_step_block docker-build "Require every image build to succeed")"
+for docker_line in \
+  '          IMAGE_BUILD_RESULT: ${{ needs.docker-image.result }}' \
+  '          if [[ "${IMAGE_BUILD_RESULT}" != "success" ]]; then' \
+  '            exit 1'; do
+  grep -Fxq -- "${docker_line}" <<< "${docker_result_step}" ||
+    fail "docker-build must fail when any image leg did not succeed"
+done
+docker_parts_step="$(workflow_job_step_block docker-build "Require exactly the three unexpired image parts")"
+docker_parts_lines=(
+  '          GH_TOKEN: ${{ github.token }}'
+  "          expected=\"\$(printf 'docker-image-part-%s-%s\\n' api \"\${GITHUB_SHA}\" batch \"\${GITHUB_SHA}\" web \"\${GITHUB_SHA}\")\""
+  "          actual=\"\$(gh api --paginate \"repos/\${GITHUB_REPOSITORY}/actions/runs/\${GITHUB_RUN_ID}/artifacts\" --jq '.artifacts[] | select(.expired == false) | select(.name | startswith(\"docker-image-part-\")) | .name' | LC_ALL=C sort)\""
+  '          if [[ "${actual}" != "${expected}" ]]; then'
+  '            exit 1'
+)
+for docker_line in "${docker_parts_lines[@]}"; do
+  grep -Fxq -- "${docker_line}" <<< "${docker_parts_step}" ||
+    fail "docker-build must verify exactly three unexpired image parts before merging"
 done
 docker_archive_step="$(workflow_job_step_block docker-build "Publish Docker image archives")"
-grep -Fxq '        id: docker-archives' <<< "${docker_archive_step}" || fail "Docker archive upload step must expose a stable ID"
-grep -Fxq "${upload_action_line}" <<< "${docker_archive_step}" || fail "Docker archives must use pinned upload-artifact"
-grep -Fxq '          name: docker-images-${{ github.sha }}' <<< "${docker_archive_step}" ||
-  fail "Docker archives must use the event github.sha"
-grep -Fxq '          path: ${{ runner.temp }}/docker-images/*.tar' <<< "${docker_archive_step}" ||
-  fail "Docker archive artifact path is missing"
+docker_archive_lines=(
+  '        id: docker-archives'
+  '        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2'
+  '          name: docker-images-${{ github.sha }}'
+  '          pattern: docker-image-part-*-${{ github.sha }}'
+  '          compression-level: 0'
+  '          retention-days: 14'
+  '          delete-merged: true'
+)
+for docker_line in "${docker_archive_lines[@]}"; do
+  grep -Fxq -- "${docker_line}" <<< "${docker_archive_step}" || fail "Docker archive merge contract is broken"
+done
+# Exact step: any extra input (separate-directories, overwrite, include-hidden-files) would change the runbook layout
+# (api.tar, batch.tar and web.tar at the archive root) or the rerun behavior.
+expected_docker_archive_step="$(cat <<'STEP'
+      - name: Publish Docker image archives
+        id: docker-archives
+        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-images-${{ github.sha }}
+          pattern: docker-image-part-*-${{ github.sha }}
+          compression-level: 0
+          retention-days: 14
+          delete-merged: true
+STEP
+)"
+[[ "${docker_archive_step}" == "${expected_docker_archive_step}" ]] ||
+  fail "Docker archive merge step must keep api.tar, batch.tar and web.tar at the archive root"
+docker_step_names=(
+  'Require every image build to succeed'
+  'Require exactly the three unexpired image parts'
+  'Publish Docker image archives'
+  'Record Docker artifact provenance'
+)
+previous_docker_line=0
+for docker_step_name in "${docker_step_names[@]}"; do
+  [[ "$(grep -Fxc "      - name: ${docker_step_name}" <<< "${docker_job}")" -eq 1 ]] ||
+    fail "Docker assembly steps must run result check, part check, merge, provenance in order"
+  current_docker_line="$(grep -nFx "      - name: ${docker_step_name}" <<< "${docker_job}" | cut -d: -f1)"
+  [[ "${previous_docker_line}" -lt "${current_docker_line}" ]] ||
+    fail "Docker assembly steps must run result check, part check, merge, provenance in order"
+  previous_docker_line="${current_docker_line}"
+done
 docker_provenance_step="$(workflow_job_step_block docker-build "Record Docker artifact provenance")"
-[[ "$(grep -Fxc '      - name: Publish Docker image archives' <<< "${docker_job}")" -eq 1 ]] ||
-  fail "Docker archive upload step must exist exactly once"
-[[ "$(grep -Fxc '      - name: Record Docker artifact provenance' <<< "${docker_job}")" -eq 1 ]] ||
-  fail "Docker provenance summary step must exist exactly once"
-docker_upload_line="$(grep -nF '      - name: Publish Docker image archives' <<< "${docker_job}" | cut -d: -f1)"
-docker_summary_line="$(grep -nF '      - name: Record Docker artifact provenance' <<< "${docker_job}" | cut -d: -f1)"
-[[ "${docker_upload_line}" -lt "${docker_summary_line}" ]] ||
-  fail "Docker archive upload must complete before provenance is recorded"
 grep -Fq 'echo "run_id=${GITHUB_RUN_ID}"' <<< "${docker_provenance_step}" ||
   fail "Docker provenance summary must record github.run_id"
 grep -Fq 'echo "commit=${GITHUB_SHA}"' <<< "${docker_provenance_step}" ||
   fail "Docker provenance summary must record github.sha"
 grep -Fq 'echo "artifact_id=${{ steps.docker-archives.outputs.artifact-id }}"' <<< "${docker_provenance_step}" ||
   fail "Docker provenance summary must record the platform artifact ID"
-grep -Fq '} >> "${GITHUB_STEP_SUMMARY}"' <<< "${docker_provenance_step}" ||
-  fail "Docker provenance must be written to GITHUB_STEP_SUMMARY"
+grep -Fq '} | tee -a "${GITHUB_STEP_SUMMARY}"' <<< "${docker_provenance_step}" ||
+  fail "Docker provenance must be written to both GITHUB_STEP_SUMMARY and the step log"
+[[ "$(grep -Fc '} >> "${GITHUB_STEP_SUMMARY}"' <<< "${docker_provenance_step}" || true)" -eq 0 ]] ||
+  fail "Docker provenance must not keep the old closing line"
+[[ "$(grep -Ec '^[[:space:]]*\}' <<< "${docker_provenance_step}" || true)" -eq 1 ]] ||
+  fail "Docker provenance group must have exactly one closing brace line"
+for docker_syntax_job in docker-image docker-build; do
+  docker_syntax_block="$(workflow_job_block "${docker_syntax_job}")"
+  while IFS= read -r docker_syntax_step; do
+    docker_syntax_body="$(
+      workflow_job_step_block "${docker_syntax_job}" "${docker_syntax_step}" |
+        awk '
+          $0 == "        run: |" { inside = 1; next }
+          inside && $0 ~ /^[[:space:]]*$/ { print ""; next }
+          inside && $0 ~ /^          / { print substr($0, 11); next }
+          inside { exit }
+        '
+    )"
+    [[ -z "${docker_syntax_body}" ]] && continue
+    bash -n <<< "${docker_syntax_body}" 2> /dev/null ||
+      fail "run script has a shell syntax error in ${docker_syntax_job} step: ${docker_syntax_step}"
+  done < <(sed -n 's/^      - name: //p' <<< "${docker_syntax_block}")
+done
 for dockerfile in "${root_dir}/apps/api/Dockerfile" "${root_dir}/apps/batch/Dockerfile"; do
   gradle_lines="$(grep 'RUN ./gradlew' "${dockerfile}")"
   [[ -n "${gradle_lines}" ]] || fail "${dockerfile} must contain Gradle build steps"
