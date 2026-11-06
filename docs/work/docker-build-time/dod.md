@@ -259,6 +259,10 @@ $ bash ci/actions-cache-cleanup-contract-test.sh   exit 0, 마지막 줄: action
 ```
 [AWAITING] PR Quality Gate run 이 생긴 뒤 기록한다.
 [PENDING — PR CI 실측 전] ⑩ 시점(HEAD 9c08851)에 PR 없음·push 없음. 판정하지 않는다.
+[PR CI 실측 2026-11-06] PR #110 run https://github.com/geonyeop123/premium-spread/actions/runs/42134196254 (attempt 1, head ff1018d, merge sha be8fc0c, 모든 job success).
+  - 7a api 88s · 7a batch 90s · 7a web 19s (모두 run 시작 +3s) · 7. Docker image build +95s 시작, 13s.
+  - T_docker(첫 leg 시작 → 조립 완료) = 105s, T_other(가장 긴 비-Docker job = 2. Unit + coverage) = 264s → 105 ≤ 264 **PASS**.
+  - 참고: 변경 전 최근 30회 Docker job 중앙값 229s·p90 400s. 앵커 = 위 run URL.
 ```
 
 ### AC5
@@ -266,6 +270,12 @@ $ bash ci/actions-cache-cleanup-contract-test.sh   exit 0, 마지막 줄: action
 ```
 [AWAITING]
 [PENDING — PR CI 실측 전] PR run 로그·gh cache list 관찰이 필요하다(T2). 판정하지 않는다.
+[PR CI 실측 2026-11-06] run https://github.com/geonyeop123/premium-spread/actions/runs/42134196254
+  - `gh api repos/…/actions/caches?ref=refs/pull/110/merge` → entry 0개(index-·buildkit-blob- 0, run 시작 이후 생성 0).
+  - 세 leg 의 실제 buildx 명령줄: `docker buildx build --cache-from type=gha,scope=<c> --file apps/<c>/Dockerfile …
+    --output type=docker,dest=…/<c>.tar …` — `--cache-to` 인자 없음, `exporting to GitHub Actions Cache` 0회.
+    (로그의 `--cache-to` 문자열 1회는 이벤트 payload 에 담긴 PR 본문 텍스트다 — buildx 인자 아님.)
+  - F3(빈 cache-to → 인자 생략) 실측으로 TRUE 확정. **PASS**.
 ```
 
 ### AC6
@@ -273,6 +283,14 @@ $ bash ci/actions-cache-cleanup-contract-test.sh   exit 0, 마지막 줄: action
 ```
 [AWAITING]
 [PENDING — PR CI 실측 전] artifact 목록·load·provenance 로그 관찰이 필요하다(T2). 판정하지 않는다.
+[PR CI 실측 2026-11-06] run https://github.com/geonyeop123/premium-spread/actions/runs/42134196254
+  - 조립 job part 검사 통과: docker-image-part-{api,batch,web}-be8fc0c… (156,144,256 / 150,482,564 / 73,027,200 bytes).
+  - merge 후 세 part `deleted` 로그 확인, run artifact 목록에 live part 0개.
+  - 최종 artifact `docker-images-be8fc0cf625b311332ea53c97b14b601d98cc2d3` id=13464618510, 379,653,976 bytes.
+  - provenance step 로그: `run_id=42134196254` / `commit=be8fc0cf625b311332ea53c97b14b601d98cc2d3` /
+    `artifact_id=13464618510` — 최종 artifact id 와 일치.
+  - 각 leg buildx 출력 `dest=…/docker-images/<c>.tar`(api·batch·web). artifact 를 내려받아 `docker load` 하지는 않았다
+    (관찰 범위: artifact 목록·job 로그). **PASS**.
 ```
 
 ### AC7
@@ -314,13 +332,13 @@ $ bash ci/actions-cache-cleanup-contract-test.sh   exit 0, 마지막 줄: action
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: docker-build-time @ 9c08851
+DoD VERDICT: docker-build-time @ ff1018d  (PR #110 CI run 42134196254)
   수용기준 표:     8개  (T1 3 · T2 2 · T3 3 · T4 0)
-  T1/T2 자동:      5개 중 3개 PASS  (AC1~AC3 PASS · AC5·AC6 PENDING — PR CI 실측 전)
-  T3 기록 제출:    3개 중 0건  (AC4 PENDING · AC7·AC8 AWAITING_HUMAN, 머지 뒤)
+  T1/T2 자동:      5개 중 5개 PASS  (AC1~AC3 ⑩ · AC5·AC6 PR CI 실측)
+  T3 기록 제출:    3개 중 1건  (AC4 PASS — 105s ≤ 264s · AC7·AC8 AWAITING_HUMAN, 머지 뒤)
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
-  변경 요청:       0건
-  => AWAITING_HUMAN  (완료 아님: AC4~AC6 PR CI 미관찰, AC7·AC8 머지 뒤 관찰, AC2/AC3 리터럴 불일치 확정 대기)
+  변경 요청:       1건 승인 (edc6ffb — AC2 9→11, AC3 13→14)
+  => AWAITING_HUMAN  (완료 아님: AC7·AC8 머지 뒤 관찰)
 ```
 
 **사람 확인이 필요한 항목 (Gate 1)**
