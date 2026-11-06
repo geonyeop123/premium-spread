@@ -171,6 +171,8 @@ docker-image (matrix: api | batch | web, fail-fast: false)  ──►  docker-bu
   - "Re-run all jobs": 세 part 를 다시 올린다(`overwrite: true`). 최종 `docker-images-<sha>` 는 이전 attempt 가 이미
     올렸다면 이름이 겹칠 수 있고, merge sub-action 에는 `overwrite` 입력이 **없다**(F1). 이 노출은 현재 단일 job 구조와 같다
     (현재도 같은 이름을 다시 올린다). 회귀가 아니므로 이번에 바꾸지 않는다 — §6 Q3.
+    최종 artifact 가 이미 있는 run 에서 "Re-run all jobs" 를 하면 merge 가 이름 충돌로 실패할 수 있다. 복구는 새 commit 을
+    push 해 새 run 을 만드는 것이다(런북 `### Quality Gate Docker 재실행과 cache 복구`).
 - **provenance 를 로그에도 남긴다(리뷰 M3)** — step summary 는 `gh run view` 로 읽을 수 없다. provenance step 이 같은 세 줄
   (`run_id=`·`commit=`·`artifact_id=`)을 `tee -a "${GITHUB_STEP_SUMMARY}"` 로 summary 와 step 로그에 동시에 쓴다. 검증은
   `gh run view <run-id> --log --job <docker-build-job-id>`(dod AC6).
@@ -223,6 +225,9 @@ gh api --method DELETE "repos/${GH_REPO}/actions/caches/${id}"
   (`ci/validate-dependency-bootstrap-output.sh:44`)이고 `jq` 의존을 새로 만들지 않는다.
 - **방어적 ref 재확인**: API 의 `ref` 필터를 믿지 않고 응답 entry 의 `ref` 가 요청 ref 와 정확히 같은 것만 대상으로 한다.
 - 삭제 응답이 `HTTP 404` 면 이미 없어진 것(경합·만료)으로 보고 `already-gone` 으로 센다. 그 외 실패는 즉시 exit 1.
+- 구현에서 확정한 추가 계약: 응답 entry 의 `id` 는 양의 정수만 허용하고 아니면 `list failed` 로 exit 1(삭제 0회). 목록 JSON
+  이 깨져 있으면 내부 exit 3 을 `list failed` exit 1 로 바꾼다. DELETE 의 `gh` 호출은 `</dev/null` 로 stdin 을 막는다.
+  dry-run summary 의 `freed_bytes` 는 항상 0 이다. 행동 테스트는 14개 케이스다(14 번째는 id 검증).
 
 순위(삭제 순서, 같은 순위 안에서는 `id` 오름차순):
 
@@ -266,6 +271,8 @@ cache-cleanup summary mode=<pr-ref|stale> ref=<ref> listed=<n> selected=<n> dele
   GitHub REST 문서는 cache 목록(`ref`·`key` prefix 필터)과 id·key 기준 삭제 endpoint 를 확인했지만 `GITHUB_TOKEN` 권한 문구는
   그 페이지에서 확인하지 못했다(F7 = PARTIAL). `actions: write` 로 충분하다는 것은 **머지 뒤 첫 실행에서 `deleted>=1` 로
   확인**한다(dod AC7). 부족하면 403 으로 exit 1 이 나며 cache 는 그대로다(fail-closed).
+  이 변경 뒤 PR run 은 cache 를 거의 쓰지 않으므로 AC7 표본은 닫기 전에 `gh cache list --ref refs/pull/<n>/merge` 로
+  entry 가 1개 이상 있음을 확인한 PR 이어야 한다.
 - Quality Gate 의 최상위 `permissions: contents: read` 단일 블록은 그대로다. job 단위 override 는 조립 job 의 `actions: read`
   하나뿐이다(D3). **`.github/workflows/*.yml` 안에서 `actions: write` 는 cleanup workflow 2개에만** 있게 계약 테스트가 단정한다.
 - `concurrency: group: actions-cache-pr-cleanup-${{ github.event.pull_request.number }}`, `cancel-in-progress: false`.
@@ -339,6 +346,12 @@ cache-cleanup summary mode=<pr-ref|stale> ref=<ref> listed=<n> selected=<n> dele
 - pinned action 정책(`ci/quality-gate-contract-test.sh:236-245`)은 이미 `.github/workflows/` 의 **모든** 파일을 검사하므로
   새 workflow 에 자동 적용된다. 신규 계약 테스트는 거기에 더해 "cleanup workflow 의 `uses:` 는 checkout 1개뿐, Quality Gate 와
   같은 SHA" 를 단정한다.
+- 구현에서 강화한 계약(⑪ 반영):
+  - cleanup 계약: 두 cleanup workflow 를 파일 전체 정확 비교한다. checkout 줄은 `quality-gate.yml` 에서 동적으로 읽는다.
+    `actions: write` writer 스캔은 `*.yml`·`*.yaml` 전체이고 `write-all` 과 따옴표 친 키도 잡는다. mutation 은 M10(run
+    블록 bracket 주입)과 M11(최상위 env `BASH_ENV`)을 더해 11종이다.
+  - quality-gate 계약: merge step 을 exact block 으로 비교해 archive 레이아웃을 지키고, Docker job 의 모든 `run: |` 본문에
+    `bash -n` 을 적용한다(빈 줄 인지).
 
 ### D8. 측정과 수용 (S6)
 
@@ -422,3 +435,4 @@ PR 은 **push 마다** 의존성 레이어를 다시 만든다(+113s, 병렬이�
 |---|---|---|
 | ④ 최초 작성 | — | — |
 | ④ 개정 1 (F1~F8 확인 + ⑥ spec-reviewer 1R) | §1.1 신설·stale 을 gradle 만으로·buildkit 삭제 대안 제거·D6.1 BlobNotFound 수동 복구(rerun 으로 회복 안 됨) / D3 part 개수 검사 + 조립 job `actions: read`·rerun 창 1일·provenance 로그 출력 / F1·F2 단정 문구, F3 LIKELY·PR 로그 판정, F7 PARTIAL·AC7 로 권한 확인 / D6 경계 조건 표 / `actions: write` 범위를 `.github/workflows/*.yml` 로 한정 / §7 을 확인 결과 표로 교체 | F5 = FALSE(missing blob 은 빌드 실패) 컨트롤러 판정, 리뷰 B1·M3·M4·m5~m10 |
+| ⑪ 문서 동기화 (구현 반영, DoD 변경 요청 edc6ffb) | D7 cleanup 계약 파일 전체 정확 비교·writer 스캔 확대·mutation 9→11(M10·M11) / D4 id 양의 정수 검증·목록 JSON 오류 처리·DELETE `</dev/null`·dry-run `freed_bytes=0`·행동 케이스 13→14 / D3 merge `overwrite` 없음에 따른 "Re-run all jobs" 이름 충돌과 새 commit 복구 / D5 AC7 표본 선택 절차 / D7 quality-gate 계약 merge exact block·`bash -n` / dod AC2 9→11, AC3 13→14 | 구현 중 확정된 계약과 최종 수정 반영, 설계 의도는 불변 |

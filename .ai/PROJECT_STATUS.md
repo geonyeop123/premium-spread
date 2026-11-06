@@ -118,6 +118,13 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   - 환율 클라이언트 `overallDeadline` 공식이 시도당 connect+responseTimeout+body timeout(8s)이 아니라 5s로 계산되어, max-retries override 시 block deadline이 먼저 끊을 수 있음
   - Twelve Data가 한도 초과를 HTTP 200 + code 429로 줄 때 metric이 contract로 집계됨(rate_limited 분리 후보)
   - `exchange_rate.rate DECIMAL(10,4)` 대 캐시 `toPlainString` 전체 정밀도 차이
+- Quality Gate Docker build 시간 단축(#107, 구현·로컬 검증 완료, PR CI 실측·머지 뒤 관찰 대기): 이미지 3개를
+  `7a. Docker image (<component>)` matrix 로 병렬 build 하고 `7. Docker image build` 가 만료되지 않은 part 3개를 확인한 뒤
+  기존 `docker-images-<sha>` artifact 로 조립한다. buildkit `cache-to` 는 dev push 에서만 쓰고 PR 은 dev cache 를 읽기만 한다.
+  `Actions cache PR cleanup`(PR 종료 시 그 merge ref cache 전부 삭제)과 `Actions cache stale cleanup`(매일, dev 의 `gradle-*`
+  cache 중 dev 활동 기준 3일 미접근 삭제, 수동 실행은 기본 dry-run)을 추가했다. buildkit cache 는 blob 이 없으면 build 가
+  실패하므로 일정 삭제하지 않는다. 종료된 PR #106/#108/#109 cache 4.6GB 를 수동 삭제해 저장소 cache 사용량이 약 11.0GB 에서
+  6.43GB 가 됐다. [설계](../docs/work/docker-build-time/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다.
 
 ## Migration 상태와 소유권
 
@@ -158,6 +165,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
    새 advisory가 공개되면 다시 실패한다(#82에서 23건 해소). 주기적 의존성 갱신은 아직 도입하지 않았다.
 9. #105 자산 알림의 사람 확인 AC8(Discord 배치·세로 여백 육안)·AC9(실 key 값 검산)은 머지 후 배포 환경에서 수행한다(대기).
    체크리스트는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)에 있다.
+10. #107 AC7·AC8(cleanup workflow 실제 삭제·일정 실행)은 머지 뒤 관찰 대기다. AC7 표본은 cache 가 남은 PR 이 닫힐 때만 생긴다.
 
 ## 운영 정본
 

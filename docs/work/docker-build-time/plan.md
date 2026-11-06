@@ -245,9 +245,9 @@ F1~F8 은 컨트롤러가 확인했고 결과·출처를 design §7 과 dod `###
 
 :375 이후(Dockerfile·materializer 단정)는 바꾸지 않는다.
 
-- [ ] **Step 1: 계약 테스트 개정** — 위 표와 목록대로 `ci/quality-gate-contract-test.sh` 를 고친다. workflow 는 아직 건드리지 않는다.
+- [x] **Step 1: 계약 테스트 개정** — 위 표와 목록대로 `ci/quality-gate-contract-test.sh` 를 고친다. workflow 는 아직 건드리지 않는다.
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 ```bash
 bash ci/quality-gate-contract-test.sh
@@ -257,9 +257,9 @@ bash ci/quality-gate-contract-test.sh
 (파일 안에서 가장 먼저 도는 바뀐 단정 :98 — 현재 workflow 에 job 단위 permissions 가 0개다). 다른 메시지(문법 오류·unbound
 variable)면 RED 가 아니다 — 고친 뒤 다시. 출력과 HEAD SHA 를 dod `### AC1` 에 `[RED]` 로 붙인다.
 
-- [ ] **Step 3: workflow 교체** — 위 "새 Docker job 전문" 대로.
+- [x] **Step 3: workflow 교체** — 위 "새 Docker job 전문" 대로.
 
-- [ ] **Step 4: GREEN 확인**
+- [x] **Step 4: GREEN 확인**
 
 ```bash
 bash ci/quality-gate-contract-test.sh
@@ -268,7 +268,7 @@ bash docker/deploy-contract-test.sh
 
 예상: 둘 다 exit 0, 첫 명령 마지막 줄 `quality gate and supply-chain contracts verified`. dod `### AC1` 에 `[GREEN]`.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add .github/workflows/quality-gate.yml ci/quality-gate-contract-test.sh
@@ -399,14 +399,14 @@ F-badtime (`stale refs/heads/dev 3`): 단일 page, id 501 dev `index-buildkit-ap
 
 마지막 줄 출력 `delete-actions-caches behavioral contract verified (cases: 13)`.
 
-- [ ] **Step 1: 테스트 작성** — `ci/delete-actions-caches-test.sh`. 형태는 `ci/dependency-bootstrap-contract-test.sh` 를 따른다
+- [x] **Step 1: 테스트 작성** — `ci/delete-actions-caches-test.sh`. 형태는 `ci/dependency-bootstrap-contract-test.sh` 를 따른다
   (`set -euo pipefail`, `mktemp -d` + `trap` 정리, `fail()` 은 `delete-actions-caches behavioral contract failed: <사유>`).
   fixture JSON 은 테스트가 임시 디렉터리에 heredoc 으로 만든다(page 배열 형태, entry 필드 `id ref key version last_accessed_at created_at size_in_bytes`).
 
-- [ ] **Step 2: skeleton 스크립트** — `ci/delete-actions-caches.sh` 에 인자·env 검증과 summary 출력만(목록 조회·삭제 없음,
+- [x] **Step 2: skeleton 스크립트** — `ci/delete-actions-caches.sh` 에 인자·env 검증과 summary 출력만(목록 조회·삭제 없음,
   `listed=0 selected=0 …`) 구현한다.
 
-- [ ] **Step 3: RED 확인**
+- [x] **Step 3: RED 확인**
 
 ```bash
 bash ci/delete-actions-caches-test.sh
@@ -415,7 +415,7 @@ bash ci/delete-actions-caches-test.sh
 예상: exit 1, `delete-actions-caches behavioral contract failed:` 뒤에 케이스 1 의 DELETE id 열 불일치(기대 `104 101`, 실제 빈 열).
 dod `### AC3` 에 `[RED]`.
 
-- [ ] **Step 4: 구현 → GREEN**
+- [x] **Step 4: 구현 → GREEN**
 
 ```bash
 bash ci/delete-actions-caches-test.sh
@@ -423,7 +423,7 @@ bash ci/delete-actions-caches-test.sh
 
 예상: exit 0, 마지막 줄 `delete-actions-caches behavioral contract verified (cases: 13)`. dod `### AC3` 에 `[GREEN]`.
 
-- [ ] **Step 5: 위반 표본 증명(커밋하지 않음)** — 아래 일시 변형을 하나씩 적용해 테스트를 돌리고 실패를 확인한 뒤
+- [x] **Step 5: 위반 표본 증명(커밋하지 않음)** — 아래 일시 변형을 하나씩 적용해 테스트를 돌리고 실패를 확인한 뒤
   `git checkout -- ci/delete-actions-caches.sh` 로 되돌린다.
   - (a) 정렬을 id 만으로 → 케이스 1 실패(`101 104`)
   - (b) 응답 entry 의 ref 재확인 제거 → 케이스 1 실패(108 이 기준점이 돼 cutoff `2026-11-07T00:00:00Z`, 106·110 삭제, `listed=10`)
@@ -431,7 +431,7 @@ bash ci/delete-actions-caches-test.sh
   - (d) stale 대상에 rank 0·1 포함 → 케이스 1 실패(103·102·109 삭제) — F5 판정의 회귀 방어선
   네 결과를 dod `## 검사 산출물` 증명 칸 근거로 `### AC3` 에 남긴다.
 
-- [ ] **Step 6: Quality Gate 계약에 연결** — `ci/quality-gate-contract-test.sh` :195(`bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"`) 다음 줄에 `bash "${root_dir}/ci/delete-actions-caches-test.sh"`.
+- [x] **Step 6: Quality Gate 계약에 연결** — `ci/quality-gate-contract-test.sh` :195(`bash "${root_dir}/ci/dependency-bootstrap-contract-test.sh"`) 다음 줄에 `bash "${root_dir}/ci/delete-actions-caches-test.sh"`.
 
 ```bash
 bash ci/quality-gate-contract-test.sh
@@ -439,7 +439,7 @@ bash ci/quality-gate-contract-test.sh
 
 예상: exit 0.
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 커밋**
 
 ```bash
 git add ci/delete-actions-caches.sh ci/delete-actions-caches-test.sh ci/quality-gate-contract-test.sh
@@ -585,9 +585,9 @@ mutation(사본에 적용, 각자 독립). 기대 메시지는 각 변형이 **�
 | M8 | `quality-gate.yml` 사본의 top-level permissions 에 `  actions: write` 추가 | S14 |
 | M9 | stale `default: true` → `default: false` | S2 (S3 보다 먼저 검사한다) |
 
-- [ ] **Step 1: 계약 테스트 작성** — workflow 파일은 아직 만들지 않는다.
+- [x] **Step 1: 계약 테스트 작성** — workflow 파일은 아직 만들지 않는다.
 
-- [ ] **Step 2: 파일 없음 실패 확인(RED 아님 — 기록만)**
+- [x] **Step 2: 파일 없음 실패 확인(RED 아님 — 기록만)**
 
 ```bash
 bash ci/actions-cache-cleanup-contract-test.sh
@@ -595,9 +595,9 @@ bash ci/actions-cache-cleanup-contract-test.sh
 
 예상: exit 1, 대상 파일 부재 메시지. dod `### AC2` 에 "[PRE] 파일 없음 — skill 정의상 RED 아님(design N2)" 으로만 남긴다.
 
-- [ ] **Step 3: workflow 2개 작성** — 위 전문 그대로.
+- [x] **Step 3: workflow 2개 작성** — 위 전문 그대로.
 
-- [ ] **Step 4: GREEN + mutation 증명**
+- [x] **Step 4: GREEN + mutation 증명**
 
 ```bash
 bash ci/actions-cache-cleanup-contract-test.sh
@@ -606,7 +606,7 @@ bash ci/actions-cache-cleanup-contract-test.sh
 예상: exit 0, `mutation M1 rejected: …` ~ `mutation M9 rejected: …` 9줄과 마지막 줄
 `actions cache cleanup contracts verified (mutations rejected: 9)`. 전체 출력을 dod `### AC2` 에 `[GREEN]`·`[RED-대체: mutation]` 으로 붙인다.
 
-- [ ] **Step 5: Quality Gate 계약에 연결**
+- [x] **Step 5: Quality Gate 계약에 연결**
 
 `ci/quality-gate-contract-test.sh` 의 `bash "${root_dir}/ci/delete-actions-caches-test.sh"` 다음 줄에
 `bash "${root_dir}/ci/actions-cache-cleanup-contract-test.sh"`.
@@ -617,7 +617,7 @@ bash ci/quality-gate-contract-test.sh
 
 예상: exit 0. 기존 pinned-action 루프(:236-245)가 새 workflow 2개도 검사해 통과한다.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add .github/workflows/actions-cache-pr-cleanup.yml .github/workflows/actions-cache-stale-cleanup.yml ci/actions-cache-cleanup-contract-test.sh ci/quality-gate-contract-test.sh
@@ -651,7 +651,7 @@ git commit -m "ci: PR 종료·일일 Actions cache 정리 workflow 추가" -m "-
 - placeholder 단어 금지(`docs/check-documentation.sh` 가 막는다).
 - `docs/deploy/aws-setup.md` :89-95 는 "Quality Gate summary" 라는 일반 표현이라 바꾸지 않는다.
 
-- [ ] **Step 1: 수정 후 검사**
+- [x] **Step 1: 수정 후 검사**
 
 ```bash
 bash docs/check-documentation.sh
@@ -659,7 +659,7 @@ bash docs/check-documentation.sh
 
 예상: exit 0.
 
-- [ ] **Step 2: 커밋**
+- [x] **Step 2: 커밋**
 
 ```bash
 git add docs/runbooks/deployment.md
@@ -671,6 +671,8 @@ git commit -m "docs: Docker archive 조립 job 과 cache 복구 절차 설명" -
 ---
 
 ## Task 5 — 로컬 전체 검증 (커밋 없음)
+
+> 완료: ⑩ qa 검증 증거를 dod 에 기록했다(c85a68c).
 
 ```bash
 bash ci/quality-gate-contract-test.sh
@@ -688,6 +690,8 @@ git status --short
 ---
 
 ## Task 6 — PR CI 실측 (커밋 없음, push·PR 생성은 오케스트레이터)
+
+> 미완료: PR CI 실측.
 
 최종 SHA 의 PR Quality Gate run 을 `<run-id>`, PR 번호를 `<n>`, SHA 를 `<sha>` 로 둔다.
 
@@ -739,6 +743,8 @@ gh run view <run-id> --log --job <docker-build-job-id>
 ---
 
 ## Task 7 — 머지 뒤 관찰 (커밋 없음)
+
+> 미완료: 머지 뒤 관찰.
 
 - [ ] **Step 1: AC7** — 머지 뒤 처음 닫히는 PR(이 PR 자신이 base workflow 로 실행되면 그것)의 `Actions cache PR cleanup` run:
 
