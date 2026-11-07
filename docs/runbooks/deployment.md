@@ -82,8 +82,23 @@ Quality Gate 6번 잡의 `npm audit`은 실시간 advisory DB를 조회하므로
 - **next 버전 불일치.** `ci/quality-gate-contract-test.sh`가 `next`와 `eslint-config-next`의 버전이 다르면 1번 잡을
   실패시킨다. 보안 PR이 `next`만 올린 경우 같은 PR 브랜치에서 `npm --prefix apps/web install eslint-config-next@<같은 버전>
   --save-exact`로 맞춘다.
-- **범위 밖.** `overrides`는 Dependabot이 갱신하지 않는다(재검토는 #97). Gradle 의존성은 dependency verification 계약
-  때문에 자동 갱신하지 않는다. 갱신 PR이 남긴 Actions cache는 PR이 닫힐 때 `Actions cache PR cleanup`이 지운다.
+- **overrides 정책.** `apps/web/package.json`에는 `overrides`를 두지 않는다. #97에서 14개를 모두 제거했고, 항목별 판정은
+  [#97 설계](../work/issue-97-web-npm-overrides/design.md) §3에 있다. override는 소비자가 선언한 범위와 상관없이 버전을
+  강제하고 Dependabot이 갱신하지 않는다. 그래서 upstream이 고친 뒤에도 남고 major 상향을 막는다.
+  - audit high 이상이 생기면 보안 PR이나 `npm --prefix apps/web audit fix`(force 없이)를 먼저 쓴다. 2026-11-07 lockfile
+    기준 npm 10.8.2에서 크래시 없이 동작했다(#97). #82에서는 같은 버전으로 `edgesOut` 크래시가 났으므로, 크래시가 다시
+    나면 아래 override 분기로 간다.
+  - 둘 다로 해소되지 않을 때만 override를 넣는다. override 범위는 그 패키지를 쓰는 모든 소비자의 선언 범위 안이어야
+    한다. 범위 밖이면 소비자 패키지 상향을 먼저 검토한다.
+  - override를 넣는 PR은 아래 표에 행을 추가하고, 빼는 PR은 행을 지운다. 표가 비어 있으면 `overrides`도 없어야 한다.
+  - high 미만 advisory는 override로 강제하지 않고 상위 갱신을 기다린다. Dependabot alert는 dismiss하지 않는다.
+
+  | 패키지 | override 범위 | 근거 advisory (GHSA) | 소비자와 선언 범위 | 제거 조건 | 도입 PR |
+  |---|---|---|---|---|---|
+
+  현재 등록된 override는 없다.
+- **범위 밖.** Gradle 의존성은 dependency verification 계약 때문에 자동 갱신하지 않는다. 갱신 PR이 남긴 Actions cache는
+  PR이 닫힐 때 `Actions cache PR cleanup`이 지운다.
 
 ## Host secret source
 

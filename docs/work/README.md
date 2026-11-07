@@ -19,3 +19,4 @@
 - [테스트 실행 시간 단축](test-time-reduction/README.md)
 - [실계정 알림 자산 칸과 Discord 2칸 행 폭](account-balance-alert/README.md)
 - [Quality Gate Docker image build 시간 단축](docker-build-time/README.md)
+- [apps/web npm overrides 재검토](issue-97-web-npm-overrides/README.md)

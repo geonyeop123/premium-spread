@@ -128,6 +128,9 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - apps/web 의존성 주기 갱신(#98, 설정 추가, 첫 갱신 PR 은 머지 뒤 관찰): `.github/dependabot.yml` 이 `apps/web` npm 갱신
   PR 을 매주 `dev` 대상으로 만든다. `next`·`eslint-config-next` 는 한 그룹으로 함께 올라가며, 두 버전이 다르면
   `ci/quality-gate-contract-test.sh` 가 1번 잡을 실패시킨다. 운영(누가·언제 머지)은 [runbook](../docs/runbooks/deployment.md)을 따른다.
+- apps/web overrides 재검토(#97, 구현·로컬 검증 완료(⑩ PASS @ ff95bd4), PR CI 대기): `apps/web/package.json` 의 `overrides` 14개를 모두
+  제거했다. 제거해도 audit high 이상이 생기지 않았다. 재도입 조건은 [runbook](../docs/runbooks/deployment.md)을, 항목별 판정은
+  [설계](../docs/work/issue-97-web-npm-overrides/design.md)를 따른다.
 
 ## Migration 상태와 소유권
 
@@ -167,6 +170,9 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 8. Quality Gate 6번 잡의 `ci/run-npm-audit.sh`는 실시간 advisory DB를 조회한다. `apps/web` lockfile이 그대로여도
    새 advisory가 공개되면 다시 실패한다(#82에서 23건 해소). #98에서 Dependabot 주기 갱신(주 1회, `dev` 대상)을 도입해
    실패 기간을 줄이지만 advisory 공개와 갱신 PR 머지 사이의 실패는 남는다. 운영은 [`deployment.md`](../docs/runbooks/deployment.md)를 따른다.
+   #97에서 `overrides`를 모두 제거했다. 2026-11-07 기준 moderate `minimatch`(GHSA-g3hv-75wg-m249)와 low
+   `deepmerge`(GHSA-gcqx-w48m-w2h4)가 devDependency 경로(eslint·typescript-eslint·shadcn CLI)에 남아 있다. 게이트(high 이상)를
+   막지 않으며 상위 갱신을 기다린다.
 9. #105 자산 알림의 사람 확인 AC8(Discord 배치·세로 여백 육안)·AC9(실 key 값 검산)은 머지 후 배포 환경에서 수행한다(대기).
    체크리스트는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)에 있다.
 10. #107 AC7·AC8(cleanup workflow 실제 삭제·일정 실행)은 머지 뒤 관찰 대기다. AC7 표본은 cache 가 남은 PR 이 닫힐 때만 생긴다.
