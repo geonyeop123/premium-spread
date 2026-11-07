@@ -582,4 +582,24 @@ if [[ "${#gradle_files[@]}" -gt 0 ]] &&
   fail "CI-only quality/security tools must not participate in Gradle resolution"
 fi
 
+# apps/web 의존성 주기 갱신(#98): Dependabot 이 dev 대상으로 갱신 PR 을 만들고, next 와 eslint-config-next 는 같은 버전이다.
+dependabot_config="${root_dir}/.github/dependabot.yml"
+web_package="${root_dir}/apps/web/package.json"
+[[ -f "${dependabot_config}" ]] || fail "apps/web dependency update config is required: .github/dependabot.yml"
+for dependabot_line in \
+  '  - package-ecosystem: npm' \
+  '    directory: /apps/web' \
+  '    target-branch: dev' \
+  '        patterns: ["next", "eslint-config-next"]' \
+  '        applies-to: security-updates'; do
+  grep -Fxq -- "${dependabot_line}" "${dependabot_config}" ||
+    fail "dependabot config is missing: ${dependabot_line}"
+done
+[[ "$(grep -E '^      [A-Za-z0-9_-]+:$' "${dependabot_config}" | head -n 1)" == '      next:' ]] ||
+  fail "dependabot next group must be the first group so next and eslint-config-next update together"
+next_version="$(sed -nE 's/^    "next": "([^"]+)",?$/\1/p' "${web_package}")"
+eslint_next_version="$(sed -nE 's/^    "eslint-config-next": "([^"]+)",?$/\1/p' "${web_package}")"
+[[ -n "${next_version}" && "${next_version}" == "${eslint_next_version}" ]] ||
+  fail "apps/web next (${next_version:-missing}) and eslint-config-next (${eslint_next_version:-missing}) must share one version"
+
 echo "quality gate and supply-chain contracts verified"

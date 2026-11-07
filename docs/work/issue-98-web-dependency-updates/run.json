@@ -1,0 +1,5 @@
+{"workflow": "feature-track", "version": 1, "track": "S", "track_reason": "설정 1개 + 계약 검사 + 문서, 동작 변경 없음",
+ "upgraded_from": null, "user_override": false,
+ "codex": {"mode": "quick", "spec_rounds": 0, "findings": 0, "fixed": 0, "held": 0, "timeout": false},
+ "claude_review": {"findings": null, "fixed": null},
+ "dod_verdict": "n/a", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/111"}

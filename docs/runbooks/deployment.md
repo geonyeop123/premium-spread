@@ -65,6 +65,26 @@ jobs"를 하면 `7. Docker image build`의 merge가 같은 이름의 artifact가
 지우고 buildkit cache는 지우지 않는다. PR 종료 cleanup `Actions cache PR cleanup`
 (`.github/workflows/actions-cache-pr-cleanup.yml`)은 닫힌 PR merge ref의 cache만 지운다.
 
+### apps/web 의존성 갱신 (Dependabot)
+
+Quality Gate 6번 잡의 `npm audit`은 실시간 advisory DB를 조회하므로 lockfile이 그대로여도 새 advisory로 실패한다.
+이를 줄이려고 `.github/dependabot.yml`이 `apps/web`(npm) 갱신 PR을 `dev` 대상으로 만든다(#98).
+
+- **선택 근거.** Dependabot은 GitHub 내장이라 앱 설치나 외부 권한이 필요 없고, 보안 업데이트와 같은 설정을 쓴다.
+  Renovate는 그룹·스케줄 표현력이 더 크지만 GitHub App 설치와 별도 설정 정본이 필요하고, web 한 패키지에는 과하다.
+- **주기와 묶음.** 매주 월요일 09:00 KST, 열린 PR은 최대 5개다. `next`·`eslint-config-next`는 `next` 그룹으로 함께
+  올라간다(major 포함). 나머지 minor·patch는 `web-minor-patch` 한 PR로, major는 패키지별 PR로 온다. `@types/node`
+  major는 Node 런타임(20)을 올릴 때 함께 올리므로 제외했다.
+- **보안 업데이트.** 저장소 설정의 Dependabot alerts와 security updates가 켜져 있어야 한다. 보안 PR은 `web-security`
+  그룹으로 묶이며 version update 주기와 무관하게 바로 열린다.
+- **누가·언제 머지하나.** owner가 주 1회(월요일 PR 생성 뒤) 검토한다. 보안 PR은 받은 날 처리한다. Quality Gate 전체
+  통과가 머지 조건이며, 실패한 갱신 PR은 고치거나 닫는다. major PR은 release note를 확인한 뒤 머지한다.
+- **next 버전 불일치.** `ci/quality-gate-contract-test.sh`가 `next`와 `eslint-config-next`의 버전이 다르면 1번 잡을
+  실패시킨다. 보안 PR이 `next`만 올린 경우 같은 PR 브랜치에서 `npm --prefix apps/web install eslint-config-next@<같은 버전>
+  --save-exact`로 맞춘다.
+- **범위 밖.** `overrides`는 Dependabot이 갱신하지 않는다(재검토는 #97). Gradle 의존성은 dependency verification 계약
+  때문에 자동 갱신하지 않는다. 갱신 PR이 남긴 Actions cache는 PR이 닫힐 때 `Actions cache PR cleanup`이 지운다.
+
 ## Host secret source
 
 runtime 값은 operator가 관리하는 `host secret source`에서 배포 직전에 환경변수로 주입한다. 저장소, Quality Gate

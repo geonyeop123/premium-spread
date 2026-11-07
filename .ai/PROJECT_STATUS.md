@@ -125,6 +125,9 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   cache 중 dev 활동 기준 3일 미접근 삭제, 수동 실행은 기본 dry-run)을 추가했다. buildkit cache 는 blob 이 없으면 build 가
   실패하므로 일정 삭제하지 않는다. 종료된 PR #106/#108/#109 cache 4.6GB 를 수동 삭제해 저장소 cache 사용량이 약 11.0GB 에서
   6.43GB 가 됐다. [설계](../docs/work/docker-build-time/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다.
+- apps/web 의존성 주기 갱신(#98, 설정 추가, 첫 갱신 PR 은 머지 뒤 관찰): `.github/dependabot.yml` 이 `apps/web` npm 갱신
+  PR 을 매주 `dev` 대상으로 만든다. `next`·`eslint-config-next` 는 한 그룹으로 함께 올라가며, 두 버전이 다르면
+  `ci/quality-gate-contract-test.sh` 가 1번 잡을 실패시킨다. 운영(누가·언제 머지)은 [runbook](../docs/runbooks/deployment.md)을 따른다.
 
 ## Migration 상태와 소유권
 
@@ -162,7 +165,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
    쓰므로 legacy key에 의존하는 외부 consumer가 있다면 cutover 전에 제거해야 한다.
 7. Docker app과 local `bootRun`을 동시에 실행하면 8080/8081 port가 충돌한다.
 8. Quality Gate 6번 잡의 `ci/run-npm-audit.sh`는 실시간 advisory DB를 조회한다. `apps/web` lockfile이 그대로여도
-   새 advisory가 공개되면 다시 실패한다(#82에서 23건 해소). 주기적 의존성 갱신은 아직 도입하지 않았다.
+   새 advisory가 공개되면 다시 실패한다(#82에서 23건 해소). #98에서 Dependabot 주기 갱신(주 1회, `dev` 대상)을 도입해
+   실패 기간을 줄이지만 advisory 공개와 갱신 PR 머지 사이의 실패는 남는다. 운영은 [`deployment.md`](../docs/runbooks/deployment.md)를 따른다.
 9. #105 자산 알림의 사람 확인 AC8(Discord 배치·세로 여백 육안)·AC9(실 key 값 검산)은 머지 후 배포 환경에서 수행한다(대기).
    체크리스트는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)에 있다.
 10. #107 AC7·AC8(cleanup workflow 실제 삭제·일정 실행)은 머지 뒤 관찰 대기다. AC7 표본은 cache 가 남은 PR 이 닫힐 때만 생긴다.
