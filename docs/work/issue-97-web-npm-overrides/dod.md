@@ -83,6 +83,50 @@ source: https://github.com/geonyeop123/premium-spread/issues/97
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
 
+### AC1
+
+- [RED] 2026-11-07 4c7cbfc — `npm --prefix apps/web pkg get overrides` exit 0. `sharp`부터 `@humanfs/node`까지 14개 키 객체 출력
+- [GREEN] 2026-11-07 360e2af — 같은 명령(깨끗한 `npm ci --include=optional`, exit 0 뒤) 출력 `{}`
+
+### AC2
+
+- [RED] 2026-11-07 4c7cbfc — `npm --prefix apps/web ls browserslist @eslint/config-array brace-expansion postcss typescript-eslint shadcn --all` exit 0.
+  `browserslist@4.28.9 overridden`, `@eslint/config-array@0.23.5 overridden`, `brace-expansion@5.0.12 overridden`, `postcss@8.5.25` 단일
+- [GREEN] 2026-11-07 360e2af — 같은 명령 exit 0, `overridden`·`invalid` 없음. 버전 집합:
+  `browserslist@4.29.5`, `@eslint/config-array@0.21.2`(eslint 하위), `brace-expansion@5.0.12`(typescript-eslint·ts-morph 경로)와
+  `1.1.21`(minimatch@3.1.5 경로), `postcss@8.5.25`(tailwind·vite·shadcn)와 `8.5.23`(next 하위), `typescript-eslint@8.56.1`, `shadcn@4.22.1`
+
+### R 기준선
+
+- [RED] 2026-11-07 4c7cbfc — `npm ci --include=optional` exit 0. `bash ci/run-npm-audit.sh` exit 0, `15 vulnerabilities (2 low, 13 moderate)`, high 0
+
+### Task 1 lockfile 변경
+
+- [GREEN] 2026-11-07 360e2af — `npm --prefix apps/web install --package-lock-only --ignore-scripts --no-audit --no-fund` exit 0.
+  LOCKDIFF `changed=15`, plan 계약 2와 줄 단위 일치(browserslist 4.28.9→4.29.5, minimatch/config-array 제거, concat-map·brace-expansion@1.1.21 추가 등).
+  `git diff --stat -- apps/web`: package-lock.json, package.json 두 파일
+
+### AC3 / R1~R5 (Task 2)
+
+- [GREEN] 2026-11-07T05:33Z 360e2af — 깨끗한 `npm ci --include=optional` exit 0 이후
+  - R1 `bash ci/run-npm-audit.sh` exit 0
+  - `npm audit --json` exit 1, ran_at=2026-11-07T05:33:11Z, `{"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}`
+  - audit advisory: `deepmerge low GHSA-gcqx-w48m-w2h4`, `minimatch moderate GHSA-g3hv-75wg-m249` (이 둘뿐)
+  - Dependabot open alert(npm): `#2 GHSA-g3hv-75wg-m249 minimatch medium`, `#1 GHSA-gcqx-w48m-w2h4 deepmerge low` (audit와 일치)
+  - R2 lint exit 0 · R3 test exit 0 (`Tests 10 passed (10)`) · R4 build exit 0 (`/`, `/_not-found`, `/login`, `/register`, `/trackings`, `/trackings/[id]` 6개) · R5 `ci/quality-gate-contract-test.sh` exit 0 (`quality gate and supply-chain contracts verified`)
+
+### AC4
+
+- [GREEN] 2026-11-07 360e2af — npm 10.8.2. 사본(SCRATCH/issue97-auditfix)에서 `npm audit fix --package-lock-only --ignore-scripts --no-fund`
+  exit 1(force 없이 못 고치는 moderate 11·low 2 잔존), stderr `edgesOut` 0건. 사본 LOCKDIFF `changed=158`
+  (대표: `@babel/generator 7.29.7→7.29.13`, `@shadcn/registry 0.2.0→0.2.1`, `@typescript-eslint/parser 8.56.1→8.72.1`).
+  `git status --porcelain apps/web` 빈 출력(브랜치에 미적용)
+
+### R6
+
+- [GREEN] 2026-11-07 360e2af(+문서 변경) — `bash docs/check-documentation.sh` exit 0, `documentation check passed (20 files, 15 required paths)`.
+  `grep -n '재검토는 #97' docs/runbooks/deployment.md` 출력 없음(exit 1)
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.

@@ -34,3 +34,11 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## 의존성 overrides 정책
+
+`package.json`에는 주석을 쓸 수 없어 `overrides` 정책은 저장소 runbook에 둔다.
+
+- 정본: [`docs/runbooks/deployment.md`](../../docs/runbooks/deployment.md)의 "apps/web 의존성 갱신 (Dependabot)" 절
+- 현재 `overrides`는 없다. #97에서 14개를 모두 제거했고, 항목별 판정은 [`docs/work/issue-97-web-npm-overrides/design.md`](../../docs/work/issue-97-web-npm-overrides/design.md) §3에 있다
+- `overrides`를 다시 넣을 때는 같은 PR에서 runbook의 overrides 표에 행을 추가한다
