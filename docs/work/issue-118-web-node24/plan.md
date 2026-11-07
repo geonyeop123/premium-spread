@@ -6,20 +6,33 @@
 > `ci/quality-gate-contract-test.sh`, `.github/dependabot.yml`, `docs/runbooks/deployment.md`, `README.md`,
 > `.ai/PROJECT_STATUS.md`, `docs/work/README.md`, 이 디렉터리 파일. 이 밖의 파일이 diff에 나오면 멈춘다.
 > 앱 코드 변경이 없어 `test-strategy`의 Domain→Controller 순서는 해당 없다. 순서는 RED 기록 → 의존성 선언 → 런타임 선언 → 계약 검사 → Node 24 검증 → 문서다.
+> 변경 이력: ⑥ 스펙 리뷰 9건 반영 — Task 4 `git status` 범위, Task 1 기준 lock을 `BASE`로 고정, 변형 M11·M12(C2·C3) 추가, Task 1 증거 기록 지시,
+> Task 6 커밋 단계, Task 4 컨테이너 스크립트의 `set -e` 판정, audit 패키지 이름 집합 비교(Task 0 기준선·Task 4)
 
-## 공통 — 상수와 임시 디렉터리
+## 공통 — 상수, 임시 디렉터리, audit 요약 스크립트
 
 각 Task를 시작할 때 셸마다 한 번 정의한다. 임시 파일은 worktree 밖에 둔다.
 
 ```bash
 SCRATCH="${SCRATCH:-$(mktemp -d)}"; echo "SCRATCH=$SCRATCH"
-BASE="$(git merge-base HEAD dev)"; echo "BASE=$BASE"
+BASE="$(git merge-base HEAD origin/dev)"; echo "BASE=$BASE"
 NODE24_IMAGE='node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8'
 NODE20_IMAGE='node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293'
 NODE22_IMAGE='node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202'   # 변형 검증 전용
+AUDITSUM='
+const a = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+console.log("counts=" + JSON.stringify(a.metadata.vulnerabilities));
+console.log("packages=" + Object.keys(a.vulnerabilities).sort().join(","));
+const adv = new Set();
+for (const v of Object.values(a.vulnerabilities)) for (const s of v.via) if (typeof s === "object") adv.add(`${s.name} ${s.severity} ${s.url}`);
+console.log("advisories=" + [...adv].sort().join(" | "));
+'
+# 사용: node -e "$AUDITSUM" <audit.json>  (컨테이너에는 docker run -e AUDITSUM="$AUDITSUM" 으로 넘긴다)
 ```
 
-`NODE24_IMAGE`는 Task 2(Dockerfile)·Task 4(검증)가 같은 문자열을 쓴다. `NODE22_IMAGE`는 Task 3의 M4·M5에만 쓴다.
+- `BASE`는 dev와의 분기 커밋이다. Task 0의 기준선, Task 1의 기준 lock, Task 3의 M0, dod AC8이 같은 값을 쓴다.
+- `NODE24_IMAGE`는 Task 2(Dockerfile)·Task 3(M5)·Task 4(검증)가 같은 문자열을 쓴다. `NODE22_IMAGE`는 Task 3의 M4·M5에만 쓴다. `NODE20_IMAGE`는 Task 0·Task 2에 쓴다.
+- `AUDITSUM`은 Task 0(기준선)과 Task 4(R1)가 같은 형식으로 출력하게 한다. `packages=` 줄이 R1 비교 대상이다.
 
 ---
 
@@ -38,6 +51,13 @@ docker run --rm "$NODE20_IMAGE" node -v                                         
 grep -n 'Node.js 20+' README.md; grep -n 'Node 런타임(20)' docs/runbooks/deployment.md; grep -n '이 20이므로' .github/dependabot.yml   # AC7 RED
 bash ci/quality-gate-contract-test.sh                                                       # R2 기준선
 bash docs/check-documentation.sh                                                            # R3 기준선
+# R1 기준선: dev 상태(BASE)를 dev 런타임(Node 20) 컨테이너에서 설치한 뒤 audit 요약
+git archive "$BASE" apps/web ci | docker run --rm -i -e AUDITSUM="$AUDITSUM" "$NODE20_IMAGE" sh -c '
+  mkdir /work && tar -xf - -C /work && cd /work
+  npm --prefix apps/web ci --include=optional > /dev/null 2>&1 && echo "baseline-ci exit=0"
+  npm --prefix apps/web audit --json > /tmp/audit.json || true
+  node -e "$AUDITSUM" /tmp/audit.json
+' | tee "$SCRATCH/audit-baseline.txt"
 ```
 
 **예상 결과**
@@ -46,8 +66,10 @@ bash docs/check-documentation.sh                                                
 - AC6 RED: `v20.` 으로 시작
 - AC7 RED: 세 grep이 각각 1줄씩 나온다
 - R2·R3 exit 0
+- R1 기준선: `baseline-ci exit=0`. `counts={"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}`.
+  `packages=`(패키지 이름 목록, 그대로 기록). `advisories=deepmerge low https://github.com/advisories/GHSA-gcqx-w48m-w2h4 | minimatch moderate https://github.com/advisories/GHSA-g3hv-75wg-m249`
 
-dod `### AC3`, `### AC4`, `### AC6`, `### AC7`, `### R 기준선`에 `[RED] <ISO 시각> <HEAD sha>` 형식으로 붙인다.
+dod `### AC3`, `### AC4`, `### AC6`, `### AC7`, `### R 기준선`에 `[RED] <ISO 시각> <HEAD sha>` 형식으로 붙인다. `### R 기준선`에는 `packages=` 줄 전문을 넣는다.
 
 ---
 
@@ -107,7 +129,7 @@ dod `### AC3`, `### AC4`, `### AC6`, `### AC7`, `### R 기준선`에 `[RED] <ISO
 형식 제약(Task 3 검사가 읽는다): `engines` 여는 줄은 정확히 `  "engines": {`, 값 줄은 정확히 `    "node": "^24.15.0"`(끝 쉼표 없음), 닫는 줄은 `  },`.
 `@types/node` 줄은 4칸 들여쓰기 한 줄 `"키": "값",` 형태다.
 
-**계약 2 — lockfile 판정 기준 (전문)**. 아래 검사 스크립트 `LOCKCHECK`의 출력이 정확히 다음 두 줄이어야 한다. `changed=` 값만 실행 결과를 그대로 기록한다(1 이상).
+**계약 2 — lockfile 판정 기준 (전문)**. 아래 검사 스크립트 `LOCKCHECK`의 출력이 다음 두 줄이어야 한다. 첫 줄은 정확히 같아야 한다. 둘째 줄의 `<N>`은 1 이상이고 실행 결과를 그대로 기록한다. `nonDev=[]`는 정확히 같아야 한다.
 
 ```
 {"engines":{"node":"^24.15.0"},"types":"^24.19.2","jsdom":"^30.1.3","typesV":"24.19.2","jsdomV":"30.1.3","undiciV":"7.30.1","prodDepsSame":true}
@@ -137,6 +159,7 @@ console.log(`changed=${n} nonDev=${JSON.stringify(nonDev)}`);
 ```
 
 `nonDev=[]`는 "바뀐 lock 항목이 전부 devDependency 트리에 있다"는 뜻이다. production 트리(next·react 등)가 바뀌지 않았음을 보인다(R4).
+기준 lock은 항상 `BASE`의 lockfile이다. 그래서 Task 1을 다시 실행하거나 ⑩에서 재검증해도 같은 비교가 된다.
 
 **실행**
 ```bash
@@ -146,7 +169,7 @@ node -v; npm -v                                                                 
 npm --prefix apps/web install --package-lock-only --ignore-scripts --no-audit --no-fund jsdom@^30.1.3 @types/node@^24
 # 3) 계약 1·2와 대조한다.
 git diff -- apps/web/package.json
-git show HEAD:apps/web/package-lock.json > "$SCRATCH/lock-before.json"
+git show "$BASE:apps/web/package-lock.json" > "$SCRATCH/lock-before.json"
 node -e "$LOCKCHECK" "$SCRATCH/lock-before.json" apps/web/package-lock.json
 git diff --stat -- apps/web
 # 4) 두 파일만 커밋한다.
@@ -157,10 +180,12 @@ git commit
 **예상 결과**
 - `npm install` exit 0. stderr에 `EBADENGINE` 경고가 나온다(Node 20 < jsdom 30·root `engines` 하한). 오류가 아니다(design D3-a)
 - `git diff -- apps/web/package.json`이 계약 1과 같다: `engines` 3줄 추가, `"^20"`→`"^24.19.2"`, `"^27.0.0"`→`"^30.1.3"`
-- `LOCKCHECK` 출력이 계약 2와 같다
+- `LOCKCHECK` 출력이 계약 2와 같다(`changed`≥1, `nonDev=[]`)
 - `git diff --stat -- apps/web`에 두 파일만 있다
 
 **다르면**: 커밋하지 말고 멈춘다. `typesV`·`jsdomV`가 더 높게 나왔다면 registry에 새 patch가 나온 것이다. 실제 값을 dod `## 변경 요청`에 적고 승인을 받는다. `nonDev`가 비어 있지 않으면 production 트리가 바뀐 것이다. 목록을 그대로 오케스트레이터에 보고한다. `engines`가 `null`이면 1)을 빠뜨린 것이다.
+
+**증거 기록**: 커밋 뒤 dod `### AC4`에 `[GREEN] <ISO 시각> <Task 1 커밋 sha> LOCKCHECK` 줄과 출력 두 줄 전문을 붙인다. 같은 출력의 `prodDepsSame:true`·`nonDev=[]`를 `### R2·R3·R4`의 R4 줄로 붙인다.
 
 **커밋 메시지**: `chore: apps/web jsdom 30·@types/node 24 적용과 engines 추가 (#118)`. 본문에 "lockfile은 npm 10.8.2 --package-lock-only 재해결, 변경 항목 전부 dev 트리"를 적는다.
 
@@ -199,7 +224,7 @@ git commit
 ```
 
 **예상 결과**
-- diff는 3줄 교체뿐이다(workflow 1줄, Dockerfile 2줄)
+- diff는 3줄 교체뿐이다(workflow 1줄, Dockerfile 2줄). 파일 줄 수는 그대로다(Task 3 M11이 30·189행 번호를 쓴다)
 - `189:          node-version: '24'` 한 줄
 - `1:FROM node:24-alpine@sha256:a34ab6d7…67c8 AS builder`, `8:FROM node:24-alpine@sha256:a34ab6d7…67c8`
 - 계약 테스트 exit 0 (아직 Node 블록 없음)
@@ -265,7 +290,7 @@ types_node_major="$(sed -nE 's/^    "@types\/node": "\^([0-9]+)(\.[0-9]+){0,2}",
 | C6 | `package.json` `engines` 블록 | 블록 내용이 정확히 한 줄 `^    "node": "\^([0-9]+)\.[0-9]+\.[0-9]+"$` | `apps/web package.json engines must be exactly one "node": "^<major>.<minor>.<patch>" entry` |
 | C7 | 네 major | `@types/node` major가 있고 CI == Dockerfile == engines == `@types/node` | `apps/web Node major must match: CI node-version <a>, Dockerfile <b>, engines.node <c>, @types/node <d 또는 missing>` |
 
-**계약 2 — 변형 목록 (전문)**. 각 변형은 대상 파일 3개(`.github/workflows/quality-gate.yml`, `apps/web/Dockerfile`, `apps/web/package.json`)를 바꾼 뒤 계약 테스트를 실행하고, 원본으로 되돌린다. 통과 조건은 exit 1이고 stderr에 "기대 메시지 조각"이 들어 있는 것이다.
+**계약 2 — 변형 목록 (전문)**. 각 변형은 대상 파일 3개(`.github/workflows/quality-gate.yml`, `apps/web/Dockerfile`, `apps/web/package.json`)를 바꾼 뒤 계약 테스트를 실행하고, 원본으로 되돌린다. 통과 조건은 exit 1이고 stderr에 "기대 메시지 조각"이 들어 있는 것이다. 13종으로 C1~C7을 모두 덮는다.
 
 | # | 변형 (함수 본문) | 기대 메시지 조각 | 잡는 규칙 |
 |---|---|---|---|
@@ -280,14 +305,18 @@ types_node_major="$(sed -nE 's/^    "@types\/node": "\^([0-9]+)(\.[0-9]+){0,2}",
 | M8 | `sed -i 's/"node": "\^24\.15\.0"/"node": "^22.22.2"/' apps/web/package.json` | `Node major must match` | C7 |
 | M9 | `sed -i 's/"@types\/node": "\^24\.19\.2"/"@types\/node": "^22"/' apps/web/package.json` | `Node major must match` | C7 |
 | M10 | `sed -i '/^  "engines": {$/,/^  },$/d' apps/web/package.json` | `engines must be exactly one` | C6 |
+| M11 | `sed -i -e '189d' -e "30a\\          node-version: '24'" .github/workflows/quality-gate.yml` (6번 잡 189행의 `node-version` 줄을 지우고, 1번 잡 `compile-architecture`의 `actions/setup-java` step `with:` 아래 30행 `          java-version: '21'` 다음으로 옮긴다) | `node-version must be set by the dependency-security job` | C2 |
+| M12 | `sed -i '$a FROM scratch' apps/web/Dockerfile` (파일 끝에 세 번째 `FROM` 줄 추가) | `apps/web Dockerfile must have exactly two FROM stages` | C3 |
 
-C2·C3은 변형하지 않는다. C2는 다른 잡에 `node-version`을 옮기는 변형이 필요한데, 그러면 C1(개수 1)과 겹쳐 메시지로 구분할 수 없다. C3은 C4·C5 변형이 같은 `FROM` 추출 경로를 지나므로 추출이 동작함을 함께 보인다.
+M11 위치 근거: `quality-gate.yml` 27~30행은 `compile-architecture` 잡의 `- uses: actions/setup-java@… # v4.7.1` / `with:` / `distribution: temurin` / `java-version: '21'`이다. 이 잡에는 `setup-node`가 없어서 실재하는 `with:` 블록(setup-java) 아래로 옮긴다. 옮긴 뒤에도 `node-version` 줄은 하나이고 값이 `'24'`라 C1은 통과하고 C2만 실패한다. 행 번호는 Task 2 이후 기준이다(Task 2는 줄 수를 바꾸지 않는다). 실행 전에 `sed -n '30p;189p'`로 두 줄을 확인한다.
+M12: 세 번째 `FROM` 줄 때문에 C3(개수 2)에서 먼저 실패한다. C1·C2는 workflow를 건드리지 않아 통과한다.
 
 **실행**
 ```bash
 # 1) 계약 1 블록을 넣는다.
 bash -n ci/quality-gate-contract-test.sh
 bash ci/quality-gate-contract-test.sh                                        # AC1 GREEN
+sed -n '30p;189p' .github/workflows/quality-gate.yml                         # M11 전제: "          java-version: '21'" / "          node-version: '24'"
 # 2) 변형 검증 (set -e 없이 대화형 셸에서)
 targets=(.github/workflows/quality-gate.yml apps/web/Dockerfile apps/web/package.json)
 m0()  { for f in "${targets[@]}"; do git show "$BASE:$f" > "$f"; done; }
@@ -301,6 +330,8 @@ m7()  { sed -i 's/"node": "\^24\.15\.0"/"node": ">=24.15.0"/' apps/web/package.j
 m8()  { sed -i 's/"node": "\^24\.15\.0"/"node": "^22.22.2"/' apps/web/package.json; }
 m9()  { sed -i 's/"@types\/node": "\^24\.19\.2"/"@types\/node": "^22"/' apps/web/package.json; }
 m10() { sed -i '/^  "engines": {$/,/^  },$/d' apps/web/package.json; }
+m11() { sed -i -e '189d' -e "30a\\          node-version: '24'" .github/workflows/quality-gate.yml; }
+m12() { sed -i '$a FROM scratch' apps/web/Dockerfile; }
 mutate() {  # $1=id $2=기대 메시지 조각 $3=변형 함수
   local id="$1" expect="$2" fn="$3" rc f
   for f in "${targets[@]}"; do cp "$f" "$SCRATCH/orig.$(basename "$f")"; done
@@ -325,6 +356,8 @@ mutate M7  'engines must be exactly one' m7
 mutate M8  'Node major must match' m8
 mutate M9  'Node major must match' m9
 mutate M10 'engines must be exactly one' m10
+mutate M11 'node-version must be set by the dependency-security job' m11
+mutate M12 'apps/web Dockerfile must have exactly two FROM stages' m12
 git diff --quiet -- "${targets[@]}" && echo "targets restored"
 bash ci/quality-gate-contract-test.sh                                        # 복원 뒤 다시 GREEN
 git add ci/quality-gate-contract-test.sh
@@ -333,27 +366,29 @@ git commit
 
 **예상 결과**
 - `bash -n` exit 0. 첫 실행 exit 0, `quality gate and supply-chain contracts verified`
-- `M0 RED ok` ~ `M10 RED ok` 11줄. `NOT-APPLIED`·`FAIL`이 하나라도 있으면 멈춘다. 정규식을 느슨하게 고치지 말고 실패 줄을 그대로 보고한다
+- `sed -n '30p;189p'`가 `          java-version: '21'`, `          node-version: '24'` 두 줄. 다르면 M11을 실행하지 말고 멈춘다
+- `M0 RED ok` ~ `M12 RED ok` 13줄. `NOT-APPLIED`·`FAIL`이 하나라도 있으면 멈춘다. 정규식을 느슨하게 고치지 말고 실패 줄을 그대로 보고한다
 - `targets restored`, 마지막 실행 exit 0
 - `git diff --stat HEAD~1`(커밋 뒤)에 `ci/quality-gate-contract-test.sh` 한 파일
 
-dod `### AC1`(첫 실행 GREEN, M0을 RED로), `### AC2`(11줄 결과)에 기록한다.
+dod `### AC1`(첫 실행 GREEN, M0을 RED로), `### AC2`(13줄 결과)에 기록한다.
 
 **커밋 메시지**: `ci: apps/web Node major 일치 계약 검사 추가 (#118)`
 
 ---
 
-## Task 4 — Node 24 환경 검증 (AC4·AC5·AC6, R1·R4)
+## Task 4 — Node 24 환경 검증 (AC4·AC5·AC6, R1)
 
-**파일**: dod 증거 로그만. worktree 파일은 바뀌면 안 된다.
+**파일**: dod 증거 로그만. dod 디렉터리 밖 worktree 파일은 바뀌면 안 된다.
 
 커밋된 HEAD를 `git archive`로 컨테이너에 넣는다. 호스트 `node_modules`(glibc 바이너리, 소유자)와 섞이지 않고, 증거가 SHA에 묶인다.
+컨테이너 스크립트는 `set -e`로 설치·lint·test·build 실패에서 멈춘다. 그 뒤의 `npm ls`·audit 단계는 실패해도 멈추지 않고, **출력 줄로 판정한다**.
 
 **실행**
 ```bash
 HEAD_SHA="$(git rev-parse --short HEAD)"; echo "HEAD=$HEAD_SHA"
 # 1) Node 24 컨테이너: 설치·lint·test·build·ls·audit (AC4·AC5·R1)
-git archive HEAD apps/web ci | docker run --rm -i "$NODE24_IMAGE" sh -c '
+git archive HEAD apps/web ci | docker run --rm -i -e AUDITSUM="$AUDITSUM" "$NODE24_IMAGE" sh -c '
   set -e
   apk add --no-cache bash > /dev/null
   mkdir /work && tar -xf - -C /work && cd /work
@@ -362,12 +397,14 @@ git archive HEAD apps/web ci | docker run --rm -i "$NODE24_IMAGE" sh -c '
   npm --prefix apps/web run lint
   npm --prefix apps/web run test
   npm --prefix apps/web run build
-  npm --prefix apps/web ls jsdom @types/node undici --all
-  npm --prefix apps/web ls --all > /tmp/ls.txt; echo "invalid=$(grep -c invalid /tmp/ls.txt || true)"
-  bash ci/run-npm-audit.sh; echo "audit-gate exit=$?"
+  npm --prefix apps/web ls jsdom @types/node undici --all || echo "ls-targets nonzero"
+  npm --prefix apps/web ls --all > /tmp/ls.txt 2>&1 || true
+  echo "invalid=$(grep -c invalid /tmp/ls.txt || true)"
+  bash ci/run-npm-audit.sh && echo "audit-gate exit=0"
   npm --prefix apps/web audit --json > /tmp/audit.json || true
-  node -e "console.log(JSON.stringify(JSON.parse(require(\"fs\").readFileSync(\"/tmp/audit.json\",\"utf8\")).metadata.vulnerabilities))"
+  node -e "$AUDITSUM" /tmp/audit.json
 ' 2>&1 | tee "$SCRATCH/node24-verify.log"
+diff <(grep '^packages=' "$SCRATCH/audit-baseline.txt") <(grep '^packages=' "$SCRATCH/node24-verify.log") && echo "audit packages same as baseline"
 # 2) 런타임 이미지 (AC6)
 docker build -f apps/web/Dockerfile -t premium-spread-web:issue118 .
 docker run --rm --entrypoint node premium-spread-web:issue118 -v
@@ -377,23 +414,25 @@ curl -s -o /dev/null -w '/ %{http_code}\n' http://127.0.0.1:13118/
 curl -s -o /dev/null -w '/login %{http_code}\n' http://127.0.0.1:13118/login
 docker logs ps-web-118 2>&1 | tail -n 5
 docker rm -f ps-web-118
-git status --porcelain
+git status --porcelain -- . ':!docs/work/issue-118-web-node24'
 ```
 
-**예상 결과**
-- 1): `v24.22.2` / `11.19.1`. `npm ci` exit 0. lint exit 0. test `Tests  10 passed (10)`. build exit 0, 라우트 6개(`/`, `/_not-found`, `/login`, `/register`, `/trackings`, `/trackings/[id]`).
-  `npm ls`에 `jsdom@30.1.3`, `@types/node@24.19.2`, `undici@7.30.1`(jsdom 하위 dedupe), `invalid=0`.
-  `audit-gate exit=0`. 집계 `{"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}`
+**예상 결과** (출력 줄 기준 판정)
+- 1): `v24.22.2` / `11.19.1`. `npm ci`·lint·build exit 0(중간에 멈추지 않는다). test `Tests  10 passed (10)`. build 라우트 6개(`/`, `/_not-found`, `/login`, `/register`, `/trackings`, `/trackings/[id]`).
+  `npm ls`에 `jsdom@30.1.3`, `@types/node@24.19.2`, `undici@7.30.1`(jsdom 하위 dedupe)이 있고 `ls-targets nonzero` 줄이 없다. `invalid=0`.
+  `audit-gate exit=0` 줄이 있다. `counts={"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}`.
+  `advisories=deepmerge low https://github.com/advisories/GHSA-gcqx-w48m-w2h4 | minimatch moderate https://github.com/advisories/GHSA-g3hv-75wg-m249`
+- `audit packages same as baseline` (Task 0 `packages=` 줄과 같다)
 - 2): `docker build` exit 0. `node -v` → `v24.22.2`. `/ 200`, `/login 200`. 로그에 `Ready`
-- `git status --porcelain` 빈 출력
+- `git status --porcelain -- . ':!docs/work/issue-118-web-node24'` 빈 출력 (dod 증거 로그 미커밋분은 제외 대상)
 
-**실패하면**: 1)에서 `set -e`로 멈춘 단계를 기록하고 멈춘다. test 실패가 `undici` 관련이면 #114와 같은 원인이므로 `node -v`부터 확인한다. audit에 high가 나오면 advisory가 바뀐 것이다. dod `## 변경 요청`에 적는다. 13118 포트가 쓰이고 있으면 다른 빈 포트로 바꾸고 그 값을 기록한다(컨테이너 쪽 3000은 그대로).
+**실패하면**: 1)에서 `set -e`로 멈춘 단계를 기록하고 멈춘다. test 실패가 `undici` 관련이면 #114와 같은 원인이므로 `node -v`부터 확인한다. `audit-gate exit=0` 줄이 없거나 `packages=`가 기준선과 다르면 advisory가 바뀐 것이다. dod `## 변경 요청`에 적는다. 13118 포트가 쓰이고 있으면 다른 빈 포트로 바꾸고 그 값을 기록한다(컨테이너 쪽 3000은 그대로).
 
 dod `### AC4`·`### AC5`·`### AC6`·`### R1`에 `[GREEN] <ISO 시각> <HEAD_SHA>`로 붙인다.
 
 ---
 
-## Task 5 — 문서 (AC7·AC8, R3)
+## Task 5 — 문서 (AC7·AC8, R2·R3)
 
 **파일**: `.github/dependabot.yml`, `docs/runbooks/deployment.md`, `README.md`
 
@@ -456,7 +495,9 @@ bash ci/quality-gate-contract-test.sh                                           
 - 옛 문구 grep 3개 모두 출력 없음, 새 문구 grep 4개 모두 `1`
 - R2 exit 0
 
-**커밋**: `docs: apps/web Node 24 전환 문서 갱신 (#118)`. Task 0·3·4의 dod 증거 로그도 이 커밋에 넣는다.
+dod `### AC7`과 `### R2·R3·R4`(R2·R3 줄)에 `[GREEN] <ISO 시각> <HEAD sha>(+문서 변경)`로 붙인다.
+
+**커밋**: `docs: apps/web Node 24 전환 문서 갱신 (#118)`. Task 0·1·3·4의 dod 증거 로그도 이 커밋에 넣는다.
 
 ---
 
@@ -486,14 +527,18 @@ Known Issue 8은 바꾸지 않는다(design §5).
 ```bash
 bash docs/check-documentation.sh                                                            # R3
 test -f docs/work/issue-118-web-node24/README.md && echo ok
+git add .ai/PROJECT_STATUS.md docs/work/README.md docs/work/issue-118-web-node24/README.md docs/work/issue-118-web-node24/understanding.md
+git commit
 ```
 
-**예상 결과**: R3 exit 0. `.ai/PROJECT_STATUS.md`의 새 상대 링크가 해석된다. `ok`
+**예상 결과**: R3 exit 0. `.ai/PROJECT_STATUS.md`의 새 상대 링크가 해석된다. `ok`. 커밋에 위 4개 파일만 있다
+
+**커밋 메시지**: `docs: #118 상태·인덱스 갱신`
 
 ---
 
 ## Task 7 — PR과 CI (AC9) — 오케스트레이터 단계
 
 - 최종 커밋 SHA에서 Task 4의 1)을 다시 실행해 R1 집계를 실행 시각과 함께 dod에 남긴다(코드·lockfile이 Task 4 이후 바뀌지 않았으면 Task 4 결과 SHA와 "이후 문서만"을 적는다)
-- PR 본문: 바꾼 네 곳의 값, 계약 검사 규칙 C1~C7, 변형 11종 결과, Node 24 컨테이너·이미지 스모크 결과, `engines`가 경고만 낸다는 점. `Closes #118`. PR #114는 이 PR이 jsdom 30.1.3을 포함하므로 다시 열지 않는다
+- PR 본문: 바꾼 네 곳의 값, 계약 검사 규칙 C1~C7, 변형 13종 결과, Node 24 컨테이너·이미지 스모크 결과, `engines`가 경고만 낸다는 점. `Closes #118`. PR #114는 이 PR이 jsdom 30.1.3을 포함하므로 다시 열지 않는다
 - `gh pr checks` 11/11 success를 dod `### AC9`에 기록한다
