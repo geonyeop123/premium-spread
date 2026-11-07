@@ -95,7 +95,7 @@ lockfile 전체 재생성과 `npm audit fix` 결과는 적용하지 않는다.
 - 2026-11-07, npm 10.8.2에서 사본에 `npm audit fix --package-lock-only`를 실행했다. #82에서 본 arborist 크래시(`Cannot read properties of null (reading 'edgesOut')`)는 재현되지 않았다.
 - 명령은 끝까지 실행됐고 lockfile을 약 150건 범위 내 갱신했다(typescript-eslint 8.56→8.72, shadcn 4.22→4.23, `@modelcontextprotocol/sdk` 제거 등).
   force 없이는 고칠 수 없는 moderate·low가 남아 exit 1로 끝났다.
-- 판정: **동작한다.** 다음 취약점 대응에서는 override보다 이 명령을 먼저 쓴다.
+- 판정: **2026-11-07 lockfile 기준으로 동작한다.** #82에서는 같은 npm 10.8.2로 크래시가 났으므로 npm 버전이 아니라 당시 lockfile 상태가 원인이었던 것으로 본다. 다음 취약점 대응에서는 override보다 이 명령을 먼저 쓰고, 크래시가 다시 나면 override 분기로 간다.
 - 이번 PR에는 적용하지 않는다. 열린 Dependabot PR #113(`web-minor-patch`)과 범위가 겹치고, 이슈 범위(override 재검토)를 넘는다.
 - 최종 브랜치 상태에서 Task 3으로 다시 실행해 증거로 남긴다.
 

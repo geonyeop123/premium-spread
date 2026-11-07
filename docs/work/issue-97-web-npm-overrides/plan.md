@@ -102,7 +102,7 @@ dod 증거 로그에 `### AC1`, `### AC2`, `### R 기준선` 절을 만들고 `[
 }
 ```
 
-`"eslint-config-next": "16.4.3",` 줄(4칸 들여쓰기, 끝 쉼표)은 그대로 둔다. `ci/quality-gate-contract-test.sh`의 sed가 이 형태를 읽는다.
+`"eslint-config-next": "16.4.3",` 줄은 그대로 둔다. `ci/quality-gate-contract-test.sh`의 sed(`^    "eslint-config-next": "([^"]+)",?$`)는 4칸 들여쓰기의 한 줄 `"키": "값"` 형태를 읽는다(끝 쉼표는 선택).
 
 **계약 2 — lockfile 변경 목록 (전문)**. design §4 표의 15건과 같아야 한다. `LOCKDIFF` 출력 형식(키 정렬, 탭 구분)으로 쓰면 아래와 같다.
 
@@ -235,8 +235,9 @@ dod 증거 로그 `### AC4`에 npm 버전, exit code, `edgesOut` 건수, `change
 - **overrides 정책.** `apps/web/package.json`에는 `overrides`를 두지 않는다. #97에서 14개를 모두 제거했고, 항목별 판정은
   [#97 설계](../work/issue-97-web-npm-overrides/design.md) §3에 있다. override는 소비자가 선언한 범위와 상관없이 버전을
   강제하고 Dependabot이 갱신하지 않는다. 그래서 upstream이 고친 뒤에도 남고 major 상향을 막는다.
-  - audit high 이상이 생기면 보안 PR이나 `npm --prefix apps/web audit fix`(force 없이)를 먼저 쓴다. npm 10.8.2에서
-    동작을 확인했다(#97).
+  - audit high 이상이 생기면 보안 PR이나 `npm --prefix apps/web audit fix`(force 없이)를 먼저 쓴다. 2026-11-07 lockfile
+    기준 npm 10.8.2에서 크래시 없이 동작했다(#97). #82에서는 같은 버전으로 `edgesOut` 크래시가 났으므로, 크래시가 다시
+    나면 아래 override 분기로 간다.
   - 둘 다로 해소되지 않을 때만 override를 넣는다. override 범위는 그 패키지를 쓰는 모든 소비자의 선언 범위 안이어야
     한다. 범위 밖이면 소비자 패키지 상향을 먼저 검토한다.
   - override를 넣는 PR은 아래 표에 행을 추가하고, 빼는 PR은 행을 지운다. 표가 비어 있으면 `overrides`도 없어야 한다.
@@ -270,7 +271,7 @@ dod 증거 로그 `### AC4`에 npm 버전, exit code, `edgesOut` 건수, `change
   제거했다. 제거해도 audit high 이상이 생기지 않았다. 재도입 조건은 [runbook](../docs/runbooks/deployment.md)을, 항목별 판정은
   [설계](../docs/work/issue-97-web-npm-overrides/design.md)를 따른다.
 ```
-- Known Issues 8: 마지막 문장 "운영은 [`deployment.md`](../docs/runbooks/deployment.md)를 따른다." 뒤에 이어 쓴다(같은 항목, 3칸 들여쓰기 유지).
+- Known Issues 8: 마지막 문장 "운영은 [`deployment.md`](../docs/runbooks/deployment.md)를 따른다."가 있는 행(현재 169행) 다음에 3칸 들여쓰기로 새 줄을 추가한다(같은 항목). 169행 자체는 바꾸지 않는다.
 ```markdown
    #97에서 `overrides`를 모두 제거했다. 2026-11-07 기준 moderate `minimatch`(GHSA-g3hv-75wg-m249)와 low
    `deepmerge`(GHSA-gcqx-w48m-w2h4)가 devDependency 경로(eslint·typescript-eslint·shadcn CLI)에 남아 있다. 게이트(high 이상)를
