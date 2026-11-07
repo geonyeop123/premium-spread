@@ -1,8 +1,8 @@
 ---
 feature: apps/web npm overrides 재검토
 slug: issue-97-web-npm-overrides
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-07
 verdict_commit:
 source: https://github.com/geonyeop123/premium-spread/issues/97
 ---
