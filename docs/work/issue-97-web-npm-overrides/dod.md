@@ -127,6 +127,25 @@ source: https://github.com/geonyeop123/premium-spread/issues/97
 - [GREEN] 2026-11-07 360e2af(+문서 변경) — `bash docs/check-documentation.sh` exit 0, `documentation check passed (20 files, 15 required paths)`.
   `grep -n '재검토는 #97' docs/runbooks/deployment.md` 출력 없음(exit 1)
 
+### ⑨ 리뷰 기록 (AC3·AC5 T3 제출)
+
+- [REVIEW] 2026-11-07 ff95bd4 — spec-reviewer(계약): BLOCKER·MAJOR 0, MINOR 2(이 절 위 AC1·AC2 GREEN 줄에 ISO 시각 없음, R6 앵커가 미커밋 상태)
+  → 아래 ⑩ 최종 검증 줄로 해소. package.json = plan 계약 1, runbook·README·PROJECT_STATUS = Task 4 계약 1~3 전문 일치, design §3 14행 + §3.1 2행 확인(AC3·AC5)
+- [REVIEW] 2026-11-07 ff95bd4 — code-reviewer(버그·회귀): 지적 0. lockfile `dev` 플래그·선언 범위·integrity 정합, 제거한 override의 원 advisory 재개방 경로 없음,
+  origin/dev 대비 audit moderate 13→11
+- [CHECK] 2026-11-07 ff95bd4 — 오케스트레이터: `git show --stat 4c7cbfc` = dod.md 1파일 2줄(동결 단독). `git diff 4c7cbfc HEAD -- dod.md` 삭제 줄 0(수용기준 불변).
+  origin/dev lockfile 대비 version 변경 15건, 같은 버전 필드 변경은 `node_modules/postcss` `dev: true` 1건(next가 하위 8.5.23 사본을 쓰게 된 결과)
+
+### ⑩ 최종 검증 (ff95bd4)
+
+- [GREEN] 2026-11-07T05:36:44Z ff95bd4 — `./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon`
+  exit 0, `BUILD SUCCESSFUL in 3m 57s`, 실패·오류·skip 0 (unit 합계 1,416 · architectureTest 35 · api integration 174 · batch integration 117 · common integration 96). `harnessCheck` exit 0
+- [GREEN] 2026-11-07T05:36:56Z ff95bd4 — 깨끗한 `npm --prefix apps/web ci --include=optional` exit 0
+- [GREEN] 2026-11-07T05:37:20Z ff95bd4 — AC1 `pkg get overrides` → `{}`. AC2 `npm ls ... --all` exit 0, overridden·invalid 없음, 버전 집합 위 AC2 GREEN과 동일
+- [GREEN] 2026-11-07T05:37:30Z ff95bd4 — R1 `bash ci/run-npm-audit.sh` exit 0. `npm audit --json` `{"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}`, advisory는 minimatch GHSA-g3hv-75wg-m249 · deepmerge GHSA-gcqx-w48m-w2h4 둘뿐
+- [GREEN] 2026-11-07T05:37:32Z~05:37:54Z ff95bd4 — R2 lint exit 0 · R3 test `10 passed` · R4 build 6개 라우트 · R5 contract exit 0 · R6 `documentation check passed (20 files, 15 required paths)`
+- [CHECK] 2026-11-07 ff95bd4 — 경계면: package.json ↔ lockfile `packages[""]` 선언 일치(overrides 양쪽 없음), Dockerfile `npm ci --include=optional` ↔ CI 6번 잡 동일, 변경 문서 상대 링크 실재
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
