@@ -146,6 +146,12 @@ source: https://github.com/geonyeop123/premium-spread/issues/97
 - [GREEN] 2026-11-07T05:37:32Z~05:37:54Z ff95bd4 — R2 lint exit 0 · R3 test `10 passed` · R4 build 6개 라우트 · R5 contract exit 0 · R6 `documentation check passed (20 files, 15 required paths)`
 - [CHECK] 2026-11-07 ff95bd4 — 경계면: package.json ↔ lockfile `packages[""]` 선언 일치(overrides 양쪽 없음), Dockerfile `npm ci --include=optional` ↔ CI 6번 잡 동일, 변경 문서 상대 링크 실재
 
+### AC6
+
+- [GREEN] 2026-11-07 783ca32 — PR #117 (https://github.com/geonyeop123/premium-spread/pull/117) `gh pr checks 117`: 11/11 pass
+  (1 Compile + architecture · 2 Unit + coverage · 3 API integration · 4 Batch integration · 5 ktlint + detekt · 6 Dependency + security scan ·
+  7a Docker image api/batch/web · 7 Docker image build · 8 Common integration). 783ca32는 ff95bd4 이후 문서만 바꾼 커밋이다
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -169,13 +175,13 @@ source: https://github.com/geonyeop123/premium-spread/issues/97
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: issue-97-web-npm-overrides @ <판정 시 기입>
+DoD VERDICT: issue-97-web-npm-overrides @ 783ca32 (코드·lockfile 기준 ff95bd4, 이후 커밋은 문서만)
   수용기준 표:     6개  (T1 0 · T2 3 · T3 3 · T4 0)
-  T1/T2 자동:      3개 중 <p>개 PASS
-  T3 기록 제출:    3개 중 <q>건
+  T1/T2 자동:      3개 중 3개 PASS (AC1 · AC2 · AC4)
+  T3 기록 제출:    3개 중 3건 (AC3 · AC5 ⑨ 리뷰 기록, AC6 PR #117 CI 11/11)
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
-  변경 요청:       <k>건
-  =>
+  변경 요청:       0건
+  => PASS
 ```
 
 **사람 확인이 필요한 항목**
