@@ -1,0 +1,30 @@
+# apps/web(npm) 의존성 주기 갱신. 운영 방법은 docs/runbooks/deployment.md 의 "apps/web 의존성 갱신" 절을 따른다.
+# Gradle/백엔드 의존성은 dependency verification 계약 때문에 이 설정의 범위 밖이다(#98).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /apps/web
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      # Node 런타임(Dockerfile·CI)이 20이므로 타입 정의 major 는 런타임을 올릴 때 함께 올린다.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # 첫 번째로 맞는 그룹이 이긴다. next 와 eslint-config-next 는 같은 버전으로 함께 올라가야 하므로 맨 앞에 둔다.
+      next:
+        patterns: ["next", "eslint-config-next"]
+      web-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      web-minor-patch:
+        update-types: ["minor", "patch"]
+        patterns: ["*"]
