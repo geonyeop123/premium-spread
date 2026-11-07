@@ -128,7 +128,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - apps/web 의존성 주기 갱신(#98, 설정 추가, 첫 갱신 PR 은 머지 뒤 관찰): `.github/dependabot.yml` 이 `apps/web` npm 갱신
   PR 을 매주 `dev` 대상으로 만든다. `next`·`eslint-config-next` 는 한 그룹으로 함께 올라가며, 두 버전이 다르면
   `ci/quality-gate-contract-test.sh` 가 1번 잡을 실패시킨다. 운영(누가·언제 머지)은 [runbook](../docs/runbooks/deployment.md)을 따른다.
-- apps/web overrides 재검토(#97, 구현·로컬 검증 완료, PR CI 대기): `apps/web/package.json` 의 `overrides` 14개를 모두
+- apps/web overrides 재검토(#97, 구현·로컬 검증 완료(⑩ PASS @ ff95bd4), PR CI 대기): `apps/web/package.json` 의 `overrides` 14개를 모두
   제거했다. 제거해도 audit high 이상이 생기지 않았다. 재도입 조건은 [runbook](../docs/runbooks/deployment.md)을, 항목별 판정은
   [설계](../docs/work/issue-97-web-npm-overrides/design.md)를 따른다.
 
