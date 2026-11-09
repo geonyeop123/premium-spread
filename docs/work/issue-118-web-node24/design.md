@@ -4,6 +4,7 @@
 - 브랜치: `chore/issue-118-web-node24` (base `dev`)
 - 계기: Dependabot PR #114(jsdom 27.4.0→30.1.3)가 Quality Gate 6번 잡에서 실패해 닫았다. 선행: #98(Dependabot 주기 갱신), #97(overrides 제거)
 - 변경 이력: ⑥ 스펙 리뷰(ACCEPT-with-fixes) 9건 반영 — D3의 참조 번호(D5→D6), D8의 setup-node 해석 문구, §7 변형 개수(11→13, C2·C3 포함)를 고쳤다
+- 변경 이력: ⑧ D5 개정 — lockfile 재해결을 node:24-alpine npm 11.19.1로(5641e22), 동결 기준 불변
 
 ## 1. 문제
 
@@ -35,6 +36,7 @@ Node 20은 2026-04에 EOL이 지났다(오늘 2026-11-07). jsdom 30을 받으려
 **lockfile 재해결** — 로컬 node v20.20.0 / npm 10.8.2에서
 `npm install --package-lock-only --ignore-scripts jsdom@^30.1.3 @types/node@^24`를 실행했다.
 `package.json`은 `"@types/node": "^24.19.2"`, `"jsdom": "^30.1.3"`이 됐고 lockfile이 다시 해결됐다. Node 20이라 `EBADENGINE` 경고만 나왔다.
+이 사본은 D5 개정으로 채택하지 않았다. 채택 lock은 npm 11.19.1 재해결(dod AC4, changed=37 nonDev=[])이다.
 
 **node:24-alpine 컨테이너 검증** — 위 사본으로
 
@@ -45,7 +47,7 @@ Node 20은 2026-04에 EOL이 지났다(오늘 2026-11-07). jsdom 30을 받으려
 | `npm run test` | 1 file, `10 passed` |
 | `npm run build` | exit 0. 라우트 6개 (`/`, `/_not-found`, `/login`, `/register`, `/trackings`, `/trackings/[id]`) |
 | `npm ls --all` | `invalid` 0 |
-| `undici` | jsdom@30.1.3이 `undici@7.30.1`로 dedupe |
+| `undici` | jsdom@30.1.3은 하위에 전용 `undici@8.12.4`(engines >=22.19.0)를 둔다(lock `node_modules/jsdom/node_modules/undici`). 최상위 `undici@7.30.1`은 shadcn·@dotenvx 등이 쓴다 |
 | `npm audit` | high 0 · critical 0 · moderate 11 · low 2 (dev와 같다) |
 
 ## 3. 결정

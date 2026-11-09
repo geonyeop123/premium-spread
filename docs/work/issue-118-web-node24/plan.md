@@ -8,6 +8,7 @@
 > 앱 코드 변경이 없어 `test-strategy`의 Domain→Controller 순서는 해당 없다. 순서는 RED 기록 → 의존성 선언 → 런타임 선언 → 계약 검사 → Node 24 검증 → 문서다.
 > 변경 이력: ⑥ 스펙 리뷰 9건 반영 — Task 4 `git status` 범위, Task 1 기준 lock을 `BASE`로 고정, 변형 M11·M12(C2·C3) 추가, Task 1 증거 기록 지시,
 > Task 6 커밋 단계, Task 4 컨테이너 스크립트의 `set -e` 판정, audit 패키지 이름 집합 비교(Task 0 기준선·Task 4)
+> 변경 이력: ⑧ D5 개정 — lockfile 재해결을 node:24-alpine npm 11.19.1로(5641e22), 동결 기준 불변
 
 ## 공통 — 상수, 임시 디렉터리, audit 요약 스크립트
 
@@ -423,7 +424,7 @@ git status --porcelain -- . ':!docs/work/issue-118-web-node24'
 
 **예상 결과** (출력 줄 기준 판정)
 - 1): `v24.22.2` / `11.19.1`. `npm ci`·lint·build exit 0(중간에 멈추지 않는다). test `Tests  10 passed (10)`. build 라우트 6개(`/`, `/_not-found`, `/login`, `/register`, `/trackings`, `/trackings/[id]`).
-  `npm ls`에 `jsdom@30.1.3`, `@types/node@24.19.2`, `undici@7.30.1`(jsdom 하위 dedupe)이 있고 `ls-targets nonzero` 줄이 없다. `invalid=0`.
+  `npm ls`에 `jsdom@30.1.3`, `@types/node@24.19.2`, `undici@8.12.4`(jsdom 하위 전용)·최상위 `undici@7.30.1`(shadcn 등)이 있고 `ls-targets nonzero` 줄이 없다. `invalid=0`.
   `audit-gate exit=0` 줄이 있다. `counts={"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}`.
   `advisories=deepmerge low https://github.com/advisories/GHSA-gcqx-w48m-w2h4 | minimatch moderate https://github.com/advisories/GHSA-g3hv-75wg-m249`
 - `audit packages same as baseline` (Task 0 `packages=` 줄과 같다)
