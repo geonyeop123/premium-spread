@@ -74,7 +74,7 @@ Quality Gate 6번 잡의 `npm audit`은 실시간 advisory DB를 조회하므로
   Renovate는 그룹·스케줄 표현력이 더 크지만 GitHub App 설치와 별도 설정 정본이 필요하고, web 한 패키지에는 과하다.
 - **주기와 묶음.** 매주 월요일 09:00 KST, 열린 PR은 최대 5개다. `next`·`eslint-config-next`는 `next` 그룹으로 함께
   올라간다(major 포함). 나머지 minor·patch는 `web-minor-patch` 한 PR로, major는 패키지별 PR로 온다. `@types/node`
-  major는 Node 런타임(20)을 올릴 때 함께 올리므로 제외했다.
+  major는 Node 런타임(24)을 올릴 때 함께 올리므로 제외했다(아래 "Node 런타임 major 갱신").
 - **보안 업데이트.** 저장소 설정의 Dependabot alerts와 security updates가 켜져 있어야 한다. 보안 PR은 `web-security`
   그룹으로 묶이며 version update 주기와 무관하게 바로 열린다.
 - **누가·언제 머지하나.** owner가 주 1회(월요일 PR 생성 뒤) 검토한다. 보안 PR은 받은 날 처리한다. Quality Gate 전체
@@ -82,6 +82,13 @@ Quality Gate 6번 잡의 `npm audit`은 실시간 advisory DB를 조회하므로
 - **next 버전 불일치.** `ci/quality-gate-contract-test.sh`가 `next`와 `eslint-config-next`의 버전이 다르면 1번 잡을
   실패시킨다. 보안 PR이 `next`만 올린 경우 같은 PR 브랜치에서 `npm --prefix apps/web install eslint-config-next@<같은 버전>
   --save-exact`로 맞춘다.
+- **Node 런타임 major 갱신.** `apps/web`의 Node major는 다음 다섯 곳이 같아야 하며 한 PR에서 함께 바꾼다. CI 6번 잡
+  `actions/setup-node`의 `node-version`, `apps/web/Dockerfile` builder·runtime 두 stage의 `node:<major>-alpine@sha256:<digest>`,
+  `apps/web/package.json`의 `engines.node`와 `@types/node`, 루트 `README.md`의 사전 요구사항이다. 앞의 네 곳은
+  `ci/quality-gate-contract-test.sh`가 major 일치와 digest 고정을 검사해 1번 잡을 실패시킨다(#118). digest는
+  `docker buildx imagetools inspect node:<major>-alpine`의 `Digest`로 정하고, 그 이미지 안에서 `npm ci --include=optional`·lint·
+  test·build를 다시 돌린다. `engines`는 `engine-strict`가 꺼져 있어 맞지 않는 Node에서 경고만 낸다. 현재는 Node 24
+  (`^24.15.0`, 2028-04 EOL)다. Node 20에서 jsdom 30이 `undici` 오류로 실패한 #114가 전환 계기였다.
 - **overrides 정책.** `apps/web/package.json`에는 `overrides`를 두지 않는다. #97에서 14개를 모두 제거했고, 항목별 판정은
   [#97 설계](../work/issue-97-web-npm-overrides/design.md) §3에 있다. override는 소비자가 선언한 범위와 상관없이 버전을
   강제하고 Dependabot이 갱신하지 않는다. 그래서 upstream이 고친 뒤에도 남고 major 상향을 막는다.

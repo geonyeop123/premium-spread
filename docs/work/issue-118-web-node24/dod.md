@@ -94,23 +94,127 @@ Gradle 전체 회귀는 로컬에서 돌리지 않고 AC9(CI 1~5·8번 잡)로 �
 
 ### AC1
 
+[RED] 2026-11-09T00:23Z 35d49ba (변형 M0 = BASE 상태 복원): exit 1, stderr에 `engines must be exactly one` 포함 (아래 AC2 `M0 RED ok`)
+[GREEN] 2026-11-09T00:23:25Z 35d49ba: `bash -n` exit 0, `bash ci/quality-gate-contract-test.sh` exit 0, `quality gate and supply-chain contracts verified`
+
 ### AC2
+
+[GREEN] 2026-11-09T00:23:25Z 35d49ba (plan Task 3 실행 2) 그대로; 전제 `sed -n '30p;189p'` = `java-version: '21'` / `node-version: '24'`)
+```
+M0 RED ok
+M1 RED ok
+M2 RED ok
+M3 RED ok
+M4 RED ok
+M5 RED ok
+M6 RED ok
+M7 RED ok
+M8 RED ok
+M9 RED ok
+M10 RED ok
+M11 RED ok
+M12 RED ok
+targets restored
+quality gate and supply-chain contracts verified   (복원 뒤 exit 0)
+```
 
 ### AC3
 
+[RED] 2026-11-09T00:20:01Z 3843ed0
+```
+189:          node-version: '20'
+1:FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
+8:FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+{ "devDependencies.@types/node": "^20", "devDependencies.jsdom": "^27.0.0" }   (engines 키 없음)
+```
+
 ### AC4
+
+[RED] 2026-11-09T00:20:01Z 3843ed0
+```
+{"engines":null,"types":"20.19.43","jsdom":"27.4.0"}
+```
+
+[NOTE] 2026-11-09T00:21Z 로컬 npm 10.8.2 시도에서 멈춤: changed=55, nonDev=@next/swc-linux-* 4건, "libc" 0곳(BASE 18곳). 이후 plan 개정(5641e22)에 따라 node:24-alpine npm 11.19.1로 재해결.
+
+[GREEN] 2026-11-09T00:22:27Z 02825c3 LOCKCHECK (npm 11.19.1 재해결, `grep -c '"libc"'` = 18)
+```
+{"engines":{"node":"^24.15.0"},"types":"^24.19.2","jsdom":"^30.1.3","typesV":"24.19.2","jsdomV":"30.1.3","undiciV":"7.30.1","prodDepsSame":true}
+changed=37 nonDev=[]
+```
+
+[GREEN] 2026-11-09T00:25:21Z 35d49ba (Node 24 컨테이너 `npm --prefix apps/web ls jsdom @types/node undici --all`)
+```
+@types/node@24.19.2, jsdom@30.1.3, undici@8.12.4 (jsdom 하위), undici@7.30.1 (최상위, shadcn 하위에서 deduped)
+`ls-targets nonzero` 줄 없음, invalid=0
+```
 
 ### AC5
 
+[GREEN] 2026-11-09T00:25:21Z 35d49ba (git archive HEAD → node:24-alpine@sha256:a34ab6d7…67c8, `set -e` 컨테이너 exit 0)
+```
+v24.22.2
+11.19.1
+Test Files  1 passed (1)
+     Tests  10 passed (10)
+build 라우트: ○ /  ○ /_not-found  ○ /login  ○ /register  ○ /trackings  ƒ /trackings/[id]
+```
+
 ### AC6
+
+[RED] 2026-11-09T00:20:01Z 3843ed0
+```
+docker run --rm node:20-alpine@sha256:fb4cd12c…2293 node -v
+v20.20.2
+```
+
+[GREEN] 2026-11-09T00:25:21Z 35d49ba (포트 127.0.0.1:13118)
+```
+docker build exit 0
+v24.22.2
+/ 200
+/login 200
+▲ Next.js 16.4.5 ... ✓ Ready in 0ms
+```
+`git status --porcelain -- . ':!docs/work/issue-118-web-node24'` 빈 출력
 
 ### AC7
 
+[RED] 2026-11-09T00:20:01Z 3843ed0
+```
+101:- Node.js 20+
+77:  major는 Node 런타임(20)을 올릴 때 함께 올리므로 제외했다.
+18:      # Node 런타임(Dockerfile·CI)이 20이므로 타입 정의 major 는 런타임을 올릴 때 함께 올린다.
+```
+
+[GREEN] 2026-11-09T00:25:44Z 35d49ba(+문서 변경): 옛 문구 grep 3개 출력 없음, 새 문구 grep 4개 각 `1`
+
 ### R 기준선
+
+[RED] 2026-11-09T00:20:01Z 3843ed0 (BASE=379b5c15c18e1d5b7797d16900e0a27e9778be25, Node 20 컨테이너 `npm ci --include=optional` 뒤 audit)
+R2 `bash ci/quality-gate-contract-test.sh` exit 0, R3 `bash docs/check-documentation.sh` exit 0 (`documentation check passed (20 files, 15 required paths)`)
+```
+baseline-ci exit=0
+counts={"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}
+packages=@shadcn/registry,@ts-morph/common,@typescript-eslint/eslint-plugin,@typescript-eslint/parser,@typescript-eslint/type-utils,@typescript-eslint/typescript-estree,@typescript-eslint/utils,deepmerge,eslint-config-next,minimatch,shadcn,ts-morph,typescript-eslint
+advisories=deepmerge low https://github.com/advisories/GHSA-gcqx-w48m-w2h4 | minimatch moderate https://github.com/advisories/GHSA-g3hv-75wg-m249
+```
 
 ### R1
 
+[GREEN] 2026-11-09T00:25:21Z 35d49ba
+```
+audit-gate exit=0
+counts={"info":0,"low":2,"moderate":11,"high":0,"critical":0,"total":13}
+advisories=deepmerge low https://github.com/advisories/GHSA-gcqx-w48m-w2h4 | minimatch moderate https://github.com/advisories/GHSA-g3hv-75wg-m249
+audit packages same as baseline   (packages= 줄 diff 없음)
+```
+
 ### R2·R3·R4
+
+R4 [GREEN] 2026-11-09T00:22:27Z 02825c3: `prodDepsSame:true`, `nonDev=[]` (changed=37)
+R2 [GREEN] 2026-11-09T00:25:44Z 35d49ba(+문서 변경): `bash ci/quality-gate-contract-test.sh` exit 0, `quality gate and supply-chain contracts verified`
+R3 [GREEN] 2026-11-09T00:25:44Z 35d49ba(+문서 변경): `bash docs/check-documentation.sh` exit 0, `documentation check passed (20 files, 15 required paths)`
 
 ### ⑨ 리뷰 기록 (AC8 T3 제출)
 
