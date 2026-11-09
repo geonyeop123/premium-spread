@@ -21,3 +21,4 @@
 - [Quality Gate Docker image build 시간 단축](docker-build-time/README.md)
 - [apps/web npm overrides 재검토](issue-97-web-npm-overrides/README.md)
 - [apps/web Node 24 전환과 jsdom 30](issue-118-web-node24/README.md)
+- [apps/web 트래킹 조회 훅 분리와 set-state-in-effect override 제거](issue-96-trackings-fetch/README.md)

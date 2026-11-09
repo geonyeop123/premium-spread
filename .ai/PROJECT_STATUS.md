@@ -134,6 +134,10 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - apps/web Node 24 전환(#118, 구현·로컬 검증 완료(⑩ T1/T2 7/7 PASS @ e3a1a97), PR CI 대기): CI 6번 잡과 `apps/web/Dockerfile` 두 stage를 Node 24
   (`node:24-alpine`, digest 고정)로 올리고 `engines.node` `^24.15.0`·`@types/node` `^24`·jsdom 30을 적용했다. 네 곳의 Node
   major가 갈리면 `ci/quality-gate-contract-test.sh`가 1번 잡을 실패시킨다. 갱신 절차는 [runbook](../docs/runbooks/deployment.md)을 따른다.
+- apps/web 트래킹 조회 훅 분리(#96, 구현 완료, PR 대기): 트래킹 목록·상세 페이지의 조회를
+  `apps/web/src/hooks/useTrackings.ts`(`useTrackingList`·`useTracking`·`useGrossPnl`)로 옮기고, #82 D7의
+  `react-hooks/set-state-in-effect` override를 `apps/web/eslint.config.mjs`에서 제거했다(#82의 후속 해소). 백엔드·API 계약 변경은 없다.
+  [설계](../docs/work/issue-96-trackings-fetch/design.md)를 따른다.
 
 ## Migration 상태와 소유권
 
