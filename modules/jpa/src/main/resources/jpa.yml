@@ -38,10 +38,10 @@ spring:
     url: jdbc:mysql://localhost:3306/premiumspread?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: application
     password: application
+  # ddl-auto 는 공통 validate 를 상속한다. schema 정본은 Flyway 다 — create-drop 이면 bootRun 마다
+  # 공용 로컬 DB 의 entity table 이 지워지고 Hibernate DDL 로 다시 만들어진다(Flyway 제약·index 소실).
   jpa:
     show-sql: true
-    hibernate:
-      ddl-auto: create-drop
 
 ---
 spring.config.activate.on-profile: test

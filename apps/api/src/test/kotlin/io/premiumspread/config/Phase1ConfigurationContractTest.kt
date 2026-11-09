@@ -3,6 +3,7 @@ package io.premiumspread.config
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.core.io.ClassPathResource
+import org.yaml.snakeyaml.Yaml
 
 class Phase1ConfigurationContractTest {
 
@@ -12,6 +13,33 @@ class Phase1ConfigurationContractTest {
 
         assertThat(yaml).doesNotContain("ddl-auto: update")
         assertThat(yaml).contains("ddl-auto: validate")
+    }
+
+    /**
+     * Flyway 가 schema 정본이다. test 밖 프로필이 `create`·`create-drop`·`update` 를 쓰면
+     * README 대로 `bootRun` 만 해도 공용 로컬 DB 의 entity table 이 지워지고 Hibernate DDL 로 다시 만들어진다
+     * (Flyway 가 만든 제약·index 소실). test 는 Testcontainers 전용 DB 라 예외다.
+     */
+    @Test
+    fun `test 밖 프로필은 Hibernate가 schema를 만들거나 지우지 않는다`() {
+        val documents = ClassPathResource("jpa.yml").inputStream.use { input ->
+            Yaml().loadAll(input).map {
+                @Suppress("UNCHECKED_CAST")
+                it as Map<String, Any?>
+            }
+        }
+
+        val ddlAutoByProfile = documents.associate { profileOf(it) to ddlAutoOf(it) }
+
+        assertThat(ddlAutoByProfile.keys).contains(COMMON_PROFILE, "local", "test", "dev", "qa", "prd")
+        ddlAutoByProfile
+            .filterKeys { it != "test" }
+            .forEach { (profile, ddlAuto) ->
+                assertThat(ddlAuto)
+                    .`as`("profile '%s' 의 spring.jpa.hibernate.ddl-auto", profile)
+                    .isIn(null, "validate", "none")
+            }
+        assertThat(ddlAutoByProfile[COMMON_PROFILE]).isEqualTo("validate")
     }
 
     @Test
@@ -81,5 +109,21 @@ class Phase1ConfigurationContractTest {
         assertThat(common).contains("clock-skew-seconds: \${JWT_CLOCK_SKEW_SECONDS:}")
         assertThat(common).doesNotContain("default-local-secret")
         assertThat(yaml).contains("on-profile: local", "default-local-secret")
+    }
+
+    private companion object {
+        const val COMMON_PROFILE = "(common)"
+
+        /** `spring.config.activate.on-profile` 는 flat key 와 nested map 두 형태로 쓰인다. */
+        fun profileOf(document: Map<String, Any?>): String =
+            (document["spring.config.activate.on-profile"] ?: valueAt(document, "spring", "config", "activate", "on-profile"))
+                ?.toString()
+                ?: COMMON_PROFILE
+
+        fun ddlAutoOf(document: Map<String, Any?>): String? =
+            valueAt(document, "spring", "jpa", "hibernate", "ddl-auto")?.toString()
+
+        fun valueAt(document: Map<String, Any?>, vararg path: String): Any? =
+            path.fold<String, Any?>(document) { node, key -> (node as? Map<*, *>)?.get(key) }
     }
 }

@@ -17,8 +17,9 @@
 ```bash
 ./gradlew compileKotlin                  # 빌드
 docker compose -f docker/infra-compose.yml up -d  # 인프라 실행
-SPRING_PROFILES_ACTIVE=local ./gradlew :apps:api:bootRun &   # API 서버 (8080)
-SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun & # Batch 서버 (8081)
+SPRING_PROFILES_ACTIVE=local ./gradlew :apps:api:bootRun &   # API 서버 (8080) — Flyway 는 api 만 실행한다
+until curl -sf localhost:9080/actuator/health/readiness > /dev/null; do sleep 2; done  # api ready 대기
+SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun & # Batch 서버 (8081) — ddl-auto validate 라 migration 뒤에 띄운다
 ./gradlew test                           # Unit tests
 ./gradlew :apps:api:integrationTest      # Integration tests (Docker 필요)
 ```
