@@ -3,7 +3,7 @@ feature: apps/web 트래킹 페이지 조회 훅 분리 — set-state-in-effect 
 slug: issue-96-trackings-fetch
 status: FROZEN
 frozen_at: 2026-11-09
-verdict_commit:
+verdict_commit: ca9dd31
 source: https://github.com/geonyeop123/premium-spread/issues/96
 ---
 
@@ -113,6 +113,14 @@ $ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t useTrackingLi
 $ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t "useTracking "    → exit 0 · Tests 3 passed | 11 skipped (14)   (AC4)
 $ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t useGrossPnl        → exit 0 · Tests 5 passed | 9 skipped (14)    (AC5)
 $ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t "늦은 응답"         → exit 0 · Tests 2 passed | 12 skipped (14)   (AC6)
+
+[GREEN] 2026-11-09 ca9dd31 (node:24-alpine) — 최종 리뷰 수정(ec8efb0)으로 useTrackingList 늦은 응답 테스트 1개 추가 후
+AC3 → exit 0 · Tests 4 passed | 11 skipped (15)
+AC4 → exit 0 · Tests 3 passed | 12 skipped (15)
+AC5 → exit 0 · Tests 5 passed | 10 skipped (15)
+AC6 → exit 0 · Tests 3 passed | 12 skipped (15)
+(추가 테스트는 cancelled 가드를 지우면 `expected 1 to be 2` 로 실패함을 확인했다)
+AC1 grep → 0 · AC2 lint → exit 0
 ```
 
 ### AC7
@@ -144,6 +152,11 @@ $ npm run build  → Compiled successfully · 라우트 6개 (/, /_not-found, /l
 $ npm --prefix apps/web run test   → exit 0 · Test Files 2 passed (2) · Tests 24 passed (24) · 경고 0
 $ npm --prefix apps/web run build  → exit 0 · 라우트 6개 동일
 $ git diff --stat origin/dev...HEAD → apps/web 5개(eslint.config.mjs, trackings/page.tsx, trackings/[id]/page.tsx, hooks/useTrackings.ts, hooks/useTrackings.test.tsx) + docs/work/issue-96-trackings-fetch/* — design §5 범위 안
+
+[GREEN] 2026-11-09 ca9dd31 (node:24-alpine)
+R1 → exit 0 · Test Files 2 passed (2) · Tests 25 passed (25) · 경고 0
+R2 → exit 0 · 라우트 6개 동일
+R3 → 18 files: 위 apps/web 5개 + docs/work/issue-96-trackings-fetch/*(evidence 6장 포함) + docs/work/README.md + .ai/PROJECT_STATUS.md — design §5 목록과 일치
 ```
 
 ## 사람 확인 (T4)
@@ -158,11 +171,14 @@ $ git diff --stat origin/dev...HEAD → apps/web 5개(eslint.config.mjs, trackin
 ## 최종 판정
 
 ```
-DoD VERDICT: issue-96-trackings-fetch @ <commit SHA>
+DoD VERDICT: issue-96-trackings-fetch @ ca9dd31
   수용기준 표:     7개  (T1 5 · T2 1 · T3 1 · T4 0)
-  T1/T2 자동:      6개 중 <p>개 PASS
-  T3 기록 제출:    1개 중 <q>건
+  T1/T2 자동:      6개 중 6개 PASS
+  T3 기록 제출:    1개 중 1건
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
-  변경 요청:       <k>건
-  =>
+  변경 요청:       0건
+  => VERIFIED
 ```
+
+- AC6 문구는 "언마운트되거나 `id`가 바뀌면"이다. 언마운트 뒤 상태는 `renderHook`으로 관찰할 수 없어서(React 18+는 경고도 없다), 같은 cleanup(`cancelled = true`) 경로를 타는 `id` 변경·`reload` 케이스로 대표했다(plan Task 1 주석, 최종 리뷰 Minor 2).
+- AC7(T3)은 이 계약서의 관찰 기록과 `evidence/` 스크린샷이 증거다. 리뷰어가 사후 검토한다.

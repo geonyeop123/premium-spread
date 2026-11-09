@@ -1,0 +1,5 @@
+{"workflow": "feature-track", "version": 1, "track": "M", "track_reason": "조회 훅 3개 분리 + 훅 테스트 추가로 diff 150줄·5파일 초과 예상, L 조건(인증·금액·동시성·외부 계약) 변경 없음",
+ "upgraded_from": null, "user_override": false,
+ "codex": {"mode": "standard", "spec_rounds": 0, "findings": 0, "fixed": 0, "held": 0, "timeout": false},
+ "claude_review": {"findings": 6, "fixed": 4},
+ "dod_verdict": "PASS", "mr_url": null}
