@@ -164,9 +164,12 @@ console.log(`changed=${n} nonDev=${JSON.stringify(nonDev)}`);
 **실행**
 ```bash
 # 1) package.json에 engines 블록만 손으로 넣는다(계약 1의 5~7행). @types/node·jsdom 값은 2)가 쓴다.
-# 2) lockfile만 다시 해결한다. 로컬 npm 10.8.2(Node 20)에서 실행한다. node_modules 설치·lockfile 전체 재생성·audit fix 금지.
-node -v; npm -v                                                                    # v20.20.0 / 10.8.2 예상. 다르면 그대로 기록
-npm --prefix apps/web install --package-lock-only --ignore-scripts --no-audit --no-fund jsdom@^30.1.3 @types/node@^24
+# 2) lockfile만 다시 해결한다. node:24-alpine 컨테이너의 npm 11.19.1에서 실행한다(design D5 개정: 로컬 npm 10.8.2는 libc 필드를 지운다).
+#    node_modules 설치·lockfile 전체 재생성·audit fix 금지.
+docker run --rm -v "$PWD/apps/web":/app -w /app -u "$(id -u):$(id -g)" -e HOME=/tmp \
+  node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 \
+  sh -c 'node -v; npm -v; npm install --package-lock-only --ignore-scripts --no-audit --no-fund jsdom@^30.1.3 @types/node@^24'   # v24.22.2 / 11.19.1 예상
+grep -c '"libc"' apps/web/package-lock.json                                         # 18 (BASE와 같은 수)
 # 3) 계약 1·2와 대조한다.
 git diff -- apps/web/package.json
 git show "$BASE:apps/web/package-lock.json" > "$SCRATCH/lock-before.json"
@@ -178,7 +181,8 @@ git commit
 ```
 
 **예상 결과**
-- `npm install` exit 0. stderr에 `EBADENGINE` 경고가 나온다(Node 20 < jsdom 30·root `engines` 하한). 오류가 아니다(design D3-a)
+- `npm install` exit 0. Node 24이므로 `EBADENGINE` 경고는 없다. `"libc"` 개수가 BASE와 같은 18이다
+- 사전 실측(2026-11-09, 개정 근거): 같은 입력에서 `changed=37 nonDev=[]`, `prodDepsSame:true`, libc 18 보존. 로컬 npm 10.8.2는 `changed=55`, libc 0, `nonDev`에 `@next/swc-linux-*` 4건
 - `git diff -- apps/web/package.json`이 계약 1과 같다: `engines` 3줄 추가, `"^20"`→`"^24.19.2"`, `"^27.0.0"`→`"^30.1.3"`
 - `LOCKCHECK` 출력이 계약 2와 같다(`changed`≥1, `nonDev=[]`)
 - `git diff --stat -- apps/web`에 두 파일만 있다
@@ -187,7 +191,7 @@ git commit
 
 **증거 기록**: 커밋 뒤 dod `### AC4`에 `[GREEN] <ISO 시각> <Task 1 커밋 sha> LOCKCHECK` 줄과 출력 두 줄 전문을 붙인다. 같은 출력의 `prodDepsSame:true`·`nonDev=[]`를 `### R2·R3·R4`의 R4 줄로 붙인다.
 
-**커밋 메시지**: `chore: apps/web jsdom 30·@types/node 24 적용과 engines 추가 (#118)`. 본문에 "lockfile은 npm 10.8.2 --package-lock-only 재해결, 변경 항목 전부 dev 트리"를 적는다.
+**커밋 메시지**: `chore: apps/web jsdom 30·@types/node 24 적용과 engines 추가 (#118)`. 본문에 "lockfile은 node:24-alpine npm 11.19.1 --package-lock-only 재해결, libc 필드 보존, 변경 항목 전부 dev 트리"를 적는다.
 
 ---
 
