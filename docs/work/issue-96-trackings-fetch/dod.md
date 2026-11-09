@@ -1,8 +1,8 @@
 ---
 feature: apps/web 트래킹 페이지 조회 훅 분리 — set-state-in-effect override 제거
 slug: issue-96-trackings-fetch
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-09
 verdict_commit:
 source: https://github.com/geonyeop123/premium-spread/issues/96
 ---
