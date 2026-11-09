@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 용도 | 개발자 Docker infra | Testcontainers 격리 테스트 | 승인된 `github.sha` image |
 | DB 접속 | localhost `application/application` 허용 | dynamic `spring.datasource.*` | `MYSQL_*` 필수, localhost/default credential 기동 차단 |
-| Hibernate DDL | `create-drop` | `create-drop` | `validate` |
+| Hibernate DDL | `validate` (공통 상속, Flyway가 schema 정본) | `create-drop` | `validate` |
 | Flyway owner | API | API 통합 테스트 | API만 migration, Batch는 비활성 |
 | SQL 로그 | `show-sql=true`, `org.hibernate.SQL=DEBUG` | 동일 | `show-sql=false`, logger `WARN` |
 | Redis | localhost 기본 secret 허용 | Testcontainers dynamic properties | `REDIS_*` 필수, localhost/빈 password 차단 |

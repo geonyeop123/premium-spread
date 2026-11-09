@@ -1,0 +1,5 @@
+{"workflow": "feature-track", "version": 1, "track": "S", "track_reason": "원인·위치 특정(jpa.yml local 1줄) + 계약 테스트 1개 + 기동 안내 문서, 스키마·API·인증 변경 없음",
+ "upgraded_from": null, "user_override": false,
+ "codex": {"mode": "quick", "spec_rounds": 0, "findings": 1, "fixed": 1, "held": 0, "timeout": false},
+ "claude_review": {"findings": null, "fixed": null},
+ "dod_verdict": "n/a", "mr_url": null}

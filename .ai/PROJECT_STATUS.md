@@ -174,6 +174,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 6. Premium symbol-only legacy Redis key는 기본 pair에서만 최대 5초 read window로 호환한다. writer는 v2 key만
    쓰므로 legacy key에 의존하는 외부 consumer가 있다면 cutover 전에 제거해야 한다.
 7. Docker app과 local `bootRun`을 동시에 실행하면 8080/8081 port가 충돌한다.
+   local 프로필도 Hibernate `validate`이므로 batch는 api의 Flyway migration이 끝난 뒤(readiness UP) 기동한다.
 8. Quality Gate 6번 잡의 `ci/run-npm-audit.sh`는 실시간 advisory DB를 조회한다. `apps/web` lockfile이 그대로여도
    새 advisory가 공개되면 다시 실패한다(#82에서 23건 해소). #98에서 Dependabot 주기 갱신(주 1회, `dev` 대상)을 도입해
    실패 기간을 줄이지만 advisory 공개와 갱신 PR 머지 사이의 실패는 남는다. 운영은 [`deployment.md`](../docs/runbooks/deployment.md)를 따른다.

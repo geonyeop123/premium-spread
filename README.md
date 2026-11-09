@@ -107,13 +107,19 @@ premium = ((koreaPrice - foreignPrice × fxRate) / (foreignPrice × fxRate)) × 
 # 1. 인프라 실행
 docker compose -f docker/infra-compose.yml up -d
 
-# 2. 백엔드 실행
-./gradlew :apps:api:bootRun &
-./gradlew :apps:batch:bootRun &
+# 2. 백엔드 실행 — Flyway 는 api 만 실행하므로 api 가 ready 가 된 뒤 batch 를 띄운다
+SPRING_PROFILES_ACTIVE=local ./gradlew :apps:api:bootRun &
+until curl -sf localhost:9080/actuator/health/readiness > /dev/null; do sleep 2; done
+SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun &
 
 # 3. 프론트엔드 실행
 cd apps/web && npm install && npm run dev
 ```
+
+- schema 정본은 Flyway migration이다. local 프로필도 Hibernate `ddl-auto: validate`라서 기동이 테이블을 만들거나 지우지 않는다.
+- batch는 Flyway를 실행하지 않는다. 빈 DB나 새 migration이 대기 중인 DB에서 batch를 api보다 먼저 띄우면 schema 검증에서 실패한다.
+- 빈 DB에서 처음 기동할 때만 V12 안전장치가 막는다. 그 한 번은 `MIGRATION_V12_ALLOW_EMPTY=true`를 붙여 api를 띄운다([v12-migration](docs/runbooks/v12-migration.md)).
+- 이전에는 local 프로필이 `create-drop`이었다. 그 설정으로 띄운 적이 있는 로컬 DB는 entity 테이블이 Hibernate DDL로 다시 만들어져 Flyway 제약·index가 빠져 있을 수 있다. 이런 DB는 MySQL volume을 지우고 다시 만든다(`docker compose -f docker/infra-compose.yml down -v`, Redis 데이터도 함께 지워진다).
 
 ### Docker 배포
 
