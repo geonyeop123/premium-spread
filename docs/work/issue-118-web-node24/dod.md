@@ -1,8 +1,8 @@
 ---
 feature: apps/web Node 런타임 20→24 전환과 jsdom 30 적용
 slug: issue-118-web-node24
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-09
 verdict_commit:
 source: https://github.com/geonyeop123/premium-spread/issues/118
 ---
