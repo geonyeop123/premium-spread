@@ -602,4 +602,41 @@ eslint_next_version="$(sed -nE 's/^    "eslint-config-next": "([^"]+)",?$/\1/p' 
 [[ -n "${next_version}" && "${next_version}" == "${eslint_next_version}" ]] ||
   fail "apps/web next (${next_version:-missing}) and eslint-config-next (${eslint_next_version:-missing}) must share one version"
 
+# apps/web Node 런타임(#118): CI 6번 잡 node-version, Dockerfile 두 stage, engines.node, @types/node 는 같은 Node major 를 쓴다.
+# 한 곳만 바뀌면 #114(jsdom 30 이 Node 20 CI 에서 실패)처럼 CI 에서만 깨진다. 갱신 절차는 docs/runbooks/deployment.md 에 있다.
+web_dockerfile="${root_dir}/apps/web/Dockerfile"
+mapfile -t ci_node_versions < <(sed -nE 's/^[[:space:]]+node-version:[[:space:]]*(.*)$/\1/p' "${quality_workflow}")
+ci_node_pattern="^'([0-9]+)'$"
+[[ "${#ci_node_versions[@]}" -eq 1 && "${ci_node_versions[0]}" =~ ${ci_node_pattern} ]] ||
+  fail "Quality Gate must pin exactly one quoted major node-version (found: ${ci_node_versions[*]:-none})"
+ci_node_major="${BASH_REMATCH[1]}"
+grep -Fxq "          node-version: '${ci_node_major}'" <<< "$(workflow_job_block dependency-security)" ||
+  fail "node-version must be set by the dependency-security job"
+mapfile -t web_from_lines < <(grep -E '^FROM[[:space:]]' "${web_dockerfile}" || true)
+web_from_pattern='^FROM node:([0-9]+)-alpine@sha256:[0-9a-f]{64}( AS [a-z]+)?$'
+[[ "${#web_from_lines[@]}" -eq 2 ]] ||
+  fail "apps/web Dockerfile must have exactly two FROM stages (found ${#web_from_lines[@]})"
+for web_from_line in "${web_from_lines[@]}"; do
+  [[ "${web_from_line}" =~ ${web_from_pattern} ]] ||
+    fail "apps/web Dockerfile stage must pin node:<major>-alpine@sha256:<64 hex>: ${web_from_line}"
+done
+[[ "${web_from_lines[0]%% AS *}" == "${web_from_lines[1]%% AS *}" ]] ||
+  fail "apps/web Dockerfile builder and runtime stages must use the same node image"
+docker_node_major="$(sed -E 's/^FROM node:([0-9]+)-.*$/\1/' <<< "${web_from_lines[0]}")"
+web_engines_block="$(
+  awk '
+    $0 == "  \"engines\": {" { inside = 1; next }
+    inside && $0 ~ /^  [}]/ { exit }
+    inside { print }
+  ' "${web_package}"
+)"
+engines_node_pattern='^    "node": "\^([0-9]+)\.[0-9]+\.[0-9]+"$'
+[[ "${web_engines_block}" =~ ${engines_node_pattern} ]] ||
+  fail "apps/web package.json engines must be exactly one \"node\": \"^<major>.<minor>.<patch>\" entry"
+engines_node_major="${BASH_REMATCH[1]}"
+types_node_major="$(sed -nE 's/^    "@types\/node": "\^([0-9]+)(\.[0-9]+){0,2}",?$/\1/p' "${web_package}")"
+[[ -n "${types_node_major}" && "${ci_node_major}" == "${docker_node_major}" &&
+  "${ci_node_major}" == "${engines_node_major}" && "${ci_node_major}" == "${types_node_major}" ]] ||
+  fail "apps/web Node major must match: CI node-version ${ci_node_major}, Dockerfile ${docker_node_major}, engines.node ${engines_node_major}, @types/node ${types_node_major:-missing}"
+
 echo "quality gate and supply-chain contracts verified"

@@ -98,7 +98,7 @@ premium = ((koreaPrice - foreignPrice × fxRate) / (foreignPrice × fxRate)) × 
 ### 사전 요구사항
 
 - JDK 21
-- Node.js 20+
+- Node.js 24 (apps/web, ^24.15.0)
 - Docker & Docker Compose
 
 ### 로컬 개발 환경

@@ -20,3 +20,4 @@
 - [실계정 알림 자산 칸과 Discord 2칸 행 폭](account-balance-alert/README.md)
 - [Quality Gate Docker image build 시간 단축](docker-build-time/README.md)
 - [apps/web npm overrides 재검토](issue-97-web-npm-overrides/README.md)
+- [apps/web Node 24 전환과 jsdom 30](issue-118-web-node24/README.md)

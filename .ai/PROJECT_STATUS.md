@@ -128,9 +128,12 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 - apps/web 의존성 주기 갱신(#98, 설정 추가, 첫 갱신 PR 은 머지 뒤 관찰): `.github/dependabot.yml` 이 `apps/web` npm 갱신
   PR 을 매주 `dev` 대상으로 만든다. `next`·`eslint-config-next` 는 한 그룹으로 함께 올라가며, 두 버전이 다르면
   `ci/quality-gate-contract-test.sh` 가 1번 잡을 실패시킨다. 운영(누가·언제 머지)은 [runbook](../docs/runbooks/deployment.md)을 따른다.
-- apps/web overrides 재검토(#97, 구현·로컬 검증 완료(⑩ PASS @ ff95bd4), PR CI 대기): `apps/web/package.json` 의 `overrides` 14개를 모두
+- apps/web overrides 재검토(#97, 머지 완료(PR #117)): `apps/web/package.json` 의 `overrides` 14개를 모두
   제거했다. 제거해도 audit high 이상이 생기지 않았다. 재도입 조건은 [runbook](../docs/runbooks/deployment.md)을, 항목별 판정은
   [설계](../docs/work/issue-97-web-npm-overrides/design.md)를 따른다.
+- apps/web Node 24 전환(#118, 구현·로컬 검증 완료(⑩ T1/T2 7/7 PASS @ e3a1a97), PR CI 대기): CI 6번 잡과 `apps/web/Dockerfile` 두 stage를 Node 24
+  (`node:24-alpine`, digest 고정)로 올리고 `engines.node` `^24.15.0`·`@types/node` `^24`·jsdom 30을 적용했다. 네 곳의 Node
+  major가 갈리면 `ci/quality-gate-contract-test.sh`가 1번 잡을 실패시킨다. 갱신 절차는 [runbook](../docs/runbooks/deployment.md)을 따른다.
 
 ## Migration 상태와 소유권
 

@@ -15,7 +15,7 @@ updates:
       prefix: chore
       include: scope
     ignore:
-      # Node 런타임(Dockerfile·CI)이 20이므로 타입 정의 major 는 런타임을 올릴 때 함께 올린다.
+      # Node 런타임(Dockerfile·CI·engines)이 24이므로 타입 정의 major 는 런타임을 올릴 때 함께 올린다.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
