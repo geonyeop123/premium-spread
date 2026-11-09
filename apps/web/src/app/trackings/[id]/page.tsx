@@ -31,7 +31,8 @@ export default function TrackingDetailPage() {
   const id = params.id as string;
 
   const { tracking, loading, error: loadError } = useTracking(id, user?.id ?? null);
-  const pnl = useGrossPnl(id, tracking?.status ?? null);
+  // 로그아웃하면 status 를 null 로 넘겨 손익 폴링을 멈춘다.
+  const pnl = useGrossPnl(id, user ? (tracking?.status ?? null) : null);
   const [closing, setClosing] = useState(false);
   const [actionError, setActionError] = useState('');
 
