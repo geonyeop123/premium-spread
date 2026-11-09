@@ -172,6 +172,37 @@ describe('useGrossPnl', () => {
 });
 
 describe('늦은 응답', () => {
+  it('목록 reload 중 이전 요청의 늦은 응답은 버린다', async () => {
+    const sumOf = (n: number) => ({ totalTrackings: n, activeTrackings: n, archivedTrackings: 0 });
+    const first = { a: deferred<Tracking[]>(), h: deferred<Tracking[]>(), s: deferred<unknown>() };
+    const second = { a: deferred<Tracking[]>(), h: deferred<Tracking[]>(), s: deferred<unknown>() };
+    const calls: Record<string, number> = {};
+    mockApi.mockImplementation((path: string) => {
+      calls[path] = (calls[path] ?? 0) + 1;
+      const set = calls[path] === 1 ? first : second;
+      const key = path === '/trackings' ? 'a' : path === '/trackings/archived' ? 'h' : 's';
+      return set[key].promise as Promise<never>;
+    });
+    const { result } = renderHook(() => useTrackingList(1));
+    act(() => result.current.reload());
+
+    await act(async () => {
+      second.a.resolve([tracking(2)]);
+      second.h.resolve([tracking(20)]);
+      second.s.resolve(sumOf(2));
+    });
+    await waitFor(() => expect(result.current.activeTrackings[0]?.id).toBe(2));
+
+    await act(async () => {
+      first.a.resolve([tracking(1)]);
+      first.h.resolve([tracking(10)]);
+      first.s.resolve(sumOf(1));
+    });
+    expect(result.current.activeTrackings[0].id).toBe(2);
+    expect(result.current.history[0].id).toBe(20);
+    expect(result.current.summary?.totalTrackings).toBe(2);
+  });
+
   it('id가 바뀌면 이전 id의 tracking 응답은 버린다', async () => {
     const d1 = deferred<Tracking>();
     const d2 = deferred<Tracking>();
