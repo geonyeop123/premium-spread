@@ -1,50 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
-import { apiClient } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { TrackingList, type Tracking } from '@/components/TrackingList';
+import { TrackingList } from '@/components/TrackingList';
 import { RecordTrackingForm } from '@/components/RecordTrackingForm';
-
-interface TrackingSummary {
-  totalTrackings: number;
-  activeTrackings: number;
-  archivedTrackings: number;
-}
+import { useTrackingList } from '@/hooks/useTrackings';
 
 export default function TrackingsPage() {
   const { user, loading: authLoading } = useAuth();
-  const [activeTrackings, setActiveTrackings] = useState<Tracking[]>([]);
-  const [history, setHistory] = useState<Tracking[]>([]);
-  const [summary, setSummary] = useState<TrackingSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [trackingsData, historyData, summaryData] = await Promise.all([
-        apiClient<Tracking[]>('/trackings'),
-        apiClient<Tracking[]>('/trackings/archived'),
-        apiClient<TrackingSummary>('/trackings/summary'),
-      ]);
-      setActiveTrackings(trackingsData);
-      setHistory(historyData);
-      setSummary(summaryData);
-    } catch {
-      // silently handle - user may not be authenticated
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user, fetchData]);
+  const { activeTrackings, history, summary, loading, reload } = useTrackingList(
+    user?.id ?? null,
+  );
 
   if (authLoading) {
     return (
@@ -145,7 +114,7 @@ export default function TrackingsPage() {
         </TabsContent>
       </Tabs>
 
-      <RecordTrackingForm onSuccess={fetchData} />
+      <RecordTrackingForm onSuccess={reload} />
     </div>
   );
 }

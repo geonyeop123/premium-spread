@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { apiClient, ApiError } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { Tracking, GrossPnlData } from '@/components/TrackingList';
+import { useTracking, useGrossPnl } from '@/hooks/useTrackings';
 import {
   NonOrderNotice,
   GrossPnlFootnote,
@@ -30,47 +30,10 @@ export default function TrackingDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [tracking, setTracking] = useState<Tracking | null>(null);
-  const [pnl, setPnl] = useState<GrossPnlData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { tracking, loading, error: loadError } = useTracking(id, user?.id ?? null);
+  const pnl = useGrossPnl(id, tracking?.status ?? null);
   const [closing, setClosing] = useState(false);
-  const [error, setError] = useState('');
-
-  const fetchTracking = useCallback(async () => {
-    try {
-      const data = await apiClient<Tracking>(`/trackings/${id}`);
-      setTracking(data);
-    } catch {
-      setError('기록을 불러올 수 없습니다.');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  const fetchPnl = useCallback(async () => {
-    try {
-      const data = await apiClient<GrossPnlData>(`/trackings/${id}/gross-pnl`);
-      setPnl(data);
-    } catch {
-      // 409(확정 불가)는 정상 경로다. pnl 이 null 로 남고 화면이 ConfirmUnavailableNotice 를 보여준다.
-      // 그 밖의 실패도 같은 표시가 되므로, 확정 여부는 Detail 의 hasConfirmedClose 가 정본이다.
-    }
-  }, [id]);
-
-  useEffect(() => {
-    if (!user) return;
-    fetchTracking();
-  }, [user, fetchTracking]);
-
-  useEffect(() => {
-    if (!user || !tracking) return;
-    // ARCHIVED 도 한 번은 조회한다. 확정 손익(ARCHIVED_SNAPSHOT)은 불변이므로 주기 갱신은 하지 않는다.
-    // 조회하지 않으면 확정된 값이 있는데도 화면이 "확정하지 못함" 을 보여준다.
-    fetchPnl();
-    if (tracking.status !== 'ACTIVE') return;
-    const interval = setInterval(fetchPnl, 5000);
-    return () => clearInterval(interval);
-  }, [user, tracking, fetchPnl]);
+  const [actionError, setActionError] = useState('');
 
   const handleClose = async () => {
     if (!confirm('이 기록을 종료하시겠습니까? 종료 시점 시세가 확정 저장되며 실제 주문은 발생하지 않습니다.')) return;
@@ -80,9 +43,9 @@ export default function TrackingDetailPage() {
       router.push('/trackings');
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message || '기록 종료에 실패했습니다.');
+        setActionError(err.message || '기록 종료에 실패했습니다.');
       } else {
-        setError('기록 종료에 실패했습니다.');
+        setActionError('기록 종료에 실패했습니다.');
       }
       setClosing(false);
     }
@@ -121,12 +84,12 @@ export default function TrackingDetailPage() {
     );
   }
 
-  if (error && !tracking) {
+  if (loadError && !tracking) {
     return (
       <div className="container mx-auto px-4 py-6">
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="mb-4 text-red-500">{error}</p>
+            <p className="mb-4 text-red-500">{loadError}</p>
             <Link href="/trackings">
               <Button variant="outline">목록으로 돌아가기</Button>
             </Link>
@@ -377,7 +340,7 @@ export default function TrackingDetailPage() {
           </CardContent>
         </Card>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {actionError && <p className="text-sm text-red-500">{actionError}</p>}
 
       {tracking.status === 'ACTIVE' && (
         <Button
