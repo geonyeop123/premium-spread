@@ -75,6 +75,10 @@ source: https://github.com/geonyeop123/premium-spread/issues/96
 $ grep -n set-state-in-effect apps/web/eslint.config.mjs
 8:  // react-hooks 7.1 의 set-state-in-effect 가 ...
 11:    rules: { "react-hooks/set-state-in-effect": "off" },
+
+[GREEN] 2026-11-09 95a39de
+$ grep -c set-state-in-effect apps/web/eslint.config.mjs
+0
 ```
 
 ### AC2
@@ -85,9 +89,49 @@ $ npx eslint --rule '{"react-hooks/set-state-in-effect":"error"}' src/app/tracki
 src/app/trackings/[id]/page.tsx 62:5 fetchTracking(); / 69:5 fetchPnl();
 src/app/trackings/page.tsx 45:7 fetchData();
 ✖ 3 problems (3 errors, 0 warnings)
+
+[RED] 2026-11-09 c3d4395 (Task 2 착수 시 override 만 지운 상태, Task 2 보고서)
+$ npm run lint
+[id]/page.tsx 62 fetchTracking · 69 fetchPnl, page.tsx 45 fetchData — react-hooks/set-state-in-effect 3 errors
+
+[GREEN] 2026-11-09 95a39de (node:24-alpine)
+$ npm run lint
+exit 0
 ```
 
 ### AC3 · AC4 · AC5 · AC6
+
+```
+[RED] 2026-11-09 (Task 1, 스텁 훅 — 시그니처와 초기값만 반환)
+$ npm test -- src/hooks/useTrackings.test.tsx
+Tests 10 failed | 4 passed (14)
+통과 4개는 호출 0회·초기값을 기대하는 테스트(useTrackingList·useTracking userId null, useGrossPnl status null, 언마운트 후 추가 호출 0).
+나머지 10개는 호출 횟수·상태값·오류 문구 assertion 이 스텁 초기값과 달라 실패(예: expected undefined to be 222).
+
+[GREEN] 2026-11-09 95a39de (node:24-alpine)
+$ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t useTrackingList   → exit 0 · Tests 4 passed | 10 skipped (14)   (AC3)
+$ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t "useTracking "    → exit 0 · Tests 3 passed | 11 skipped (14)   (AC4)
+$ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t useGrossPnl        → exit 0 · Tests 5 passed | 9 skipped (14)    (AC5)
+$ npm --prefix apps/web test -- src/hooks/useTrackings.test.tsx -t "늦은 응답"         → exit 0 · Tests 2 passed | 12 skipped (14)   (AC6)
+```
+
+### AC7
+
+```
+[T3 관찰] 2026-11-09 95a39de
+환경: api = 이 worktree 의 :apps:api:bootRun (local 프로필, datasource 만 임시 MySQL 컨테이너 3307 로 override,
+      migration.v12.allow-empty-position-migration=true — 빈 임시 DB 이므로), Redis 는 공용 로컬(시세 읽기).
+      web = 95a39de 의 apps/web 를 git archive 로 풀어 next dev(3000). 브라우저 = Playwright chromium(headless).
+      AUTO(from-market) 기록은 로컬 환율 신선도 검사(FX_MAX_AGE)로 409 라서 MANUAL 의 "현재 시세 불러오기"로 기록했다.
+증거 파일: docs/work/issue-96-trackings-fetch/evidence/01~06-*.png
+관찰 내용:
+- 01 목록(빈 상태): 요약 3개·추적 중/종료된 기록 탭 표시
+- 02 폼으로 2건 추가 후: 요약 0/0/0 → 2/2/0 으로 페이지 이동 없이 갱신 (onSuccess=reload)
+- 03 상세에서 1건 종료 → 목록 복귀, 요약 2/1/1, 종료된 기록 탭에 1건
+- 04·05 ACTIVE 상세: 계산 시각 11:37:12 → 11:37:17 (다름). ~11.5s 동안 gross-pnl 요청 3회, 간격 5000ms·5000ms
+- 06 ARCHIVED 상세: 11s 동안 gross-pnl 요청 1회, API 409 → "종료 시점 시세를 확정하지 못해 손익을 제공하지 않습니다" 표시
+- 추가: ACTIVE 상세에서 로그아웃 후 11s 동안 gross-pnl 요청 0회 (Task 2 수정 1회차 확인)
+```
 
 ### R1 · R2 · R3
 
@@ -95,6 +139,11 @@ src/app/trackings/page.tsx 45:7 fetchData();
 [기준선] 2026-11-09 d1ba7bd (node:24-alpine)
 $ npm run test   → Test Files 1 passed (1) · Tests 10 passed (10)
 $ npm run build  → Compiled successfully · 라우트 6개 (/, /_not-found, /login, /register, /trackings, /trackings/[id])
+
+[GREEN] 2026-11-09 95a39de (node:24-alpine)
+$ npm --prefix apps/web run test   → exit 0 · Test Files 2 passed (2) · Tests 24 passed (24) · 경고 0
+$ npm --prefix apps/web run build  → exit 0 · 라우트 6개 동일
+$ git diff --stat origin/dev...HEAD → apps/web 5개(eslint.config.mjs, trackings/page.tsx, trackings/[id]/page.tsx, hooks/useTrackings.ts, hooks/useTrackings.test.tsx) + docs/work/issue-96-trackings-fetch/* — design §5 범위 안
 ```
 
 ## 사람 확인 (T4)
