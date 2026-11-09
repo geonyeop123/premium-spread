@@ -2,4 +2,4 @@
  "upgraded_from": null, "user_override": false,
  "codex": {"mode": "quick", "spec_rounds": 0, "findings": 1, "fixed": 1, "held": 0, "timeout": false},
  "claude_review": {"findings": null, "fixed": null},
- "dod_verdict": "n/a", "mr_url": null}
+ "dod_verdict": "n/a", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/126"}
