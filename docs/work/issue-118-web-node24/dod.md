@@ -282,6 +282,10 @@ design §5 제외 문서(`docs/plans/2026-02-26-*`, `.ai/planning/**`, `docs/dod
 
 [PENDING] PR 제출 전이다. PR head 커밋에서 `gh pr checks` 11/11 success 기록을 T3로 제출해야 한다.
 
+[NOTE] 2026-11-09T00:40:09Z PR #123 head 4ccbad6 첫 실행(run 42541103174)에서 `2. Unit + coverage`만 실패했다. `:apps:batch:test` `AccountPnlMonitorWiringTest > manual 기동 로그에 모드 INFO 가 있고 입력 값이 없다(CapturedOutput)` AssertionError(`AccountPnlMonitorWiringTest.kt:531`, `output.all` 대상 `doesNotContain`)이고 315개 중 1개 실패였다. 이 PR은 Gradle 입력을 바꾸지 않고, dev 최근 8회 실행이 모두 success라 flaky로 판단해 실패 잡만 재실행했다.
+
+[GREEN] 2026-11-09 PR #123 head 4ccbad68a8658a386a6e19fc627b75e0734fdb97, run 42541103174 재실행 뒤 `gh pr checks 123` 11/11 pass: 1. Compile + architecture · 2. Unit + coverage · 3. API integration · 4. Batch integration · 5. ktlint + detekt · 6. Dependency + security scan · 7. Docker image build · 7a. Docker image (api) · 7a. Docker image (batch) · 7a. Docker image (web) · 8. Common integration.
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -305,13 +309,13 @@ design §5 제외 문서(`docs/plans/2026-02-26-*`, `.ai/planning/**`, `docs/dod
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: issue-118-web-node24 @ e3a1a97 (검증 기준 HEAD. 이후 커밋은 이 dod.md뿐)
+DoD VERDICT: issue-118-web-node24 @ 4ccbad6 (PR #123 CI 기준 head. 이후 커밋은 이 dod.md뿐. 코드·lock 검증 기준은 e3a1a97)
   수용기준 표:     9개  (T1 1 · T2 6 · T3 2 · T4 0)
   T1/T2 자동:      7개 중 7개 PASS (AC1 · AC2 · AC3 · AC4 · AC5 · AC6 · AC7)
-  T3 기록 제출:    2개 중 1건 (AC8 ⑩ diff 기록 제출, AC9 PR CI 11/11 PENDING)
+  T3 기록 제출:    2개 중 2건 (AC8 ⑩ diff 기록, AC9 PR CI 11/11 pass)
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
   변경 요청:       0건
-  => AWAITING_HUMAN (AC8 리뷰어 대조, AC9 PR CI 11/11 대기)
+  => PASS
 ```
 
 **사람 확인이 필요한 항목**
