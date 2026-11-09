@@ -128,6 +128,20 @@ quality gate and supply-chain contracts verified   (복원 뒤 exit 0)
 { "devDependencies.@types/node": "^20", "devDependencies.jsdom": "^27.0.0" }   (engines 키 없음)
 ```
 
+[GREEN] 2026-11-09T00:33:52Z e3a1a97 (dod AC3 검증 명령 그대로)
+```
+189:          node-version: '24'
+1:FROM node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS builder
+8:FROM node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8
+{
+  "engines": {
+    "node": "^24.15.0"
+  },
+  "devDependencies.@types/node": "^24.19.2",
+  "devDependencies.jsdom": "^30.1.3"
+}
+```
+
 ### AC4
 
 [RED] 2026-11-09T00:20:01Z 3843ed0
@@ -220,7 +234,53 @@ R3 [GREEN] 2026-11-09T00:25:44Z 35d49ba(+문서 변경): `bash docs/check-docume
 
 ### ⑩ 최종 검증
 
+HEAD e3a1a97, BASE 379b5c15c18e1d5b7797d16900e0a27e9778be25. Gradle 전체 회귀는 design D10에 따라 로컬에서 돌리지 않았다(바뀐 파일 중 Gradle 입력 없음).
+
+[GREEN] 2026-11-09T00:36Z e3a1a97 AC1·R2: `bash ci/quality-gate-contract-test.sh` exit 0, 마지막 줄 `quality gate and supply-chain contracts verified`
+[GREEN] 2026-11-09T00:36Z e3a1a97 R3: `bash docs/check-documentation.sh` exit 0, `documentation check passed (20 files, 15 required paths)`
+[GREEN] 2026-11-09T00:36Z e3a1a97 AC4·R4 (BASE lock 대비, `grep -c '"libc"'` = 18)
+```
+{"engines":{"node":"^24.15.0"},"types":"^24.19.2","jsdom":"^30.1.3","typesV":"24.19.2","jsdomV":"30.1.3","undiciV":"7.30.1","prodDepsSame":true}
+changed=37 nonDev=[]
+```
+
+AC5·AC6·R1 재사용 근거: `git diff --stat 35d49ba..HEAD -- apps/web .github ci` 출력이 비어 있지 않았다.
+```
+ .github/dependabot.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+```
+apps/web·ci는 변경 없음. `.github/dependabot.yml`은 주석 1줄(`Node 런타임(Dockerfile·CI)이 20이므로` -> `Node 런타임(Dockerfile·CI·engines)이 24이므로`, AC7 문서 커밋 e3a1a97)이며 git archive 대상 apps/web, Dockerfile, 워크플로 실행 경로 밖이다. 따라서 35d49ba의 AC5·AC6·R1 GREEN을 재사용하고 컨테이너 재실행은 하지 않았다. 이 판단은 리뷰어가 뒤집을 수 있다.
+
+AC8 `git diff --stat "$BASE"..HEAD` 전문:
+```
+ .github/dependabot.yml                   |   2 +-
+ .github/workflows/quality-gate.yml       |   2 +-
+ README.md                                |   2 +-
+ apps/web/Dockerfile                      |   4 +-
+ apps/web/package-lock.json               | 399 +++++++++-------------
+ apps/web/package.json                    |   7 +-
+ ci/quality-gate-contract-test.sh         |  37 +++
+ docs/runbooks/deployment.md              |   9 +-
+ docs/work/issue-118-web-node24/design.md | 135 ++++++++
+ docs/work/issue-118-web-node24/dod.md    | 259 +++++++++++++++
+ docs/work/issue-118-web-node24/plan.md   | 548 +++++++++++++++++++++++++++++++
+ 11 files changed, 1159 insertions(+), 245 deletions(-)
+```
+design §5 제외 문서(`docs/plans/2026-02-26-*`, `.ai/planning/**`, `docs/dod/private-live-*`, `docs/superpowers/**`, 완료된 `docs/work/*`)는 diff에 없다. `.ai/PROJECT_STATUS.md`와 `docs/work/README.md`는 ⑪ 대상이라 아직 diff에 없다.
+
+경계면 표 (모두 major 24):
+
+| 지점 | 값 | major |
+|---|---|---|
+| CI `quality-gate.yml:189` node-version | `'24'` | 24 |
+| `apps/web/Dockerfile` 1행 builder / 8행 runtime | `node:24-alpine@sha256:a34ab6d7…67c8` 두 줄 동일 | 24 |
+| `package.json` engines.node | `^24.15.0` | 24 |
+| `package.json` `@types/node` | `^24.19.2` | 24 |
+| 계약 검사 C1~C7 (`ci/quality-gate-contract-test.sh` 605~640행) | 위 네 값의 major 일치와 digest 고정을 검사, AC1 GREEN | 24 |
+
 ### AC9
+
+[PENDING] PR 제출 전이다. PR head 커밋에서 `gh pr checks` 11/11 success 기록을 T3로 제출해야 한다.
 
 ## 사람 확인 (T4)
 
@@ -245,13 +305,13 @@ R3 [GREEN] 2026-11-09T00:25:44Z 35d49ba(+문서 변경): `bash docs/check-docume
 > 판정이 가리키는 SHA와 브랜치 최종 SHA가 다르면 그 판정은 만료다.
 
 ```
-DoD VERDICT: issue-118-web-node24 @ (미판정 — DRAFT)
+DoD VERDICT: issue-118-web-node24 @ e3a1a97 (검증 기준 HEAD. 이후 커밋은 이 dod.md뿐)
   수용기준 표:     9개  (T1 1 · T2 6 · T3 2 · T4 0)
-  T1/T2 자동:      7개 중 0개 PASS (AC1 · AC2 · AC3 · AC4 · AC5 · AC6 · AC7)
-  T3 기록 제출:    2개 중 0건 (AC8 ⑨ 리뷰 기록, AC9 PR CI 11/11)
+  T1/T2 자동:      7개 중 7개 PASS (AC1 · AC2 · AC3 · AC4 · AC5 · AC6 · AC7)
+  T3 기록 제출:    2개 중 1건 (AC8 ⑩ diff 기록 제출, AC9 PR CI 11/11 PENDING)
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
   변경 요청:       0건
-  => 미판정
+  => AWAITING_HUMAN (AC8 리뷰어 대조, AC9 PR CI 11/11 대기)
 ```
 
 **사람 확인이 필요한 항목**
