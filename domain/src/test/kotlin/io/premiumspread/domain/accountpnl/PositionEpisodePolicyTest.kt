@@ -183,5 +183,13 @@ class PositionEpisodePolicyTest {
     fun `민감 값은 toString 에 실리지 않는다`() {
         assertThat(ref("0.3").toString()).isEqualTo("ReferenceLegs")
         assertThat(episode(both("0.3")).toString()).isEqualTo("OpenEpisode(id=7, eventCount=1)")
+
+        val opened = decide(null, both("0.3"))
+        assertThat(opened.event!!.toString())
+            .isEqualTo("PositionEvent(type=OPENED, hedged=true, source=EXCHANGE_API, occurredAt=$at)")
+        assertThat(opened.toString()).isEqualTo("EpisodeDecision(type=OPENED, closes=false)")
+        assertThat(decide(null, legs(KoreaLeg.EMPTY, ForeignLeg.FLAT)).toString())
+            .isEqualTo("EpisodeDecision(type=null, closes=false)")
+        assertThat(opened.event.toString()).doesNotContain("0.3").doesNotContain("70000")
     }
 }

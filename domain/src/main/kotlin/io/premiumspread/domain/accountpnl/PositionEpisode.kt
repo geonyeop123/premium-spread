@@ -27,7 +27,11 @@ data class PositionEvent(
     val hedged: Boolean,
     val source: ForeignPerpPositionSource,
     val occurredAt: Instant,
-)
+) {
+    override fun toString(): String = "PositionEvent(type=$type, hedged=$hedged, source=$source, occurredAt=$occurredAt)"
+}
 
 /** [reference] 는 사건 뒤 건의 reference. */
-data class EpisodeDecision(val event: PositionEvent?, val reference: ReferenceLegs?, val closes: Boolean)
+data class EpisodeDecision(val event: PositionEvent?, val reference: ReferenceLegs?, val closes: Boolean) {
+    override fun toString(): String = "EpisodeDecision(type=${event?.type}, closes=$closes)"
+}
