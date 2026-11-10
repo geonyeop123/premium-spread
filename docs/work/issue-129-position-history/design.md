@@ -14,7 +14,8 @@
 
 - 열림 조건: 빗썸 leg 가 dust 이상(`KoreaLeg` 비어 있지 않음) **또는** 바이낸스 leg 가 숏.
 - 닫힘 조건: 빗썸 leg 가 비고 바이낸스 leg 가 숏이 아님.
-- 바이낸스 롱은 "없음"으로 본다(기존 `AccountHedgePosition.resolve` 와 같은 취급).
+- 바이낸스 롱은 이력에서 **수량 0 으로 정규화**한다(기존 `AccountHedgePosition.resolve` 가 롱을 포지션으로 보지 않는 것과 같은 취급). 빗썸이 비고 바이낸스가 롱만 남으면 닫힘이고, `CLOSED` 사건의 바이낸스 leg 는 0 으로 저장한다. 롱 수량 자체는 기록하지 않는다.
+- 경계 세 가지: 빗썸만 있음 → 열림 · 바이낸스 숏만 있음 → 열림 · 바이낸스 롱만 있음 → 닫힘.
 - 근거: owner 는 나눠 들어가고 나눠 정리한다. 한쪽 leg 를 먼저 체결하는 1~2분의 틈을 "닫힘"으로 보면 한 번의 진입·정리가 여러 건으로 쪼개지고, #130 이 체결을 귀속시킬 구간도 깨진다.
 - 버린 대안: 헤지가 성립(`resolve != null`)할 때만 열림 — 한쪽 leg 선체결 구간에서 건이 끊긴다.
 
@@ -30,7 +31,8 @@
 
 - "바뀜"은 기존 `KoreaLeg.samePosition`·`ForeignLeg.samePosition`(수량·평단 `compareTo`)을 그대로 쓴다.
 - 사건 행은 변경 **뒤**의 양쪽 leg(수량·평단), 출처(`EXCHANGE_API`/`MANUAL_ENV`), 감지 시각(회차 `observedAt`)을 담는다.
-- 한쪽 leg 선체결로 진입하면 `OPENED` + `INCREASED` 두 건이 남는다. 정상이다.
+- **사건은 회차당 최대 1건이다.** 한쪽 leg 를 먼저 체결해 진입하면 첫 회차에 `OPENED`(한쪽 leg 만), 반대 leg 가 보인 다음 회차에 `INCREASED` 가 남는다 — 두 회차에 걸친 두 건이다. 양쪽이 같은 회차에 보이면 `OPENED` 한 건이다.
+- 관측은 1분 표본이다. 두 회차 사이에 열렸다 닫힌 포지션은 어느 회차에도 보이지 않으므로 기록되지 않는다(체결 기준 복원은 #130 의 몫).
 - 바이낸스 수동 모드에서는 env 값 변경이 그대로 사건이 된다.
 
 ### D3. 기준 평단(reference) — 건마다 "마지막으로 헤지가 성립했던 leg"
@@ -47,7 +49,9 @@
 | `FLAT` | 열린 건 없음 + 기준 건 있음 | 현재 김프·매수김프(기준 평단)·차이·환율·양쪽 청산가. 순수익률·순손익은 NULL |
 
 - 적재하지 않는 회차: 관측 실패(`Failed`), 한쪽 leg 만 있는 열린 건(순손익이 정의되지 않음), 기준 건이 없는 포지션 없음.
-- 김프·차이는 `AccountPnlBreakdown` 의 식과 **같은 함수**를 쓴다(`(korea − foreign × fx) / korea × 100`, 소수 둘째 자리). `FLAT` 의 청산가는 기준 수량으로 같은 VWAP 규칙을 적용한다 — #131 이 보유 중·없음 구간에서 같은 숫자를 이어 쓰기 위해서다.
+- 김프·차이·청산가는 **공유 Domain 함수 하나**로 계산한다. 지금 `AccountPnlBreakdown` 안의 private `premiumPercent`(`(korea − foreign × fx) / korea × 100`, 소수 둘째 자리)와 `AccountNetPnl` 안의 private `vwap` 을 입력(평단·수량·호가·환율)만 받는 함수로 꺼내고, 기존 두 클래스와 새 `FLAT` 계산이 모두 그 함수를 부른다. 식을 복제하지 않는다 — 복제하면 반올림·식이 바뀔 때 `HOLDING` 과 `FLAT` 이 조용히 갈린다.
+- `FLAT` 의 청산가는 **기준 수량**(계정 수량은 0)으로 같은 VWAP 규칙을 적용한다 — #131 이 보유 중·없음 구간에서 같은 숫자를 이어 쓰기 위해서다.
+- 추출은 동작을 바꾸지 않는다. 기존 `AccountPnlBreakdown`·`AccountNetPnl` 테스트가 수정 없이 통과해야 한다(dod R3).
 - `FLAT` 계산이 실패(호가 깊이 부족 등)하면 그 회차는 행을 남기지 않는다. 회차 결과에 영향 없음.
 - `FLAT` 행은 기준 건의 id 에 매단다. `HOLDING` 행은 열린 건의 id.
 
@@ -55,7 +59,8 @@
 
 - `store.save()`(상태+outbox)가 성공한 회차에서만, `recordLatest` 다음에 호출한다. 실패는 WARN 한 줄로 삼키고 회차 결과·전달을 바꾸지 않는다(`recordLatest` 와 같은 규칙, 취소는 인터럽트 복원).
 - 사건 판정은 모니터 상태(`PositionWatchState`)가 아니라 **이력 저장소 자신의 열린 건 leg** 와 현재 leg 를 비교한다.
-  - 저장 성공 뒤 이력 기록 전에 죽어도, 다음 회차가 같은 비교로 변경을 다시 감지한다. 사건이 유실되지 않고 감지 시각만 늦어진다.
+  - 저장 성공 뒤 이력 기록 전에 죽어도, 다음 회차가 같은 비교로 변경을 다시 감지한다. 그 사이 leg 가 다시 바뀌지 않았다면 사건은 유실되지 않고 감지 시각만 늦어진다.
+  - **보장 수준(약한 보장):** 이력은 상태 저장에 성공한 회차의 관측만 기록한다. 버전 충돌·취소로 건너뛴 회차의 관측은 버린다. 건너뛴 회차에서만 보였던 중간 상태(예: 열렸다가 다음 성공 회차 전에 닫힘)는 기록되지 않는다 — 1분 표본 사이의 변화를 놓치는 것과 같은 한계다. 모니터는 Job 락으로 단일 실행이므로 버전 충돌은 락 상실 때만 생긴다.
   - 기존 상태 테이블·`save()` 계약·V20 열을 건드리지 않는다.
 - 한 회차의 이력 쓰기(건 갱신 + 사건 + 관측)는 한 트랜잭션이다. 열린 건 행을 `SELECT … FOR UPDATE` 로 잡고 판정·기록한다.
 - 중복 방지: 열린 건은 최대 1개(생성 열 `open_marker` UNIQUE), 사건은 `(episode_id, seq)` UNIQUE, 관측은 `(episode_id, observed_at)` UNIQUE(중복은 무시).
@@ -63,7 +68,7 @@
 
 ### D6. 판정은 Domain 순수 함수, 저장은 port 하나
 
-- `PositionEpisodePolicy.decide(open: OpenEpisode?, legs, hedged: Boolean, source, at): EpisodeDecision` — 사건 0~1건과 다음 건 상태.
+- `PositionEpisodePolicy.decide(open: OpenEpisode?, legs, hedged: Boolean, source, at): EpisodeDecision` — 사건 0~1건(회차당 최대 1건)과 다음 건 상태. `legs` 는 롱을 0 으로 정규화한 값이다.
 - `AccountPositionHistoryStore`(Domain port): `record(round: PositionHistoryRound)` 하나. adapter 가 트랜잭션 안에서 열린 건 조회 → policy 호출 → 기록한다. Job 은 port 만 안다.
 - Job 생성자는 맨 끝에 `positionHistory: AccountPositionHistoryStore? = null` 을 붙인다(기존 관례). production 배선은 `account-pnl-monitor.position-history.enabled`(env `ACCOUNT_PNL_POSITION_HISTORY_ENABLED`, 기본 `true`)일 때 넘긴다.
 
@@ -92,5 +97,14 @@
 |---|---|
 | 이력 쓰기가 회차 시간(1분 주기, Job timeout)을 잡아먹음 | 단일 트랜잭션 3문장 이내. 통합 테스트로 회차당 쿼리 수 고정 |
 | 모니터 상태와 이력의 leg 가 어긋남(이력 기록만 실패) | 이력은 자기 상태로 판정하므로 다음 회차에 따라잡는다. 감지 시각이 늦어질 뿐 |
-| 버전 충돌로 건너뛴 회차 | `save()` 가 false 면 이력도 쓰지 않는다 — 다른 실행이 그 회차를 기록한다 |
+| 버전 충돌로 건너뛴 회차 | `save()` 가 false 면 이력도 쓰지 않는다. 그 회차의 관측은 버리고, 다음 성공 회차가 이력의 자기 상태와 비교해 따라잡는다(D5 약한 보장) |
 | 수동 모드에서 빗썸만 정리하고 env 미갱신 | 바이낸스 leg 가 남아 건이 닫히지 않는다. 기존 "헤지 불일치" 알림이 이미 알린다 |
+
+## 6. 스펙 리뷰 반영 (codex, 2026-11-10, 1라운드)
+
+| # | 지적 | 판정 | 반영 |
+|---|---|---|---|
+| 1 | 선체결 진입의 사건 수가 D2·D6·AC1 사이에서 모순 | ACCEPT | D2 에 "회차당 최대 1건, 선체결은 두 회차에 걸쳐 `OPENED`→`INCREASED`" 명시, AC1·AC2 에 선체결 케이스 추가 |
+| 2 | 버전 충돌 시 "다른 실행이 기록한다"는 보장이 없음 | ACCEPT(보장 수준을 낮춰 명시) | D5 에 약한 보장 명시, 위험 표 정정. 단일 실행(Job 락) 전제라 동시 실행 보존 테스트는 두지 않는다 |
+| 3 | "한쪽 leg 만 남아도 닫히지 않는다"가 바이낸스 롱과 충돌 | ACCEPT | D1 에 롱 → 0 정규화와 경계 세 가지 명시, AC1 을 세 경우로 분리 |
+| 4 | `FLAT` 의 "같은 함수"가 private 함수라 성립하지 않음 | ACCEPT | D4 에 공유 Domain 함수 추출 결정, AC4 에 기준 수량 ≠ 계정 수량 검증, R3 에 기존 테스트 무수정 |
