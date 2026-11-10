@@ -1,8 +1,8 @@
 ---
 feature: 실계정 포지션 기록과 매분 관측 이력 저장
 slug: issue-129-position-history
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-10
 verdict_commit:
 source: https://github.com/geonyeop123/premium-spread/issues/129 (상위 #128, 2026-11-10 대화 합의) · design.md
 ---
