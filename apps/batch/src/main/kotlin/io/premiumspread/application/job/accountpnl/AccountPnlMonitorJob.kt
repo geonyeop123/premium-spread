@@ -20,6 +20,7 @@ import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
 import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
+import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.AccountRound
@@ -27,11 +28,13 @@ import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
+import io.premiumspread.domain.accountpnl.MarketQuote
 import io.premiumspread.domain.accountpnl.MonitoringOutagePolicy
 import io.premiumspread.domain.accountpnl.OutageNotice
 import io.premiumspread.domain.accountpnl.OwnerAlertRows
 import io.premiumspread.domain.accountpnl.PnlAlertPolicy
 import io.premiumspread.domain.accountpnl.PnlObservation
+import io.premiumspread.domain.accountpnl.PositionHistoryRound
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
@@ -59,6 +62,7 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * 순서: stale claim 복구 → 상태 load → 관측(조회 → 신선도 → 포지션 판정 → 순손익 계산) → 수익·중단 정책
  * → 알림 생성·종류별 채널 라우팅 → 상태+outbox 행 버전 조건부 저장 → 전달([OwnerAlertDispatcher]: claim → 채널별 발송·전이).
+ * 저장 성공 회차만 전달 전에 최신 순수익률 → 포지션 이력(#129)을 별도 트랜잭션으로 기록한다. 둘 다 실패해도 회차 결과·전달은 그대로다.
  *
  * - 관측 단계의 모든 예외는 실패 범주로 정규화해 중단 정책에 넣고 Job 은 성공으로 끝낸다
  *   (매분 CRITICAL 운영 알림을 막는다). 분류되지 않은 예외는 [AccountReadFailureCategory.UNEXPECTED].
@@ -91,6 +95,8 @@ class AccountPnlMonitorJob(
     private val accountAlerts: AccountAlertSettings? = null,
     /** 실계정 최신 순수익률 기록(#90 일일 요약용). null 이면 기록하지 않는다. */
     private val latestPnl: AccountPnlLatestStore? = null,
+    /** 실계정 포지션 이력 기록(#129). null 이면 기록하지 않는다. */
+    private val positionHistory: AccountPositionHistoryStore? = null,
 ) {
     init {
         require(!routing.channels.discord || discordSender != null) {
@@ -147,6 +153,7 @@ class AccountPnlMonitorJob(
         }
 
         recordLatest(observed)
+        recordHistory(observed)
 
         return deliver()
     }
@@ -170,6 +177,22 @@ class AccountPnlMonitorJob(
         }
     }
 
+    /** 성공 회차(Computed·NoPosition)의 포지션 이력을 기록한다. 실패해도 회차 결과·전달은 바뀌지 않는다 (#129 design D5). */
+    private fun recordHistory(observed: Observed) {
+        val store = positionHistory ?: return
+        val round = observed.history ?: return
+        try {
+            store.record(round)
+        } catch (exception: Exception) {
+            if (exception.isCancellation()) {
+                Thread.currentThread().interrupt()
+            } else {
+                // 동시 경합은 중복 키가 아니라 deadlock 계열로도 온다 — 종류를 가리지 않는다. 메시지·수량·가격은 싣지 않는다
+                log.warn("Account position history record failed: error={}", exception.javaClass.simpleName)
+            }
+        }
+    }
+
     // ---- 관측 ----
 
     private data class Observed(
@@ -177,6 +200,8 @@ class AccountPnlMonitorJob(
         val failure: AccountReadFailureCategory?,
         /** 성공 회차(Computed·NoPosition)만. 실패면 null. */
         val round: AccountRound?,
+        /** 성공 회차(Computed·NoPosition)만. 실패면 null. */
+        val history: PositionHistoryRound? = null,
     )
 
     private fun observe(): Observed = try {
@@ -190,11 +215,21 @@ class AccountPnlMonitorJob(
         val position = AccountHedgePosition.resolve(koreaSnapshot, foreignSnapshot)
         if (position == null) {
             log.info("No account hedge position: {}", noPositionReason(koreaSnapshot, foreignSnapshot))
-            Observed(PnlObservation.NoPosition, null, round(koreaSnapshot, foreignSnapshot, null, completedAt))
+            Observed(
+                PnlObservation.NoPosition,
+                null,
+                round(koreaSnapshot, foreignSnapshot, null, completedAt),
+                history(koreaSnapshot, foreignSnapshot, fxSnapshot, null, completedAt),
+            )
         } else {
             val pnl = AccountNetPnl.calculate(position, fxSnapshot.rate, fxSnapshot.observedAt, completedAt)
             logObserved(pnl)
-            Observed(PnlObservation.Computed(pnl), null, round(koreaSnapshot, foreignSnapshot, pnl, completedAt))
+            Observed(
+                PnlObservation.Computed(pnl),
+                null,
+                round(koreaSnapshot, foreignSnapshot, pnl, completedAt),
+                history(koreaSnapshot, foreignSnapshot, fxSnapshot, pnl, completedAt),
+            )
         }
     } catch (exception: Exception) {
         if (exception.isCancellation()) {
@@ -217,6 +252,21 @@ class AccountPnlMonitorJob(
         foreignSnapshot.positionSource,
         foreignSnapshot.fundingUsdt,
         pnl,
+        completedAt,
+    )
+
+    /** 관측 시각은 [completedAt] — Computed 면 `pnl.calculatedAt` 과 같은 값이다. */
+    private fun history(
+        koreaSnapshot: KoreaSpotAccountSnapshot,
+        foreignSnapshot: ForeignPerpAccountSnapshot,
+        fxSnapshot: ExchangeRateSnapshot,
+        pnl: AccountNetPnl?,
+        completedAt: Instant,
+    ) = PositionHistoryRound(
+        PositionLegs.of(koreaSnapshot, foreignSnapshot),
+        foreignSnapshot.positionSource,
+        pnl,
+        MarketQuote(koreaSnapshot.bidLevels, foreignSnapshot.askLevels, fxSnapshot.rate),
         completedAt,
     )
 
