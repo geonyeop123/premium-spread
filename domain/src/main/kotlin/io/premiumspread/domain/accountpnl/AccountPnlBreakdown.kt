@@ -1,8 +1,6 @@
 package io.premiumspread.domain.accountpnl
 
 import java.math.BigDecimal
-import java.math.MathContext
-import java.math.RoundingMode
 import java.time.Instant
 
 /** 빗썸 현물 leg 표시값. 금액은 전체 정밀도(표시 반올림은 템플릿). */
@@ -101,9 +99,6 @@ data class AccountPnlBreakdown(
     override fun toString(): String = "AccountPnlBreakdown(calculatedAt=$calculatedAt)"
 
     companion object {
-        private val HUNDRED = BigDecimal(100)
-        private const val PERCENT_SCALE = 2
-
         fun of(pnl: AccountNetPnl): AccountPnlBreakdown {
             val position = pnl.position
             val koreaSnapshot = position.korea
@@ -168,11 +163,7 @@ data class AccountPnlBreakdown(
             )
         }
 
-        /** (korea − foreign × fx) / korea × 100, 소수 둘째 자리 HALF_UP. */
         private fun premiumPercent(korea: BigDecimal, foreign: BigDecimal, fx: BigDecimal): BigDecimal =
-            korea.subtract(foreign.multiply(fx))
-                .divide(korea, MathContext.DECIMAL128)
-                .multiply(HUNDRED)
-                .setScale(PERCENT_SCALE, RoundingMode.HALF_UP)
+            HedgeQuote.premiumPercent(korea, foreign, fx)
     }
 }
