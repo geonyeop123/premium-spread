@@ -1,0 +1,5 @@
+{"workflow": "feature-track", "version": 1, "track": "S", "track_reason": "테스트 파일 1개의 sentinel 값 교체 + 가드 테스트, 운영 코드 변경 없음",
+ "upgraded_from": null, "user_override": false,
+ "codex": {"mode": "quick", "spec_rounds": 0, "findings": 0, "fixed": 0, "held": 0, "timeout": false},
+ "claude_review": {"findings": null, "fixed": null},
+ "dod_verdict": "n/a", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/127"}

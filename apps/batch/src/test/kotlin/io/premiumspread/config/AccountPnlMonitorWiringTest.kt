@@ -236,7 +236,7 @@ class AccountPnlMonitorWiringTest {
         "account-pnl-monitor.binance.mode=manual",
         "account-pnl-monitor.binance.manual.short-quantity=0.2661",
         "account-pnl-monitor.binance.manual.entry-price=83549.47",
-        "account-pnl-monitor.binance.manual.entry-fee-usdt=8.91",
+        "account-pnl-monitor.binance.manual.entry-fee-usdt=8.9173",
         "account-pnl-monitor.binance.manual.funding-usdt=-3.21",
     )
 
@@ -253,7 +253,7 @@ class AccountPnlMonitorWiringTest {
         "owner@example.test",
         "0.2661",
         "83549.47",
-        "8.91",
+        "8.9173",
         "-3.21",
     )
 
@@ -272,6 +272,19 @@ class AccountPnlMonitorWiringTest {
             assertThat(failure.stackTraceToString()).`as`(value).doesNotContain(value)
         }
         assertThat(output.all.substring(start)).`as`(value).doesNotContain(value)
+    }
+
+    /**
+     * 캡처한 출력의 각 줄은 `HH:mm:ss.SSS` 로 시작한다. 숫자 설정 값이 `ss.SSS` 조각과 부분 일치하면
+     * 로그가 찍힌 시각에 따라 `doesNotContain(*settingValues)` 가 깨진다(값에 `:` 가 없어 겹칠 수 있는 곳은 이 조각뿐이다).
+     */
+    @Test
+    fun `부정 단언에 쓰는 설정 값은 로그 타임스탬프 조각과 겹치지 않는다`() {
+        val secondFragments = (0 until 60).flatMap { second ->
+            (0 until 1000).map { millis -> "%02d.%03d".format(second, millis) }
+        }
+        val colliding = settingValues.filter { value -> secondFragments.any { it.contains(value) } }
+        assertThat(colliding).isEmpty()
     }
 
     @Test
@@ -355,7 +368,7 @@ class AccountPnlMonitorWiringTest {
                     "owner@example.test",
                     "0.2661",
                     "83549.47",
-                    "8.91",
+                    "8.9173",
                     "-3.21",
                 )
         }
