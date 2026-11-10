@@ -99,7 +99,6 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   outbox 를 함께 저장하고 `OwnerAlertDeliveryJob`이 전달한다. 요약은 PnL 모니터가 남기는 `account_pnl_latest`(V22)를 읽는다.
   [runbook](../docs/runbooks/owner-market-alert.md)에 체크리스트가 있다. 상위 #87 은 #88~#91 구현·검증 완료, #90 owner 확인(AC17) 대기.
   후속 후보:
-  - `AccountPnlMonitorWiringTest.kt:387` 타임스탬프 부분 일치로 인한 기존 flaky
   - `WebSocketConnectionManagerRegressionTest` stop/reconnect 기존 flaky
   - 기준선 돌파 쿨다운 또는 히스테리시스 하한(히스테리시스 0/작은 값에서 flapping 가능)
   - PnL 최신값 기록 중 취소 시 `Skipped` 처리(현재는 기록을 건너뛰고 deliver 진행)
