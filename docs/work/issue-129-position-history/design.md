@@ -53,6 +53,7 @@
 - `FLAT` 의 청산가는 **기준 수량**(계정 수량은 0)으로 같은 VWAP 규칙을 적용한다 — #131 이 보유 중·없음 구간에서 같은 숫자를 이어 쓰기 위해서다.
 - 추출은 동작을 바꾸지 않는다. 기존 `AccountPnlBreakdown`·`AccountNetPnl` 테스트가 수정 없이 통과해야 한다(dod R3).
 - `FLAT` 계산이 실패(호가 깊이 부족 등)하면 그 회차는 행을 남기지 않는다. 회차 결과에 영향 없음.
+- `HOLDING` 도 같은 원칙이다. 평단 0 처럼 계산이 불가능한 입력(`ArithmeticException`)은 Domain 이 관측 없음(null)으로 정규화하고(`holdingOrNull`·`flat`), 건·사건은 그대로 커밋한다. 관측 INSERT 의 DB 오류는 정규화하지 않고 전파해 그 회차 전체를 롤백한다.
 - `FLAT` 행은 기준 건의 id 에 매단다. `HOLDING` 행은 열린 건의 id.
 
 ### D5. 쓰는 위치와 트랜잭션 — 기존 저장 **뒤**, 별도 트랜잭션, 자기 상태로 판정
@@ -74,7 +75,7 @@
 
 ### D7. 스키마 (V24, 추가만)
 
-- `account_position_episode`: id, status(`OPEN`/`CLOSED`), opened_at, closed_at, 현재 leg 4열, reference 4열(NULL 가능), position_source, event_count, `open_marker`(생성 열), created_at, updated_at.
+- `account_position_episode`: id, status(`OPEN`/`CLOSED`), opened_at, closed_at, 현재 leg 4열, reference 4열(NULL 가능), position_source(개설 시 출처이며 이후 바뀐 출처는 사건 행의 `position_source` 에 남는다), event_count, `open_marker`(생성 열), created_at, updated_at.
 - `account_position_event`: id, episode_id(FK), seq, event_type, occurred_at, 변경 뒤 leg 4열, position_source, hedged.
 - `account_pnl_observation`: id, episode_id(FK), kind, observed_at, net_percent·net_krw(NULL 가능), current_premium_percent, entry_premium_percent, premium_gap_percent_point, fx_rate, korea_exit_price, foreign_exit_price. `observed_at` 인덱스.
 - 보존: 1일 최대 1,440행(연 약 53만 행). 이번에는 삭제 작업을 두지 않는다. 용량이 문제가 되면 별도 이슈.
@@ -95,7 +96,7 @@
 
 | 위험 | 대응 |
 |---|---|
-| 이력 쓰기가 회차 시간(1분 주기, Job timeout)을 잡아먹음 | 단일 트랜잭션 3문장 이내. 통합 테스트로 회차당 쿼리 수 고정 |
+| 이력 쓰기가 회차 시간(1분 주기, Job timeout)을 잡아먹음 | 단일 트랜잭션. 평상 회차 2~3문장, 사건 회차 최대 5문장(OPENED 4·CLOSED 5) |
 | 모니터 상태와 이력의 leg 가 어긋남(이력 기록만 실패) | 이력은 자기 상태로 판정하므로 다음 회차에 따라잡는다. 감지 시각이 늦어질 뿐 |
 | 버전 충돌로 건너뛴 회차 | `save()` 가 false 면 이력도 쓰지 않는다. 그 회차의 관측은 버리고, 다음 성공 회차가 이력의 자기 상태와 비교해 따라잡는다(D5 약한 보장) |
 | 수동 모드에서 빗썸만 정리하고 env 미갱신 | 바이낸스 leg 가 남아 건이 닫히지 않는다. 기존 "헤지 불일치" 알림이 이미 알린다 |

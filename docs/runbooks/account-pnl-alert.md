@@ -595,6 +595,7 @@ owner 알림 21종과 회원 김프 메일 1종의 문구는 `domain.alertmessag
 | `account_pnl_observation` | 1분 관측. `kind='HOLDING'`(열린 건 — 순수익률·순손익 있음), `kind='FLAT'`(열린 건 없음 + 기준 건 있음 — 순수익률·순손익은 `NULL`, 김프·환율·청산가만) |
 
 - 수량·평단은 소수 손실 없이 비교하려고 10진 **문자열** 열로 저장한다(`korea_quantity` 등). 숫자 연산이 필요하면 `CAST` 한다.
+- 건 행의 `position_source` 는 개설 시 출처이며, 이후 바뀐 출처(바이낸스 manual 모드 env 변경 등)는 사건 행의 `position_source` 에 남는다.
 - 실계정 값이므로 테이블 내용은 이슈·PR·채팅에 붙여넣지 않는다.
 
 ### 첫 배포 시 `opened_at` 의미
