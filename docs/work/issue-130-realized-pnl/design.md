@@ -142,7 +142,7 @@
 **`BinanceFillHistoryPrivateAccountAdapter`** : `ForeignPerpFillReadPort`
 - `/fapi/v1/userTrades`를 `lower`부터 7일 창으로 **앞으로** 걸어 `upper`까지 읽습니다. 창 하나가 1000건이면 `WINDOW_LIMIT`로 실패시킵니다.
 - `/fapi/v1/income?incomeType=FUNDING_FEE&symbol=BTCUSDT`는 `startTime`/`endTime`, 1000건 페이지로 읽습니다. 응답 행의 `symbol`이 BTCUSDT가 아니면 버리고, `asset`이 USDT가 아니면 실패시킵니다.
-- 체결 id와 `tranId`로 중복을 없앱니다. BNB 수수료 환산은 `/fapi/v1/ticker/price` 공개 시세입니다.
+- 체결 id와 `tranId`로 중복을 없앱니다. BNB 수수료 환산은 체결 시각 1분봉 `/fapi/v1/klines`(공개) 시가입니다(D4). 받은 봉이 체결 분과 다르면 실패시킵니다.
 - 수동 모드에서는 이 adapter를 만들지 않고, 정산은 바이낸스 쪽을 `MANUAL`로 둡니다.
 
 ### D9. 도메인
