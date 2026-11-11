@@ -5,6 +5,7 @@ import io.premiumspread.domain.accountpnl.FillSide.SELL
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
+import java.math.MathContext
 import java.time.Instant
 
 class RealizedPnlPolicyTest {
@@ -71,6 +72,36 @@ class RealizedPnlPolicyTest {
         )
 
         assertThat(RealizedPnlPolicy.korea(fills, BigDecimal.ZERO)!!.realizedKrw).isEqualByComparingTo("19981")
+
+        // 부분 정리: 실현 = (40000 − 7) − 1 × 100001 / 3 (DECIMAL128)
+        val partialExpected = BigDecimal("39993")
+            .subtract(BigDecimal("100001").divide(BigDecimal("3"), MathContext.DECIMAL128))
+        assertThat(RealizedPnlPolicy.korea(fills.take(2), BigDecimal("2"))!!.realizedKrw)
+            .isEqualByComparingTo(partialExpected)
+    }
+
+    @Test
+    fun `빗썸 같은 시각 체결은 id 순으로 적용한다`() {
+        // 입력은 매도 b 가 먼저지만 (filledAt, id) 순이면 매수 a → 매도 b
+        // 원가 100050, 실현 = (110000 − 55) − 100050 = 9895. 입력 순서대로면 보유 0 매도라 null 이다.
+        val fills = listOf(
+            sell("b", "1", "110000", "55", 1),
+            buy("a", "1", "100000", "50", 1),
+        )
+
+        assertThat(RealizedPnlPolicy.korea(fills, BigDecimal.ZERO)!!.realizedKrw).isEqualByComparingTo("9895")
+    }
+
+    @Test
+    fun `빗썸 보유보다 dust 미만 더 팔면 보유 원가 전부를 빼고 확정한다`() {
+        // 원가 100050, 보유 1. 매도 1.00005 → 보유 원가 전부 제거, 보유 0
+        // 실현 = (110000 − 55) − 100050 = 9895. 수량 1 − 1.00005 = −0.00005 = 기대
+        val fills = listOf(
+            buy("u1", "1", "100000", "50", 1),
+            sell("u2", "1.00005", "110000", "55", 2),
+        )
+
+        assertThat(RealizedPnlPolicy.korea(fills, BigDecimal("-0.00005"))!!.realizedKrw).isEqualByComparingTo("9895")
     }
 
     @Test
