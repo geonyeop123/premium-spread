@@ -57,6 +57,8 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
         assertThat(target.legs).isEqualTo(PositionLegs(KoreaLeg.EMPTY, ForeignLeg.FLAT))
         assertThat(target.source).isEqualTo(ForeignPerpPositionSource.MANUAL_ENV)
         assertThat(target.attempts).isEqualTo(0)
+        // newer 는 older 가 열린 뒤 닫혔으므로 앞 건이 아니다(prev.closed_at < ep.opened_at)
+        assertThat(target.lowerExclusive).isEqualTo(minutesAgo(30).minus(LOOKBACK))
     }
 
     @Test
@@ -167,6 +169,16 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
     @Test
     fun `lower 가 91일 전인 건은 돌려주지 않는다`() {
         val opened = NOW.minus(Duration.ofDays(91)).plus(LOOKBACK)
+        val episode = closedEpisode(opened = opened, closed = opened.plusSeconds(600))
+        event(episode, 1, "OPENED", opened, "0.2", "-0.2")
+        event(episode, 2, "CLOSED", opened.plusSeconds(600), "0", "0")
+
+        assertThat(findTarget()).isNull()
+    }
+
+    @Test
+    fun `lower 가 정확히 90일 전인 건은 돌려주지 않는다`() {
+        val opened = NOW.minus(MAX_AGE).plus(LOOKBACK)
         val episode = closedEpisode(opened = opened, closed = opened.plusSeconds(600))
         event(episode, 1, "OPENED", opened, "0.2", "-0.2")
         event(episode, 2, "CLOSED", opened.plusSeconds(600), "0", "0")
@@ -300,6 +312,17 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
 
         assertThat(store.findFxAt(minutesAgo(20), TOLERANCE)).isNull()
         assertThat(store.findFxAt(minutesAgo(29), TOLERANCE)!!.observedAt).isEqualTo(minutesAgo(30).minusSeconds(1))
+    }
+
+    @Test
+    fun `findFxAt 의 10분 하한은 포함이다`() {
+        val episode = closedEpisode(opened = minutesAgo(40), closed = minutesAgo(20))
+        observation(episode, minutesAgo(30), "1370")
+
+        val fx = store.findFxAt(minutesAgo(20), TOLERANCE)!!
+
+        assertThat(fx.observedAt).isEqualTo(minutesAgo(30))
+        assertThat(fx.rate).isEqualByComparingTo("1370")
     }
 
     private fun findTarget(): SettlementTarget? = store.findTarget(NOW, SETTLE_DELAY, MAX_AGE, LOOKBACK)
