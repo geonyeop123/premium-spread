@@ -195,6 +195,80 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
         }
     }
 
+    @Test
+    fun `done 주문의 체결 수량 합이 executed_volume 과 다르면 UNEXPECTED 다`() {
+        orderPages[1] = orders(row("o1", "done", "0.002", "2026-10-19T10:00:00+09:00"))
+        details["o1"] = detail("o1", "bid", "1", trade("a", "0.001", "1000", "2026-10-19T12:00:00+09:00"))
+
+        assertThatThrownBy { adapter().read(from, to) }
+            .isInstanceOfSatisfying(AccountReadException::class.java) {
+                assertThat(it.category).isEqualTo(AccountReadFailureCategory.UNEXPECTED)
+                assertThat(it.message).doesNotContain("0.001", "0.002")
+            }
+    }
+
+    @Test
+    fun `wait 주문은 체결 수량 합이 목록의 executed_volume 과 달라도 읽는다`() {
+        orderPages[1] = orders(row("o1", "wait", "0.001", "2026-10-19T10:00:00+09:00"))
+        details["o1"] = detail(
+            "o1",
+            "bid",
+            "2",
+            trade("a", "0.001", "1000", "2026-10-19T12:00:00+09:00"),
+            trade("b", "0.001", "1000", "2026-10-19T13:00:00+09:00"),
+        )
+
+        assertThat(adapter().read(from, to).map { it.id }).containsExactly("o1:a", "o1:b")
+    }
+
+    @Test
+    fun `반올림으로 마지막 체결 수수료가 음수가 되면 UNEXPECTED 다`() {
+        orderPages[1] = orders(row("o1", "done", "0.01800001", "2026-10-19T10:00:00+09:00"))
+        details["o1"] = detail(
+            "o1",
+            "bid",
+            "1",
+            trade("a", "0.003", "299615329", "2026-10-19T12:00:00+09:00"),
+            trade("b", "0.007", "775762534", "2026-10-19T12:00:01+09:00"),
+            trade("c", "0.008", "877001467", "2026-10-19T12:00:02+09:00"),
+            trade("d", "0.00000001", "1", "2026-10-19T12:00:03+09:00"),
+        )
+
+        assertThatThrownBy { adapter().read(from, to) }
+            .isInstanceOfSatisfying(AccountReadException::class.java) {
+                assertThat(it.category).isEqualTo(AccountReadFailureCategory.UNEXPECTED)
+            }
+    }
+
+    @Test
+    fun `생성 시각이 정확히 to 인 주문은 상세를 읽고 to 시각 체결을 돌려준다`() {
+        orderPages[1] = orders(row("o-edge", "done", "0.001", "2026-10-20T09:00:00+09:00"))
+        details["o-edge"] = detail("o-edge", "ask", "1", trade("e", "0.001", "1000", "2026-10-20T09:00:00+09:00"))
+
+        val fills = adapter().read(from, to)
+
+        assertThat(fills.map { it.id to it.filledAt }).containsExactly("o-edge:e" to to)
+    }
+
+    @Test
+    fun `페이지가 밀려 같은 주문이 두 페이지에 나오면 상세는 한 번만 읽고 체결도 한 번만 돌려준다`() {
+        val dup = row("o-dup", "done", "0.001", "2026-10-19T10:00:00+09:00")
+        orderPages[1] = orders(
+            *(1..99).map { row("p$it", "cancel", "0", "2026-10-19T11:00:00+09:00") }.toTypedArray(),
+            dup,
+        )
+        orderPages[2] = orders(dup)
+        details["o-dup"] = detail("o-dup", "bid", "1", trade("d", "0.001", "1000", "2026-10-19T12:00:00+09:00"))
+
+        val fills = adapter().read(from, to)
+
+        assertThat(fills.map { it.id }).containsExactly("o-dup:d")
+        val requests = recorded()
+        assertThat(requests.filter { it.requestUrl!!.encodedPath == "/v1/order" }).hasSize(1)
+        assertThat(requests.filter { it.requestUrl!!.encodedPath == "/v1/orders" }.map { it.requestUrl!!.queryParameter("page") })
+            .containsExactly("1", "2")
+    }
+
     private fun adapter() = BithumbFillHistoryPrivateAccountAdapter(
         WebClient.builder().baseUrl(server.url("/").toString().removeSuffix("/")).build(),
         "test-access-key",

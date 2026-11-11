@@ -40,7 +40,7 @@ class BithumbFillHistoryPrivateAccountAdapter(
         while (true) {
             val rows = readOrderPage(page)
             rows.filter { it.executedVolume.signum() > 0 && it.createdAt <= toInclusive && seen.add(it.id) }
-                .forEach { fills += readOrderFills(it.id, fromExclusive, toInclusive) }
+                .forEach { fills += readOrderFills(it, fromExclusive, toInclusive) }
             if (rows.size < ORDER_PAGE_SIZE || rows.last().createdAt < cutoff) break
             if (page >= MAX_ORDER_PAGES) throw FillHistoryWindowLimitException(WINDOW_LIMIT_MESSAGE)
             page += 1
@@ -48,7 +48,7 @@ class BithumbFillHistoryPrivateAccountAdapter(
         return fills.sortedWith(compareBy<KoreaSpotFill> { it.filledAt }.thenBy { it.id })
     }
 
-    private data class OrderRow(val id: String, val executedVolume: BigDecimal, val createdAt: Instant) {
+    private data class OrderRow(val id: String, val state: String, val executedVolume: BigDecimal, val createdAt: Instant) {
         override fun toString(): String = "OrderRow(createdAt=$createdAt)"
     }
 
@@ -61,11 +61,12 @@ class BithumbFillHistoryPrivateAccountAdapter(
         return client.get("/v1/orders", query, signed = true).requireArray("orders").map {
             val executed = it.dec("executed_volume")
             if (executed.signum() < 0) bithumbUnexpected("order executed volume is negative")
-            OrderRow(it.requireId("uuid"), executed, it.instant("created_at"))
+            OrderRow(it.requireId("uuid"), it.path("state").asText(), executed, it.instant("created_at"))
         }
     }
 
-    private fun readOrderFills(orderId: String, fromExclusive: Instant, toInclusive: Instant): List<KoreaSpotFill> {
+    private fun readOrderFills(row: OrderRow, fromExclusive: Instant, toInclusive: Instant): List<KoreaSpotFill> {
+        val orderId = row.id
         val order = client.get("/v1/order", "uuid=$orderId", signed = true)
         val side = when (order.path("side").asText()) {
             "bid" -> FillSide.BUY
@@ -77,6 +78,11 @@ class BithumbFillHistoryPrivateAccountAdapter(
         val tradesNode = order.get("trades") ?: bithumbUnexpected("order trades are missing")
         val trades = tradesNode.requireArray("trades").map(::parseTrade)
             .sortedWith(compareBy<Trade> { it.createdAt }.thenBy { it.id })
+        // wait 주문은 목록 조회와 상세 조회 사이에 더 체결될 수 있어 대조하지 않는다.
+        val tradedVolume = trades.fold(BigDecimal.ZERO) { sum, trade -> sum.add(trade.volume) }
+        if (row.state != "wait" && tradedVolume.compareTo(row.executedVolume) != 0) {
+            bithumbUnexpected("order trades do not cover the executed volume")
+        }
         val fees = allocateFee(paidFee, trades)
         return trades.indices
             .filter { trades[it].createdAt > fromExclusive && trades[it].createdAt <= toInclusive }
@@ -102,7 +108,9 @@ class BithumbFillHistoryPrivateAccountAdapter(
             paidFee.multiply(it.funds).divide(totalFunds, scale, RoundingMode.HALF_DOWN)
         }
         val allocated = shares.fold(BigDecimal.ZERO) { sum, share -> sum.add(share) }
-        return shares + paidFee.subtract(allocated)
+        val remainder = paidFee.subtract(allocated)
+        if (remainder.signum() < 0) bithumbUnexpected("fee allocation remainder is negative")
+        return shares + remainder
     }
 
     private fun JsonNode.requireId(field: String): String {
