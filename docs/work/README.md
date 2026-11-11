@@ -22,3 +22,4 @@
 - [apps/web npm overrides 재검토](issue-97-web-npm-overrides/README.md)
 - [apps/web Node 24 전환과 jsdom 30](issue-118-web-node24/README.md)
 - [apps/web 트래킹 조회 훅 분리와 set-state-in-effect override 제거](issue-96-trackings-fetch/README.md)
+- [실계정 포지션 기록과 매분 관측 이력 저장](issue-129-position-history/README.md)
