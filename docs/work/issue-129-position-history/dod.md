@@ -46,7 +46,7 @@ source: https://github.com/geonyeop123/premium-spread/issues/129 (상위 #128, 2
 | AC3 | 같은 leg·같은 `observedAt` 로 `record` 를 두 번 호출하거나, 새 store 인스턴스(재시작)로 이어서 호출해도 건·사건·관측 행 수가 늘지 않는다. 열린 건이 있는 상태에서 두 번째 `OPEN` 행을 직접 넣으면 제약 위반으로 실패한다 | 이슈 #129 수용 기준 3, design D5 | `요구` | T1 | `신규테스트` 위 AC2 와 같은 클래스의 `idempotent*`·`singleOpenEpisode*` 메서드 | AC2 와 같은 명령 | exit 0 |
 | AC4 | 헤지 성립 회차는 `HOLDING` 관측 1행(순수익률·순손익·현재 김프·매수김프·차이·환율 채움), 열린 건이 없고 reference 가 있는 닫힌 건이 있는 회차는 그 건에 매달린 `FLAT` 1행(순수익률·순손익 NULL, 매수김프는 reference 평단과 **그 회차 환율**로 계산)이 남는다. 관측 실패·한쪽 leg 만 있는 회차·기준 건이 없는 회차는 0행이다. `HOLDING` 의 김프 값은 같은 입력의 `AccountPnlBreakdown` 값과 같고, `FLAT` 은 계정 수량이 0 이어도 **기준 수량**으로 청산가를 계산한다. 김프·VWAP 계산은 공유 Domain 함수 하나를 `AccountPnlBreakdown`·`AccountNetPnl`·`FLAT` 계산이 함께 부른다 | design D4 | `요구`(매분 저장, 포지션 없는 기간 포함) · `추론`(적재하지 않는 회차 3종) · `리뷰`(codex #4: 공유 함수, 기준 수량) | T1 | `신규테스트` `io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobPositionHistoryTest` | `./gradlew :apps:batch:test --tests io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobPositionHistoryTest --offline --no-daemon` | exit 0 |
 | AC5 | 이력 store 가 예외를 던져도 그 회차의 `JobResult`·저장된 모니터 상태·outbox 행·전달 호출이 store 가 없을 때와 같다. `save()` 가 false(버전 충돌)거나 저장 전에 취소된 회차는 이력 store 를 호출하지 않는다(그 회차의 관측은 버린다 — design D5 약한 보장) | 이슈 #129 수용 기준 4, design D5 | `요구` | T1 | `신규테스트` AC4 와 같은 클래스의 `historyFailure*`·`skipped*` 메서드 | AC4 와 같은 명령 | exit 0 |
-| AC6 | V24 가 빈 DB 와 V23 → 최신 두 경로에서 적용되고, 버전 유일성·파괴 SQL gate 를 통과한다 | design D7 | `요구`(저장) | T1 | `기존` `:infrastructure:common:verifyMigrations` | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` | exit 0 |
+| AC6 | V24 가 빈 DB 와 V23 → 최신 두 경로에서 적용되고, 버전 유일성·파괴 SQL gate 를 통과한다 | design D7 | `요구`(저장) | T1 | `기존` `:infrastructure:common:verifyMigrations` + `신규테스트` `V24AccountPositionHistoryMigrationIntegrationTest` (변경 요청 2026-11-11 승인) | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` · `./gradlew :infrastructure:common:integrationTest --tests '*V24AccountPositionHistoryMigrationIntegrationTest' --offline --no-daemon` | exit 0 |
 | AC7 | `account-pnl-monitor.position-history.enabled=false` 면 Job 에 이력 store 가 주입되지 않고, 기본값(미설정)이면 주입된다 | design D6 | `추론`(끄는 스위치) | T1 | `신규테스트` `io.premiumspread.config.AccountPnlMonitorPositionHistoryWiringTest` | `./gradlew :apps:batch:test --tests io.premiumspread.config.AccountPnlMonitorPositionHistoryWiringTest --offline --no-daemon` | exit 0 |
 | AC8 | owner 가 로컬 batch 를 실계정으로 돌려 `account_position_episode`·`account_pnl_observation` 에 행이 쌓이는 것을 확인한다(보유 중이면 `OPENED` 1건 + 분당 `HOLDING` 1행, 없으면 건 0행) | 이슈 #129, design §3 | `요구` | T4 | 사람 육안 — runbook 확인 쿼리 | — | owner 가 PR 코멘트로 확인 |
 
@@ -137,7 +137,7 @@ API·Redis·http 샘플 diff 없음. 미확인: runbook 확인 쿼리 3개는 DD
 
 | 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
 |---|---|---|---|---|
-| AC6 검증 수단·명령 | `기존` `:infrastructure:common:verifyMigrations` 단독 | `기존` `verifyMigrations` + `신규테스트` `V24AccountPositionHistoryMigrationIntegrationTest` (`./gradlew :infrastructure:common:integrationTest --tests '*V24AccountPositionHistoryMigrationIntegrationTest' --offline --no-daemon`) | ⑨ spec-review: `verifyMigrations` 는 정적 검사라 "V23 → 최신 경로에서 적용"을 증명하지 못한다. 기준 문구·통과 조건은 그대로, 수단만 보강 | 대기 |
+| AC6 검증 수단·명령 | `기존` `:infrastructure:common:verifyMigrations` 단독 | `기존` `verifyMigrations` + `신규테스트` `V24AccountPositionHistoryMigrationIntegrationTest` (`./gradlew :infrastructure:common:integrationTest --tests '*V24AccountPositionHistoryMigrationIntegrationTest' --offline --no-daemon`) | ⑨ spec-review: `verifyMigrations` 는 정적 검사라 "V23 → 최신 경로에서 적용"을 증명하지 못한다. 기준 문구·통과 조건은 그대로, 수단만 보강 | 승인 2026-11-11 (owner, 세션 내 응답) |
 
 ## 최종 판정
 
@@ -147,9 +147,9 @@ DoD VERDICT: issue-129-position-history @ 5e2c26d
   T1/T2 자동:      7개 중 7개 PASS
   T3 기록 제출:    0개 중 0건
   T4 사람 확인:    1개 중 0건 완료, 1건 대기 (AC8)
-  변경 요청:       1건 (AC6 검증 수단 보강, 승인 대기)
+  변경 요청:       1건 (AC6 검증 수단 보강, 승인됨)
   => AWAITING_HUMAN
 ```
 
-- 남은 항목: AC8 owner 로컬 실계정 확인(runbook "포지션 이력" 확인 쿼리), AC6 변경 요청 승인.
+- 남은 항목: AC8 owner 로컬 실계정 확인(runbook "포지션 이력" 확인 쿼리). AC6 변경 요청은 2026-11-11 승인됐다.
 - RED 주의: AC1·AC4 Domain 계산의 첫 RED 는 `TODO()` 스텁 실패였다(증거 로그 참조). 단언 실패 RED 는 T3~T5 와 e1297e7 에 있다.
