@@ -3,7 +3,7 @@ feature: 실계정 포지션 기록과 매분 관측 이력 저장
 slug: issue-129-position-history
 status: FROZEN
 frozen_at: 2026-11-10
-verdict_commit:
+verdict_commit: 5e2c26d
 source: https://github.com/geonyeop123/premium-spread/issues/129 (상위 #128, 2026-11-10 대화 합의) · design.md
 ---
 
@@ -69,6 +69,62 @@ source: https://github.com/geonyeop123/premium-spread/issues/129 (상위 #128, 2
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
 
+### RED (태스크별 implementer 보고 — Task 1~4 는 2026-11-10 세션, Task 5·재작업은 2026-11-11 세션)
+
+```
+[RED] T1·T2 5997268·63eadb8 (AC1, AC4 Domain 계산)
+  PositionEpisodePolicyTest·PositionObservationTest·HedgeQuoteTest — TODO() 스텁이 던지는 NotImplementedError 로 실패
+  주의: 기대 assertion 실패가 아니라 스텁 실패다. 단언 값으로 실패한 RED 는 아래 e1297e7 한 건뿐이다
+[RED] T2 보정 e1297e7 (AC1 민감 값)
+  PositionEpisodePolicyTest#민감 값은 toString 에 실리지 않는다 — data class 기본 toString 이 legs 를 출력해 단언 실패
+[RED] T3 7f547ed (AC2·AC3·AC4 DB 행)
+  JdbcAccountPositionHistoryStoreIntegrationTest 8건 모두 단언 실패 → 구현 후 8/8 통과
+[RED] T4 24135c0 (AC4 입력·AC5)
+  생성자 인자만 추가한 상태에서 AccountPnlMonitorJobPositionHistoryTest 8건 중 4건 단언 실패
+  (기록 건수 0, 호출 수 0, 인터럽트 플래그 false). 나머지 4건은 "호출 0회" 단언이라 구현 전 통과가 맞다
+[RED] T5 b7574dc (AC7)
+  AccountPnlMonitorPositionHistoryWiringTest 3건 중 2건 실패 — 미설정·true 에서 기대 1, 실제 0 (:63, :68). false 는 0 이 정답
+[RED] 리뷰 재작업 52ccd4b (⑨ C1·C2)
+  C1: PositionObservation.holdingOrNull 미존재로 컴파일 실패(스텁 RED 아님 — 시그니처 부재)
+  C2: recordHistory 의 interrupt 가드를 임시 제거하면 "interrupt 상태면 history 호출 0회" 테스트가 실패함을 확인 후 복원
+```
+
+### GREEN — 전체 검증 @ 5e2c26d (2026-11-11, Docker 28.3.2)
+
+```
+$ ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest \
+    :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
+BUILD SUCCESSFUL (2m28s, exit 0)
+  (:domain:test·:apps:batch:test 가 UP-TO-DATE 라 cleanTest 후 재실행해 실제 실행 확인)
+  :domain:test 594/0 · :apps:batch:test 330/0 · :apps:api:test 144/0 · :infrastructure:common:test 61/0
+  :infrastructure:batch:test 239/0 · :infrastructure:api:test 31/0 · modules·supports 62/0
+  architectureTest 35/0 · verifyMigrations PASS
+  :infrastructure:common:integrationTest 109/0 · :apps:api:integrationTest 174/0 · :apps:batch:integrationTest 117/0
+  (실행/실패, skip 0)
+신규 클래스: PositionEpisodePolicyTest 16 · PositionObservationTest 9 · HedgeQuoteTest 4
+  · AccountPnlMonitorJobPositionHistoryTest 10 · AccountPnlMonitorPositionHistoryWiringTest 4
+  · JdbcAccountPositionHistoryStoreIntegrationTest 11 · V24AccountPositionHistoryMigrationIntegrationTest 2 — 전부 실패 0
+$ bash docs/check-documentation.sh
+documentation check passed (20 files, 15 required paths)
+```
+
+| AC | 근거 테스트 | 결과 |
+|---|---|---|
+| AC1 | `PositionEpisodePolicyTest` 16건 | PASS |
+| AC2 | `JdbcAccountPositionHistoryStoreIntegrationTest` 진입→추가→부분→전량(건 1·사건 4, 재진입 2건), 선체결 reference | PASS |
+| AC3 | 같은 클래스 `idempotent*` 2건, `새 인스턴스가 직전과 같은 round…`, `singleOpenEpisode*` | PASS |
+| AC4 | 명령 대상 `AccountPnlMonitorJobPositionHistoryTest`(round 입력) + 분할 측정: `PositionObservationTest`(HOLDING 김프=Breakdown, FLAT 기준 수량·회차 환율, 평단 0→null) · `HedgeQuoteTest`(공유 함수) · 통합 `관측 보유 회차는 HOLDING…`·`관측 기준 건이 없거나…`(행) | PASS |
+| AC5 | Job 테스트 `historyFailure*`·`skipped*`·interrupt 가드·호출 순서(latest→history→send), 통합 `트랜잭션 관측 INSERT 가 실패하면…`, 평단 0 계산 실패 시 건·사건 커밋·관측 0행 2건 | PASS |
+| AC6 | `verifyMigrations`(정적 gate) + `V24AccountPositionHistoryMigrationIntegrationTest`(V23→최신, 기존 행 보존·테이블 3·unique 2) + 빈 DB 경로는 `LatestSchemaFixture` 사용 통합 테스트 전체 | PASS — 검증 수단 보강은 변경 요청 참조 |
+| AC7 | `AccountPnlMonitorPositionHistoryWiringTest` 4건(미설정·true 1회, false 0회, store bean 없음 → 기동·Success) | PASS |
+| R1 | `:apps:batch:test` 330/0, 이 브랜치의 테스트 변경은 신규(A) 7파일뿐 | PASS |
+| R2 | `architectureTest` 35/0 | PASS |
+| R3 | `:domain:test` 594/0, `:infrastructure:common:integrationTest` 109/0, 기존 테스트 무수정 | PASS |
+| R4 | `check-documentation.sh` exit 0 | PASS |
+
+경계면(qa-agent): JDBC SQL ↔ V24 DDL 컬럼·타입 MATCH, env 키 3곳(`application.yml:85`·`AccountPnlMonitorConfiguration.kt:189`·runbook:50) MATCH,
+API·Redis·http 샘플 diff 없음. 미확인: runbook 확인 쿼리 3개는 DDL 대조만 했고 MySQL 에서 직접 실행하지 않았다(AC8 owner 확인 때 실행된다).
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -81,7 +137,19 @@ source: https://github.com/geonyeop123/premium-spread/issues/129 (상위 #128, 2
 
 | 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
 |---|---|---|---|---|
+| AC6 검증 수단·명령 | `기존` `:infrastructure:common:verifyMigrations` 단독 | `기존` `verifyMigrations` + `신규테스트` `V24AccountPositionHistoryMigrationIntegrationTest` (`./gradlew :infrastructure:common:integrationTest --tests '*V24AccountPositionHistoryMigrationIntegrationTest' --offline --no-daemon`) | ⑨ spec-review: `verifyMigrations` 는 정적 검사라 "V23 → 최신 경로에서 적용"을 증명하지 못한다. 기준 문구·통과 조건은 그대로, 수단만 보강 | 대기 |
 
 ## 최종 판정
 
-> 구현 뒤 기록한다.
+```
+DoD VERDICT: issue-129-position-history @ 5e2c26d
+  수용기준 표:     8개  (T1 7 · T2 0 · T3 0 · T4 1)
+  T1/T2 자동:      7개 중 7개 PASS
+  T3 기록 제출:    0개 중 0건
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기 (AC8)
+  변경 요청:       1건 (AC6 검증 수단 보강, 승인 대기)
+  => AWAITING_HUMAN
+```
+
+- 남은 항목: AC8 owner 로컬 실계정 확인(runbook "포지션 이력" 확인 쿼리), AC6 변경 요청 승인.
+- RED 주의: AC1·AC4 Domain 계산의 첫 RED 는 `TODO()` 스텁 실패였다(증거 로그 참조). 단언 실패 RED 는 T3~T5 와 e1297e7 에 있다.
