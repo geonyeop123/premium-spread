@@ -287,3 +287,16 @@ CREATE INDEX ix_account_pnl_observation_observed_at ON account_pnl_observation (
 | AC6 | T3 |
 | AC7 | T5 |
 | AC8 | 사람 확인 (runbook 쿼리는 T5) |
+
+## 진행 기록
+
+| Task | 커밋 |
+|---|---|
+| T1 | 5997268 |
+| T2 | 63eadb8, e1297e7 |
+| T3 | 7f547ed |
+| T4 | 24135c0 |
+| T5 | b7574dc |
+| 리뷰 재작업 | 52ccd4b, b974ac6, 5e2c26d |
+
+참고: T3 의 수량·평단 열은 위 스키마 초안의 `DECIMAL` 대신 `VARCHAR(64)` 로 구현했다(design D7).

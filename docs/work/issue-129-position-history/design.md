@@ -76,6 +76,7 @@
 ### D7. 스키마 (V24, 추가만)
 
 - `account_position_episode`: id, status(`OPEN`/`CLOSED`), opened_at, closed_at, 현재 leg 4열, reference 4열(NULL 가능), position_source(개설 시 출처이며 이후 바뀐 출처는 사건 행의 `position_source` 에 남는다), event_count, `open_marker`(생성 열), created_at, updated_at.
+- leg·reference 의 수량·평단 열은 `DECIMAL` 이 아니라 정규화한 10진 문자열 `VARCHAR(64)` 로 저장한다(V20 과 같은 이유: `DECIMAL` 은 넘친 소수 자리를 반올림해 변경 비교가 어긋난다. plan 초안의 `DECIMAL` 에서 구현 중 바뀜).
 - `account_position_event`: id, episode_id(FK), seq, event_type, occurred_at, 변경 뒤 leg 4열, position_source, hedged.
 - `account_pnl_observation`: id, episode_id(FK), kind, observed_at, net_percent·net_krw(NULL 가능), current_premium_percent, entry_premium_percent, premium_gap_percent_point, fx_rate, korea_exit_price, foreign_exit_price. `observed_at` 인덱스.
 - 보존: 1일 최대 1,440행(연 약 53만 행). 이번에는 삭제 작업을 두지 않는다. 용량이 문제가 되면 별도 이슈.
