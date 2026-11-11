@@ -80,6 +80,9 @@ account-pnl-monitor:
   recipient: ${ACCOUNT_PNL_ALERT_RECIPIENT:}
   hourly-report:
     enabled: ${ACCOUNT_PNL_HOURLY_REPORT_ENABLED:true}
+  # 포지션 이력(#129) 기록. false 면 회차마다 쓰는 DB 기록만 끈다(알림은 그대로).
+  position-history:
+    enabled: ${ACCOUNT_PNL_POSITION_HISTORY_ENABLED:true}
   # owner 계정 알림(포지션 변경·순수익률 급변·미반영 리마인더). 경로는 owner-alert.routes 가 정한다.
   account-alerts:
     swing-threshold-percent: ${ACCOUNT_PNL_SWING_THRESHOLD_PERCENT:0.5}
