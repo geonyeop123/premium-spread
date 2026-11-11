@@ -1,8 +1,6 @@
 package io.premiumspread.infrastructure.batch.exchange.bithumb
 
-import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
@@ -12,26 +10,20 @@ import io.premiumspread.infrastructure.batch.exchange.AccountBalanceLog
 import io.premiumspread.infrastructure.batch.exchange.BalanceItem
 import io.premiumspread.infrastructure.batch.exchange.BalanceUnavailableReason
 import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.WebClientRequestException
-import org.springframework.web.reactive.function.client.WebClientResponseException
 import java.math.BigDecimal
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
-import java.util.concurrent.TimeoutException
 
 /** 빗썸 read-only 계정 조회. 모든 호출은 GET 이며 실패는 [AccountReadException] 으로만 던진다. */
 class BithumbPrivateAccountAdapter(
-    private val webClient: WebClient,
-    private val accessKey: String,
-    private val secretKey: String,
-    private val clock: Clock,
-    private val timeout: Duration = Duration.ofSeconds(5),
+    webClient: WebClient,
+    accessKey: String,
+    secretKey: String,
+    clock: Clock,
+    timeout: Duration = Duration.ofSeconds(5),
 ) : KoreaSpotAccountReadPort {
-    private val mapper = ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+    private val client = BithumbPrivateReadClient(webClient, accessKey, secretKey, clock, timeout)
 
     @Volatile
     private var feeCache: FeeCache? = null
@@ -82,7 +74,7 @@ class BithumbPrivateAccountAdapter(
     )
 
     private fun readAccount(): Account {
-        val root = getJson("/v1/accounts", null, signed = true)
+        val root = client.get("/v1/accounts", null, signed = true)
         val rows = root.requireArray("accounts")
         val krwBalance = readKrwBalance(rows)
         val row = rows.firstOrNull { it.path("currency").asText() == "BTC" && it.path("unit_currency").asText() == "KRW" }
@@ -96,7 +88,7 @@ class BithumbPrivateAccountAdapter(
     }
 
     private fun readOrderbook(): Pair<List<PriceLevel>, Instant> {
-        val root = getJson("/v1/orderbook", "markets=KRW-BTC", signed = false)
+        val root = client.get("/v1/orderbook", "markets=KRW-BTC", signed = false)
         val book = root.requireArray("orderbook").firstOrNull() ?: unexpected("orderbook is empty")
         val units = (book.get("orderbook_units") ?: unexpected("orderbook_units is missing")).requireArray("orderbook_units")
         // bid_size 가 정확히 0 인 단계는 ask 만 있는 한쪽 행이므로 bid 레벨이 아니다.
@@ -127,7 +119,7 @@ class BithumbPrivateAccountAdapter(
 
     private fun readPrices(): Prices {
         val root = try {
-            getJson("/v1/ticker", TICKER_QUERY, signed = false)
+            client.get("/v1/ticker", TICKER_QUERY, signed = false)
         } catch (e: AccountReadException) {
             if (e.category != AccountReadFailureCategory.UNEXPECTED || AccountBalanceLog.isCancellation(e)) throw e
             AccountBalanceLog.unavailable(
@@ -136,7 +128,7 @@ class BithumbPrivateAccountAdapter(
                 AccountReadFailureCategory.UNEXPECTED,
                 AccountBalanceLog.rootErrorClass(e),
             )
-            return Prices(btcPrice(getJson("/v1/ticker", TICKER_FALLBACK_QUERY, signed = false)), null)
+            return Prices(btcPrice(client.get("/v1/ticker", TICKER_FALLBACK_QUERY, signed = false)), null)
         }
         return Prices(btcPrice(root), usdtPrice(root))
     }
@@ -173,7 +165,7 @@ class BithumbPrivateAccountAdapter(
     }
 
     private fun readSellFeeRate(): BigDecimal {
-        val fee = getJson("/v1/orders/chance", "market=KRW-BTC", signed = true).dec("ask_fee")
+        val fee = client.get("/v1/orders/chance", "market=KRW-BTC", signed = true).dec("ask_fee")
         if (fee.signum() < 0) unexpected("ask fee is negative")
         return fee
     }
@@ -218,7 +210,7 @@ class BithumbPrivateAccountAdapter(
 
     private fun readOrderPage(page: Int): List<OrderRow> {
         val query = "market=KRW-BTC&states[]=done&states[]=cancel&order_by=desc&limit=$ORDER_PAGE_SIZE&page=$page"
-        val root = getJson("/v1/orders", query, signed = true)
+        val root = client.get("/v1/orders", query, signed = true)
         return root.requireArray("orders").map {
             val executed = it.dec("executed_volume")
             val paid = it.dec("paid_fee")
@@ -232,76 +224,7 @@ class BithumbPrivateAccountAdapter(
         }
     }
 
-    // adapter 경계: 모든 실패를 AccountReadException 으로 정규화한다.
-    @Suppress("TooGenericExceptionCaught")
-    private fun getJson(path: String, query: String?, signed: Boolean): JsonNode {
-        val body = try {
-            var wireQuery: String? = null
-            webClient.get()
-                .uri { builder ->
-                    val uri = builder.path(path).also { if (query != null) it.query(query) }.build()
-                    wireQuery = uri.rawQuery
-                    uri
-                }
-                .headers { headers ->
-                    if (signed) {
-                        val jwt = BithumbJwtSigner.sign(
-                            accessKey,
-                            secretKey,
-                            // query_hash 는 wire 의 인코딩 query 가 아니라 디코딩된 query(states[]=done...) 기준이다.
-                            wireQuery?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) },
-                            UUID.randomUUID().toString(),
-                            clock.millis(),
-                        )
-                        headers.setBearerAuth(jwt)
-                    }
-                }
-                .retrieve()
-                .bodyToMono(String::class.java)
-                .timeout(timeout)
-                .block()
-        } catch (e: WebClientResponseException) {
-            throw AccountReadException(statusCategory(e.statusCode.value()), "Bithumb $path responded ${e.statusCode.value()}", e)
-        } catch (e: WebClientRequestException) {
-            throw AccountReadException(AccountReadFailureCategory.NETWORK, "Bithumb $path request failed", e)
-        } catch (e: AccountReadException) {
-            throw e
-        } catch (e: RuntimeException) {
-            val timedOut = generateSequence<Throwable>(e) { it.cause }.any { it is TimeoutException }
-            val category = if (timedOut) AccountReadFailureCategory.NETWORK else AccountReadFailureCategory.UNEXPECTED
-            throw AccountReadException(category, "Bithumb $path call failed", e)
-        } ?: unexpected("Bithumb $path returned an empty body")
-        return try {
-            mapper.readTree(body) ?: unexpected("Bithumb $path returned an empty body")
-        } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
-            throw AccountReadException(AccountReadFailureCategory.UNEXPECTED, "Bithumb $path returned malformed JSON", e)
-        }
-    }
-
-    private fun statusCategory(status: Int) = when {
-        status == 401 -> AccountReadFailureCategory.BITHUMB_AUTH
-        status == 429 || status >= 500 -> AccountReadFailureCategory.NETWORK
-        else -> AccountReadFailureCategory.UNEXPECTED
-    }
-
-    private fun JsonNode.requireArray(name: String): JsonNode =
-        if (isArray) this else unexpected("$name response is not an array")
-
-    private fun JsonNode.dec(field: String): BigDecimal {
-        val node = get(field) ?: unexpected("field $field is missing")
-        return try {
-            when {
-                node.isNumber -> node.decimalValue()
-                node.isTextual -> BigDecimal(node.asText())
-                else -> unexpected("field $field is not a number")
-            }
-        } catch (e: NumberFormatException) {
-            throw AccountReadException(AccountReadFailureCategory.UNEXPECTED, "field $field is not a number", e)
-        }
-    }
-
-    private fun unexpected(message: String): Nothing =
-        throw AccountReadException(AccountReadFailureCategory.UNEXPECTED, message)
+    private fun unexpected(message: String): Nothing = bithumbUnexpected(message)
 
     private companion object {
         const val ORDER_PAGE_SIZE = 100
