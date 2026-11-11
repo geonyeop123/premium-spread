@@ -136,8 +136,9 @@ class AccountPnlMonitorJob(
         val alert = PnlAlertPolicy.decide(loaded.alert, observed.observation, now)
         val outage = MonitoringOutagePolicy.decide(loaded.outage, observed.failure, now)
         val mails = buildMails(observed.observation, alert.send, outage.notice, now)
-        val gap = referenceGap(observed.history, loaded.account.step)
-        val account = accountAlerts?.let { AccountAlertPolicy.decide(loaded.account, observed.round, it, zone, gap) }
+        val account = accountAlerts?.let {
+            AccountAlertPolicy.decide(loaded.account, observed.round, it, zone, referenceGap(observed.history, loaded.account.step))
+        }
             ?: AccountAlertDecision(loaded.account, emptyList())
         val rows = mails + account.alerts.flatMap { accountAlertRows(it) }
         val next = AccountPnlMonitorState(alert.next, outage.next, loaded.version, account.next)
@@ -168,8 +169,18 @@ class AccountPnlMonitorJob(
     /** 단계 판정 입력을 만든다. 상태에 기준이 없는 FLAT 회차에서만 부트스트랩 조회를 하고, 조회 실패면 gap 이 null 이라 단계 상태는 그대로다. */
     private fun referenceGap(history: PositionHistoryRound?, step: ReferenceStepState): ReferenceGap? {
         history ?: return null
-        val bootstrap = if (ReferenceGap.needsBootstrap(history, step)) readBootstrap() else null
-        return ReferenceGap.of(history, step, bootstrap)
+        return try {
+            val bootstrap = if (ReferenceGap.needsBootstrap(history, step)) readBootstrap() else null
+            ReferenceGap.of(history, step, bootstrap)
+        } catch (exception: Exception) {
+            // 단계 판정 실패가 다른 알림·상태 저장을 막지 않는다 — gap 이 null 이면 단계 상태는 그대로다
+            if (exception.isCancellation()) {
+                Thread.currentThread().interrupt()
+            } else {
+                log.warn("Account reference step judgment failed: error={}", exception.javaClass.simpleName)
+            }
+            null
+        }
     }
 
     private fun readBootstrap(): ReferenceLegs? {

@@ -77,6 +77,15 @@ class AccountPnlMonitorReferenceStepWiringTest {
     }
 
     @Test
+    fun `단계 폭이 0_01 미만이면 기동 실패다`() {
+        runner.withPropertyValues(*enabledProps, "account-pnl-monitor.account-alerts.reference-step-percent=0.001").run { ctx ->
+            assertThat(ctx).hasFailed()
+            val messages = generateSequence(ctx.startupFailure) { it.cause }.mapNotNull { it.message }.toList()
+            assertThat(messages).anyMatch { it.contains("referenceStepWidth must be at least 0.01.") }
+        }
+    }
+
+    @Test
     fun `이력 기능이 켜져 있으면 Job 이 부트스트랩 port 를 받는다`() {
         runner.withPropertyValues(*enabledProps).run { ctx ->
             assertThat(ReflectionTestUtils.getField(ctx.getBean(AccountPnlMonitorJob::class.java), "referencePositions"))

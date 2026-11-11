@@ -80,6 +80,7 @@ class AccountPnlMonitorJobReferenceStepTest {
     private fun job(
         referencePositions: AccountReferencePositionReadPort? = null,
         history: AccountPositionHistoryStore? = null,
+        accountAlerts: AccountAlertSettings? = AccountAlertSettings(),
     ) = AccountPnlMonitorJob(
         korea,
         foreign,
@@ -92,7 +93,7 @@ class AccountPnlMonitorJobReferenceStepTest {
         zone,
         routing = BOTH,
         discordSender = discord,
-        accountAlerts = AccountAlertSettings(),
+        accountAlerts = accountAlerts,
         positionHistory = history,
         referencePositions = referencePositions,
     )
@@ -215,6 +216,32 @@ class AccountPnlMonitorJobReferenceStepTest {
         round(job, "98989899", holding = false)
 
         assertThat(rows("account-pnl-reference-step-")).isEmpty()
+        assertThat(store.state.account.step.reference).isNull()
+    }
+
+    @Test
+    fun `단계 판정 계산이 예외를 던져도 단계 상태는 그대로이고 회차는 성공한다`(output: CapturedOutput) {
+        // 수량 0 기준은 청산 VWAP 계산에서 ArithmeticException 을 던진다(유효한 기준이 아니다)
+        val broken = ReferenceLegs(BigDecimal.ZERO, BigDecimal("100000000"), BigDecimal.ZERO, BigDecimal("70000"))
+        val job = job(AccountReferencePositionReadPort { broken })
+
+        round(job, "100000000", holding = false)
+
+        assertThat(store.state.account.step.reference).isNull()
+        assertThat(store.state.account.step.level).isNull()
+        assertThat(rows("account-pnl-reference-step-")).isEmpty()
+        assertThat(store.state.account.position.legs).isNotNull()
+        assertThat(output.all).contains("Account reference step judgment failed: error=ArithmeticException")
+    }
+
+    @Test
+    fun `accountAlerts 가 없으면 부트스트랩 조회와 단계 판정을 하지 않는다`() {
+        var calls = 0
+        val job = job(AccountReferencePositionReadPort { calls++; null }, accountAlerts = null)
+
+        round(job, "100000000", holding = false)
+
+        assertThat(calls).isZero()
         assertThat(store.state.account.step.reference).isNull()
     }
 

@@ -115,6 +115,12 @@ data class AccountAlertSettings(
             "manualFundingStaleAfter must be positive."
         }
         require(referenceStepWidth.signum() > 0) { "referenceStepWidth must be positive." }
+        // 김프 정밀도가 0.01%p 라 그보다 좁은 폭은 의미가 없고, level(Int) 계산이 intValueExact 로 넘칠 수 있다
+        require(referenceStepWidth >= MIN_REFERENCE_STEP_WIDTH) { "referenceStepWidth must be at least 0.01." }
+    }
+
+    private companion object {
+        val MIN_REFERENCE_STEP_WIDTH = BigDecimal("0.01")
     }
 }
 
