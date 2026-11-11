@@ -20,7 +20,7 @@ import java.time.format.DateTimeParseException
  * 빗썸 KRW-BTC 체결 이력 조회. 모든 호출은 GET 이며 실패는 [AccountReadException] 으로 던진다
  * (페이지 한도 초과만 [FillHistoryWindowLimitException]).
  *
- * 주문 목록(done·cancel 과 wait 를 따로, 최신순)을 페이지로 읽어 uuid 로 합치고, 체결 수량이 있는 주문마다 주문 상세의
+ * 주문 목록(wait 먼저, 그다음 done·cancel 을 따로, 최신순)을 페이지로 읽어 uuid 로 합치고, 체결 수량이 있는 주문마다 주문 상세의
  * 체결 목록을 읽는다. 각 목록은 페이지가 다 차지 않았거나 페이지 마지막 주문이 `fromExclusive − 7일` 보다 오래되면 멈추고,
  * 목록마다 최대 20페이지다.
  */
@@ -36,10 +36,13 @@ class BithumbFillHistoryPrivateAccountAdapter(
     override fun read(fromExclusive: Instant, toInclusive: Instant): List<KoreaSpotFill> {
         val cutoff = fromExclusive.minus(LOOKBACK)
         // 거래소가 대기(wait)와 종료(done·cancel) 상태를 한 요청에 섞는 것을 거부하므로 목록을 따로 읽고 uuid 로 합친다.
-        // 같은 주문이 두 목록에 나오면 먼저 읽은 종료 쪽 행을 쓴다(체결 수량 대조가 걸린다).
-        val orders = (readOrders(CLOSED_STATES, cutoff) + readOrders(WAIT_STATE, cutoff))
-            .filter { it.executedVolume.signum() > 0 && it.createdAt <= toInclusive }
+        // 대기 목록을 먼저 읽는다 — 두 요청 사이에 wait → done 으로 바뀐 주문은 뒤에 읽는 종료 목록에 반드시 나온다.
+        // 같은 주문이 두 목록에 나오면 종료 쪽 행을 쓴다(최신 상태이고 체결 수량 대조가 걸린다).
+        val waiting = readOrders(WAIT_STATE, cutoff)
+        val closed = readOrders(CLOSED_STATES, cutoff)
+        val orders = (closed + waiting)
             .distinctBy { it.id }
+            .filter { it.executedVolume.signum() > 0 && it.createdAt <= toInclusive }
         return orders.flatMap { readOrderFills(it, fromExclusive, toInclusive) }
             .sortedWith(compareBy<KoreaSpotFill> { it.filledAt }.thenBy { it.id })
     }

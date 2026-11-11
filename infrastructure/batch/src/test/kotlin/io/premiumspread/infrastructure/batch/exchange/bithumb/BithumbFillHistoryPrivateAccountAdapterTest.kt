@@ -111,9 +111,10 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
             row("o-both", "done", "0.001", "2026-10-19T10:00:00+09:00"),
             row("o-done", "done", "0.001", "2026-10-19T09:00:00+09:00"),
         )
+        // 대기 목록을 읽을 때는 아직 체결 전(0)이었고 종료 목록을 읽을 때는 체결이 끝난 주문 — 종료 쪽 행을 써야 체결이 빠지지 않는다
         waitPages[1] = orders(
             row("o-open", "wait", "0.001", "2026-10-19T11:00:00+09:00"),
-            row("o-both", "wait", "0.001", "2026-10-19T10:00:00+09:00"),
+            row("o-both", "wait", "0", "2026-10-19T10:00:00+09:00"),
         )
         details["o-both"] = detail("o-both", "bid", "1", trade("b", "0.001", "1000", "2026-10-19T12:00:00+09:00"))
         details["o-done"] = detail("o-done", "bid", "1", trade("d", "0.001", "1000", "2026-10-19T12:30:00+09:00"))
@@ -124,6 +125,14 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
         assertThat(fills.map { it.id }).containsExactly("o-both:b", "o-done:d", "o-open:o")
         val detailUuids = recorded().filter { it.requestUrl!!.encodedPath == "/v1/order" }.map { it.requestUrl!!.queryParameter("uuid") }
         assertThat(detailUuids).containsExactlyInAnyOrder("o-both", "o-done", "o-open")
+    }
+
+    @Test
+    fun `대기 목록을 먼저 읽고 종료 목록을 나중에 읽는다`() {
+        adapter().read(from, to)
+
+        val states = recorded().filter { it.requestUrl!!.encodedPath == "/v1/orders" }.map { it.requestUrl!!.queryParameter("state") }
+        assertThat(states).containsExactly("wait", null)
     }
 
     @Test
