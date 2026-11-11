@@ -137,7 +137,13 @@ class AccountPnlMonitorJob(
         val outage = MonitoringOutagePolicy.decide(loaded.outage, observed.failure, now)
         val mails = buildMails(observed.observation, alert.send, outage.notice, now)
         val account = accountAlerts?.let {
-            AccountAlertPolicy.decide(loaded.account, observed.round, it, zone, referenceGap(observed.history, loaded.account.step))
+            AccountAlertPolicy.decide(
+                loaded.account,
+                observed.round,
+                it,
+                zone,
+                referenceGap(observed.history, loaded.account.step),
+            )
         }
             ?: AccountAlertDecision(loaded.account, emptyList())
         val rows = mails + account.alerts.flatMap { accountAlertRows(it) }

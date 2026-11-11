@@ -136,7 +136,7 @@ $ bash docs/check-documentation.sh            @ 722cc72 → documentation check 
 
 | # | 확인 사항 | 확인자 | 날짜 | 앵커 |
 |---|---|---|---|---|
-| AC10 | | | | |
+| AC10 | 실계정 로컬 batch 에서 Discord PNL 단계 알림 수신(`📈 직전 진입 수준 도달`, 2026-11-11 14:27 KST) | owner | 2026-11-11 | https://github.com/geonyeop123/premium-spread/pull/133#issuecomment-6788250332 |
 
 ## 변경 요청
 
@@ -150,11 +150,11 @@ DoD VERDICT: issue-131-reference-position-step-alert @ 722cc72
   수용기준 표:     10개  (T1 9 · T2 0 · T3 0 · T4 1)
   T1/T2 자동:      9개 중 9개 PASS
   T3 기록 제출:    0개 중 0건
-  T4 사람 확인:    1개 중 0건 완료, 1건 대기
+  T4 사람 확인:    1개 중 1건 완료, 0건 대기
   변경 요청:       0건
-  => AWAITING_HUMAN
+  => VERIFIED
 ```
 
 **사람 확인이 필요한 항목**
 
-- AC10: owner 가 실계정 로컬 batch 로 Discord PNL 채널에서 단계 알림 1건 이상 수신 — runbook "기준 포지션 단계 알림 체크리스트 (#131 AC10)" 후 PR 코멘트로 확인
+- 없음 (AC10 owner 확인 완료 — PR #133 코멘트). 판정 SHA 이후 커밋은 ktlint 형식 교정·문서뿐이고 CI 로 재확인한다.

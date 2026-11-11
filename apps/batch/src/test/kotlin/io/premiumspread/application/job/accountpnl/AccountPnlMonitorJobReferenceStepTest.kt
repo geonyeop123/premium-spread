@@ -237,7 +237,13 @@ class AccountPnlMonitorJobReferenceStepTest {
     @Test
     fun `accountAlerts 가 없으면 부트스트랩 조회와 단계 판정을 하지 않는다`() {
         var calls = 0
-        val job = job(AccountReferencePositionReadPort { calls++; null }, accountAlerts = null)
+        val job = job(
+            AccountReferencePositionReadPort {
+            calls++
+            null
+        },
+            accountAlerts = null,
+        )
 
         round(job, "100000000", holding = false)
 

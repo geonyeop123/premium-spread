@@ -2,4 +2,4 @@
  "upgraded_from": null, "user_override": false,
  "codex": {"mode": "standard+focused", "spec_rounds": 1, "findings": 3, "fixed": 1, "held": 2, "timeout": false},
  "claude_review": {"findings": 5, "fixed": 5},
- "dod_verdict": "AWAITING_HUMAN", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/133"}
+ "dod_verdict": "PASS", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/133"}

@@ -43,7 +43,8 @@ class JdbcAccountPositionHistoryStore(
     private val jdbcTemplate: JdbcTemplate,
     transactionManager: PlatformTransactionManager,
     private val clock: Clock,
-) : AccountPositionHistoryStore, AccountReferencePositionReadPort {
+) : AccountPositionHistoryStore,
+    AccountReferencePositionReadPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
     private val transaction = TransactionTemplate(transactionManager)
