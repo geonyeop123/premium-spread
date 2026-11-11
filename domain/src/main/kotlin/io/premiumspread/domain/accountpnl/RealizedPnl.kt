@@ -110,6 +110,15 @@ interface AccountRealizedPnlStore {
 
     fun findFxAt(at: Instant, tolerance: Duration): AppliedFx?
 
-    /** settled 면 settled_seq·settled_at 을 쓰고 attempts·next_at 을 비운다. 아니면 attempts+1, next_at = [nextAttemptAt]. 단조 조건에 막히면 false. */
+    /**
+     * 거래소를 읽기 전에 이번 시도를 센다: attempts+1, next_at = [nextAttemptAt], target_seq = [target] seq.
+     * 시도가 취소·timeout 으로 끝나 기록하지 못해도 backoff 가 남는다. 단조 조건(settled_seq < seq)에 막히면 false.
+     */
+    fun beginAttempt(target: SettlementTarget, nextAttemptAt: Instant): Boolean
+
+    /**
+     * settled 면 settled_seq·settled_at 을 쓰고 attempts·next_at 을 비운다. 아니면 attempts 는 그대로 두고(이미 [beginAttempt] 가
+     * 셌다) next_at = [nextAttemptAt] 를 쓴다. 단조 조건에 막히면 false.
+     */
     fun record(outcome: SettlementOutcome, nextAttemptAt: Instant?): Boolean
 }

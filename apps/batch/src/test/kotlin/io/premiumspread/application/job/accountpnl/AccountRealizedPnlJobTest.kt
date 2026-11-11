@@ -184,6 +184,7 @@ class AccountRealizedPnlJobTest {
         assertThat(store.settledSeq).isNull()
 
         foreign.fundingFailure = null
+        clock.advance(FIRST_BACKOFF)
         job().run()
         assertThat(store.records.last().first.foreignStatus).isEqualTo(SettlementStatus.CONFIRMED)
         assertThat(store.settledSeq).isEqualTo(TARGET.seq)
@@ -222,6 +223,7 @@ class AccountRealizedPnlJobTest {
 
         foreign.fillsFailure = null
         korea.failure = FillHistoryWindowLimitException("limit")
+        clock.advance(FIRST_BACKOFF)
         job().run()
         assertThat(store.records.last().first.failure).isEqualTo(SettlementFailure.WINDOW_LIMIT)
         assertThat(store.records.last().first.koreaStatus).isEqualTo(SettlementStatus.PENDING)
@@ -245,6 +247,7 @@ class AccountRealizedPnlJobTest {
 
         // 바이낸스 쪽만 감싸진 한도 초과면 바이낸스 사유도 WINDOW_LIMIT 이다
         korea.failure = null
+        clock.advance(FIRST_BACKOFF)
         job().run()
         assertThat(store.records.last().first.failure).isEqualTo(SettlementFailure.WINDOW_LIMIT)
     }
@@ -277,6 +280,7 @@ class AccountRealizedPnlJobTest {
         assertThat(store.settledSeq).isNull()
 
         korea.fills = KOREA_FILLS
+        clock.advance(FIRST_BACKOFF)
         job().run()
         assertThat(store.records.last().first.koreaStatus).isEqualTo(SettlementStatus.CONFIRMED)
         assertThat(store.settledSeq).isEqualTo(TARGET.seq)
@@ -294,6 +298,7 @@ class AccountRealizedPnlJobTest {
         assertThat(nextAt).isEqualTo(NOW.plus(Duration.ofMinutes(5)))
 
         foreign.fills = FOREIGN_FILLS
+        clock.advance(FIRST_BACKOFF)
         job().run()
         assertThat(store.records.last().first.foreignStatus).isEqualTo(SettlementStatus.CONFIRMED)
         assertThat(store.settledSeq).isEqualTo(TARGET.seq)
@@ -419,6 +424,7 @@ class AccountRealizedPnlJobTest {
 
         fx.missing = false
         fx.failure = IllegalStateException("redis")
+        clock.advance(FIRST_BACKOFF)
         job().run()
         assertThat(store.records.last().first.failure).isEqualTo(SettlementFailure.FX)
     }
@@ -490,6 +496,34 @@ class AccountRealizedPnlJobTest {
         assertThat(store.records).isEmpty()
     }
 
+    @Test
+    fun `(e) 취소된 시도도 조회 전에 시도 횟수와 next 를 남겨 backoff 동안 대상에서 빠진다`() {
+        korea.onRead = {
+            assertThat(store.attempts).isEqualTo(1)
+            assertThat(store.nextAt).isEqualTo(NOW.plus(FIRST_BACKOFF))
+        }
+        korea.failure = CancellationException("timeout")
+
+        assertThatThrownBy { job().run() }.isInstanceOf(CancellationException::class.java)
+
+        assertThat(store.records).isEmpty()
+        assertThat(store.attempts).isEqualTo(1)
+        assertThat(store.nextAt).isEqualTo(NOW.plus(FIRST_BACKOFF))
+        assertThat(store.attemptTargetSeq).isEqualTo(TARGET.seq)
+        assertThat(store.findTarget(NOW.plus(Duration.ofMinutes(1)), SETTINGS.settleDelay, SETTINGS.maxAge, SETTINGS.firstEpisodeLookback))
+            .isNull()
+    }
+
+    @Test
+    fun `시도 시작이 단조 조건에 막히면 조회·기록 없이 Success`() {
+        store.beginReturns = false
+
+        assertThat(job().run()).isEqualTo(JobResult.Success)
+        assertThat(korea.windows).isEmpty()
+        assertThat(foreign.fillWindows).isEmpty()
+        assertThat(store.records).isEmpty()
+    }
+
     // ---- store ----
 
     @Test
@@ -498,11 +532,18 @@ class AccountRealizedPnlJobTest {
         assertThat(job().run()).isInstanceOf(JobResult.Failure::class.java)
 
         store.findTargetFailure = null
+        store.beginAttemptFailure = IllegalStateException("db")
+        assertThat(job().run()).isInstanceOf(JobResult.Failure::class.java)
+        assertThat(korea.windows).isEmpty()
+
+        store.beginAttemptFailure = null
         store.fxAtFailure = IllegalStateException("db")
         assertThat(job().run()).isInstanceOf(JobResult.Failure::class.java)
 
         store.fxAtFailure = null
         store.recordFailure = IllegalStateException("db")
+        // 앞 시도가 남긴 backoff 를 지난다
+        clock.advance(FIRST_BACKOFF)
         assertThat(job().run()).isInstanceOf(JobResult.Failure::class.java)
     }
 
@@ -518,6 +559,7 @@ class AccountRealizedPnlJobTest {
         korea.fills = KOREA_FILLS.dropLast(1)
         job().run()
         korea.fills = KOREA_FILLS
+        clock.advance(FIRST_BACKOFF)
         job().run()
 
         val text = output.all
@@ -586,13 +628,20 @@ class AccountRealizedPnlJobTest {
         }
     }
 
-    /** settled 면 settled_seq 를 올리고 대상에서 빠진다. 아니면 attempts+1 로 같은 대상이 남는다. */
+    /**
+     * 실제 store 처럼 시도 시작이 attempts+1·next_at·목표 seq 를 쓰고, next_at 이 지나기 전에는 같은 목표를 돌려주지 않는다.
+     * settled 면 settled_seq 를 올리고 대상에서 빠진다. 미확정 기록은 attempts 를 다시 세지 않는다.
+     */
     class FakeStore : AccountRealizedPnlStore {
         var target: SettlementTarget? = TARGET
         var fxAt: AppliedFx? = EVENT_FX
         var settledSeq: Int? = null
         var attempts = 0
+        var nextAt: Instant? = null
+        var attemptTargetSeq: Int? = null
         var recordReturns = true
+        var beginReturns = true
+        var beginAttemptFailure: Exception? = null
         var findTargetFailure: Exception? = null
         var fxAtFailure: Exception? = null
         var recordFailure: Exception? = null
@@ -603,7 +652,18 @@ class AccountRealizedPnlJobTest {
         override fun findTarget(now: Instant, settleDelay: Duration, maxAge: Duration, firstLookback: Duration): SettlementTarget? {
             targetQueries += listOf(now, settleDelay, maxAge, firstLookback)
             findTargetFailure?.let { throw it }
-            return target?.takeIf { settledSeq == null || it.seq > settledSeq!! }
+            val backedOff = nextAt?.let { it > now } == true && (target?.seq ?: 0) <= (attemptTargetSeq ?: 0)
+            return target?.takeIf { (settledSeq == null || it.seq > settledSeq!!) && !backedOff }
+        }
+
+        override fun beginAttempt(target: SettlementTarget, nextAttemptAt: Instant): Boolean {
+            beginAttemptFailure?.let { throw it }
+            if (!beginReturns) return false
+            attempts += 1
+            nextAt = nextAttemptAt
+            attemptTargetSeq = target.seq
+            this.target = this.target?.copy(attempts = attempts)
+            return true
         }
 
         override fun findFxAt(at: Instant, tolerance: Duration): AppliedFx? {
@@ -619,9 +679,9 @@ class AccountRealizedPnlJobTest {
             if (outcome.settled) {
                 settledSeq = outcome.target.seq
                 attempts = 0
+                nextAt = null
             } else {
-                attempts += 1
-                target = target?.copy(attempts = attempts)
+                nextAt = nextAttemptAt
             }
             return true
         }
@@ -653,6 +713,7 @@ class AccountRealizedPnlJobTest {
     companion object {
         val OCCURRED_AT: Instant = Instant.parse("2026-10-20T03:00:00Z")
         val NOW: Instant = OCCURRED_AT.plus(Duration.ofMinutes(10))
+        val FIRST_BACKOFF: Duration = Duration.ofMinutes(5)
         val SETTINGS = AccountRealizedPnlJob.Settings(
             settleDelay = Duration.ofMinutes(2),
             firstEpisodeLookback = Duration.ofHours(1),

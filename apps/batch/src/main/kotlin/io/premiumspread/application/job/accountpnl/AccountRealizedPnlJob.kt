@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * 정리한 포지션의 확정 손익 정산 1회차 (#130 design D1·D5·D6, dod AC4).
  *
- * 순서: 대상 1건 선정 → 빗썸 체결 → 바이낸스 체결·펀딩(수동이면 MANUAL) → 두 쪽 CONFIRMED 면 환율 → 조건부 기록.
+ * 순서: 대상 1건 선정 → 시도 시작(시도 횟수·backoff 를 먼저 기록) → 빗썸 체결 → 바이낸스 체결·펀딩(수동이면 MANUAL) → 두 쪽 CONFIRMED 면 환율 → 조건부 기록.
  * - 조회 범위는 `(lowerExclusive, occurredAt]` 이다. 매 회차 두 쪽을 처음부터 다시 계산한다.
  * - 조회·수량·환율 실패는 그 쪽(환율은 바이낸스 쪽)을 PENDING 으로 두고 사유 하나(빗썸 → 바이낸스 → FX 순 첫 실패)를 남긴다.
  *   확정된 쪽 값은 그대로 저장한다. Job 결과는 Success 다 — 재시도는 store 의 backoff(`nextAttemptAt`)가 맡는다.
@@ -73,10 +73,24 @@ class AccountRealizedPnlJob(
         val target = storeCall("findTarget") {
             store.findTarget(now, settings.settleDelay, settings.maxAge, settings.firstEpisodeLookback)
         }
-        if (target == null) JobResult.Success else record(decide(target, now), now)
+        if (target == null) JobResult.Success else attempt(target, now)
     } catch (failure: StoreFailure) {
         log.error("Account realized PnL store failed during {}", failure.operation, failure.cause)
         JobResult.Failure(failure.cause)
+    }
+
+    /**
+     * 거래소를 읽기 전에 시도를 센다. 취소·timeout 으로 기록 없이 끝나도 backoff 가 남아 같은 건이 매 회차 앞을 막지 않는다.
+     * 시작이 단조 조건에 막혔으면(다른 실행이 이미 따라잡음) 이 회차는 아무것도 하지 않는다.
+     */
+    private fun attempt(target: SettlementTarget, now: Instant): JobResult {
+        val nextAttemptAt = nextAttemptAt(now, target.attempts)
+        val started = storeCall("beginAttempt") { store.beginAttempt(target, nextAttemptAt) }
+        if (!started) {
+            log.info("Account realized PnL attempt skipped: episodeId={}, seq={}, already settled", target.episodeId, target.seq)
+            return JobResult.Success
+        }
+        return record(decide(target, now), nextAttemptAt)
     }
 
     private fun decide(target: SettlementTarget, now: Instant): SettlementOutcome {
@@ -153,14 +167,13 @@ class AccountRealizedPnlJob(
         return fx.findLatest(Currency.USD, Currency.KRW)?.let { AppliedFx(it.rate, it.observedAt) }
     }
 
-    private fun record(outcome: SettlementOutcome, now: Instant): JobResult {
+    private fun record(outcome: SettlementOutcome, nextAttemptAt: Instant): JobResult {
         // JobExecutor 가 timeout·lock 상실로 취소했으면 이 회차의 조회 결과를 쓰지 않는다
         if (Thread.currentThread().isInterrupted) {
             log.warn("Account realized PnL settlement was cancelled before recording")
             return JobResult.Skipped(CANCELLED)
         }
-        val nextAttemptAt = if (outcome.settled) null else nextAttemptAt(now, outcome.target.attempts)
-        val recorded = storeCall("record") { store.record(outcome, nextAttemptAt) }
+        val recorded = storeCall("record") { store.record(outcome, nextAttemptAt.takeUnless { outcome.settled }) }
         val target = outcome.target
         log.info(
             "Account realized PnL settlement: episodeId={}, seq={}, korea={}, foreign={}, failure={}, settled={}, " +

@@ -238,8 +238,43 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
     }
 
     @Test
-    fun `미확정 기록은 시도 횟수를 올리고 settled_seq 는 그대로 둔다`() {
+    fun `시도 시작은 시도 횟수를 올리고 next_at 과 목표 seq 를 써서 그동안 대상에서 뺀다`() {
         val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
+        event(episode, 1, "OPENED", minutesAgo(30), "0.2", "-0.2")
+        event(episode, 2, "CLOSED", minutesAgo(20), "0", "0")
+        val target = findTarget()!!
+
+        assertThat(store.beginAttempt(target, NOW.plusSeconds(300))).isTrue()
+
+        val row = episodeRow(episode)
+        assertThat(row["settlement_attempts"]).isEqualTo(1)
+        assertThat(instant(row["settlement_next_at"])).isEqualTo(NOW.plusSeconds(300))
+        assertThat(row["settlement_target_seq"]).isEqualTo(2)
+        assertThat(row["settled_seq"]).isNull()
+        assertThat(store.findTarget(NOW.plusSeconds(60), SETTLE_DELAY, MAX_AGE, LOOKBACK)).isNull()
+
+        val retried = store.findTarget(NOW.plusSeconds(300), SETTLE_DELAY, MAX_AGE, LOOKBACK)!!
+        assertThat(retried.attempts).isEqualTo(1)
+        assertThat(store.beginAttempt(retried, NOW.plusSeconds(900))).isTrue()
+        assertThat(episodeRow(episode)["settlement_attempts"]).isEqualTo(2)
+    }
+
+    @Test
+    fun `시도 시작은 이미 같거나 뒤 seq 로 확정된 건이면 false 이고 행을 바꾸지 않는다`() {
+        val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
+        assertThat(store.record(confirmed(target(episode, 3)), null)).isTrue()
+        val before = episodeRow(episode)
+
+        assertThat(store.beginAttempt(target(episode, 3), NOW.plusSeconds(300))).isFalse()
+        assertThat(store.beginAttempt(target(episode, 2), NOW.plusSeconds(300))).isFalse()
+        assertThat(episodeRow(episode)).isEqualTo(before)
+        assertThat(store.beginAttempt(target(episode, 4), NOW.plusSeconds(300))).isTrue()
+    }
+
+    @Test
+    fun `미확정 기록은 시도 횟수를 다시 세지 않고 settled_seq 는 그대로 둔다`() {
+        val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
+        assertThat(store.beginAttempt(target(episode, 3), NOW.plusSeconds(300))).isTrue()
         val pending = confirmed(target(episode, 3)).copy(
             foreignStatus = SettlementStatus.PENDING,
             foreign = null,
@@ -249,6 +284,7 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
         )
 
         assertThat(store.record(pending, NOW.plusSeconds(300))).isTrue()
+        assertThat(store.beginAttempt(target(episode, 3), NOW.plusSeconds(600))).isTrue()
         assertThat(store.record(pending, NOW.plusSeconds(600))).isTrue()
 
         val row = episodeRow(episode)

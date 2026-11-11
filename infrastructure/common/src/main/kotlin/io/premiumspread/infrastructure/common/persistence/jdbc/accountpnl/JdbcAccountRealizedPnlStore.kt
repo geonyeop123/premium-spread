@@ -23,6 +23,7 @@ import java.time.Instant
  * - [findTarget]: 정리 사건(REDUCED·ADJUSTED·CLOSED)이 `settled_seq` 를 앞선 건 가운데 가장 오래된 건 1개와
  *   그 건의 목표 사건(조건을 만족하는 가장 큰 seq)을 고른다. backoff·90일 한도는 SQL 이 거른다.
  * - [findFxAt]: 사건 시각의 관측 행, 없으면 `[at − tolerance, at]` 의 최신 관측 행.
+ * - [beginAttempt]: 거래소를 읽기 전에 시도 횟수·next_at·목표 seq 를 쓴다(같은 단조 조건).
  * - [record]: `settled_seq` 가 뒤로 가지 않는 조건부 UPDATE 한 문장이다. 미확정 기록은 합계·환율(settled_seq 의 값)을
  *   건드리지 않고, 쪽 값은 그 쪽이 CONFIRMED 일 때만 바꾼다.
  * - 금액·수량은 로그·예외 메시지에 넣지 않는다.
@@ -69,6 +70,15 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
             at.minus(tolerance).toSqlTimestamp(),
             at.toSqlTimestamp(),
         ).singleOrNull()
+
+    override fun beginAttempt(target: SettlementTarget, nextAttemptAt: Instant): Boolean =
+        jdbcTemplate.update(
+            BEGIN_ATTEMPT_SQL,
+            nextAttemptAt.toSqlTimestamp(),
+            target.seq,
+            target.episodeId,
+            target.seq,
+        ) == 1
 
     override fun record(outcome: SettlementOutcome, nextAttemptAt: Instant?): Boolean {
         val target = outcome.target
@@ -183,6 +193,15 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
             WHERE id = ?
               AND (settled_seq IS NULL OR settled_seq < ?)"""
 
+        /** 거래소를 읽기 전에 시도를 센다 — 취소·timeout 으로 기록하지 못한 시도도 backoff 를 남긴다. */
+        val BEGIN_ATTEMPT_SQL = """
+            UPDATE account_position_episode
+            SET settlement_attempts = COALESCE(settlement_attempts, 0) + 1,
+                settlement_next_at = ?,
+                settlement_target_seq = ?
+            $MONOTONIC_WHERE
+        """.trimIndent()
+
         val RECORD_SETTLED_SQL = """
             UPDATE account_position_episode
             SET korea_settlement = ?,
@@ -212,7 +231,6 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
                 foreign_commission_usdt = COALESCE(?, foreign_commission_usdt),
                 foreign_funding_usdt = COALESCE(?, foreign_funding_usdt),
                 settlement_target_seq = ?,
-                settlement_attempts = COALESCE(settlement_attempts, 0) + 1,
                 settlement_next_at = ?,
                 settlement_failure = ?
             $MONOTONIC_WHERE
