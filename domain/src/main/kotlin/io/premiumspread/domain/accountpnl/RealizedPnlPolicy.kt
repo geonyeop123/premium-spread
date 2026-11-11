@@ -12,7 +12,8 @@ object RealizedPnlPolicy {
 
     /**
      * 빗썸 이동평균 원가(매수 수수료 포함). 체결 시각·id 순으로 적용한다.
-     * 보유 0 에서 매도하거나 보유보다 dust 이상 더 팔면 원가를 정할 수 없어 null,
+     * 보유 0 에서 dust 이상 매도하거나 보유보다 dust 이상 더 팔면 원가를 정할 수 없어 null,
+     * 보유 0 에서 dust 미만 매도(앞 건 잔량)는 원가 0 으로 매도 순액을 실현한다.
      * 끝에서 `|Σbuy − Σsell − expected| >= KOREA_DUST` 이면 null.
      */
     fun korea(fills: List<KoreaSpotFill>, expectedQuantity: BigDecimal): KoreaRealized? {
@@ -53,7 +54,11 @@ object RealizedPnlPolicy {
         }
 
         private fun sell(fill: KoreaSpotFill): MovingAverageBook? {
-            if (quantity.signum() <= 0) return null
+            // 보유 0 에서 dust 미만 매도는 앞 건의 dust 잔량을 판 것이다 — 원가 0 으로 매도 순액을 실현한다.
+            if (quantity.signum() <= 0) {
+                val dust = fill.quantity < AccountHedgePosition.KOREA_DUST
+                return if (dust) copy(realized = realized + (fill.fundsKrw - fill.feeKrw)) else null
+            }
             if (fill.quantity - quantity >= AccountHedgePosition.KOREA_DUST) return null
             // 보유보다 dust 미만 더 팔면 보유분 전부의 원가를 뺀다(남은 보유는 0).
             val soldQuantity = fill.quantity.min(quantity)

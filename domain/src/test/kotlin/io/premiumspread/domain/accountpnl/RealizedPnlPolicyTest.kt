@@ -148,7 +148,27 @@ class RealizedPnlPolicyTest {
     }
 
     @Test
-    fun `빗썸 보유 0 에서 매도하면 null 이다`() {
+    fun `빗썸 보유 0 에서 dust 미만을 팔면 원가 0 으로 매도 순액을 실현하고 보유는 0 이다`() {
+        // 앞 건의 dust 잔량을 이 건의 첫 매수보다 먼저 판 경우
+        val fills = listOf(
+            sell("r1", "0.00005", "5000", "2", 1),
+            buy("r2", "1", "100000", "50", 2),
+            sell("r3", "1", "110000", "55", 3),
+        )
+
+        // (5000 − 2) + (110000 − 55) − (100000 + 50) = 4998 + 9895
+        assertThat(RealizedPnlPolicy.korea(fills, BigDecimal.ZERO)!!.realizedKrw).isEqualByComparingTo("14893")
+    }
+
+    @Test
+    fun `빗썸 보유 0 에서 정확히 dust 를 팔면 null 이다`() {
+        val fills = listOf(sell("r1", "0.0001", "10000", "4", 1))
+
+        assertThat(RealizedPnlPolicy.korea(fills, BigDecimal("-0.0001"))).isNull()
+    }
+
+    @Test
+    fun `빗썸 보유 0 에서 dust 이상 매도하면 null 이다`() {
         val fills = listOf(
             sell("z1", "1", "100000", "50", 1),
             buy("z2", "1", "90000", "45", 2),
