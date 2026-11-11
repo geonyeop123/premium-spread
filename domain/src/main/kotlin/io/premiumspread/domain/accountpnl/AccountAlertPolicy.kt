@@ -9,13 +9,14 @@ object AccountAlertPolicy {
     /**
      * design §3.5. [round] == null(실패 회차)이면 (state, []).
      * 순서: 포지션 → 급변(positionChanged = 포지션 알림 있음, bucket = NetPercentSwingPolicy.bucketStart(round.observedAt, zone))
-     *       → 리마인더. alerts 도 이 순서.
+     *       → 리마인더 → 기준 포지션 단계([gap] 이 null 이면 판정 안 함, 상태 유지). alerts 도 이 순서.
      */
     fun decide(
         state: AccountAlertState,
         round: AccountRound?,
         settings: AccountAlertSettings,
         zone: ZoneId,
+        gap: ReferenceGap? = null,
     ): AccountAlertDecision {
         if (round == null) return AccountAlertDecision(state, emptyList())
 
@@ -24,7 +25,9 @@ object AccountAlertPolicy {
         val swing = NetPercentSwingPolicy.decide(state.swing, bucket, round.pnl, position.alert != null, settings.swingThreshold)
         val reminder = UnrecoveredReminderPolicy.decide(state.reminder, round, settings, zone)
 
-        val alerts = listOfNotNull(position.alert, swing.alert, reminder.alert)
-        return AccountAlertDecision(AccountAlertState(position.next, swing.next, reminder.next), alerts)
+        val step = ReferenceStepPolicy.decide(state.step, gap, settings.referenceStepWidth)
+
+        val alerts = listOfNotNull(position.alert, swing.alert, reminder.alert, step.alert)
+        return AccountAlertDecision(AccountAlertState(position.next, swing.next, reminder.next, step.next), alerts)
     }
 }

@@ -137,10 +137,35 @@ class AccountAlertStateTest {
     }
 
     @Test
+    fun `단계 폭은 양수이고 0_01 이상이어야 한다`() {
+        listOf("0", "-0.5").forEach {
+            assertThatThrownBy { AccountAlertSettings(referenceStepWidth = bd(it)) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessage("referenceStepWidth must be positive.")
+        }
+        listOf("0.001", "0.009", "0.0000001").forEach {
+            assertThatThrownBy { AccountAlertSettings(referenceStepWidth = bd(it)) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessage("referenceStepWidth must be at least 0.01.")
+        }
+        assertThat(AccountAlertSettings(referenceStepWidth = bd("0.01")).referenceStepWidth).isEqualByComparingTo(bd("0.01"))
+    }
+
+    @Test
     fun `3인자 모니터 상태의 account 는 INITIAL 이다`() {
         val state = AccountPnlMonitorState(PnlAlertState.INITIAL, OutageState.INITIAL, 3)
 
         assertThat(state.account).isEqualTo(AccountAlertState.INITIAL)
         assertThat(AccountPnlMonitorState.INITIAL.account).isEqualTo(AccountAlertState.INITIAL)
+    }
+
+    @Test
+    fun `referenceStepWidth 기본값은 0_50 이고 양수여야 한다`() {
+        assertThat(AccountAlertSettings().referenceStepWidth).isEqualByComparingTo(bd("0.50"))
+        assertThat(AccountAlertState.INITIAL.step).isEqualTo(ReferenceStepState.INITIAL)
+        assertThatThrownBy { AccountAlertSettings(referenceStepWidth = BigDecimal.ZERO) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { AccountAlertSettings(referenceStepWidth = bd("-0.5")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 }

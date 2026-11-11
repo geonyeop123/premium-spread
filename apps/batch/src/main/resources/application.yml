@@ -88,6 +88,7 @@ account-pnl-monitor:
     swing-threshold-percent: ${ACCOUNT_PNL_SWING_THRESHOLD_PERCENT:0.5}
     reminder-hour: ${ACCOUNT_PNL_REMINDER_HOUR:9}
     manual-funding-stale-days: ${ACCOUNT_PNL_MANUAL_FUNDING_STALE_DAYS:3}
+    reference-step-percent: ${ACCOUNT_PNL_REFERENCE_STEP_PERCENT:0.5}
   bithumb:
     access-key: ${BITHUMB_ACCESS_KEY:}
     secret-key: ${BITHUMB_SECRET_KEY:}
@@ -165,6 +166,10 @@ owner-alert:
       email: ${OWNER_ALERT_UNRECOVERED_REMINDER_EMAIL:}
       discord: ${OWNER_ALERT_UNRECOVERED_REMINDER_DISCORD:}
       push: ${OWNER_ALERT_UNRECOVERED_REMINDER_PUSH:}
+    reference-step:
+      email: ${OWNER_ALERT_REFERENCE_STEP_EMAIL:}
+      discord: ${OWNER_ALERT_REFERENCE_STEP_DISCORD:}
+      push: ${OWNER_ALERT_REFERENCE_STEP_PUSH:}
     fx-ingestion-delayed:
       email: ${OWNER_ALERT_FX_INGESTION_DELAYED_EMAIL:}
       discord: ${OWNER_ALERT_FX_INGESTION_DELAYED_DISCORD:}

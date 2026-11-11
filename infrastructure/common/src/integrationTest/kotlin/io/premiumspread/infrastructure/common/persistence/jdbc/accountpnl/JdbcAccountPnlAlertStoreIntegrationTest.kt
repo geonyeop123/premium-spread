@@ -9,6 +9,9 @@ import io.premiumspread.domain.accountpnl.KoreaLeg
 import io.premiumspread.domain.accountpnl.OutageState
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.PositionWatchState
+import io.premiumspread.domain.accountpnl.ReferenceLegs
+import io.premiumspread.domain.accountpnl.ReferencePhase
+import io.premiumspread.domain.accountpnl.ReferenceStepState
 import io.premiumspread.domain.accountpnl.ReminderState
 import io.premiumspread.domain.accountpnl.SwingState
 import io.premiumspread.domain.accountpnl.PnlAlertState
@@ -562,6 +565,79 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM account_pnl_monitor_state", Int::class.java)).isZero()
         assertThat(mailRows()).isEmpty()
+    }
+
+    @Test
+    fun `referenceStep 저장한 기준 단계 상태를 새 인스턴스가 그대로 읽는다`() {
+        val step = ReferenceStepState(
+            ReferenceLegs(
+                koreaQuantity = BigDecimal("0.50000000"),
+                koreaAveragePrice = BigDecimal("113016278"),
+                foreignQuantity = BigDecimal("0.5"),
+                foreignEntryPrice = BigDecimal("83549.4"),
+            ),
+            ReferencePhase.FLAT,
+            -3,
+        )
+        val state = STATE.copy(account = FULL_ACCOUNT.copy(step = step))
+
+        assertThat(store.save(0, state, emptyList())).isTrue()
+
+        val reloaded = JdbcAccountPnlAlertStore(
+            jdbcTemplate,
+            DataSourceTransactionManager(jdbcTemplate.dataSource!!),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+        )
+        assertThat(reloaded.load()).isEqualTo(state.copy(version = 1))
+        assertThat(reloaded.load().account.step.reference!!.koreaQuantity.toPlainString()).isEqualTo("0.50000000")
+
+        val cleared = state.copy(account = FULL_ACCOUNT, version = 1)
+        assertThat(store.save(1, cleared, emptyList())).isTrue()
+        assertThat(reloaded.load().account.step).isEqualTo(ReferenceStepState.INITIAL)
+    }
+
+    @Test
+    fun `referenceStep V25 이전 형태 행은 INITIAL 로 읽힌다`() {
+        jdbcTemplate.update(
+            "INSERT INTO account_pnl_monitor_state (id, in_episode, outage_notified, version, updated_at) " +
+                "VALUES (1, TRUE, FALSE, 3, ?)",
+            Timestamp.from(NOW),
+        )
+
+        val loaded = store.load()
+
+        assertThat(loaded.version).isEqualTo(3)
+        assertThat(loaded.account.step).isEqualTo(ReferenceStepState.INITIAL)
+    }
+
+    @Test
+    fun `referenceStep 일부 열만 채운 직접 UPDATE 는 제약 위반이다`() {
+        assertThat(store.save(0, STATE, emptyList())).isTrue()
+
+        assertThatThrownBy {
+            jdbcTemplate.update("UPDATE account_pnl_monitor_state SET reference_step_level = 1 WHERE id = 1")
+        }.hasMessageContaining("ck_account_pnl_monitor_state_reference_step")
+        assertThatThrownBy {
+            jdbcTemplate.update(
+                "UPDATE account_pnl_monitor_state SET reference_korea_quantity = '1', reference_korea_price = '1', " +
+                    "reference_foreign_quantity = '1', reference_foreign_price = '1', reference_step_phase = 'BAD', " +
+                    "reference_step_level = 0 WHERE id = 1",
+            )
+        }.hasMessageContaining("ck_account_pnl_monitor_state_reference_step")
+    }
+
+    @Test
+    fun `referenceStep 64자를 넘는 기준 값은 저장 전에 거절한다`() {
+        val tooLong = BigDecimal("1." + "1".repeat(70))
+        val step = ReferenceStepState(
+            ReferenceLegs(tooLong, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE),
+            ReferencePhase.HOLDING,
+            0,
+        )
+
+        assertThatThrownBy { store.save(0, STATE.copy(account = FULL_ACCOUNT.copy(step = step)), emptyList()) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageNotContaining("1111")
     }
 
     private fun mail(eventKey: String) = AccountPnlMail(eventKey, "subject $eventKey", "body $eventKey")

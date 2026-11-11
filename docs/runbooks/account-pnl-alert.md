@@ -50,6 +50,7 @@
 | `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` | 아니오 | 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`) 기록 on/off. 기본 `true`, `false` 면 이 기록만 끄고 알림은 그대로다. 아래 "포지션 이력" 절 | `true` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 | `ACCOUNT_PNL_SWING_THRESHOLD_PERCENT` | 아니오 | 순수익률 급변 임계값(%p, 양수). 기본 `0.5`. 0 이하면 기동 실패 | `0.5` |
+| `ACCOUNT_PNL_REFERENCE_STEP_PERCENT` | 아니오 | 기준 포지션 대비 단계 알림의 단계 폭(%p, 양수). 기본 `0.5`. 0 이하이거나 0.01 미만이면 기동 실패(김프 정밀도가 0.01%p 이고 더 좁으면 단계 계산이 넘칠 수 있다). 아래 "기준 포지션 대비 단계" 절 | `0.5` |
 | `ACCOUNT_PNL_REMINDER_HOUR` | 아니오 | 미반영 리마인더 판정을 시작하는 시각(`Asia/Seoul` 시, `0`~`23`). 기본 `9`. 범위 밖이면 기동 실패 | `9` |
 | `ACCOUNT_PNL_MANUAL_FUNDING_STALE_DAYS` | 아니오 | 수동 펀딩 값을 "미갱신"으로 보는 일수(양의 정수). 기본 `3`. 0 이하면 기동 실패 | `3` |
 
@@ -87,7 +88,7 @@
 
 ## owner 알림 채널 (메일·Discord)
 
-owner 알림(실계정 순손익 4종, 계정 알림 3종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
+owner 알림(실계정 순손익 4종, 계정 알림 4종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
 
 **채널 bean 은 PnL 모니터와 독립이다(#91).** 메일·Discord sender 는 batch scheduling 이 켜져 있고 채널 구성이 ready 이면 PnL 모니터를 꺼도 뜬다(운영 알림용).
 독립 전달 Job(60초 주기, `OwnerAlertDeliveryJob`)이 PnL 모니터 회차와 별개로 같은 outbox(`account_pnl_mail`)를 비운다. PnL 모니터가 켜져 있으면 회차 안 디스패처와 전달 Job 이
@@ -123,17 +124,18 @@ owner 알림(실계정 순손익 4종, 계정 알림 3종, 운영 알림 4종)�
 | 기준선 돌파(`PREMIUM_THRESHOLD_CROSSED`) | market | 소리 | **아니오** |
 | 신고가·신저가(`PREMIUM_NEW_EXTREME`) | market | 무음 | **아니오** |
 | 일일 요약(`DAILY_SUMMARY`) | market | 무음 | 예 |
+| 기준 포지션 대비 단계(`REFERENCE_STEP`) | pnl | 소리 | **아니오** |
 
 - **Discord 를 켜면 정시 보고·복구 메일은 더 이상 오지 않는다(Discord 로만 온다).** 수익·중단은 메일도 계속 온다.
 - 운영 알림 4종은 [#91](https://github.com/geonyeop123/premium-spread/issues/91) 에서 추가됐다. Discord 가 꺼져 있으면 4종 모두 메일로 온다.
-- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 3종(포지션 변경·순수익률 급변·미반영 리마인더)도 Discord 가 꺼져 있으면 메일로 온다.**
+- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 4종(포지션 변경·순수익률 급변·미반영 리마인더·기준 포지션 단계)도 Discord 가 꺼져 있으면 메일로 온다**(`reference-step` 은 기본 메일 없음이지만 Discord 를 쓸 수 없으면 메일로 폴백한다. 종류별 `_EMAIL=false` 로 명시하면 메일도 보내지 않는다).
 - 계정 알림 3종은 [#89](https://github.com/geonyeop123/premium-spread/issues/89) 에서 추가됐다. 시장 알림 4종은 [#90](https://github.com/geonyeop123/premium-spread/issues/90) 에서 이 표에 추가됐다. Discord 가 꺼져 있으면 시장 알림 4종도 모두 메일로 온다([owner-market-alert.md](owner-market-alert.md)).
 - PnL 모니터는 매 회차 최신 순수익률을 `account_pnl_latest`(단일 행, V22)에 남긴다. 일일 요약 전용이며 이 저장이 실패해도 모니터 결과·알림에는 영향이 없다.
 - **무음** = 알림 소리·배지 없이 채널에만 쌓인다. **`@here`** = 채널 멤버 전원에게 알림이 간다. **소리** = 일반 알림.
 
 ### 종류별 override env
 
-기본 라우팅을 종류별로 바꾼다. `{KIND}` 는 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED`·`POSITION_CHANGED`·`NET_PERCENT_SWING`·`UNRECOVERED_REMINDER`·`FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED`·`PREMIUM_SWING`·`PREMIUM_THRESHOLD_CROSSED`·`PREMIUM_NEW_EXTREME`·`DAILY_SUMMARY` 15개. 값은 앞뒤 공백·대소문자를 무시하고 빈 값 = 지정 안 함.
+기본 라우팅을 종류별로 바꾼다. `{KIND}` 는 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED`·`POSITION_CHANGED`·`NET_PERCENT_SWING`·`UNRECOVERED_REMINDER`·`FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED`·`PREMIUM_SWING`·`PREMIUM_THRESHOLD_CROSSED`·`PREMIUM_NEW_EXTREME`·`DAILY_SUMMARY`·`REFERENCE_STEP` 16개. 값은 앞뒤 공백·대소문자를 무시하고 빈 값 = 지정 안 함.
 잘못된 값이면 기동이 실패한다(오류에는 key 만 찍히고 값은 찍히지 않는다).
 
 | env | 값 | 의미 |
@@ -144,6 +146,7 @@ owner 알림(실계정 순손익 4종, 계정 알림 3종, 운영 알림 4종)�
 
 예: 정시 보고를 소리로 받기 `OWNER_ALERT_HOURLY_REPORT_PUSH=sound`, 중단을 pnl 채널로 `OWNER_ALERT_MONITORING_OUTAGE_DISCORD=pnl`,
 정시 보고도 메일로 받기 `OWNER_ALERT_HOURLY_REPORT_EMAIL=true`.
+기준 포지션 단계 알림(`reference-step`)도 같은 형식이다: `OWNER_ALERT_REFERENCE_STEP_EMAIL`·`OWNER_ALERT_REFERENCE_STEP_DISCORD`·`OWNER_ALERT_REFERENCE_STEP_PUSH`.
 
 두 채널이 모두 꺼지도록 override 한 알림은 행을 만들지 않는다. `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` 는 정시 보고 **생성** on/off 이고 라우팅과 별개다.
 
@@ -204,7 +207,7 @@ footer `매시 정각 발송 · 환율 1,400.00원/USD`, timestamp 로 구성된
 - 채널을 끄면 그 채널로 쌓여 있던 행은 다음 회차에 1회 시도 후 `FAILED` 가 된다(보낼 수단이 없다).
 - 발송은 at-least-once 다. 드물게(성공 직후 프로세스 종료 등) 같은 알림이 두 번 올 수 있다.
 - 기동 INFO(Discord 가 켜졌을 때): `owner-alert discord webhooks: pnl=set, market=fallback(PNL), ops=set` — URL 이 아니라 `set` 또는 `fallback(대상)` 만 나온다.
-- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND), position-changed=email+discord(PNL,HERE), net-percent-swing=discord(PNL,SOUND), unrecovered-reminder=discord(PNL,SILENT), fx-ingestion-delayed=discord(OPS,SOUND), market-stream-down=discord(OPS,SOUND), job-consecutive-failures=email+discord(OPS,SOUND), ops-recovered=discord(OPS,SILENT), premium-swing=discord(MARKET,SOUND), premium-threshold-crossed=discord(MARKET,SOUND), premium-new-extreme=discord(MARKET,SILENT), daily-summary=email+discord(MARKET,SILENT)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
+- 기동 INFO(항상): 종류별로 최종 해석된 경로를 한 줄로 남긴다 — 예 `owner-alert routes: profit=email+discord(PNL,HERE), hourly-report=discord(PNL,SILENT), monitoring-outage=email+discord(OPS,SOUND), monitoring-recovered=discord(OPS,SOUND), position-changed=email+discord(PNL,HERE), net-percent-swing=discord(PNL,SOUND), unrecovered-reminder=discord(PNL,SILENT), reference-step=discord(PNL,SOUND), fx-ingestion-delayed=discord(OPS,SOUND), market-stream-down=discord(OPS,SOUND), job-consecutive-failures=email+discord(OPS,SOUND), ops-recovered=discord(OPS,SILENT), premium-swing=discord(MARKET,SOUND), premium-threshold-crossed=discord(MARKET,SOUND), premium-new-extreme=discord(MARKET,SILENT), daily-summary=email+discord(MARKET,SILENT)`. 어느 채널로도 가지 않는 종류는 `off` 로 나온다(예: 기본 메일이 없는 종류에 `_DISCORD=none`). override 가 의도대로 들어갔는지 여기서 확인한다.
 - **Discord 를 꺼 둔 상태여도 webhook env 에 잘못된 값(`http://` 또는 URL 이 아닌 값)이 있으면 기동이 실패한다.** 비우거나 https URL 로 고친다.
 - **검증 시점(#91):** 채널 구성이 ready 이면 PnL 모니터 켜짐 여부와 Discord 켜짐 여부에 무관하게 webhook 형식과 `OWNER_ALERT_*_EMAIL/_DISCORD/_PUSH` override 값을 검증하고 틀리면 기동이 실패한다. 이전에는 PnL 모니터가 뜰 때만 검증했다.
   오류 메시지에는 `owner-alert.discord.webhook.pnl must be an https URL` 처럼 key 만 찍히고 값은 찍히지 않는다.
@@ -334,6 +337,31 @@ BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch�
 ```
 
 미반영 리마인더(pnl 채널 무음, 회색 embed)도 같은 형식이다. author 는 `실계정 · BTC`, 항목은 "오래된 값"·"빠진 값"으로 나뉜다.
+
+### 기준 포지션 대비 단계
+
+기준 포지션의 매수김프 대비 현재 김프 차이(%p)가 단계 폭(`ACCOUNT_PNL_REFERENCE_STEP_PERCENT`, 기본 0.5%p) 경계를 넘을 때마다 1회 알린다(#131). 같은 모니터 회차·outbox·라우팅을 쓰며 새 Job·테이블은 없다.
+경로는 위 "기본 라우팅" 표의 `reference-step`(메일 없음, Discord pnl, 소리)과 종류별 override env 를 따른다. 문구 정본은 [message-spec](../work/alert-message-template/message-spec.md) 이다.
+
+- **판정 값**: 현재 김프 − 기준 매수김프(수수료·펀딩 제외). 순수익률 급변(`NET_PERCENT_SWING`)과 다른 값이다.
+- **실시간 환율을 반영한다(의도된 동작).** 차이는 환율에 비례하므로 가격이 그대로여도 환율 변동만으로 경계를 넘으면 알린다(차이가 0 이면 환율이 움직여도 0 이라 알리지 않는다).
+- **국면**
+  - 보유(헤지 성립): 현재 포지션이 기준이다.
+  - 무포지션(완전 flat): 저장된 직전 포지션을 기준으로 계속 판정한다. 단계 0 도달은 `직전 진입 수준 도달` 문구다.
+  - 한쪽 leg 만 있음(진입·정리 중간)·계산 실패·기준 계산 불가(호가 깊이 부족 등) 회차는 판정하지 않고 상태를 유지한다.
+- **기준 전환**: 아래면 단계를 초기화하고 그 회차에는 알리지 않는다.
+  - 무포지션 뒤 재진입(평단이 같아도 새 포지션이다).
+  - 보유 중 빗썸 평단 또는 바이낸스 진입가가 바뀜(추가 진입).
+  - 저장된 기준이 없음(첫 기동).
+  - 수량만 바뀐 부분 정리는 전환이 아니다. 보유 → 무포지션도 전환이 아니라 단계가 이어진다.
+- **히스테리시스**: 마지막으로 알린(또는 초기화한) 경계에서 한 단계 폭 이상 움직여야 다시 알린다. 같은 경계 위아래 진동에는 반복 알리지 않는다.
+  한 회차에 여러 경계를 건너뛰면 가장 먼 경계 기준으로 **한 통만** 보낸다. 경계는 포함이다.
+- **단계 폭을 바꾸면** 저장된 단계(level)는 그대로 유지된다. 폭이 다른 값으로 재시작한 직후에는 재계산된 경계(저장 level × 새 폭)에서 알림이 한 번 나갈 수 있다. 의도된 동작이며 이후는 새 폭으로 이어진다. 최소값은 0.01 이다.
+- **초기화 회차(첫 기동·기준 전환)에는 아무것도 보내지 않는다.** 배포 직후 현재 위치에서 곧바로 알림이 터지지 않는다.
+- **부트스트랩**: 저장된 기준이 없고 무포지션 회차이면 포지션 이력(#129)의 열린 건 또는 가장 최근 닫힌 건에서 기준을 한 번 채운다. 이력이 없으면 판정하지 않는다.
+  `ACCOUNT_PNL_POSITION_HISTORY_ENABLED=false` 면 이 부트스트랩이 꺼진다(보유 회차를 한 번 거치면 상태에 기준이 저장돼 그 뒤로는 동작한다). 이력 조회가 실패하면 WARN 후 그 회차 판정만 건너뛴다.
+- **재시작에 안전**: 기준 leg 와 단계는 `account_pnl_monitor_state` 에 outbox 행과 같은 트랜잭션으로 저장되므로 재시작 뒤에도 이어진다. 이력 기록 실패와 무관하다.
+- **전달은 at-least-once** 다. 경계 하나를 넘으면 판정·outbox 행은 1개지만, 전송 성공 직후 프로세스가 죽으면 같은 알림이 한 번 더 올 수 있다(다른 owner 알림과 같다).
 
 ## 바이낸스 수동 입력 모드 (manual)
 
@@ -568,6 +596,14 @@ PC 가 잠자기 상태였다면 깨어난 뒤 지난 시간을 감지해 메일
 - [ ] (d) 순수익률이 한 시간 안에 0.5%p 넘게 움직이면 pnl 채널에 **소리**로 오고 메일은 없다.
 - [ ] (e) 미반영 항목이 있으면 09시 이후 그 항목이 확인된 첫 회차에 pnl 채널로 **무음** 리마인더가 오고, 그날은 다시 오지 않는다.
 
+## 기준 포지션 단계 알림 체크리스트 (#131 AC10)
+
+자기 Discord 서버의 pnl 채널 webhook 과 실계정으로 로컬 batch 를 띄운 뒤 확인하고, 결과를 **PR 코멘트**로 기록한다. 테스트 목적으로 실제 거래하지 않는다.
+
+- [ ] (a) 기동 INFO `owner-alert routes:` 에 `reference-step=discord(PNL,SOUND)` 가 보인다.
+- [ ] (b) 기동·기준 전환 직후에는 단계 알림이 오지 않는다.
+- [ ] (c) 실계정으로 단계 알림을 pnl 채널에서 **1건 이상** 받았고(소리, 메일 없음), 제목·칸의 차이·기준 매수김프가 실제 값과 합리적으로 맞는다. 관찰 기회가 없으면 "미관찰"로 기록한다.
+
 ## 알림 문구 템플릿화 배포 (V23)
 
 owner 알림 21종과 회원 김프 메일 1종의 문구는 `domain.alertmessage` 템플릿이 만들고, Discord 는 embed 칸으로 보낸다.
@@ -648,13 +684,20 @@ GROUP BY kind;
 - 완전히 접으려면 끄는 법대로 끄고 세 테이블의 행을 `account_pnl_observation` → `account_position_event` → `account_position_episode` 순(FK)으로 지운다.
   테이블 자체는 migration 소유이므로 drop 하지 않는다.
 
+### V25 배포와 롤백 (#131)
+
+- V25 는 **additive** 다 — `account_pnl_monitor_state` 에 NULL 허용 열 6개(기준 leg 4·국면·단계)와 CHECK 하나를 더할 뿐이다. **롤백 SQL 은 없다.**
+- **API(Flyway V25) 먼저 → batch.** 새 batch 가 V25 보다 먼저 뜨면 상태 로드가 `Unknown column` 으로 실패해 회차가 실패로 남는다.
+- 구 binary 로 되돌려도 안전하다 — 구 binary 의 INSERT·UPDATE 는 새 열을 건드리지 않아 그대로 동작하고 새 열 값을 보존한다. 단계 알림만 멈춘다.
+  다시 신 binary 로 올리면 보존된 기준·단계에서 이어 판정한다. 이때 단계 상태는 롤백 시점의 값이다 — 롤백 기간 중 같은 가격으로 재진입한 경우에만 오래된 level 때문에 알림이 한 번 나갈 수 있다. 스키마는 되돌리지 않는다.
+
 ## 끄는 법과 데이터 정리
 
 - 끄기: `ACCOUNT_PNL_MONITOR_ENABLED=false`(또는 미설정) 후 batch 재시작. `BATCH_SCHEDULING_ENABLED=false` 면 전체 스케줄러가 꺼진다.
-- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 7종(계정 알림 3종 포함)은 모두 메일로 온다.
+- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 8종(계정 알림 4종 포함)은 모두 메일로 온다.
 - 모드 전환(`api` ↔ `manual`)은 env 수정 + batch 재시작이다. 수량·진입가가 같으면 에피소드가 유지된다.
 - 상태·outbox 테이블:
-  - `account_pnl_monitor_state` — 단일 행(`id=1`). 에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각.
+  - `account_pnl_monitor_state` — 단일 행(`id=1`). 에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각 + 기준 포지션 단계 상태(기준 leg·국면·단계, V25).
   - `account_pnl_mail` — owner 알림 공용 outbox(메일·Discord, `channel` 컬럼 `EMAIL`/`DISCORD`, Discord 칸 배치 `discord_layout`; 상태 `PENDING`/`PROCESSING`/`SENT`/`FAILED`). 수신 주소·webhook URL 은 저장하지 않는다.
 - 기능을 완전히 접으려면 두 테이블의 행을 지운다(테이블 자체는 migration 소유이므로 drop 하지 않는다).
 - **`FAILED` 메일은 redrive 하지 않는다.** 시간이 지난 수익 알림은 보낼 가치가 없다. 필요하면 원인만 확인하고 행을 정리한다.

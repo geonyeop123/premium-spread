@@ -177,4 +177,42 @@ class AccountAlertPolicyTest {
         assertThat(decision.next.position.legs).isEqualTo(closed)
         assertThat(decision.next.reminder.lastDayStart).isEqualTo(sent)
     }
+
+    private fun stepGap(value: String): ReferenceGap {
+        val reference = ReferenceLegs(BigDecimal("0.5"), BigDecimal("100000000"), BigDecimal("0.5"), BigDecimal("70000"))
+        val observation = PositionObservation.holding(pnl(computedAt))
+            .copy(premiumGapPercentPoint = BigDecimal(value))
+        return ReferenceGap(ReferencePhase.HOLDING, reference, observation)
+    }
+
+    @Test
+    fun `기준 단계 알림은 알림 목록의 마지막이고 단계 상태만 갱신한다`() {
+        val gap = stepGap("0.60")
+        val state = AccountAlertState.INITIAL.copy(step = ReferenceStepState(gap.reference, ReferencePhase.HOLDING, 0))
+
+        val decision = AccountAlertPolicy.decide(state, round(roundLegs = otherLegs, unrecovered = true), settings, zone, gap)
+
+        assertThat(decision.alerts.map { it.kind }).last().isEqualTo(OwnerAlertKind.REFERENCE_STEP)
+        assertThat(decision.next.step.level).isEqualTo(1)
+    }
+
+    @Test
+    fun `gap 이 없으면 단계 상태는 그대로다`() {
+        val step = ReferenceStepState(stepGap("0.60").reference, ReferencePhase.HOLDING, 2)
+
+        val decision = decide(AccountAlertState.INITIAL.copy(step = step), round())
+
+        assertThat(decision.next.step).isEqualTo(step)
+        assertThat(decision.alerts.map { it.kind }).doesNotContain(OwnerAlertKind.REFERENCE_STEP)
+    }
+
+    @Test
+    fun `실패 회차는 gap 이 있어도 단계 상태를 건드리지 않는다`() {
+        val state = AccountAlertState.INITIAL
+
+        val decision = AccountAlertPolicy.decide(state, null, settings, zone, stepGap("0.60"))
+
+        assertThat(decision.next).isSameAs(state)
+        assertThat(decision.alerts).isEmpty()
+    }
 }

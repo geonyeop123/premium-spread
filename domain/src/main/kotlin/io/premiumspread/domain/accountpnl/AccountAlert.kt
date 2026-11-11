@@ -65,4 +65,19 @@ sealed interface AccountAlert {
             }
         }
     }
+
+    /**
+     * 기준 포지션 대비 김프 차이가 단계 경계를 넘었다 (#131). [level] 은 새 단계 번호, 경계 = level × [stepWidth].
+     * toString 의 observation 은 kind·observedAt 만 찍는다.
+     */
+    data class ReferenceStep(
+        val direction: SwingDirection,
+        val level: Int,
+        val stepWidth: BigDecimal,
+        val phase: ReferencePhase,
+        val observation: PositionObservation,
+    ) : AccountAlert {
+        override val kind: OwnerAlertKind get() = OwnerAlertKind.REFERENCE_STEP
+        val boundary: BigDecimal get() = stepWidth.multiply(BigDecimal(level))
+    }
 }

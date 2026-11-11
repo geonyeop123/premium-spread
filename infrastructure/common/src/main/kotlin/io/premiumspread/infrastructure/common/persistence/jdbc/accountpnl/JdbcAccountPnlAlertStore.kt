@@ -11,6 +11,9 @@ import io.premiumspread.domain.accountpnl.OutageState
 import io.premiumspread.domain.accountpnl.PnlAlertState
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.PositionWatchState
+import io.premiumspread.domain.accountpnl.ReferenceLegs
+import io.premiumspread.domain.accountpnl.ReferencePhase
+import io.premiumspread.domain.accountpnl.ReferenceStepState
 import io.premiumspread.domain.accountpnl.ReminderState
 import io.premiumspread.domain.accountpnl.SwingState
 import io.premiumspread.domain.owneralert.DiscordLayout
@@ -69,7 +72,9 @@ class JdbcAccountPnlAlertStore(
                    korea_quantity, korea_average_buy_price, foreign_signed_quantity, foreign_entry_price,
                    hedge_mismatch_warned, swing_bucket_start, swing_baseline_percent,
                    swing_up_sent, swing_down_sent, reminder_day_start,
-                   manual_funding_usdt, manual_funding_changed_at
+                   manual_funding_usdt, manual_funding_changed_at,
+                   reference_korea_quantity, reference_korea_price, reference_foreign_quantity, reference_foreign_price,
+                   reference_step_phase, reference_step_level
             FROM account_pnl_monitor_state
             WHERE id = $STATE_ID
             """.trimIndent(),
@@ -200,8 +205,10 @@ class JdbcAccountPnlAlertStore(
                 korea_quantity, korea_average_buy_price, foreign_signed_quantity, foreign_entry_price,
                 hedge_mismatch_warned, swing_bucket_start, swing_baseline_percent,
                 swing_up_sent, swing_down_sent, reminder_day_start,
-                manual_funding_usdt, manual_funding_changed_at
-            ) VALUES ($STATE_ID, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                manual_funding_usdt, manual_funding_changed_at,
+                reference_korea_quantity, reference_korea_price, reference_foreign_quantity, reference_foreign_price,
+                reference_step_phase, reference_step_level
+            ) VALUES ($STATE_ID, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             state.alert.inEpisode,
             state.alert.positionFingerprint,
@@ -239,7 +246,13 @@ class JdbcAccountPnlAlertStore(
                 swing_down_sent = ?,
                 reminder_day_start = ?,
                 manual_funding_usdt = ?,
-                manual_funding_changed_at = ?
+                manual_funding_changed_at = ?,
+                reference_korea_quantity = ?,
+                reference_korea_price = ?,
+                reference_foreign_quantity = ?,
+                reference_foreign_price = ?,
+                reference_step_phase = ?,
+                reference_step_level = ?
             WHERE id = $STATE_ID
               AND version = ?
             """.trimIndent(),
@@ -270,6 +283,12 @@ class JdbcAccountPnlAlertStore(
             account.reminder.lastDayStart?.toSqlTimestamp(),
             account.reminder.manualFundingUsdt?.toPlainString(),
             account.reminder.manualFundingChangedAt?.toSqlTimestamp(),
+            account.step.reference?.koreaQuantity?.toPlainString(),
+            account.step.reference?.koreaAveragePrice?.toPlainString(),
+            account.step.reference?.foreignQuantity?.toPlainString(),
+            account.step.reference?.foreignEntryPrice?.toPlainString(),
+            account.step.phase?.name,
+            account.step.level,
         )
     }
 
@@ -284,6 +303,17 @@ class JdbcAccountPnlAlertStore(
             )
             require(values.all { it.toPlainString().length <= MAX_DECIMAL_TEXT_LENGTH }) {
                 "position leg must be at most $MAX_DECIMAL_TEXT_LENGTH characters as a plain decimal."
+            }
+        }
+        account.step.reference?.let { reference ->
+            val values = listOf(
+                reference.koreaQuantity,
+                reference.koreaAveragePrice,
+                reference.foreignQuantity,
+                reference.foreignEntryPrice,
+            )
+            require(values.all { it.toPlainString().length <= MAX_DECIMAL_TEXT_LENGTH }) {
+                "reference leg must be at most $MAX_DECIMAL_TEXT_LENGTH characters as a plain decimal."
             }
         }
         account.reminder.manualFundingUsdt?.let {
@@ -358,6 +388,7 @@ class JdbcAccountPnlAlertStore(
                 manualFundingUsdt = getString("manual_funding_usdt")?.let { BigDecimal(it).stripTrailingZeros() },
                 manualFundingChangedAt = getInstantOrNull("manual_funding_changed_at"),
             ),
+            step = toReferenceStep(),
         )
     }
 
@@ -439,4 +470,19 @@ class JdbcAccountPnlAlertStore(
         const val MAX_DECIMAL_TEXT_LENGTH = 64 // VARCHAR(64)
         val MAX_BASELINE_PERCENT_EXCLUSIVE: BigDecimal = BigDecimal.TEN.pow(10) // DECIMAL(12,2)
     }
+}
+
+/** V25 단계 상태 6열 → [ReferenceStepState]. 열은 DB CHECK 로 전부 NULL 이거나 전부 값이 있으므로 첫 열만 보고 INITIAL 을 판단한다. */
+private fun ResultSet.toReferenceStep(): ReferenceStepState {
+    val koreaQuantity = getString("reference_korea_quantity") ?: return ReferenceStepState.INITIAL
+    return ReferenceStepState(
+        reference = ReferenceLegs(
+            koreaQuantity = BigDecimal(koreaQuantity),
+            koreaAveragePrice = BigDecimal(getString("reference_korea_price")),
+            foreignQuantity = BigDecimal(getString("reference_foreign_quantity")),
+            foreignEntryPrice = BigDecimal(getString("reference_foreign_price")),
+        ),
+        phase = ReferencePhase.valueOf(getString("reference_step_phase")),
+        level = getInt("reference_step_level"),
+    )
 }

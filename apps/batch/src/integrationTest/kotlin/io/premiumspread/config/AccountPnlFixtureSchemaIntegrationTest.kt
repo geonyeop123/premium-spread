@@ -8,8 +8,9 @@ import org.junit.jupiter.api.Test
  * Batch 는 Flyway 를 쓰지 않고 `batch-schema.sql` fixture 로 스키마를 만든다. 아래 기대 목록은
  * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 과
  * `infrastructure/common/src/main/resources/db/migration/V19__add_owner_alert_channel.sql`,
- * `infrastructure/common/src/main/resources/db/migration/V20__add_owner_account_alert_state.sql` 에서 옮긴 것이다.
- * V18·V19·V20 이 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
+ * `infrastructure/common/src/main/resources/db/migration/V20__add_owner_account_alert_state.sql`,
+ * `infrastructure/common/src/main/resources/db/migration/V25__add_reference_step_state.sql` 에서 옮긴 것이다.
+ * V18·V19·V20·V25 가 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
  */
 class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
 
@@ -37,6 +38,12 @@ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
             "reminder_day_start:datetime:YES",
             "manual_funding_usdt:varchar:YES",
             "manual_funding_changed_at:datetime:YES",
+            "reference_korea_quantity:varchar:YES",
+            "reference_korea_price:varchar:YES",
+            "reference_foreign_quantity:varchar:YES",
+            "reference_foreign_price:varchar:YES",
+            "reference_step_phase:varchar:YES",
+            "reference_step_level:int:YES",
         )
     }
 

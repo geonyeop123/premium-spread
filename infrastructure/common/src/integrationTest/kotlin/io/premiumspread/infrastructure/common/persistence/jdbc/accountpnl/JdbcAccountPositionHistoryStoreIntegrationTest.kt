@@ -262,6 +262,43 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
         }
     }
 
+    @Test
+    fun `latestReference 열린 건의 reference 가 닫힌 건보다 우선한다`() {
+        store.record(hedgedRound("0.2", "-0.2", minute(1)))
+        store.record(round(EMPTY_LEGS, null, minute(2)))
+        store.record(hedgedRound("0.5", "-0.5", minute(3)))
+
+        val reference = store.findLatestReference()!!
+
+        assertThat(reference.koreaQuantity).isEqualByComparingTo("0.5")
+        assertThat(reference.koreaAveragePrice).isEqualByComparingTo(KOREA_PRICE)
+        assertThat(reference.foreignQuantity).isEqualByComparingTo("0.5")
+        assertThat(reference.foreignEntryPrice).isEqualByComparingTo(FOREIGN_PRICE)
+    }
+
+    @Test
+    fun `latestReference 열린 건에 reference 가 없으면 가장 최근 닫힌 건의 reference 를 쓴다`() {
+        store.record(hedgedRound("0.2", "-0.2", minute(1)))
+        store.record(round(EMPTY_LEGS, null, minute(2)))
+        store.record(round(legs("0.3", "100000000", "0", "0"), null, minute(3))) // 한쪽 leg 만 → 열린 건 reference 없음
+
+        val reference = store.findLatestReference()!!
+
+        assertThat(reference.koreaQuantity).isEqualByComparingTo("0.2")
+        assertThat(reference.foreignQuantity).isEqualByComparingTo("0.2")
+    }
+
+    @Test
+    fun `latestReference 열린 건도 reference 있는 닫힌 건도 없으면 null 이다`() {
+        assertThat(store.findLatestReference()).isNull()
+
+        store.record(round(legs("0.2", "100000000", "0", "0"), null, minute(1)))
+        assertThat(store.findLatestReference()).isNull()
+
+        store.record(round(EMPTY_LEGS, null, minute(2)))
+        assertThat(store.findLatestReference()).isNull()
+    }
+
     private fun hedgedRound(koreaQuantity: String, foreignSigned: String, at: Instant) = round(
         legs(koreaQuantity, KOREA_PRICE, foreignSigned, FOREIGN_PRICE),
         pnl(koreaQuantity, foreignSigned, at),
