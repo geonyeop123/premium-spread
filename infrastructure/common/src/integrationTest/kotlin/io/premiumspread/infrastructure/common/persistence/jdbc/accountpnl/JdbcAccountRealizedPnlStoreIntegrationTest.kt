@@ -196,9 +196,9 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
     }
 
     @Test
-    fun `lower 는 앞 건 가운데 가장 늦게 닫힌 건의 closed_at 이다`() {
-        val first = closedEpisode(opened = minutesAgo(300), closed = minutesAgo(250))
-        val second = closedEpisode(opened = minutesAgo(240), closed = minutesAgo(200))
+    fun `lower 는 앞 건이 진입 1시간 안에 닫혔으면 앞 건 가운데 가장 늦게 닫힌 건의 closed_at 이다`() {
+        val first = closedEpisode(opened = minutesAgo(120), closed = minutesAgo(75))
+        val second = closedEpisode(opened = minutesAgo(70), closed = minutesAgo(60))
         listOf(first, second).forEach { settled ->
             jdbcTemplate.update("UPDATE account_position_episode SET settled_seq = 9 WHERE id = ?", settled)
         }
@@ -208,7 +208,33 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
 
         val target = findTarget()!!
         assertThat(target.episodeId).isEqualTo(episode)
-        assertThat(target.lowerExclusive).isEqualTo(minutesAgo(200))
+        // 앞 건이 진입 30분 전에 닫혔다: max(closed_at, opened_at − 1h) = closed_at
+        assertThat(target.lowerExclusive).isEqualTo(minutesAgo(60))
+    }
+
+    @Test
+    fun `lower 는 앞 건이 진입 1시간보다 전에 닫혔으면 opened_at 에서 1시간 전이다`() {
+        val previous = closedEpisode(opened = minutesAgo(300), closed = minutesAgo(200))
+        jdbcTemplate.update("UPDATE account_position_episode SET settled_seq = 9 WHERE id = ?", previous)
+        val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
+        event(episode, 1, "OPENED", minutesAgo(30), "0.2", "-0.2")
+        event(episode, 2, "CLOSED", minutesAgo(20), "0", "0")
+
+        assertThat(findTarget()!!.lowerExclusive).isEqualTo(minutesAgo(30).minus(LOOKBACK))
+    }
+
+    @Test
+    fun `앞 건이 200일 전에 닫혔어도 새 건은 lower 가 opened_at 에서 1시간 전이라 대상이다`() {
+        val longAgo = minutesAgo(30).minus(Duration.ofDays(200))
+        val previous = closedEpisode(opened = longAgo.minus(Duration.ofDays(1)), closed = longAgo)
+        jdbcTemplate.update("UPDATE account_position_episode SET settled_seq = 9 WHERE id = ?", previous)
+        val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
+        event(episode, 1, "OPENED", minutesAgo(30), "0.2", "-0.2")
+        event(episode, 2, "CLOSED", minutesAgo(20), "0", "0")
+
+        val target = findTarget()!!
+        assertThat(target.episodeId).isEqualTo(episode)
+        assertThat(target.lowerExclusive).isEqualTo(minutesAgo(30).minus(LOOKBACK))
     }
 
     @Test

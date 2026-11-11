@@ -21,7 +21,8 @@ import java.time.Instant
  * 정리한 포지션의 확정 손익 정산 상태 (#130, design D2·D3·D5~D7).
  *
  * - [findTarget]: 정리 사건(REDUCED·ADJUSTED·CLOSED)이 `settled_seq` 를 앞선 건 가운데 가장 오래된 건 1개와
- *   그 건의 목표 사건(조건을 만족하는 가장 큰 seq)을 고른다. backoff·90일 한도는 SQL 이 거른다.
+ *   그 건의 목표 사건(조건을 만족하는 가장 큰 seq)을 고른다. 하한은 `max(앞 건 closed_at, opened_at − lookback)` 이다.
+ *   backoff·90일 한도는 SQL 이 거른다.
  * - [findFxAt]: 사건 시각의 관측 행, 없으면 `[at − tolerance, at]` 의 최신 관측 행.
  * - [beginAttempt]: 거래소를 읽기 전에 시도 횟수·next_at·목표 seq 를 쓴다(같은 단조 조건).
  * - [record]: `settled_seq` 가 뒤로 가지 않는 조건부 UPDATE 한 문장이다. 미확정 기록은 합계·환율(settled_seq 의 값)을
@@ -42,6 +43,7 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
                     attempts = rs.getInt("attempts"),
                 )
             },
+            firstLookback.toMicros(),
             firstLookback.toMicros(),
             now.minus(settleDelay).toSqlTimestamp(),
             now.toSqlTimestamp(),
@@ -147,7 +149,8 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
         const val NANOS_PER_MICRO = 1_000L
 
         /**
-         * 파라미터 순서: first lookback(µs), 사건 기준 시각(now − delay), now(backoff), 하한 기준 시각(now − maxAge).
+         * 파라미터 순서: first lookback(µs) 두 번, 사건 기준 시각(now − delay), now(backoff), 하한 기준 시각(now − maxAge).
+         * 하한은 `max(앞 건 closed_at, opened_at − lookback)`, 앞 건이 없으면 `opened_at − lookback` 이다(dod 변경 요청 1).
          * backoff 는 목표 seq 가 마지막 시도 목표(`settlement_target_seq`) 이하일 때만 적용한다 — 새 정리 사건이면 무시한다.
          */
         val CANDIDATE_SQL = """
@@ -159,9 +162,12 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
                        COALESCE(ep.settlement_attempts, 0) AS attempts,
                        ep.settlement_next_at,
                        ep.settlement_target_seq,
-                       COALESCE(
-                           (SELECT MAX(prev.closed_at) FROM account_position_episode prev
-                            WHERE prev.id <> ep.id AND prev.closed_at < ep.opened_at),
+                       GREATEST(
+                           COALESCE(
+                               (SELECT MAX(prev.closed_at) FROM account_position_episode prev
+                                WHERE prev.id <> ep.id AND prev.closed_at < ep.opened_at),
+                               ep.opened_at - INTERVAL ? MICROSECOND
+                           ),
                            ep.opened_at - INTERVAL ? MICROSECOND
                        ) AS lower_exclusive
                 FROM account_position_episode ep
