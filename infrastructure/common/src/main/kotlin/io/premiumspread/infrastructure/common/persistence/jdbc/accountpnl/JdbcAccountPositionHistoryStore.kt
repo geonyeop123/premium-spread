@@ -29,6 +29,7 @@ import java.time.Instant
  *
  * [record] 한 번은 한 트랜잭션이다 — 열린 건을 `FOR UPDATE` 로 잠그고 [PositionEpisodePolicy.decide] 결과를 건·사건에
  * 반영한 뒤 관측을 0~1행 남긴다. 관측 INSERT 를 포함해 어느 문장이 실패해도 그 회차의 건·사건은 롤백된다.
+ * 다만 관측 값 계산이 불가능한 입력(평단 0 → ArithmeticException)은 DB 오류가 아니라 관측 0행으로 정규화하고 건·사건은 커밋한다.
  *
  * - leg·reference 는 V20 과 같이 `toPlainString()` 10진 문자열로 저장하고 [KoreaLeg.of]·[ForeignLeg.of] 로 복원한다
  *   (DECIMAL 반올림이 다음 회차 비교를 깨지 않도록).
@@ -94,7 +95,8 @@ class JdbcAccountPositionHistoryStore(
     private fun recordObservation(round: PositionHistoryRound, openEpisodeId: Long?, now: Timestamp) {
         if (openEpisodeId != null) {
             val pnl = round.pnl ?: return
-            insertObservation(openEpisodeId, PositionObservation.holding(pnl), now)
+            val observation = PositionObservation.holdingOrNull(pnl) ?: return
+            insertObservation(openEpisodeId, observation, now)
             return
         }
         val (referenceEpisodeId, reference) = latestReferenceEpisode() ?: return

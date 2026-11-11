@@ -181,6 +181,7 @@ class AccountPnlMonitorJob(
     private fun recordHistory(observed: Observed) {
         val store = positionHistory ?: return
         val round = observed.history ?: return
+        if (Thread.currentThread().isInterrupted) return // 취소 중이면 DB 를 건드리지 않는다. 플래그는 그대로 둔다
         try {
             store.record(round)
         } catch (exception: Exception) {

@@ -111,4 +111,20 @@ class PositionObservationTest {
             .isEqualTo("PositionObservation(kind=HOLDING, observedAt=$at)")
         assertThat(market().toString()).isEqualTo("MarketQuote")
     }
+
+    @Test
+    fun `reference 평단이 0 이면 flat 은 예외 없이 null 이다`() {
+        val zero = reference.copy(koreaAveragePrice = BigDecimal.ZERO)
+
+        assertThat(PositionObservation.flat(zero, market(), at)).isNull()
+    }
+
+    @Test
+    fun `평단이 0 인 pnl 이면 holdingOrNull 은 예외 없이 null 이다`() {
+        val base = pnl()
+        val zeroAvg = base.copy(position = base.position.copy(korea = base.position.korea.copy(averageBuyPrice = BigDecimal.ZERO)))
+
+        assertThat(PositionObservation.holdingOrNull(zeroAvg)).isNull()
+        assertThat(PositionObservation.holdingOrNull(base)).isEqualTo(PositionObservation.holding(base))
+    }
 }

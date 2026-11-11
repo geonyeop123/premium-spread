@@ -212,6 +212,44 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
         assertThat(observations()).hasSize(1)
     }
 
+    @Test
+    fun `새 인스턴스가 직전과 같은 round 를 다시 기록해도 건 사건 관측 행 수는 그대로다`() {
+        val same = hedgedRound("0.2", "-0.2", minute(1))
+        store.record(same)
+
+        newStore(jdbcTemplate).record(same)
+
+        assertThat(episodes()).hasSize(1)
+        assertThat(events()).hasSize(1)
+        assertThat(observations()).hasSize(1)
+    }
+
+    @Test
+    fun `평단 0 으로 OPENED 해도 건과 사건은 커밋되고 관측은 0행이다`() {
+        val zeroAvg = legs("0.2", "0", "-0.2", FOREIGN_PRICE)
+        val base = pnl("0.2", "-0.2", minute(1))
+        val zeroPnl = base.copy(
+            position = base.position.copy(korea = base.position.korea.copy(averageBuyPrice = BigDecimal.ZERO)),
+        )
+
+        store.record(round(zeroAvg, zeroPnl, minute(1)))
+
+        assertThat(episodes().single()["status"]).isEqualTo("OPEN")
+        assertThat(events().map { it["event_type"] }).containsExactly("OPENED")
+        assertThat(observations()).isEmpty()
+    }
+
+    @Test
+    fun `reference 평단이 0 인 건을 CLOSED 해도 CLOSED 는 커밋되고 관측은 0행이다`() {
+        store.record(round(legs("0.2", "0", "-0.2", FOREIGN_PRICE), null, minute(1)))
+
+        store.record(round(EMPTY_LEGS, null, minute(2)))
+
+        assertThat(episodes().single()["status"]).isEqualTo("CLOSED")
+        assertThat(events().map { it["event_type"] }).containsExactly("OPENED", "CLOSED")
+        assertThat(observations()).isEmpty()
+    }
+
     /** 관측 INSERT 만 실패시키는 위임 래퍼. 같은 DataSource 라 트랜잭션 연결을 공유한다. */
     private class ObservationFailingJdbcTemplate(dataSource: DataSource) : JdbcTemplate(dataSource) {
         override fun update(sql: String, vararg args: Any?): Int {

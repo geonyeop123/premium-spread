@@ -11,6 +11,8 @@ import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest.Fake
 import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest.FakeSender
 import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest.FakeStore
 import io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobTest.MutableClock
+import io.premiumspread.domain.accountpnl.AccountPnlLatest
+import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
 import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
@@ -99,6 +101,48 @@ class AccountPnlMonitorJobPositionHistoryTest {
         assertThat(round.market.koreaBidLevels).containsExactly(PriceLevel(korea.bid, korea.bidDepth))
         assertThat(round.market.foreignAskLevels)
             .containsExactly(PriceLevel(BigDecimal("70000"), BigDecimal("1")))
+    }
+
+    @Test
+    fun `recordLatest 다음 recordHistory 다음 전달 순서로 호출한다`() {
+        val log = mutableListOf<String>()
+        sender.onSend = { log += "send" }
+        val latest = object : AccountPnlLatestStore {
+            override fun record(latest: AccountPnlLatest) {
+                log += "latest"
+            }
+
+            override fun find(): AccountPnlLatest? = null
+        }
+        history.onRecord = { log += "history" }
+        val job = AccountPnlMonitorJob(
+            korea, foreign, FakeFx(clock), FakeLastSuccess(clock), store, sender, executor, clock,
+            latestPnl = latest, positionHistory = history,
+        )
+
+        assertThat(job.run()).isEqualTo(JobResult.Success)
+
+        assertThat(log).containsExactly("latest", "history", "send")
+    }
+
+    @Test
+    fun `interrupt 플래그가 서 있으면 이력 store 를 호출하지 않고 플래그를 유지한다`() {
+        val latest = object : AccountPnlLatestStore {
+            override fun record(latest: AccountPnlLatest) {
+                throw RuntimeException(InterruptedException()) // 취소 → interrupt 복원
+            }
+
+            override fun find(): AccountPnlLatest? = null
+        }
+        val job = AccountPnlMonitorJob(
+            korea, foreign, FakeFx(clock), FakeLastSuccess(clock), store, sender, executor, clock,
+            latestPnl = latest, positionHistory = history,
+        )
+
+        job.run()
+
+        assertThat(history.calls).isZero()
+        assertThat(Thread.currentThread().isInterrupted).isTrue()
     }
 
     @Test
@@ -203,9 +247,11 @@ class AccountPnlMonitorJobPositionHistoryTest {
         val rounds = mutableListOf<PositionHistoryRound>()
         var calls = 0
         var failure: Exception? = null
+        var onRecord: () -> Unit = {}
 
         override fun record(round: PositionHistoryRound) {
             calls += 1
+            onRecord()
             failure?.let { throw it }
             rounds += round
         }

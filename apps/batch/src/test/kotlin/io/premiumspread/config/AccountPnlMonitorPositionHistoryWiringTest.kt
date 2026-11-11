@@ -26,6 +26,7 @@ import io.premiumspread.domain.owneralert.OwnerAlertRouting
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.time.Clock
@@ -73,6 +74,15 @@ class AccountPnlMonitorPositionHistoryWiringTest {
         assertThat(callsAfterOneRound("account-pnl-monitor.position-history.enabled=false")).isZero()
     }
 
+    @Test
+    fun `설정이 없고 이력 store bean 이 없어도 context 가 뜨고 회차는 Success 다`() {
+        runner.withPropertyValues(*enabledProps, "test.history-store=false").run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).doesNotHaveBean(AccountPositionHistoryStore::class.java)
+            assertThat(ctx.getBean(AccountPnlMonitorJob::class.java).run()).isEqualTo(JobResult.Success)
+        }
+    }
+
     class CountingHistoryStore : AccountPositionHistoryStore {
         var calls = 0
 
@@ -103,6 +113,7 @@ class AccountPnlMonitorPositionHistoryWiringTest {
 
         @Bean fun routing(): OwnerAlertRouting = OwnerAlertRouting.EMAIL_ONLY
 
+        @ConditionalOnProperty("test.history-store", matchIfMissing = true)
         @Bean fun history(): CountingHistoryStore = CountingHistoryStore()
 
         @Bean

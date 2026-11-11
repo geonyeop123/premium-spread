@@ -47,7 +47,18 @@ data class PositionObservation(
             )
         }
 
-        /** 청산가는 reference 수량으로 소화한 VWAP(계정 수량 무관). 호가 깊이가 부족하면 null, 다른 예외는 전파한다. */
+        /**
+         * [holding] 과 같되 계산이 불가능한 입력(평단 0 등 → [ArithmeticException])이면 null — 관측 0행 신호다.
+         * 건·사건 기록과 관측 계산 실패를 분리하기 위한 것이며 ArithmeticException 외 예외는 전파한다.
+         */
+        fun holdingOrNull(pnl: AccountNetPnl): PositionObservation? =
+            try {
+                holding(pnl)
+            } catch (_: ArithmeticException) {
+                null
+            }
+
+        /** 청산가는 reference 수량으로 소화한 VWAP(계정 수량 무관). 호가 깊이가 부족하거나 계산 불가(평단 0)면 null, 다른 예외는 전파한다. */
         fun flat(reference: ReferenceLegs, market: MarketQuote, observedAt: Instant): PositionObservation? {
             val fx = market.fxRate
             val koreaExit: BigDecimal
@@ -59,8 +70,14 @@ data class PositionObservation(
                 if (e.category == AccountReadFailureCategory.INSUFFICIENT_DEPTH) return null
                 throw e
             }
-            val current = HedgeQuote.premiumPercent(koreaExit, foreignExit, fx)
-            val entry = HedgeQuote.premiumPercent(reference.koreaAveragePrice, reference.foreignEntryPrice, fx)
+            val current: BigDecimal
+            val entry: BigDecimal
+            try {
+                current = HedgeQuote.premiumPercent(koreaExit, foreignExit, fx)
+                entry = HedgeQuote.premiumPercent(reference.koreaAveragePrice, reference.foreignEntryPrice, fx)
+            } catch (_: ArithmeticException) {
+                return null // 평단 0 등 계산 불가 입력: 관측 0행
+            }
             return PositionObservation(
                 kind = PositionObservationKind.FLAT,
                 observedAt = observedAt,
