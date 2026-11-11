@@ -125,6 +125,18 @@ documentation check passed (20 files, 15 required paths)
 경계면(qa-agent): JDBC SQL ↔ V24 DDL 컬럼·타입 MATCH, env 키 3곳(`application.yml:85`·`AccountPnlMonitorConfiguration.kt:189`·runbook:50) MATCH,
 API·Redis·http 샘플 diff 없음. 미확인: runbook 확인 쿼리 3개는 DDL 대조만 했고 MySQL 에서 직접 실행하지 않았다(AC8 owner 확인 때 실행된다).
 
+### 재검증 — CI lint 대응 @ 7d0344a (2026-11-11)
+
+```
+CI run 42931618533 의 5번 잡(ktlint + detekt) 실패 — ktlint 형식 위반(when 분기 빈 줄·인자 줄바꿈·어노테이션 줄바꿈), detekt 는 ktlint 실패로 미실행
+수정: ktlint 1.8.0 -F(변경 파일), PositionEpisodePolicy.decide 분기 추출(detekt ReturnCount 5>4). 체크섬은 ci/quality-tools.lock 과 일치
+$ java -jar ktlint-1.8.0.jar '**/src/**/*.kt' '!**/build/**'   → exit 0
+$ java -jar detekt-cli-1.23.8.jar (quality-gate.yml 과 같은 인자)  → exit 0
+$ ./gradlew :domain:test :infrastructure:common:test :apps:batch:test :infrastructure:common:integrationTest architectureTest --rerun-tasks
+  → exit 0 · domain 594/0 · common 61/0 · batch 330/0 · common integration 109/0
+동작 변경 없음 — 판정(AC1~AC7 PASS, AC8 대기)은 유지한다
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
