@@ -714,7 +714,7 @@ GROUP BY kind;
 - `korea_settlement`·`foreign_settlement`: `PENDING`(미확정) · `CONFIRMED`(확정) · `MANUAL`(바이낸스 수동 모드 — 바이낸스 값과 합계는 `NULL`). `NULL`이면 정리 사건이 아직 없다.
 - 두 쪽이 확정(또는 바이낸스 MANUAL)되면 `settled_seq`·`settled_at`이 채워진다.
 - **값의 뜻:** `total_realized_krw`·`fx_rate`·`fx_observed_at`은 `settled_seq` 사건 기준의 확정 합계다. 뒤 사건 정산이 미확정으로 끝나도 지워지거나 바뀌지 않는다.
-  쪽별 값(`korea_realized_krw`, 바이낸스 3값)은 그 쪽이 마지막으로 `CONFIRMED`된 계산 결과다 — 쪽 상태가 `PENDING`이면 이전 값이 남아 있을 수 있고, `settlement_target_seq`가 `settled_seq`보다 크면 쪽 값이 합계보다 새 사건 기준일 수 있다.
+  쪽별 값(`korea_realized_krw`, 바이낸스 3값)은 그 쪽의 마지막으로 성공한 계산 결과다(환율 실패로 `foreign_settlement = PENDING`인 바이낸스 값 포함). 조회·수량 실패로 계산하지 못한 시도는 이전 값을 그대로 둔다. `settlement_target_seq`가 `settled_seq`보다 크면 쪽 값이 합계보다 새 사건 기준일 수 있다.
 - 두 쪽이 모두 확정됐는데 환율을 못 구하면 `foreign_settlement = PENDING`, `settlement_failure = FX`다. 이때 바이낸스 값은 채워져 있지만 합계는 `NULL`이고 다음 시도에 다시 계산한다.
 - 실패 사유 `settlement_failure`: `KOREA_READ`·`FOREIGN_READ`(조회 실패) · `KOREA_QUANTITY`·`FOREIGN_QUANTITY`(순수량 불일치 — 체결 반영 지연이나 창 밖 체결) · `FX` · `WINDOW_LIMIT`(빗썸 20페이지, 바이낸스 한 7일 창 1000건 초과).
 - 시도 횟수와 `settlement_next_at`(5분 × 2^(시도−1), 최대 6시간)은 **거래소를 읽기 전, 시도를 시작할 때** 기록한다. 그래서 timeout·취소로 결과를 기록하지 못한 시도도 미뤄진다.

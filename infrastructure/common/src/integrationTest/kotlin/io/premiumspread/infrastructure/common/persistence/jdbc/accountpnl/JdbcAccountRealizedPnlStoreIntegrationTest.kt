@@ -360,6 +360,34 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
     }
 
     @Test
+    fun `환율 실패로 바이낸스가 PENDING 이어도 계산된 쪽 값은 저장하고 합계와 환율은 그대로 둔다`() {
+        val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
+        assertThat(store.record(confirmed(target(episode, 3)), null)).isTrue()
+        val fxPending = confirmed(target(episode, 5)).copy(
+            korea = KoreaRealized(BigDecimal("16000")),
+            foreignStatus = SettlementStatus.PENDING,
+            foreign = ForeignRealized(BigDecimal("30"), BigDecimal("3"), BigDecimal("-2")),
+            fx = null,
+            totalKrw = null,
+            failure = SettlementFailure.FX,
+        )
+
+        assertThat(store.record(fxPending, NOW.plusSeconds(300))).isTrue()
+
+        val row = episodeRow(episode)
+        assertThat(row["settled_seq"]).isEqualTo(3)
+        assertThat(row["foreign_settlement"]).isEqualTo("PENDING")
+        assertThat(row["settlement_failure"]).isEqualTo("FX")
+        assertThat(row["korea_realized_krw"] as BigDecimal).isEqualByComparingTo("16000")
+        assertThat(row["foreign_realized_pnl_usdt"] as BigDecimal).isEqualByComparingTo("30")
+        assertThat(row["foreign_commission_usdt"] as BigDecimal).isEqualByComparingTo("3")
+        assertThat(row["foreign_funding_usdt"] as BigDecimal).isEqualByComparingTo("-2")
+        assertThat(row["total_realized_krw"] as BigDecimal).isEqualByComparingTo("29547")
+        assertThat(row["fx_rate"] as BigDecimal).isEqualByComparingTo("1385.5")
+        assertThat(instant(row["fx_observed_at"])).isEqualTo(minutesAgo(20))
+    }
+
+    @Test
     fun `같은 건에 더 작은 seq 로 기록하면 false 이고 행을 바꾸지 않는다`() {
         val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
         assertThat(store.record(confirmed(target(episode, 3)), null)).isTrue()

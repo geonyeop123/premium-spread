@@ -7,7 +7,6 @@ import io.premiumspread.domain.accountpnl.ForeignPerpPositionSource
 import io.premiumspread.domain.accountpnl.KoreaLeg
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.SettlementOutcome
-import io.premiumspread.domain.accountpnl.SettlementStatus
 import io.premiumspread.domain.accountpnl.SettlementTarget
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
@@ -26,7 +25,7 @@ import java.time.Instant
  * - [findFxAt]: 사건 시각의 관측 행, 없으면 `[at − tolerance, at]` 의 최신 관측 행.
  * - [beginAttempt]: 거래소를 읽기 전에 시도 횟수·next_at·목표 seq 를 쓴다(같은 단조 조건).
  * - [record]: `settled_seq` 가 뒤로 가지 않는 조건부 UPDATE 한 문장이다. 미확정 기록은 합계·환율(settled_seq 의 값)을
- *   건드리지 않고, 쪽 값은 그 쪽이 CONFIRMED 일 때만 바꾼다.
+ *   건드리지 않고, 쪽 값은 결과에 값이 있을 때(그 쪽 계산 성공)만 바꾼다.
  * - 금액·수량은 로그·예외 메시지에 넣지 않는다.
  */
 @Repository
@@ -103,9 +102,10 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
                 target.seq,
             )
         } else {
-            // 합계·환율은 settled_seq 의 것이다 — 미확정 기록은 건드리지 않는다. 쪽 값은 그 쪽이 CONFIRMED 일 때만 바꾼다.
-            val korea = outcome.korea.takeIf { outcome.koreaStatus == SettlementStatus.CONFIRMED }
-            val foreign = outcome.foreign.takeIf { outcome.foreignStatus == SettlementStatus.CONFIRMED }
+            // 합계·환율은 settled_seq 의 것이다 — 미확정 기록은 건드리지 않는다.
+            // 쪽 값은 Job 이 계산에 성공한 쪽만 채운다(환율 실패로 PENDING 인 바이낸스 포함). null 이면 이전 값을 둔다.
+            val korea = outcome.korea
+            val foreign = outcome.foreign
             jdbcTemplate.update(
                 RECORD_UNSETTLED_SQL,
                 outcome.koreaStatus.name,
