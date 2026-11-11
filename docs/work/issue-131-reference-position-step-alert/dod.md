@@ -3,7 +3,7 @@ feature: 기준 포지션 대비 단계 알림 — 포지션 없는 기간 포�
 slug: issue-131-reference-position-step-alert
 status: FROZEN
 frozen_at: 2026-11-11
-verdict_commit:
+verdict_commit: 722cc72
 source: https://github.com/geonyeop123/premium-spread/issues/131 (상위 #128, 선행 #129) · design.md
 ---
 
@@ -93,6 +93,45 @@ $ ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.ReferenceSte
   ':domain:test' 실패 — 클래스 없음(No tests found). RED 아님. 진짜 RED 는 구현 태스크에서 남긴다
 ```
 
+### 구현 RED (태스크별 implementer 보고 — .superpowers 작업 공간, 2026-11-11)
+
+```
+[RED] 095f923 AC1·AC2 — 시그니처 스텁(decide 무변화, of null) 상태: 32 tests completed, 23 failed (단언 실패)
+[RED] b20bc55 AC4·AC5·AC6 — port 스텁 상태: 44 tests completed, 7 failed
+  V25 테스트 2·store referenceStep 3: 새 열 부재 SQL 오류(예상된 RED), latestReference 2: findLatestReference()!! NPE
+[RED] 5fc8950 AC3 — Job 의 decide(..., gap) 에서 gap 제거: 6 tests completed, 3 failed (단언 실패)
+[RED] 1e9fda7 최종 리뷰 수정 — 폭 하한·판정 실패 격리·accountAlerts null·기동 0.001 테스트 4건 실패 후 GREEN
+```
+
+### 사후 mutation RED (AC7·AC8·AC9 — 구현 중 RED 미캡처분, 2026-11-11 @ 722cc72, 원복 후 GREEN)
+
+```
+[RED] ReferenceStepContent 제목 '직전 진입 수준 도달' → '직전 진입 수준', REFERENCE_STEP push SOUND → SILENT
+$ ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.ReferenceStepContentTest --tests io.premiumspread.domain.owneralert.OwnerAccountAlertKindTest --offline --no-daemon --continue
+  ReferenceStepContentTest > 무포지션이고 level 0 이면 직전 진입 수준 도달() FAILED
+  OwnerAccountAlertKindTest > 계정 알림 네 종류의 기본 경로는 설계 표와 같다() FAILED
+  OwnerAccountAlertKindTest > referenceStep 은 메일 override 를 켜면 메일도 간다() FAILED
+  13 tests completed, 3 failed
+[RED] 설정 fallback reference-step-percent:0.50 → 0.60
+$ ./gradlew :apps:batch:test --tests io.premiumspread.config.AccountPnlMonitorReferenceStepWiringTest --offline --no-daemon
+  AccountPnlMonitorReferenceStepWiringTest > 미설정이면 단계 폭은 0_50 이다() FAILED — 6 tests completed, 1 failed
+[GREEN] git checkout 원복 후 같은 명령 BUILD SUCCESSFUL
+```
+
+### GREEN (전체 검증, e45ba08 — 이후 커밋 722cc72 는 문서만)
+
+```
+$ ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
+  BUILD SUCCESSFUL in 2m 45s, FAILED 0
+  AC1 ReferenceStepPolicyTest 20/20 · AC2 ReferenceGapTest 12/12 · AC3 AccountPnlMonitorJobReferenceStepTest 8/8
+  AC4 JdbcAccountPnlAlertStoreIntegrationTest 28/28 · AC5 JdbcAccountPositionHistoryStoreIntegrationTest 14/14
+  AC6 V25ReferenceStepStateMigrationIntegrationTest 2/2 · AC7 ReferenceStepContentTest 8/8 · AC8 OwnerAccountAlertKindTest 5/5
+  AC9 AccountPnlMonitorReferenceStepWiringTest 6/6 · R6 OwnerAlertRoutingTest 11/11, OwnerAlertYamlContractTest 2/2
+  R2 architectureTest·R3 integrationTest·R5 verifyMigrations 포함 PASS
+$ git diff --exit-code dev -- (R1 대상 5파일)   @ 722cc72 → exit 0
+$ bash docs/check-documentation.sh            @ 722cc72 → documentation check passed (20 files, 15 required paths)
+```
+
 ## 사람 확인 (T4)
 
 | # | 확인 사항 | 확인자 | 날짜 | 앵커 |
@@ -107,11 +146,15 @@ $ ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.ReferenceSte
 ## 최종 판정
 
 ```
-DoD VERDICT: issue-131-reference-position-step-alert @ <commit SHA>
+DoD VERDICT: issue-131-reference-position-step-alert @ 722cc72
   수용기준 표:     10개  (T1 9 · T2 0 · T3 0 · T4 1)
-  T1/T2 자동:      9개 중 <p>개 PASS
+  T1/T2 자동:      9개 중 9개 PASS
   T3 기록 제출:    0개 중 0건
-  T4 사람 확인:    1개 중 <r>건 완료, <1-r>건 대기
-  변경 요청:       <k>건
-  =>
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기
+  변경 요청:       0건
+  => AWAITING_HUMAN
 ```
+
+**사람 확인이 필요한 항목**
+
+- AC10: owner 가 실계정 로컬 batch 로 Discord PNL 채널에서 단계 알림 1건 이상 수신 — runbook "기준 포지션 단계 알림 체크리스트 (#131 AC10)" 후 PR 코멘트로 확인
