@@ -16,6 +16,7 @@ import io.premiumspread.infrastructure.common.config.AggregationInfrastructurePr
 import io.premiumspread.infrastructure.common.persistence.CommonPersistenceMarker
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlLatestStore
+import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPositionHistoryStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcOwnerAlertOutbox
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.ExchangeRateQueryRepository
 import io.premiumspread.infrastructure.common.persistence.jdbc.exchangerate.JdbcExchangeRateRepositoryAdapter
@@ -78,6 +79,7 @@ class CommonInfrastructureAutoConfiguration
     JdbcOwnerAlertOutbox::class,
     JdbcOwnerMarketAlertStore::class,
     JdbcAccountPnlLatestStore::class,
+    JdbcAccountPositionHistoryStore::class,
     JdbcNotificationDeliveryRepository::class,
     PremiumAggregationQueryRepository::class,
     PremiumAggregationRepository::class,

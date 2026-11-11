@@ -47,6 +47,7 @@
 | `ALERT_EMAIL_FROM` | 메일 채널을 쓸 때 | 발신 주소 | `alert@example.com` |
 | `BATCH_SCHEDULING_ENABLED` | 아니오 | 기본 `true`. `false` 면 Scheduler 가 함께 꺼진다 | `true` |
 | `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고(메일·Discord) 생성 on/off. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
+| `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` | 아니오 | 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`) 기록 on/off. 기본 `true`, `false` 면 이 기록만 끄고 알림은 그대로다. 아래 "포지션 이력" 절 | `true` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 | `ACCOUNT_PNL_SWING_THRESHOLD_PERCENT` | 아니오 | 순수익률 급변 임계값(%p, 양수). 기본 `0.5`. 0 이하면 기동 실패 | `0.5` |
 | `ACCOUNT_PNL_REMINDER_HOUR` | 아니오 | 미반영 리마인더 판정을 시작하는 시각(`Asia/Seoul` 시, `0`~`23`). 기본 `9`. 범위 밖이면 기동 실패 | `9` |
@@ -579,6 +580,73 @@ owner 알림 21종과 회원 김프 메일 1종의 문구는 `domain.alertmessag
 - `discord_layout` 이 `NULL` 인 행(V23 이전에 쌓인 옛 행)은 제목·설명만 있는 embed(`title`·`description`·`color`)로 그대로 보낸다.
 - 손상 행(JSON 오류·`v` 불일치·필수 키 누락·`DiscordMessage` 조립 실패 — reason 이 각각 `json`·`version`·`shape`)도 그 행만 `layout = null` 로 보고 같은 embed 로 보낸다.
   claim 전체는 멈추지 않으며 WARN `Owner alert discord layout unreadable; sending plain description: id={}, reason={}` 한 줄만 남는다(본문·칸 값·URL·예외 메시지는 남기지 않는다).
+
+## 포지션 이력 (#129)
+
+모니터가 회차마다 포지션 변화와 그 시점의 순손익·김프를 DB 에 남긴다. 알림과 별개의 기록이며, 이 기록이 실패해도 회차 결과·알림 전달은 바뀌지 않는다
+(실패하면 WARN `Account position history record failed: error=<예외 클래스>` 한 줄만 남고 수량·가격·예외 메시지는 남지 않는다).
+
+### 무엇이 쌓이는가
+
+| 테이블 | 내용 |
+|---|---|
+| `account_position_episode` | 포지션 한 건. 어느 한 leg 라도 있으면 열림(`status='OPEN'`), 둘 다 비면 닫힘(`'CLOSED'`). 열린 건은 항상 최대 1개 |
+| `account_position_event` | 건 안의 사건(`OPENED`·`INCREASED`·`REDUCED`·`ADJUSTED`·`CLOSED`). 회차당 최대 1건, `seq` 로 순서 |
+| `account_pnl_observation` | 1분 관측. `kind='HOLDING'`(열린 건 — 순수익률·순손익 있음), `kind='FLAT'`(열린 건 없음 + 기준 건 있음 — 순수익률·순손익은 `NULL`, 김프·환율·청산가만) |
+
+- 수량·평단은 소수 손실 없이 비교하려고 10진 **문자열** 열로 저장한다(`korea_quantity` 등). 숫자 연산이 필요하면 `CAST` 한다.
+- 건 행의 `position_source` 는 개설 시 출처이며, 이후 바뀐 출처(바이낸스 manual 모드 env 변경 등)는 사건 행의 `position_source` 에 남는다.
+- 실계정 값이므로 테이블 내용은 이슈·PR·채팅에 붙여넣지 않는다.
+
+### 첫 배포 시 `opened_at` 의미
+
+배포 시점에 이미 포지션을 들고 있으면 첫 회차에 `OPENED` 가 남는다. 이때 `opened_at` 은 **실제 진입 시각이 아니라 첫 관측 시각**이다.
+포지션이 없고 과거 건도 없으면 아무것도 쌓이지 않고, 첫 포지션을 정리한 뒤부터 `FLAT` 관측이 시작된다.
+
+### 한계
+
+- 관측은 **1분 표본**이다. 두 회차 사이에 열렸다 닫힌 포지션은 어느 회차에도 보이지 않아 기록되지 않는다(체결 기준 복원은 #130).
+- 상태 저장에 성공한 회차의 관측만 남는다. 버전 충돌·취소로 건너뛴 회차의 관측은 버린다.
+- `FLAT` 청산가 계산이 실패하는 회차(호가 깊이 부족 등)는 관측 행이 없다.
+
+### 확인 쿼리
+
+수량·금액 열은 조회하지 않는다.
+
+```sql
+-- 1) 지금 열린 건과 사건 수 (0 또는 1행)
+SELECT id, opened_at, position_source, event_count
+FROM account_position_episode
+WHERE status = 'OPEN';
+
+-- 2) 최근 사건 10건
+SELECT episode_id, seq, event_type, occurred_at, hedged, position_source
+FROM account_position_event
+ORDER BY occurred_at DESC, id DESC
+LIMIT 10;
+
+-- 3) 최근 1시간 관측이 매분 쌓이는지 (종류별 건수·마지막 관측 시각)
+SELECT kind, COUNT(*) AS rounds, MAX(observed_at) AS last_observed_at
+FROM account_pnl_observation
+WHERE observed_at >= UTC_TIMESTAMP(6) - INTERVAL 1 HOUR
+GROUP BY kind;
+```
+
+시각 열은 UTC `DATETIME(6)` 이다. 정상이면 3) 의 `rounds` 가 약 60 이다(열린 건도 기준 건도 없는 기간에는 0).
+
+### 끄는 법
+
+`ACCOUNT_PNL_POSITION_HISTORY_ENABLED=false` 후 batch 재시작. 이력 기록만 멈추고 알림·정시 보고·계정 알림은 그대로다.
+다시 켜면 그 시점의 포지션을 새 관측으로 이어 쓰며, 꺼 둔 동안의 변화는 사건으로 복원되지 않는다.
+
+### V24 배포와 롤백
+
+- V24 는 **additive** 다 — 새 테이블 3개와 인덱스만 만들고 기존 테이블을 건드리지 않는다. **롤백 SQL 은 없다.**
+- **API(Flyway V24) 먼저 → batch.** 새 batch 가 V24 보다 먼저 뜨면 이력 INSERT 가 `Table ... doesn't exist` 로 실패하지만 위 WARN 만 남고
+  알림은 정상이다. API 배포 뒤 다음 회차부터 기록된다.
+- 구 binary 로 되돌려도 안전하다 — 구 binary 는 새 테이블을 쓰지 않으며 테이블은 남는다.
+- 완전히 접으려면 끄는 법대로 끄고 세 테이블의 행을 `account_pnl_observation` → `account_position_event` → `account_position_episode` 순(FK)으로 지운다.
+  테이블 자체는 migration 소유이므로 drop 하지 않는다.
 
 ## 끄는 법과 데이터 정리
 

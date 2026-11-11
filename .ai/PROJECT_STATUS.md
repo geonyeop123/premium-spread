@@ -1,6 +1,6 @@
 # Project Status
 
-> Last updated: 2026-10-29, PRIVATE LIVE master specification 재작성 후 사용자 승인 대기
+> Last updated: 2026-11-11, PRIVATE LIVE master specification 재작성 후 사용자 승인 대기
 
 ## Current State
 
@@ -10,7 +10,7 @@
 | `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
 | `apps:web` | Active | Next.js 대시보드, 인증, position UI |
 | `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
-| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V23 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V24 |
 | `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
 | `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
 | `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
@@ -137,6 +137,12 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   `apps/web/src/hooks/useTrackings.ts`(`useTrackingList`·`useTracking`·`useGrossPnl`)로 옮기고, #82 D7의
   `react-hooks/set-state-in-effect` override를 `apps/web/eslint.config.mjs`에서 제거했다(#82의 후속 해소). 백엔드·API 계약 변경은 없다.
   [설계](../docs/work/issue-96-trackings-fetch/design.md)를 따른다.
+- 실계정 포지션 기록과 매분 관측 이력(#129, 구현·검증 완료, PR 예정, owner 로컬 실계정 확인 AC8 대기): 모니터 회차가 상태를
+  저장한 뒤 포지션 건(0→0)·사건(OPENED/INCREASED/REDUCED/ADJUSTED/CLOSED)·매분 관측(HOLDING/FLAT)을 `account_position_episode`·
+  `account_position_event`·`account_pnl_observation`(V24)에 남긴다. 기록 실패·취소는 회차 결과에 영향이 없고
+  `ACCOUNT_PNL_POSITION_HISTORY_ENABLED`(기본 true)로 끈다. API·Redis 무변경.
+  [설계](../docs/work/issue-129-position-history/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다. 후속 #130·#131 이
+  이 저장 기반을 읽는다.
 
 ## Migration 상태와 소유권
 
@@ -152,6 +158,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 | V21 | `owner_alert_signal_state` 신규 | owner 운영 알림 신호별 장애 상태(additive, 롤백 SQL 없음) |
 | V22 | `owner_market_alert_state`·`account_pnl_latest` 신규 | owner 시장 알림 신호별 상태, 실계정 최신 순수익률(additive, 롤백 SQL 없음) |
 | V23 | `account_pnl_mail.discord_layout` 추가 | owner 알림 Discord embed 칸 배치 보존(additive nullable, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
+| V24 | `account_position_episode`·`account_position_event`·`account_pnl_observation` 신규 | 실계정 포지션 건·사건·매분 관측 이력(additive, 롤백 SQL 없음, 열린 건 1개 unique). API(Flyway) 먼저 배포 |
 
 - migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
 - Batch Flyway는 항상 비활성이다.
@@ -183,6 +190,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 9. #105 자산 알림의 사람 확인 AC8(Discord 배치·세로 여백 육안)·AC9(실 key 값 검산)은 머지 후 배포 환경에서 수행한다(대기).
    체크리스트는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)에 있다.
 10. #107 AC7·AC8(cleanup workflow 실제 삭제·일정 실행)은 머지 뒤 관찰 대기다. AC7 표본은 cache 가 남은 PR 이 닫힐 때만 생긴다.
+11. #129 AC8(owner 로컬 실계정에서 포지션 이력 행 확인)은 대기다. 확인 쿼리는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)의 "포지션 이력" 절에 있다.
 
 ## 운영 정본
 

@@ -8,6 +8,7 @@ import io.premiumspread.domain.accountpnl.AccountAlertSettings
 import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
+import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.job.JobLastSuccessReadPort
@@ -185,6 +186,8 @@ class AccountPnlMonitorConfiguration {
         discordSender: ObjectProvider<OwnerAlertDiscordSender>,
         accountAlerts: AccountAlertSettings,
         latestPnl: ObjectProvider<AccountPnlLatestStore>,
+        @Value("\${account-pnl-monitor.position-history.enabled:true}") positionHistoryEnabled: Boolean,
+        positionHistory: ObjectProvider<AccountPositionHistoryStore>,
     ): AccountPnlMonitorJob = AccountPnlMonitorJob(
         korea,
         foreign,
@@ -200,5 +203,6 @@ class AccountPnlMonitorConfiguration {
         discordSender = discordSender.ifAvailable,
         accountAlerts = accountAlerts,
         latestPnl = latestPnl.ifAvailable,
+        positionHistory = if (positionHistoryEnabled) positionHistory.ifAvailable else null,
     )
 }

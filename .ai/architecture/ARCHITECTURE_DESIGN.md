@@ -121,6 +121,8 @@ outbox 행은 채널(EMAIL·DISCORD)별로 만들고, Discord 는 `infrastructur
 
 같은 회차가 계정 알림 3종(포지션 변경·순수익률 급변·미반영 리마인더)도 Domain 정책으로 판정하고, 상태는 `account_pnl_monitor_state`(V20 열)에 같은 트랜잭션·version 으로 저장한다.
 
+상태 저장에 성공한 회차는 `account_pnl_latest` 기록(`recordLatest`) 다음, 알림 전달 전에 Domain port `AccountPositionHistoryStore` 로 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`, V24)을 한 트랜잭션으로 남긴다. 건·사건 판정은 Domain `PositionEpisodePolicy`, 관측은 `PositionObservation` 이 하며 이력 기록 실패·취소는 회차 결과에 영향이 없다. `account-pnl-monitor.position-history.enabled`(기본 true)로 끈다.
+
 `notification_delivery`를 재사용하지 않는 전용 outbox다. 조회 전용 경계는 `PrivateAccountReadOnlyArchitectureTest`가
 강제하며 운영 절차는 [`docs/runbooks/account-pnl-alert.md`](../../docs/runbooks/account-pnl-alert.md)를 따른다.
 

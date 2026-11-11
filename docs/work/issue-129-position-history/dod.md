@@ -1,0 +1,167 @@
+---
+feature: 실계정 포지션 기록과 매분 관측 이력 저장
+slug: issue-129-position-history
+status: FROZEN
+frozen_at: 2026-11-10
+verdict_commit: 5e2c26d
+source: https://github.com/geonyeop123/premium-spread/issues/129 (상위 #128, 2026-11-10 대화 합의) · design.md
+---
+
+## 범위
+
+**포함**
+
+- 포지션 한 건(어느 한 leg 라도 있으면 열림 → 둘 다 비면 닫힘)의 열림·닫힘 기록 (design D1)
+- 건 안의 사건 `OPENED`·`INCREASED`·`REDUCED`·`ADJUSTED`·`CLOSED` 기록 (D2)
+- 건마다 기준 평단(reference) 유지 (D3)
+- 매분 관측 이력 `HOLDING`·`FLAT` 적재 (D4)
+- 기존 저장 뒤 별도 트랜잭션으로 기록, 실패 격리 (D5)
+- V24 migration 3개 테이블, env `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` (D6·D7)
+- runbook `docs/runbooks/account-pnl-alert.md` 에 이력 절 추가
+
+**제외** *(명시적으로 하지 않는 것 — scope creep 차단선)*
+
+- 확정 손익·체결 조회 (#130), 단계 알림·재진입 알림 (#131)
+- 조회 API·화면·보고서
+- 기존 알림 규칙·문구, `account_pnl_latest`, `account_pnl_monitor_state` 변경
+- 이력 보존 기간·삭제 작업
+- 과거 로그에서 이력 역이행
+
+## 기존 gate 조사
+
+| 찾아본 것 | 있었나 | 쓸 수 있나 |
+|---|---|---|
+| architecture test | 있음 — `./gradlew architectureTest` (모듈 의존·앱의 infrastructure import 금지, `PrivateAccountReadOnlyArchitectureTest`) | 예 — R2. 새 port·adapter 배치가 경계를 지키는지 |
+| lint 규칙 | `lint` task 없음. ktlint·detekt 는 CI `5. ktlint + detekt` | CI 에서만. 로컬 gate 로 쓰지 않는다 |
+| custom gradle task | `:infrastructure:common:verifyMigrations`(빈 DB·이전 버전→최신, 버전 유일성, 파괴 SQL gate), `:infrastructure:common:integrationTest`, `:apps:batch:test`, `:domain:test` | 예 — AC5·R3, 신규 테스트의 실행 수단 |
+| CI job | `.github/workflows/quality-gate.yml` 7개 잡 | 최종 SHA 의 회귀 확인. `6. Dependency + security scan` 은 #82 이후 상태를 PR 에서 확인 |
+| 기존 Job 테스트 | `apps/batch/.../accountpnl/AccountPnlMonitorJob*Test`·`AccountPnlMonitorLatestRecordTest` 8개 | 예 — R1(무수정 통과) |
+
+## 수용기준
+
+| # | 수용기준 (관찰 가능) | 근거 | 출처 | 티어 | 검증 수단 | 검증 명령 | 통과 조건 |
+|---|---|---|---|---|---|---|---|
+| AC1 | 열린 건이 없을 때 leg 가 생기면 `OPENED`, 수량이 늘면 `INCREASED`, 줄면 `REDUCED`, 엇갈리거나 평단만 바뀌면 `ADJUSTED`, 둘 다 비면 `CLOSED` 가 정확히 1건 결정되고, leg 가 같으면 사건이 없다(회차당 최대 1건). 경계: 빗썸만 있음 → 열림, 바이낸스 숏만 있음 → 열림, 바이낸스 롱만 있음 → 닫힘(롱은 0 으로 정규화). 한쪽 leg 선체결 진입은 첫 회차 `OPENED`, 다음 회차 `INCREASED` 다 | design D1·D2 | `요구`(0→0 한 건, 나눠 진입·정리) · `추론`(`ADJUSTED`, 한쪽 leg 열림) · `리뷰`(codex #1·#3: 선체결 순서, 롱 경계) | T1 | `신규테스트` `io.premiumspread.domain.accountpnl.PositionEpisodePolicyTest` | `./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.PositionEpisodePolicyTest --offline --no-daemon` | exit 0 |
+| AC2 | 진입 → 추가 진입 → 부분 정리 → 전량 정리를 순서대로 기록하면 DB 에 건 1행(`CLOSED`, `event_count` 4)·사건 4행(seq 1~4)이 남고, 이어서 재진입하면 건이 2행이 된다. 헤지가 성립한 사건에서만 reference 4열이 갱신된다. 한쪽 leg 선체결 진입(빗썸만 → 양쪽)은 사건 2행(`OPENED`·`INCREASED`)이고 reference 는 둘째 사건에서 처음 채워진다 | 이슈 #129 수용 기준 1·2, design D3 | `요구` | T1 | `신규테스트` `io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPositionHistoryStoreIntegrationTest` | `./gradlew :infrastructure:common:integrationTest --tests io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPositionHistoryStoreIntegrationTest --offline --no-daemon` | exit 0 |
+| AC3 | 같은 leg·같은 `observedAt` 로 `record` 를 두 번 호출하거나, 새 store 인스턴스(재시작)로 이어서 호출해도 건·사건·관측 행 수가 늘지 않는다. 열린 건이 있는 상태에서 두 번째 `OPEN` 행을 직접 넣으면 제약 위반으로 실패한다 | 이슈 #129 수용 기준 3, design D5 | `요구` | T1 | `신규테스트` 위 AC2 와 같은 클래스의 `idempotent*`·`singleOpenEpisode*` 메서드 | AC2 와 같은 명령 | exit 0 |
+| AC4 | 헤지 성립 회차는 `HOLDING` 관측 1행(순수익률·순손익·현재 김프·매수김프·차이·환율 채움), 열린 건이 없고 reference 가 있는 닫힌 건이 있는 회차는 그 건에 매달린 `FLAT` 1행(순수익률·순손익 NULL, 매수김프는 reference 평단과 **그 회차 환율**로 계산)이 남는다. 관측 실패·한쪽 leg 만 있는 회차·기준 건이 없는 회차는 0행이다. `HOLDING` 의 김프 값은 같은 입력의 `AccountPnlBreakdown` 값과 같고, `FLAT` 은 계정 수량이 0 이어도 **기준 수량**으로 청산가를 계산한다. 김프·VWAP 계산은 공유 Domain 함수 하나를 `AccountPnlBreakdown`·`AccountNetPnl`·`FLAT` 계산이 함께 부른다 | design D4 | `요구`(매분 저장, 포지션 없는 기간 포함) · `추론`(적재하지 않는 회차 3종) · `리뷰`(codex #4: 공유 함수, 기준 수량) | T1 | `신규테스트` `io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobPositionHistoryTest` | `./gradlew :apps:batch:test --tests io.premiumspread.application.job.accountpnl.AccountPnlMonitorJobPositionHistoryTest --offline --no-daemon` | exit 0 |
+| AC5 | 이력 store 가 예외를 던져도 그 회차의 `JobResult`·저장된 모니터 상태·outbox 행·전달 호출이 store 가 없을 때와 같다. `save()` 가 false(버전 충돌)거나 저장 전에 취소된 회차는 이력 store 를 호출하지 않는다(그 회차의 관측은 버린다 — design D5 약한 보장) | 이슈 #129 수용 기준 4, design D5 | `요구` | T1 | `신규테스트` AC4 와 같은 클래스의 `historyFailure*`·`skipped*` 메서드 | AC4 와 같은 명령 | exit 0 |
+| AC6 | V24 가 빈 DB 와 V23 → 최신 두 경로에서 적용되고, 버전 유일성·파괴 SQL gate 를 통과한다 | design D7 | `요구`(저장) | T1 | `기존` `:infrastructure:common:verifyMigrations` + `신규테스트` `V24AccountPositionHistoryMigrationIntegrationTest` (변경 요청 2026-11-11 승인) | `./gradlew :infrastructure:common:verifyMigrations --offline --no-daemon` · `./gradlew :infrastructure:common:integrationTest --tests '*V24AccountPositionHistoryMigrationIntegrationTest' --offline --no-daemon` | exit 0 |
+| AC7 | `account-pnl-monitor.position-history.enabled=false` 면 Job 에 이력 store 가 주입되지 않고, 기본값(미설정)이면 주입된다 | design D6 | `추론`(끄는 스위치) | T1 | `신규테스트` `io.premiumspread.config.AccountPnlMonitorPositionHistoryWiringTest` | `./gradlew :apps:batch:test --tests io.premiumspread.config.AccountPnlMonitorPositionHistoryWiringTest --offline --no-daemon` | exit 0 |
+| AC8 | owner 가 로컬 batch 를 실계정으로 돌려 `account_position_episode`·`account_pnl_observation` 에 행이 쌓이는 것을 확인한다(보유 중이면 `OPENED` 1건 + 분당 `HOLDING` 1행, 없으면 건 0행) | 이슈 #129, design §3 | `요구` | T4 | 사람 육안 — runbook 확인 쿼리 | — | owner 가 PR 코멘트로 확인 |
+
+**기준 개수**: 8개
+
+**티어 강등 사유** *(T1이 아닌 항목만)*
+
+- AC8 → T4: 실계정 credential 은 owner 로컬 환경에만 있다. 테스트·CI 에 실제 계정 값을 넣지 않는 것이 저장소 규칙이다(`.ai/rules/testing.md`). 자동 기준(AC1~AC7)이 같은 동작을 fixture 로 잰다.
+
+## 회귀 방어선
+
+| # | 지켜야 할 동작 | 검증 명령 |
+|---|---|---|
+| R1 | 기존 실계정 모니터 Job 테스트가 **수정 없이** 통과한다(생성자 끝 인자 추가만 허용) | `./gradlew :apps:batch:test --tests 'io.premiumspread.application.job.accountpnl.*' --offline --no-daemon` |
+| R2 | 모듈 경계·조회 전용 규칙 | `./gradlew architectureTest --offline --no-daemon` |
+| R3 | 기존 accountpnl Domain 정책·저장소. 김프·VWAP 함수 추출 뒤에도 기존 `AccountPnlBreakdown`·`AccountNetPnl` 테스트가 **수정 없이** 통과한다 | `./gradlew :domain:test --tests 'io.premiumspread.domain.accountpnl.*' --offline --no-daemon` · `./gradlew :infrastructure:common:integrationTest --offline --no-daemon` |
+| R4 | 문서 검사 | `bash docs/check-documentation.sh` |
+
+## 증거 로그
+
+> 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### RED (태스크별 implementer 보고 — Task 1~4 는 2026-11-10 세션, Task 5·재작업은 2026-11-11 세션)
+
+```
+[RED] T1·T2 5997268·63eadb8 (AC1, AC4 Domain 계산)
+  PositionEpisodePolicyTest·PositionObservationTest·HedgeQuoteTest — TODO() 스텁이 던지는 NotImplementedError 로 실패
+  주의: 기대 assertion 실패가 아니라 스텁 실패다. 단언 값으로 실패한 RED 는 아래 e1297e7 한 건뿐이다
+[RED] T2 보정 e1297e7 (AC1 민감 값)
+  PositionEpisodePolicyTest#민감 값은 toString 에 실리지 않는다 — data class 기본 toString 이 legs 를 출력해 단언 실패
+[RED] T3 7f547ed (AC2·AC3·AC4 DB 행)
+  JdbcAccountPositionHistoryStoreIntegrationTest 8건 모두 단언 실패 → 구현 후 8/8 통과
+[RED] T4 24135c0 (AC4 입력·AC5)
+  생성자 인자만 추가한 상태에서 AccountPnlMonitorJobPositionHistoryTest 8건 중 4건 단언 실패
+  (기록 건수 0, 호출 수 0, 인터럽트 플래그 false). 나머지 4건은 "호출 0회" 단언이라 구현 전 통과가 맞다
+[RED] T5 b7574dc (AC7)
+  AccountPnlMonitorPositionHistoryWiringTest 3건 중 2건 실패 — 미설정·true 에서 기대 1, 실제 0 (:63, :68). false 는 0 이 정답
+[RED] 리뷰 재작업 52ccd4b (⑨ C1·C2)
+  C1: PositionObservation.holdingOrNull 미존재로 컴파일 실패(스텁 RED 아님 — 시그니처 부재)
+  C2: recordHistory 의 interrupt 가드를 임시 제거하면 "interrupt 상태면 history 호출 0회" 테스트가 실패함을 확인 후 복원
+```
+
+### GREEN — 전체 검증 @ 5e2c26d (2026-11-11, Docker 28.3.2)
+
+```
+$ ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest \
+    :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon
+BUILD SUCCESSFUL (2m28s, exit 0)
+  (:domain:test·:apps:batch:test 가 UP-TO-DATE 라 cleanTest 후 재실행해 실제 실행 확인)
+  :domain:test 594/0 · :apps:batch:test 330/0 · :apps:api:test 144/0 · :infrastructure:common:test 61/0
+  :infrastructure:batch:test 239/0 · :infrastructure:api:test 31/0 · modules·supports 62/0
+  architectureTest 35/0 · verifyMigrations PASS
+  :infrastructure:common:integrationTest 109/0 · :apps:api:integrationTest 174/0 · :apps:batch:integrationTest 117/0
+  (실행/실패, skip 0)
+신규 클래스: PositionEpisodePolicyTest 16 · PositionObservationTest 9 · HedgeQuoteTest 4
+  · AccountPnlMonitorJobPositionHistoryTest 10 · AccountPnlMonitorPositionHistoryWiringTest 4
+  · JdbcAccountPositionHistoryStoreIntegrationTest 11 · V24AccountPositionHistoryMigrationIntegrationTest 2 — 전부 실패 0
+$ bash docs/check-documentation.sh
+documentation check passed (20 files, 15 required paths)
+```
+
+| AC | 근거 테스트 | 결과 |
+|---|---|---|
+| AC1 | `PositionEpisodePolicyTest` 16건 | PASS |
+| AC2 | `JdbcAccountPositionHistoryStoreIntegrationTest` 진입→추가→부분→전량(건 1·사건 4, 재진입 2건), 선체결 reference | PASS |
+| AC3 | 같은 클래스 `idempotent*` 2건, `새 인스턴스가 직전과 같은 round…`, `singleOpenEpisode*` | PASS |
+| AC4 | 명령 대상 `AccountPnlMonitorJobPositionHistoryTest`(round 입력) + 분할 측정: `PositionObservationTest`(HOLDING 김프=Breakdown, FLAT 기준 수량·회차 환율, 평단 0→null) · `HedgeQuoteTest`(공유 함수) · 통합 `관측 보유 회차는 HOLDING…`·`관측 기준 건이 없거나…`(행) | PASS |
+| AC5 | Job 테스트 `historyFailure*`·`skipped*`·interrupt 가드·호출 순서(latest→history→send), 통합 `트랜잭션 관측 INSERT 가 실패하면…`, 평단 0 계산 실패 시 건·사건 커밋·관측 0행 2건 | PASS |
+| AC6 | `verifyMigrations`(정적 gate) + `V24AccountPositionHistoryMigrationIntegrationTest`(V23→최신, 기존 행 보존·테이블 3·unique 2) + 빈 DB 경로는 `LatestSchemaFixture` 사용 통합 테스트 전체 | PASS — 검증 수단 보강은 변경 요청 참조 |
+| AC7 | `AccountPnlMonitorPositionHistoryWiringTest` 4건(미설정·true 1회, false 0회, store bean 없음 → 기동·Success) | PASS |
+| R1 | `:apps:batch:test` 330/0, 이 브랜치의 테스트 변경은 신규(A) 7파일뿐 | PASS |
+| R2 | `architectureTest` 35/0 | PASS |
+| R3 | `:domain:test` 594/0, `:infrastructure:common:integrationTest` 109/0, 기존 테스트 무수정 | PASS |
+| R4 | `check-documentation.sh` exit 0 | PASS |
+
+경계면(qa-agent): JDBC SQL ↔ V24 DDL 컬럼·타입 MATCH, env 키 3곳(`application.yml:85`·`AccountPnlMonitorConfiguration.kt:189`·runbook:50) MATCH,
+API·Redis·http 샘플 diff 없음. 미확인: runbook 확인 쿼리 3개는 DDL 대조만 했고 MySQL 에서 직접 실행하지 않았다(AC8 owner 확인 때 실행된다).
+
+### 재검증 — CI lint 대응 @ 7d0344a (2026-11-11)
+
+```
+CI run 42931618533 의 5번 잡(ktlint + detekt) 실패 — ktlint 형식 위반(when 분기 빈 줄·인자 줄바꿈·어노테이션 줄바꿈), detekt 는 ktlint 실패로 미실행
+수정: ktlint 1.8.0 -F(변경 파일), PositionEpisodePolicy.decide 분기 추출(detekt ReturnCount 5>4). 체크섬은 ci/quality-tools.lock 과 일치
+$ java -jar ktlint-1.8.0.jar '**/src/**/*.kt' '!**/build/**'   → exit 0
+$ java -jar detekt-cli-1.23.8.jar (quality-gate.yml 과 같은 인자)  → exit 0
+$ ./gradlew :domain:test :infrastructure:common:test :apps:batch:test :infrastructure:common:integrationTest architectureTest --rerun-tasks
+  → exit 0 · domain 594/0 · common 61/0 · batch 330/0 · common integration 109/0
+동작 변경 없음 — 판정(AC1~AC7 PASS, AC8 대기)은 유지한다
+```
+
+## 사람 확인 (T4)
+
+> 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
+
+| # | 확인 사항 | 확인자 | 날짜 | 앵커 |
+|---|---|---|---|---|
+| AC8 | 로컬 실계정 실행에서 건·관측 행 적재 | | | |
+
+## 변경 요청
+
+| 대상 | 변경 전 | 변경 후 | 사유 | 승인 |
+|---|---|---|---|---|
+| AC6 검증 수단·명령 | `기존` `:infrastructure:common:verifyMigrations` 단독 | `기존` `verifyMigrations` + `신규테스트` `V24AccountPositionHistoryMigrationIntegrationTest` (`./gradlew :infrastructure:common:integrationTest --tests '*V24AccountPositionHistoryMigrationIntegrationTest' --offline --no-daemon`) | ⑨ spec-review: `verifyMigrations` 는 정적 검사라 "V23 → 최신 경로에서 적용"을 증명하지 못한다. 기준 문구·통과 조건은 그대로, 수단만 보강 | 승인 2026-11-11 (owner, 세션 내 응답) |
+
+## 최종 판정
+
+```
+DoD VERDICT: issue-129-position-history @ 5e2c26d
+  수용기준 표:     8개  (T1 7 · T2 0 · T3 0 · T4 1)
+  T1/T2 자동:      7개 중 7개 PASS
+  T3 기록 제출:    0개 중 0건
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기 (AC8)
+  변경 요청:       1건 (AC6 검증 수단 보강, 승인됨)
+  => AWAITING_HUMAN
+```
+
+- 남은 항목: AC8 owner 로컬 실계정 확인(runbook "포지션 이력" 확인 쿼리). AC6 변경 요청은 2026-11-11 승인됐다.
+- RED 주의: AC1·AC4 Domain 계산의 첫 RED 는 `TODO()` 스텁 실패였다(증거 로그 참조). 단언 실패 RED 는 T3~T5 와 e1297e7 에 있다.

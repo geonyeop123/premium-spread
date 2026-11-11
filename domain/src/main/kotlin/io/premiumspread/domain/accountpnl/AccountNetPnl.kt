@@ -85,27 +85,8 @@ data class AccountNetPnl(
             )
         }
 
-        /**
-         * 앞 레벨부터 [quantity] 만큼 소화한 수량가중 평균가.
-         * 깊이가 모자라면 [AccountReadFailureCategory.INSUFFICIENT_DEPTH].
-         */
-        private fun vwap(levels: List<PriceLevel>, quantity: BigDecimal, side: String): BigDecimal {
-            var remaining = quantity
-            var notional = BigDecimal.ZERO
-            for (level in levels) {
-                if (remaining.signum() <= 0) break
-                val take = remaining.min(level.quantity)
-                notional = notional.add(level.price.multiply(take))
-                remaining = remaining.subtract(take)
-            }
-            if (remaining.signum() > 0) {
-                throw AccountReadException(
-                    AccountReadFailureCategory.INSUFFICIENT_DEPTH,
-                    "$side depth is insufficient for the position quantity",
-                )
-            }
-            return notional.divide(quantity, MathContext.DECIMAL128)
-        }
+        private fun vwap(levels: List<PriceLevel>, quantity: BigDecimal, side: String): BigDecimal =
+            HedgeQuote.vwap(levels, quantity, side)
     }
 
     private data class Leg(val gross: BigDecimal, val exitFee: BigDecimal, val net: BigDecimal, val netPercent: BigDecimal) {
