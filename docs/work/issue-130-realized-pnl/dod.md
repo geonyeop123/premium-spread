@@ -1,8 +1,8 @@
 ---
 feature: 정리한 포지션의 확정 손익 — 체결 기준
 slug: issue-130-realized-pnl
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-11
 verdict_commit:
 source: https://github.com/geonyeop123/premium-spread/issues/130 (상위 #128, 선행 #129) · design.md
 ---
@@ -53,7 +53,7 @@ source: https://github.com/geonyeop123/premium-spread/issues/130 (상위 #128, �
 | AC7 | 조회 전용 아키텍처 테스트가 새 adapter 2개를 대상에 넣은 상태(`REQUIRED_TARGETS` 추가)로 통과하고, 모듈 경계 테스트도 통과한다 | 이슈 수용 4 (`PrivateAccountReadOnlyArchitectureTest`) | `요구` | T1 | `기존` `./gradlew architectureTest` | `./gradlew architectureTest --offline --no-daemon` | exit 0 |
 | AC8 | V26을 V25 상태의 기존 건 행에 적용하면 새 열이 모두 NULL이고 기존 열 값은 그대로다. 상태 열에는 PENDING·CONFIRMED·MANUAL 밖의 값을 넣을 수 없다 | design D7 | `추론`(이행 안전) | T1 | `신규테스트` `io.premiumspread.infrastructure.common.migration.V26RealizedPnlMigrationIntegrationTest` | `./gradlew :infrastructure:common:integrationTest --tests io.premiumspread.infrastructure.common.migration.V26RealizedPnlMigrationIntegrationTest --offline --no-daemon` | exit 0 |
 | AC9 | 모니터 활성 조건을 만족하면 `AccountRealizedPnlJob` bean이 생긴다. `account-pnl-monitor.realized-pnl.enabled=false`이면 생기지 않는다. 바이낸스 manual 모드에서는 바이낸스 체결 port 없이 생기고, Job이 바이낸스 쪽을 MANUAL로 다룬다 | design D1·D8 | `추론`(배선) | T1 | `신규테스트` `io.premiumspread.config.AccountRealizedPnlWiringTest` | `./gradlew :apps:batch:test --tests io.premiumspread.config.AccountRealizedPnlWiringTest --offline --no-daemon` | exit 0 |
-| AC10 | owner가 실계정 로컬 batch에서 확정된 건 1건(seed 건 2026-10-28~11-08 또는 실제 정리 건)의 `korea_realized_krw`·바이낸스 3값을 빗썸·바이낸스 거래 내역과 대조해 일치를 확인한다 | 이슈 수용 5 | `요구` | T4 | 사람 육안 — runbook 확인 절차 | — | owner가 PR 코멘트로 확인 |
+| AC10 | owner가 실계정 로컬 batch에서 확정된 건 1건(계약 승인 결정: seed 건 2026-10-28~11-08)의 `korea_realized_krw`·바이낸스 3값을 빗썸·바이낸스 거래 내역과 대조해 일치를 확인한다 | 이슈 수용 5 | `요구` | T4 | 사람 육안 — runbook 확인 절차 | — | owner가 PR 코멘트로 확인 |
 
 **기준 개수**: 10개
 

@@ -118,6 +118,7 @@
 | `settlement_attempts` | INT | 시도 횟수 |
 | `settlement_failure` | VARCHAR(32) | 마지막 실패 사유 범주 |
 | `settlement_next_at` | DATETIME(6) | 다음 시도 가능 시각(backoff) |
+| `settlement_target_seq` | INT | 마지막으로 시도한 목표 사건 seq — 이보다 새 정리 사건이 생기면 backoff를 무시한다 (plan 단계 추가) |
 
 - 쓰기는 `UPDATE … WHERE id = ? AND (settled_seq IS NULL OR settled_seq < ?)` 한 문장입니다. 확정이 뒤로 가지 않게 막습니다.
 - 모니터의 건 UPDATE와는 쓰는 열이 겹치지 않습니다. 그래서 행 잠금 외에 조율할 것이 없습니다.
