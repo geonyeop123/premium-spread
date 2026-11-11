@@ -10,7 +10,7 @@
 | `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
 | `apps:web` | Active | Next.js 대시보드, 인증, position UI |
 | `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
-| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V24 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V25 |
 | `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
 | `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
 | `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
@@ -143,6 +143,12 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   `ACCOUNT_PNL_POSITION_HISTORY_ENABLED`(기본 true)로 끈다. API·Redis 무변경.
   [설계](../docs/work/issue-129-position-history/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다. 후속 #130·#131 이
   이 저장 기반을 읽는다.
+- 기준 포지션 대비 단계 알림(#131, 구현·검증 완료, PR 예정): 새 owner 알림 `REFERENCE_STEP`(Discord PNL·SOUND, 메일 없음).
+  기준 포지션 매수김프 대비 현재 김프 차이(실시간 환율)가 단계 폭(`ACCOUNT_PNL_REFERENCE_STEP_PERCENT`, 기본 0.5, 최소 0.01)
+  경계를 넘을 때마다 히스테리시스로 1회 알림하고, 포지션이 없는 기간도 직전 포지션을 기준으로 판정한다. 상태는
+  `account_pnl_monitor_state` nullable 6열(V25, CHECK 포함)에 outbox 와 원자 저장하고, 기준이 없을 때만 Domain port
+  `AccountReferencePositionReadPort` 로 #129 이력에서 부트스트랩한다. API·Redis 무변경.
+  [설계](../docs/work/issue-131-reference-position-step-alert/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다.
 
 ## Migration 상태와 소유권
 
@@ -159,6 +165,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 | V22 | `owner_market_alert_state`·`account_pnl_latest` 신규 | owner 시장 알림 신호별 상태, 실계정 최신 순수익률(additive, 롤백 SQL 없음) |
 | V23 | `account_pnl_mail.discord_layout` 추가 | owner 알림 Discord embed 칸 배치 보존(additive nullable, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
 | V24 | `account_position_episode`·`account_position_event`·`account_pnl_observation` 신규 | 실계정 포지션 건·사건·매분 관측 이력(additive, 롤백 SQL 없음, 열린 건 1개 unique). API(Flyway) 먼저 배포 |
+| V25 | `account_pnl_monitor_state` 에 기준 포지션 단계 상태 nullable 6열 + CHECK | 기준 leg·국면·단계(additive, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
 
 - migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
 - Batch Flyway는 항상 비활성이다.
