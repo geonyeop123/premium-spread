@@ -3,7 +3,7 @@ feature: 정리한 포지션의 확정 손익 — 체결 기준
 slug: issue-130-realized-pnl
 status: FROZEN
 frozen_at: 2026-11-11
-verdict_commit:
+verdict_commit: 1c4c43b
 source: https://github.com/geonyeop123/premium-spread/issues/130 (상위 #128, 선행 #129) · design.md
 ---
 
@@ -81,6 +81,52 @@ source: https://github.com/geonyeop123/premium-spread/issues/130 (상위 #128, �
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
 
+### 기준선 (작성 시점, 구현 전)
+
+```
+[기준선] 2026-11-11 1e81371
+$ ./gradlew architectureTest --offline --no-daemon            → exit 0
+$ git diff --exit-code dev -- (R1 대상 2디렉터리)              → exit 0
+$ ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.RealizedPnlPolicyTest --offline --no-daemon
+  No tests found for given includes — 클래스 없음. RED 아님(진짜 RED 는 구현 태스크에서)
+```
+
+### 구현 RED (태스크별 implementer 보고 — .superpowers 작업 공간, 2026-11-11)
+
+```
+[RED] e245ba7 AC1 — 컴파일되는 stub 정책: RealizedPnlPolicyTest 20개 중 12개 단언 실패
+[RED] 52e7b67 AC3·AC8 — stub store·V26 부재: 20개 중 18개 실패(누락 열 SQL 오류·빈 구현 null/false)
+[RED] 9ce351b AC5 — stub adapter(emptyList): 10개 중 10개 단언 실패
+[RED] b039cd8 AC6 — stub adapter: 13개 중 12개 단언 실패(빈 범위 1건은 stub 로도 통과)
+[RED] 1d1d838 AC4·AC9 — stub Job(항상 Success): 35개 중 31개 단언 실패, 배선 7개 중 2개 실패(체결 adapter bean 없음)
+[RED] 최종 리뷰 수정 c341068~1c4c43b — F1~F5 항목마다 테스트 먼저 실패 확인 (예: F1 회귀 `expected 30 but was 12.5`)
+AC2 는 기존 구현 위 테스트 전용 태스크(29f1bc2) — 리뷰어가 fixture 기대값 79,929·85,053·133,450 을 손계산으로 재검산
+```
+
+### GREEN (전체 검증, 1c4c43b — `--rerun-tasks` 로 76개 task 전부 재실행)
+
+```
+$ ./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon --rerun-tasks
+  BUILD SUCCESSFUL in 3m 28s, 76 actionable tasks: 76 executed, FAILED 0
+  AC1 RealizedPnlPolicyTest 24/24 · AC2 AccountRealizedPnlSettlementIntegrationTest 3/3
+  AC3 JdbcAccountRealizedPnlStoreIntegrationTest 26/26 · AC4 AccountRealizedPnlJobTest 38/38
+  AC5 BithumbFillHistoryPrivateAccountAdapterTest 20/20 · AC6 BinanceFillHistoryPrivateAccountAdapterTest 13/13
+  AC7 architectureTest PASS (PrivateAccountReadOnlyArchitectureTest 5/5, REQUIRED_TARGETS 에 새 adapter 2개)
+  AC8 V26RealizedPnlMigrationIntegrationTest 2/2 · AC9 AccountRealizedPnlWiringTest 7/7
+  R2 architectureTest · R3 integrationTest(AccountPnlFixtureSchemaIntegrationTest 포함) · R5 verifyMigrations PASS
+$ bash docs/check-documentation.sh   @ 1c4c43b → documentation check passed (20 files, 15 required paths)
+$ ktlint 1.8.0 (브랜치 변경 Kotlin 28파일)  @ 1c4c43b → exit 0
+```
+
+### R1 해석 기록
+
+```
+DoD R1 명령 `git diff --exit-code dev -- <2디렉터리>` 는 이 브랜치가 같은 디렉터리에 새 테스트 3개(추가)를 만들어 처음부터 exit 1 이다.
+R1 의 의도(기존 테스트 무수정)는 수정 파일만 보는 명령으로 확인했다:
+$ git diff --diff-filter=M --exit-code dev -- apps/batch/src/test/kotlin/io/premiumspread/application/job/accountpnl infrastructure/batch/src/test/kotlin/io/premiumspread/infrastructure/batch/exchange
+  exit 0 (이름-상태: A AccountRealizedPnlJobTest.kt, A BinanceFillHistoryPrivateAccountAdapterTest.kt, A BithumbFillHistoryPrivateAccountAdapterTest.kt 만)
+```
+
 ## 사람 확인 (T4)
 
 > 판정 주체는 사람뿐이다. AI가 이 표를 채우지 않는다.
@@ -98,11 +144,15 @@ source: https://github.com/geonyeop123/premium-spread/issues/130 (상위 #128, �
 ## 최종 판정
 
 ```
-DoD VERDICT: issue-130-realized-pnl @ <commit SHA>
+DoD VERDICT: issue-130-realized-pnl @ 1c4c43b
   수용기준 표:     10개  (T1 9 · T2 0 · T3 0 · T4 1)
-  T1/T2 자동:      9개 중 <p>개 PASS
+  T1/T2 자동:      9개 중 9개 PASS
   T3 기록 제출:    0개 중 0건
-  T4 사람 확인:    1개 중 <r>건 완료, <1-r>건 대기
-  변경 요청:       <k>건
-  =>
+  T4 사람 확인:    1개 중 0건 완료, 1건 대기
+  변경 요청:       1건 (AC3 lower, owner 승인)
+  => AWAITING_HUMAN
 ```
+
+**사람 확인이 필요한 항목**
+
+- AC10: owner 가 로컬 batch 로 seed 건(2026-10-28~11-08)을 정산시켜 `korea_realized_krw`·바이낸스 3값을 거래소 내역과 대조 — runbook "owner 대조 체크리스트 (#130 AC10)", 결과는 PR 코멘트(금액 미기재)
