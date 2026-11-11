@@ -31,6 +31,7 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
     private val from = Instant.parse("2026-10-19T00:00:00Z")
     private val to = Instant.parse("2026-10-20T00:00:00Z")
     private val orderPages = mutableMapOf<Int, String>()
+    private val waitPages = mutableMapOf<Int, String>()
     private val details = mutableMapOf<String, String>()
     private var listResponse: (() -> MockResponse)? = null
 
@@ -42,7 +43,7 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
                 val url = request.requestUrl!!
                 return when (url.encodedPath) {
                     "/v1/orders" -> listResponse?.invoke()
-                        ?: json(orderPages[url.queryParameter("page")!!.toInt()] ?: "[]")
+                        ?: json(listPagesFor(url.queryParameter("state"))[url.queryParameter("page")!!.toInt()] ?: "[]")
 
                     "/v1/order" -> details[url.queryParameter("uuid")]?.let(::json)
                         ?: MockResponse().setResponseCode(404)
@@ -61,10 +62,10 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
     fun `창을 걸친 주문은 창 안 체결만 돌려주고 GET 으로 주문 목록과 주문 상세 두 경로만 부른다`() {
         orderPages[1] = orders(
             row("o-future", "done", "0.01", "2026-10-20T09:00:01+09:00"),
-            row("o-wait", "wait", "0.002", "2026-10-19T19:00:00+09:00"),
             row("o-zero", "cancel", "0", "2026-10-19T14:00:00+09:00"),
             row("o-span", "done", "0.06", "2026-10-19T08:00:00+09:00"),
         )
+        waitPages[1] = orders(row("o-wait", "wait", "0.002", "2026-10-19T19:00:00+09:00"))
         details["o-wait"] = detail("o-wait", "bid", "5", trade("w1", "0.002", "200000", "2026-10-19T20:00:00+09:00"))
         details["o-span"] = fixture("order-detail-span.json")
 
@@ -79,11 +80,68 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
         assertThat(requests.map { it.method }.toSet()).containsExactly("GET")
         assertThat(requests.map { it.requestUrl!!.encodedPath }.toSet()).containsExactlyInAnyOrder("/v1/orders", "/v1/order")
         assertThat(requests.filter { it.requestUrl!!.encodedPath == "/v1/order" }.map { it.requestUrl!!.queryParameter("uuid") })
-            .containsExactly("o-wait", "o-span")
+            .containsExactlyInAnyOrder("o-wait", "o-span")
         val listQueries = requests.filter { it.requestUrl!!.encodedPath == "/v1/orders" }.map(::decodedQuery)
-        assertThat(listQueries).containsExactly(
-            "market=KRW-BTC&states[]=wait&states[]=done&states[]=cancel&order_by=desc&limit=100&page=1",
+        assertThat(listQueries).containsExactlyInAnyOrder(
+            "market=KRW-BTC&states[]=done&states[]=cancel&order_by=desc&limit=100&page=1",
+            "market=KRW-BTC&state=wait&order_by=desc&limit=100&page=1",
         )
+    }
+
+    @Test
+    fun `대기 주문은 체결 끝난 주문과 한 요청에 섞어 묻지 않는다`() {
+        orderPages[1] = fullPage(last = "2026-10-19T00:00:00+09:00")
+        waitPages[1] = fullPage(last = "2026-10-19T00:00:00+09:00")
+
+        adapter().read(from, to)
+
+        val listQueries = recorded().filter { it.requestUrl!!.encodedPath == "/v1/orders" }.map(::decodedQuery)
+        assertThat(listQueries).hasSize(4)
+        listQueries.forEach { query ->
+            val asksWait = query.contains("=wait")
+            val asksClosed = query.contains("=done") || query.contains("=cancel")
+            assertThat(asksWait && asksClosed).describedAs(query).isFalse()
+            assertThat(asksWait || asksClosed).describedAs(query).isTrue()
+        }
+    }
+
+    @Test
+    fun `두 목록에 같은 주문이 나오면 상세는 한 번만 읽고 체결도 한 번만 돌려준다`() {
+        orderPages[1] = orders(
+            row("o-both", "done", "0.001", "2026-10-19T10:00:00+09:00"),
+            row("o-done", "done", "0.001", "2026-10-19T09:00:00+09:00"),
+        )
+        waitPages[1] = orders(
+            row("o-open", "wait", "0.001", "2026-10-19T11:00:00+09:00"),
+            row("o-both", "wait", "0.001", "2026-10-19T10:00:00+09:00"),
+        )
+        details["o-both"] = detail("o-both", "bid", "1", trade("b", "0.001", "1000", "2026-10-19T12:00:00+09:00"))
+        details["o-done"] = detail("o-done", "bid", "1", trade("d", "0.001", "1000", "2026-10-19T12:30:00+09:00"))
+        details["o-open"] = detail("o-open", "ask", "1", trade("o", "0.001", "1000", "2026-10-19T13:00:00+09:00"))
+
+        val fills = adapter().read(from, to)
+
+        assertThat(fills.map { it.id }).containsExactly("o-both:b", "o-done:d", "o-open:o")
+        val detailUuids = recorded().filter { it.requestUrl!!.encodedPath == "/v1/order" }.map { it.requestUrl!!.queryParameter("uuid") }
+        assertThat(detailUuids).containsExactlyInAnyOrder("o-both", "o-done", "o-open")
+    }
+
+    @Test
+    fun `대기 주문 목록도 20페이지를 넘으면 WindowLimit 으로 실패한다`() {
+        (1..21).forEach { waitPages[it] = fullPage(last = "2026-10-19T00:00:00+09:00") }
+
+        assertThatThrownBy { adapter().read(from, to) }.isInstanceOf(FillHistoryWindowLimitException::class.java)
+        assertThat(listPages(wait = true)).containsExactlyElementsOf(1..20)
+    }
+
+    @Test
+    fun `대기 주문 목록도 마지막 행이 lower 7일 전보다 오래되면 다음 페이지를 읽지 않는다`() {
+        waitPages[1] = fullPage(last = "2026-10-12T08:59:59+09:00")
+        waitPages[2] = fullPage(last = "2026-10-01T00:00:00+09:00")
+
+        adapter().read(from, to)
+
+        assertThat(listPages(wait = true)).containsExactly(1)
     }
 
     @Test
@@ -165,7 +223,7 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
         adapter().read(from, to)
 
         val requests = recorded()
-        assertThat(requests).hasSize(2)
+        assertThat(requests).hasSize(3)
         requests.forEach { request ->
             val decoded = decodedQuery(request)
             assertThat(queryHash(request)).isEqualTo(BithumbJwtSigner.sha512Hex(decoded))
@@ -209,7 +267,7 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
 
     @Test
     fun `wait 주문은 체결 수량 합이 목록의 executed_volume 과 달라도 읽는다`() {
-        orderPages[1] = orders(row("o1", "wait", "0.001", "2026-10-19T10:00:00+09:00"))
+        waitPages[1] = orders(row("o1", "wait", "0.001", "2026-10-19T10:00:00+09:00"))
         details["o1"] = detail(
             "o1",
             "bid",
@@ -265,8 +323,10 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
         assertThat(fills.map { it.id }).containsExactly("o-dup:d")
         val requests = recorded()
         assertThat(requests.filter { it.requestUrl!!.encodedPath == "/v1/order" }).hasSize(1)
-        assertThat(requests.filter { it.requestUrl!!.encodedPath == "/v1/orders" }.map { it.requestUrl!!.queryParameter("page") })
-            .containsExactly("1", "2")
+        assertThat(
+            requests.filter { it.requestUrl!!.encodedPath == "/v1/orders" && it.requestUrl!!.queryParameter("state") == null }
+                .map { it.requestUrl!!.queryParameter("page") },
+        ).containsExactly("1", "2")
     }
 
     private fun adapter() = BithumbFillHistoryPrivateAccountAdapter(
@@ -288,8 +348,10 @@ class BithumbFillHistoryPrivateAccountAdapterTest {
     private fun recorded(): List<RecordedRequest> =
         generateSequence { server.takeRequest(10, TimeUnit.MILLISECONDS) }.toList()
 
-    private fun listPages(): List<Int> = recorded()
-        .filter { it.requestUrl!!.encodedPath == "/v1/orders" }
+    private fun listPagesFor(state: String?): Map<Int, String> = if (state == "wait") waitPages else orderPages
+
+    private fun listPages(wait: Boolean = false): List<Int> = recorded()
+        .filter { it.requestUrl!!.encodedPath == "/v1/orders" && (it.requestUrl!!.queryParameter("state") == "wait") == wait }
         .map { it.requestUrl!!.queryParameter("page")!!.toInt() }
 
     private fun decodedQuery(request: RecordedRequest): String =
