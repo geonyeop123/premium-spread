@@ -29,7 +29,8 @@ class V20OwnerAccountAlertStateMigrationIntegrationTest {
         assertThat(flyway.migrate().success).isTrue()
 
         assertThat(appliedVersions()).containsAll((1..20).map(Int::toString))
-        assertThat(columns()).containsExactly(
+        // 이후 migration(V25 등)이 열을 덧붙이므로 V20 이 만든 앞 21열만 본다
+        assertThat(columns().take(21)).containsExactly(
             "id:tinyint:NO",
             "in_episode:tinyint:NO",
             "position_fingerprint:varchar:YES",

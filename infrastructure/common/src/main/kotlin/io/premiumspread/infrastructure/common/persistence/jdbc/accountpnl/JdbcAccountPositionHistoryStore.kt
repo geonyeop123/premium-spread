@@ -1,6 +1,7 @@
 package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 
 import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
+import io.premiumspread.domain.accountpnl.AccountReferencePositionReadPort
 import io.premiumspread.domain.accountpnl.ForeignLeg
 import io.premiumspread.domain.accountpnl.KoreaLeg
 import io.premiumspread.domain.accountpnl.OpenEpisode
@@ -42,7 +43,7 @@ class JdbcAccountPositionHistoryStore(
     private val jdbcTemplate: JdbcTemplate,
     transactionManager: PlatformTransactionManager,
     private val clock: Clock,
-) : AccountPositionHistoryStore {
+) : AccountPositionHistoryStore, AccountReferencePositionReadPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
     private val transaction = TransactionTemplate(transactionManager)
@@ -59,6 +60,10 @@ class JdbcAccountPositionHistoryStore(
             )
         }
     }
+
+    /** 단일 SELECT 둘이라 트랜잭션·잠금이 필요 없다. 열린 건 reference 우선, 없으면 최근 닫힌 건. */
+    override fun findLatestReference(): ReferenceLegs? =
+        openEpisodeReference() ?: latestReferenceEpisode()?.second
 
     private fun recordInTransaction(round: PositionHistoryRound): RecordedEvent? {
         val open = lockOpenEpisode()
@@ -127,6 +132,16 @@ class JdbcAccountPositionHistoryStore(
                 eventCount = rs.getInt("event_count"),
             )
         }.singleOrNull()
+
+    private fun openEpisodeReference(): ReferenceLegs? =
+        jdbcTemplate.query(
+            """
+            SELECT reference_korea_quantity, reference_korea_price, reference_foreign_quantity, reference_foreign_price
+            FROM account_position_episode
+            WHERE status = 'OPEN' AND reference_korea_quantity IS NOT NULL
+            """.trimIndent(),
+        ) { rs, _ -> checkNotNull(rs.toReference()) }
+            .singleOrNull()
 
     private fun latestReferenceEpisode(): Pair<Long, ReferenceLegs>? =
         jdbcTemplate.query(
