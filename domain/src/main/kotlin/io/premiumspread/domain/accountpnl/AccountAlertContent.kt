@@ -41,6 +41,8 @@ object AccountAlertContent {
         }
 
         is AccountAlert.UnrecoveredReminder -> "account-pnl-reminder-${alert.dayStart.toEpochMilli()}"
+
+        is AccountAlert.ReferenceStep -> ReferenceStepContent.eventKey(alert)
     }
 
     /** basis: 포지션·리마인더 = detectedAt, 급변 = pnl.calculatedAt. author = [AccountPnlAlertContent.AUTHOR]. */
@@ -48,6 +50,7 @@ object AccountAlertContent {
         is AccountAlert.PositionChanged -> positionChanged(alert, zone)
         is AccountAlert.NetPercentSwing -> swing(alert, zone)
         is AccountAlert.UnrecoveredReminder -> reminder(alert, zone)
+        is AccountAlert.ReferenceStep -> ReferenceStepContent.message(alert, zone)
     }
 
     // 포지션 변경

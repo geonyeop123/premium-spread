@@ -91,7 +91,12 @@ data class ReminderState(val lastDayStart: Instant?, val manualFundingUsdt: BigD
     }
 }
 
-data class AccountAlertState(val position: PositionWatchState, val swing: SwingState, val reminder: ReminderState) {
+data class AccountAlertState(
+    val position: PositionWatchState,
+    val swing: SwingState,
+    val reminder: ReminderState,
+    val step: ReferenceStepState = ReferenceStepState.INITIAL,
+) {
     companion object {
         val INITIAL = AccountAlertState(PositionWatchState.INITIAL, SwingState.INITIAL, ReminderState.INITIAL)
     }
@@ -101,6 +106,7 @@ data class AccountAlertSettings(
     val swingThreshold: BigDecimal = BigDecimal("0.50"),
     val reminderHour: Int = 9,
     val manualFundingStaleAfter: Duration = Duration.ofDays(3),
+    val referenceStepWidth: BigDecimal = BigDecimal("0.50"),
 ) {
     init {
         require(swingThreshold.signum() > 0) { "swingThreshold must be positive." }
@@ -108,6 +114,7 @@ data class AccountAlertSettings(
         require(!manualFundingStaleAfter.isNegative && !manualFundingStaleAfter.isZero) {
             "manualFundingStaleAfter must be positive."
         }
+        require(referenceStepWidth.signum() > 0) { "referenceStepWidth must be positive." }
     }
 }
 

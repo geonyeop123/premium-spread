@@ -143,4 +143,14 @@ class AccountAlertStateTest {
         assertThat(state.account).isEqualTo(AccountAlertState.INITIAL)
         assertThat(AccountPnlMonitorState.INITIAL.account).isEqualTo(AccountAlertState.INITIAL)
     }
+
+    @Test
+    fun `referenceStepWidth 기본값은 0_50 이고 양수여야 한다`() {
+        assertThat(AccountAlertSettings().referenceStepWidth).isEqualByComparingTo(bd("0.50"))
+        assertThat(AccountAlertState.INITIAL.step).isEqualTo(ReferenceStepState.INITIAL)
+        assertThatThrownBy { AccountAlertSettings(referenceStepWidth = BigDecimal.ZERO) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { AccountAlertSettings(referenceStepWidth = bd("-0.5")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
 }
