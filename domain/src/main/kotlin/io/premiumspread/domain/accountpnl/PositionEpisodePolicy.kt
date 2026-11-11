@@ -16,11 +16,7 @@ object PositionEpisodePolicy {
         val isOpen = !now.korea.isEmpty || !now.foreign.isFlat
         val hedged = !now.korea.isEmpty && !now.foreign.isFlat
 
-        if (open == null) {
-            if (!isOpen) return EpisodeDecision(null, null, false)
-            val event = PositionEvent(PositionEventType.OPENED, now, hedged, source, at)
-            return EpisodeDecision(event, if (hedged) referenceOf(now) else null, false)
-        }
+        if (open == null) return opening(now, isOpen, hedged, source, at)
 
         if (!isOpen) {
             val event = PositionEvent(PositionEventType.CLOSED, EMPTY_LEGS, false, source, at)
@@ -41,6 +37,19 @@ object PositionEpisodePolicy {
         }
         val event = PositionEvent(type, now, hedged, source, at)
         return EpisodeDecision(event, if (hedged) referenceOf(now) else open.reference, false)
+    }
+
+    /** 열린 건이 없는 회차: 열림 조건이면 `OPENED`, 아니면 사건 없음. */
+    private fun opening(
+        now: PositionLegs,
+        isOpen: Boolean,
+        hedged: Boolean,
+        source: ForeignPerpPositionSource,
+        at: Instant,
+    ): EpisodeDecision {
+        if (!isOpen) return EpisodeDecision(null, null, false)
+        val event = PositionEvent(PositionEventType.OPENED, now, hedged, source, at)
+        return EpisodeDecision(event, if (hedged) referenceOf(now) else null, false)
     }
 
     private fun referenceOf(legs: PositionLegs) = ReferenceLegs(

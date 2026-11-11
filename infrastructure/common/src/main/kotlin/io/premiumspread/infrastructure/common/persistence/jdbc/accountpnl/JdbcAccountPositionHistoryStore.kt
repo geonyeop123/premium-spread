@@ -68,11 +68,13 @@ class JdbcAccountPositionHistoryStore(
 
         val recorded: RecordedEvent? = when {
             event == null -> null
+
             event.type == PositionEventType.OPENED -> {
                 val id = insertEpisode(event, decision.reference, now)
                 insertEvent(id, 1, event, now)
                 RecordedEvent(event.type, id, 1)
             }
+
             else -> {
                 val current = checkNotNull(open) { "non-OPENED event requires an open episode." }
                 val seq = current.eventCount + 1

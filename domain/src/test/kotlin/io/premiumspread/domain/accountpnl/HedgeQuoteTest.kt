@@ -26,12 +26,24 @@ class HedgeQuoteTest {
     fun `AccountPnlBreakdown 이 내는 김프와 같은 입력에서 같은 값이다`() {
         val position = AccountHedgePosition(
             KoreaSpotAccountSnapshot(
-                BigDecimal("0.266"), BigDecimal("113016278"), false, BigDecimal("12000"), BigDecimal("0.0004"),
-                listOf(level("109500000", "1.0")), BigDecimal("109575000"), java.time.Instant.EPOCH,
+                BigDecimal("0.266"),
+                BigDecimal("113016278"),
+                false,
+                BigDecimal("12000"),
+                BigDecimal("0.0004"),
+                listOf(level("109500000", "1.0")),
+                BigDecimal("109575000"),
+                java.time.Instant.EPOCH,
             ),
             ForeignPerpAccountSnapshot(
-                BigDecimal("-0.266"), BigDecimal("83549.4"), BigDecimal("8.9"), BigDecimal("3.2"), BigDecimal("0.0005"),
-                listOf(level("81580", "5.0")), BigDecimal("81577"), java.time.Instant.EPOCH,
+                BigDecimal("-0.266"),
+                BigDecimal("83549.4"),
+                BigDecimal("8.9"),
+                BigDecimal("3.2"),
+                BigDecimal("0.0005"),
+                listOf(level("81580", "5.0")),
+                BigDecimal("81577"),
+                java.time.Instant.EPOCH,
             ),
         )
         val pnl = AccountNetPnl.calculate(position, BigDecimal("1328.5"), java.time.Instant.EPOCH, java.time.Instant.EPOCH)

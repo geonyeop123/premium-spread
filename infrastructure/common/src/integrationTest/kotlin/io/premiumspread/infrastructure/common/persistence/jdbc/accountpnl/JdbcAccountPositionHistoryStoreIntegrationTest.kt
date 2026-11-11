@@ -156,7 +156,9 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
                     foreign_entry_price, position_source, event_count, created_at, updated_at
                 ) VALUES ('OPEN', ?, '1', '1', '-1', '1', 'EXCHANGE_API', 1, ?, ?)
                 """.trimIndent(),
-                Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
             )
         }.isInstanceOf(DuplicateKeyException::class.java)
     }
@@ -277,12 +279,24 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
 
     private fun pnl(koreaQuantity: String, foreignSigned: String, at: Instant): AccountNetPnl {
         val korea = KoreaSpotAccountSnapshot(
-            BigDecimal(koreaQuantity), BigDecimal(KOREA_PRICE), false, BigDecimal("12000"), BigDecimal("0.0004"),
-            KOREA_BIDS, BigDecimal("109575000"), at,
+            BigDecimal(koreaQuantity),
+            BigDecimal(KOREA_PRICE),
+            false,
+            BigDecimal("12000"),
+            BigDecimal("0.0004"),
+            KOREA_BIDS,
+            BigDecimal("109575000"),
+            at,
         )
         val foreign = ForeignPerpAccountSnapshot(
-            BigDecimal(foreignSigned), BigDecimal(FOREIGN_PRICE), BigDecimal("8.9"), BigDecimal("3.2"),
-            BigDecimal("0.0005"), FOREIGN_ASKS, BigDecimal("81577"), at,
+            BigDecimal(foreignSigned),
+            BigDecimal(FOREIGN_PRICE),
+            BigDecimal("8.9"),
+            BigDecimal("3.2"),
+            BigDecimal("0.0005"),
+            FOREIGN_ASKS,
+            BigDecimal("81577"),
+            at,
         )
         return AccountNetPnl.calculate(AccountHedgePosition(korea, foreign), FX, at, at)
     }

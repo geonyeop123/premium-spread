@@ -114,7 +114,8 @@ class AccountPnlMonitorPositionHistoryWiringTest {
         @Bean fun routing(): OwnerAlertRouting = OwnerAlertRouting.EMAIL_ONLY
 
         @ConditionalOnProperty("test.history-store", matchIfMissing = true)
-        @Bean fun history(): CountingHistoryStore = CountingHistoryStore()
+        @Bean
+        fun history(): CountingHistoryStore = CountingHistoryStore()
 
         @Bean
         fun jobExecutor(): JobExecutor {

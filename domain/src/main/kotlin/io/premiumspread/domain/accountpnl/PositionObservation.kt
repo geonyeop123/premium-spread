@@ -95,11 +95,7 @@ data class PositionObservation(
 }
 
 /** 호가·환율 시세. 호가는 실계정 비의존 값이지만 toString 은 타입명만. */
-data class MarketQuote(
-    val koreaBidLevels: List<PriceLevel>,
-    val foreignAskLevels: List<PriceLevel>,
-    val fxRate: BigDecimal,
-) {
+data class MarketQuote(val koreaBidLevels: List<PriceLevel>, val foreignAskLevels: List<PriceLevel>, val fxRate: BigDecimal) {
     override fun toString(): String = "MarketQuote"
 }
 

@@ -15,18 +15,33 @@ class PositionObservationTest {
 
     private fun pnl(): AccountNetPnl {
         val korea = KoreaSpotAccountSnapshot(
-            BigDecimal("0.266"), BigDecimal("113016278"), false, BigDecimal("12000"), BigDecimal("0.0004"),
-            listOf(level("109500000", "1.0")), BigDecimal("109575000"), at,
+            BigDecimal("0.266"),
+            BigDecimal("113016278"),
+            false,
+            BigDecimal("12000"),
+            BigDecimal("0.0004"),
+            listOf(level("109500000", "1.0")),
+            BigDecimal("109575000"),
+            at,
         )
         val foreign = ForeignPerpAccountSnapshot(
-            BigDecimal("-0.266"), BigDecimal("83549.4"), BigDecimal("8.9"), BigDecimal("3.2"), BigDecimal("0.0005"),
-            listOf(level("81580", "5.0")), BigDecimal("81577"), at,
+            BigDecimal("-0.266"),
+            BigDecimal("83549.4"),
+            BigDecimal("8.9"),
+            BigDecimal("3.2"),
+            BigDecimal("0.0005"),
+            listOf(level("81580", "5.0")),
+            BigDecimal("81577"),
+            at,
         )
         return AccountNetPnl.calculate(AccountHedgePosition(korea, foreign), BigDecimal("1328.5"), at, at)
     }
 
     private val reference = ReferenceLegs(
-        BigDecimal("0.3"), BigDecimal("100000000"), BigDecimal("0.3"), BigDecimal("70000"),
+        BigDecimal("0.3"),
+        BigDecimal("100000000"),
+        BigDecimal("0.3"),
+        BigDecimal("70000"),
     )
 
     private fun market(fxRate: BigDecimal = fx, korea: List<PriceLevel> = defaultKorea, foreign: List<PriceLevel> = defaultForeign) =
