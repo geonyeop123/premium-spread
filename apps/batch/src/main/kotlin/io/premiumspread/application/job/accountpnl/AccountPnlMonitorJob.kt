@@ -23,6 +23,7 @@ import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
+import io.premiumspread.domain.accountpnl.AccountReferencePositionReadPort
 import io.premiumspread.domain.accountpnl.AccountRound
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
@@ -36,6 +37,9 @@ import io.premiumspread.domain.accountpnl.PnlAlertPolicy
 import io.premiumspread.domain.accountpnl.PnlObservation
 import io.premiumspread.domain.accountpnl.PositionHistoryRound
 import io.premiumspread.domain.accountpnl.PositionLegs
+import io.premiumspread.domain.accountpnl.ReferenceGap
+import io.premiumspread.domain.accountpnl.ReferenceLegs
+import io.premiumspread.domain.accountpnl.ReferenceStepState
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import io.premiumspread.domain.exchangerate.ExchangeRateSnapshot
 import io.premiumspread.domain.exchangerate.FxIngestionFreshness
@@ -61,7 +65,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 실계정 순손익 모니터링 1회차 (design §3·§4, dod AC5).
  *
  * 순서: stale claim 복구 → 상태 load → 관측(조회 → 신선도 → 포지션 판정 → 순손익 계산) → 수익·중단 정책
- * → 알림 생성·종류별 채널 라우팅 → 상태+outbox 행 버전 조건부 저장 → 전달([OwnerAlertDispatcher]: claim → 채널별 발송·전이).
+ * → 기준 포지션 단계 판정(필요할 때만 직전 기준 부트스트랩 조회) → 알림 생성·종류별 채널 라우팅 → 상태+outbox 행 버전 조건부 저장 → 전달([OwnerAlertDispatcher]: claim → 채널별 발송·전이).
  * 저장 성공 회차만 전달 전에 최신 순수익률 → 포지션 이력(#129)을 별도 트랜잭션으로 기록한다. 둘 다 실패해도 회차 결과·전달은 그대로다.
  *
  * - 관측 단계의 모든 예외는 실패 범주로 정규화해 중단 정책에 넣고 Job 은 성공으로 끝낸다
@@ -97,6 +101,8 @@ class AccountPnlMonitorJob(
     private val latestPnl: AccountPnlLatestStore? = null,
     /** 실계정 포지션 이력 기록(#129). null 이면 기록하지 않는다. */
     private val positionHistory: AccountPositionHistoryStore? = null,
+    /** 기준 포지션 단계 부트스트랩 조회(#131). null 이면 상태에 기준이 없는 FLAT 회차는 판정하지 않는다. */
+    private val referencePositions: AccountReferencePositionReadPort? = null,
 ) {
     init {
         require(!routing.channels.discord || discordSender != null) {
@@ -130,7 +136,8 @@ class AccountPnlMonitorJob(
         val alert = PnlAlertPolicy.decide(loaded.alert, observed.observation, now)
         val outage = MonitoringOutagePolicy.decide(loaded.outage, observed.failure, now)
         val mails = buildMails(observed.observation, alert.send, outage.notice, now)
-        val account = accountAlerts?.let { AccountAlertPolicy.decide(loaded.account, observed.round, it, zone) }
+        val gap = referenceGap(observed.history, loaded.account.step)
+        val account = accountAlerts?.let { AccountAlertPolicy.decide(loaded.account, observed.round, it, zone, gap) }
             ?: AccountAlertDecision(loaded.account, emptyList())
         val rows = mails + account.alerts.flatMap { accountAlertRows(it) }
         val next = AccountPnlMonitorState(alert.next, outage.next, loaded.version, account.next)
@@ -156,6 +163,28 @@ class AccountPnlMonitorJob(
         recordHistory(observed)
 
         return deliver()
+    }
+
+    /** 단계 판정 입력을 만든다. 상태에 기준이 없는 FLAT 회차에서만 부트스트랩 조회를 하고, 조회 실패면 gap 이 null 이라 단계 상태는 그대로다. */
+    private fun referenceGap(history: PositionHistoryRound?, step: ReferenceStepState): ReferenceGap? {
+        history ?: return null
+        val bootstrap = if (ReferenceGap.needsBootstrap(history, step)) readBootstrap() else null
+        return ReferenceGap.of(history, step, bootstrap)
+    }
+
+    private fun readBootstrap(): ReferenceLegs? {
+        val port = referencePositions ?: return null
+        return try {
+            port.findLatestReference()
+        } catch (exception: Exception) {
+            if (exception.isCancellation()) {
+                Thread.currentThread().interrupt()
+            } else {
+                // 수량·가격·메시지는 싣지 않는다
+                log.warn("Account reference position read failed: error={}", exception.javaClass.simpleName)
+            }
+            null
+        }
     }
 
     /** 성공 회차(Computed·NoPosition)의 최신 순수익률을 기록한다. 실패해도 회차 결과·전달은 바뀌지 않는다 (design §6.3). */

@@ -9,6 +9,7 @@ import io.premiumspread.domain.accountpnl.AccountPnlAlertStore
 import io.premiumspread.domain.accountpnl.AccountPnlLatestStore
 import io.premiumspread.domain.accountpnl.AccountPnlMailSender
 import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
+import io.premiumspread.domain.accountpnl.AccountReferencePositionReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.job.JobLastSuccessReadPort
@@ -167,7 +168,9 @@ class AccountPnlMonitorConfiguration {
         @Value("\${account-pnl-monitor.account-alerts.swing-threshold-percent:0.50}") swingThreshold: BigDecimal,
         @Value("\${account-pnl-monitor.account-alerts.reminder-hour:9}") reminderHour: Int,
         @Value("\${account-pnl-monitor.account-alerts.manual-funding-stale-days:3}") manualFundingStaleDays: Long,
-    ): AccountAlertSettings = AccountAlertSettings(swingThreshold, reminderHour, Duration.ofDays(manualFundingStaleDays))
+        @Value("\${account-pnl-monitor.account-alerts.reference-step-percent:0.50}") referenceStepWidth: BigDecimal,
+    ): AccountAlertSettings =
+        AccountAlertSettings(swingThreshold, reminderHour, Duration.ofDays(manualFundingStaleDays), referenceStepWidth)
 
     @Bean
     @Suppress("LongParameterList")
@@ -188,6 +191,7 @@ class AccountPnlMonitorConfiguration {
         latestPnl: ObjectProvider<AccountPnlLatestStore>,
         @Value("\${account-pnl-monitor.position-history.enabled:true}") positionHistoryEnabled: Boolean,
         positionHistory: ObjectProvider<AccountPositionHistoryStore>,
+        referencePositions: ObjectProvider<AccountReferencePositionReadPort>,
     ): AccountPnlMonitorJob = AccountPnlMonitorJob(
         korea,
         foreign,
@@ -204,5 +208,6 @@ class AccountPnlMonitorConfiguration {
         accountAlerts = accountAlerts,
         latestPnl = latestPnl.ifAvailable,
         positionHistory = if (positionHistoryEnabled) positionHistory.ifAvailable else null,
+        referencePositions = if (positionHistoryEnabled) referencePositions.ifAvailable else null,
     )
 }
