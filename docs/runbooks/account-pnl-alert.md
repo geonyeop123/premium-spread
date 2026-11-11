@@ -50,7 +50,7 @@
 | `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` | 아니오 | 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`) 기록 on/off. 기본 `true`, `false` 면 이 기록만 끄고 알림은 그대로다. 아래 "포지션 이력" 절 | `true` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 | `ACCOUNT_PNL_SWING_THRESHOLD_PERCENT` | 아니오 | 순수익률 급변 임계값(%p, 양수). 기본 `0.5`. 0 이하면 기동 실패 | `0.5` |
-| `ACCOUNT_PNL_REFERENCE_STEP_PERCENT` | 아니오 | 기준 포지션 대비 단계 알림의 단계 폭(%p, 양수). 기본 `0.5`. 0 이하면 기동 실패. 아래 "기준 포지션 대비 단계" 절 | `0.5` |
+| `ACCOUNT_PNL_REFERENCE_STEP_PERCENT` | 아니오 | 기준 포지션 대비 단계 알림의 단계 폭(%p, 양수). 기본 `0.5`. 0 이하이거나 0.01 미만이면 기동 실패(김프 정밀도가 0.01%p 이고 더 좁으면 단계 계산이 넘칠 수 있다). 아래 "기준 포지션 대비 단계" 절 | `0.5` |
 | `ACCOUNT_PNL_REMINDER_HOUR` | 아니오 | 미반영 리마인더 판정을 시작하는 시각(`Asia/Seoul` 시, `0`~`23`). 기본 `9`. 범위 밖이면 기동 실패 | `9` |
 | `ACCOUNT_PNL_MANUAL_FUNDING_STALE_DAYS` | 아니오 | 수동 펀딩 값을 "미갱신"으로 보는 일수(양의 정수). 기본 `3`. 0 이하면 기동 실패 | `3` |
 
@@ -128,7 +128,7 @@ owner 알림(실계정 순손익 4종, 계정 알림 3종, 운영 알림 4종)�
 
 - **Discord 를 켜면 정시 보고·복구 메일은 더 이상 오지 않는다(Discord 로만 온다).** 수익·중단은 메일도 계속 온다.
 - 운영 알림 4종은 [#91](https://github.com/geonyeop123/premium-spread/issues/91) 에서 추가됐다. Discord 가 꺼져 있으면 4종 모두 메일로 온다.
-- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 3종(포지션 변경·순수익률 급변·미반영 리마인더)도 Discord 가 꺼져 있으면 메일로 온다.**
+- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 4종(포지션 변경·순수익률 급변·미반영 리마인더·기준 포지션 단계)도 Discord 가 꺼져 있으면 메일로 온다**(`reference-step` 은 기본 메일 없음이지만 Discord 를 쓸 수 없으면 메일로 폴백한다. 종류별 `_EMAIL=false` 로 명시하면 메일도 보내지 않는다).
 - 계정 알림 3종은 [#89](https://github.com/geonyeop123/premium-spread/issues/89) 에서 추가됐다. 시장 알림 4종은 [#90](https://github.com/geonyeop123/premium-spread/issues/90) 에서 이 표에 추가됐다. Discord 가 꺼져 있으면 시장 알림 4종도 모두 메일로 온다([owner-market-alert.md](owner-market-alert.md)).
 - PnL 모니터는 매 회차 최신 순수익률을 `account_pnl_latest`(단일 행, V22)에 남긴다. 일일 요약 전용이며 이 저장이 실패해도 모니터 결과·알림에는 영향이 없다.
 - **무음** = 알림 소리·배지 없이 채널에만 쌓인다. **`@here`** = 채널 멤버 전원에게 알림이 간다. **소리** = 일반 알림.
@@ -343,7 +343,7 @@ BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch�
 기준 포지션의 매수김프 대비 현재 김프 차이(%p)가 단계 폭(`ACCOUNT_PNL_REFERENCE_STEP_PERCENT`, 기본 0.5%p) 경계를 넘을 때마다 1회 알린다(#131). 같은 모니터 회차·outbox·라우팅을 쓰며 새 Job·테이블은 없다.
 경로는 위 "기본 라우팅" 표의 `reference-step`(메일 없음, Discord pnl, 소리)과 종류별 override env 를 따른다. 문구 정본은 [message-spec](../work/alert-message-template/message-spec.md) 이다.
 
-- **판정 값**: 현재 김프 − 기준 매수김프(수수료·펀딩 제외). 정시 급변(순수익률)과 다른 값이다.
+- **판정 값**: 현재 김프 − 기준 매수김프(수수료·펀딩 제외). 순수익률 급변(`NET_PERCENT_SWING`)과 다른 값이다.
 - **실시간 환율을 반영한다(의도된 동작).** 차이는 환율에 비례하므로 가격이 그대로여도 환율 변동만으로 경계를 넘으면 알린다(차이가 0 이면 환율이 움직여도 0 이라 알리지 않는다).
 - **국면**
   - 보유(헤지 성립): 현재 포지션이 기준이다.
@@ -356,6 +356,7 @@ BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch�
   - 수량만 바뀐 부분 정리는 전환이 아니다. 보유 → 무포지션도 전환이 아니라 단계가 이어진다.
 - **히스테리시스**: 마지막으로 알린(또는 초기화한) 경계에서 한 단계 폭 이상 움직여야 다시 알린다. 같은 경계 위아래 진동에는 반복 알리지 않는다.
   한 회차에 여러 경계를 건너뛰면 가장 먼 경계 기준으로 **한 통만** 보낸다. 경계는 포함이다.
+- **단계 폭을 바꾸면** 저장된 단계(level)는 그대로 유지된다. 폭이 다른 값으로 재시작한 직후에는 재계산된 경계(저장 level × 새 폭)에서 알림이 한 번 나갈 수 있다. 의도된 동작이며 이후는 새 폭으로 이어진다. 최소값은 0.01 이다.
 - **초기화 회차(첫 기동·기준 전환)에는 아무것도 보내지 않는다.** 배포 직후 현재 위치에서 곧바로 알림이 터지지 않는다.
 - **부트스트랩**: 저장된 기준이 없고 무포지션 회차이면 포지션 이력(#129)의 열린 건 또는 가장 최근 닫힌 건에서 기준을 한 번 채운다. 이력이 없으면 판정하지 않는다.
   `ACCOUNT_PNL_POSITION_HISTORY_ENABLED=false` 면 이 부트스트랩이 꺼진다(보유 회차를 한 번 거치면 상태에 기준이 저장돼 그 뒤로는 동작한다). 이력 조회가 실패하면 WARN 후 그 회차 판정만 건너뛴다.
@@ -688,7 +689,7 @@ GROUP BY kind;
 - V25 는 **additive** 다 — `account_pnl_monitor_state` 에 NULL 허용 열 6개(기준 leg 4·국면·단계)와 CHECK 하나를 더할 뿐이다. **롤백 SQL 은 없다.**
 - **API(Flyway V25) 먼저 → batch.** 새 batch 가 V25 보다 먼저 뜨면 상태 로드가 `Unknown column` 으로 실패해 회차가 실패로 남는다.
 - 구 binary 로 되돌려도 안전하다 — 구 binary 의 INSERT·UPDATE 는 새 열을 건드리지 않아 그대로 동작하고 새 열 값을 보존한다. 단계 알림만 멈춘다.
-  다시 신 binary 로 올리면 보존된 기준·단계에서 이어 판정한다. 스키마는 되돌리지 않는다.
+  다시 신 binary 로 올리면 보존된 기준·단계에서 이어 판정한다. 이때 단계 상태는 롤백 시점의 값이다 — 롤백 기간 중 같은 가격으로 재진입한 경우에만 오래된 level 때문에 알림이 한 번 나갈 수 있다. 스키마는 되돌리지 않는다.
 
 ## 끄는 법과 데이터 정리
 
