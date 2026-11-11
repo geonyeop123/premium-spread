@@ -7,6 +7,7 @@ import io.premiumspread.domain.accountpnl.ForeignPerpPositionSource
 import io.premiumspread.domain.accountpnl.KoreaLeg
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.SettlementOutcome
+import io.premiumspread.domain.accountpnl.SettlementStatus
 import io.premiumspread.domain.accountpnl.SettlementTarget
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
@@ -22,7 +23,8 @@ import java.time.Instant
  * - [findTarget]: 정리 사건(REDUCED·ADJUSTED·CLOSED)이 `settled_seq` 를 앞선 건 가운데 가장 오래된 건 1개와
  *   그 건의 목표 사건(조건을 만족하는 가장 큰 seq)을 고른다. backoff·90일 한도는 SQL 이 거른다.
  * - [findFxAt]: 사건 시각의 관측 행, 없으면 `[at − tolerance, at]` 의 최신 관측 행.
- * - [record]: `settled_seq` 가 뒤로 가지 않는 조건부 UPDATE 한 문장이다.
+ * - [record]: `settled_seq` 가 뒤로 가지 않는 조건부 UPDATE 한 문장이다. 미확정 기록은 합계·환율(settled_seq 의 값)을
+ *   건드리지 않고, 쪽 값은 그 쪽이 CONFIRMED 일 때만 바꾼다.
  * - 금액·수량은 로그·예외 메시지에 넣지 않는다.
  */
 @Repository
@@ -70,31 +72,37 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
 
     override fun record(outcome: SettlementOutcome, nextAttemptAt: Instant?): Boolean {
         val target = outcome.target
-        val values = arrayOf<Any?>(
-            outcome.koreaStatus.name,
-            outcome.foreignStatus.name,
-            outcome.korea?.realizedKrw,
-            outcome.foreign?.realizedPnlUsdt,
-            outcome.foreign?.commissionUsdt,
-            outcome.foreign?.fundingUsdt,
-            outcome.fx?.rate,
-            outcome.fx?.observedAt?.toSqlTimestamp(),
-            outcome.totalKrw,
-            target.seq,
-        )
         val affected = if (outcome.settled) {
             jdbcTemplate.update(
                 RECORD_SETTLED_SQL,
-                *values,
+                outcome.koreaStatus.name,
+                outcome.foreignStatus.name,
+                outcome.korea?.realizedKrw,
+                outcome.foreign?.realizedPnlUsdt,
+                outcome.foreign?.commissionUsdt,
+                outcome.foreign?.fundingUsdt,
+                outcome.fx?.rate,
+                outcome.fx?.observedAt?.toSqlTimestamp(),
+                outcome.totalKrw,
+                target.seq,
                 target.seq,
                 outcome.decidedAt.toSqlTimestamp(),
                 target.episodeId,
                 target.seq,
             )
         } else {
+            // 합계·환율은 settled_seq 의 것이다 — 미확정 기록은 건드리지 않는다. 쪽 값은 그 쪽이 CONFIRMED 일 때만 바꾼다.
+            val korea = outcome.korea.takeIf { outcome.koreaStatus == SettlementStatus.CONFIRMED }
+            val foreign = outcome.foreign.takeIf { outcome.foreignStatus == SettlementStatus.CONFIRMED }
             jdbcTemplate.update(
                 RECORD_UNSETTLED_SQL,
-                *values,
+                outcome.koreaStatus.name,
+                outcome.foreignStatus.name,
+                korea?.realizedKrw,
+                foreign?.realizedPnlUsdt,
+                foreign?.commissionUsdt,
+                foreign?.fundingUsdt,
+                target.seq,
                 nextAttemptAt?.toSqlTimestamp(),
                 outcome.failure?.name,
                 target.episodeId,
@@ -171,9 +179,13 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
             WHERE episode_id = ? AND seq = ?
         """.trimIndent()
 
-        /** 공통 10개: 상태 2, 값 4, fx 2, total, settlement_target_seq. */
-        const val RECORD_VALUES = """
-                korea_settlement = ?,
+        const val MONOTONIC_WHERE = """
+            WHERE id = ?
+              AND (settled_seq IS NULL OR settled_seq < ?)"""
+
+        val RECORD_SETTLED_SQL = """
+            UPDATE account_position_episode
+            SET korea_settlement = ?,
                 foreign_settlement = ?,
                 korea_realized_krw = ?,
                 foreign_realized_pnl_usdt = ?,
@@ -182,15 +194,7 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
                 fx_rate = ?,
                 fx_observed_at = ?,
                 total_realized_krw = ?,
-                settlement_target_seq = ?,"""
-
-        const val MONOTONIC_WHERE = """
-            WHERE id = ?
-              AND (settled_seq IS NULL OR settled_seq < ?)"""
-
-        val RECORD_SETTLED_SQL = """
-            UPDATE account_position_episode
-            SET $RECORD_VALUES
+                settlement_target_seq = ?,
                 settled_seq = ?,
                 settled_at = ?,
                 settlement_attempts = NULL,
@@ -201,7 +205,13 @@ class JdbcAccountRealizedPnlStore(private val jdbcTemplate: JdbcTemplate) : Acco
 
         val RECORD_UNSETTLED_SQL = """
             UPDATE account_position_episode
-            SET $RECORD_VALUES
+            SET korea_settlement = ?,
+                foreign_settlement = ?,
+                korea_realized_krw = COALESCE(?, korea_realized_krw),
+                foreign_realized_pnl_usdt = COALESCE(?, foreign_realized_pnl_usdt),
+                foreign_commission_usdt = COALESCE(?, foreign_commission_usdt),
+                foreign_funding_usdt = COALESCE(?, foreign_funding_usdt),
+                settlement_target_seq = ?,
                 settlement_attempts = COALESCE(settlement_attempts, 0) + 1,
                 settlement_next_at = ?,
                 settlement_failure = ?

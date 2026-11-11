@@ -266,6 +266,38 @@ class JdbcAccountRealizedPnlStoreIntegrationTest {
     }
 
     @Test
+    fun `미확정 기록은 확정된 합계와 환율을 지우지 않고 확정된 쪽 값만 바꾼다`() {
+        val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
+        assertThat(store.record(confirmed(target(episode, 3)), null)).isTrue()
+        val laterForeign = ForeignRealized(BigDecimal("20"), BigDecimal("2"), BigDecimal("-1"))
+        val pending = confirmed(target(episode, 5)).copy(
+            koreaStatus = SettlementStatus.PENDING,
+            korea = null,
+            foreign = laterForeign,
+            fx = null,
+            totalKrw = null,
+            failure = SettlementFailure.KOREA_READ,
+        )
+
+        assertThat(store.record(pending, NOW.plusSeconds(300))).isTrue()
+
+        val row = episodeRow(episode)
+        assertThat(row["settled_seq"]).isEqualTo(3)
+        assertThat(row["korea_settlement"]).isEqualTo("PENDING")
+        assertThat(row["foreign_settlement"]).isEqualTo("CONFIRMED")
+        assertThat(row["korea_realized_krw"] as BigDecimal).isEqualByComparingTo("15000.1234")
+        assertThat(row["total_realized_krw"] as BigDecimal).isEqualByComparingTo("29547")
+        assertThat(row["fx_rate"] as BigDecimal).isEqualByComparingTo("1385.5")
+        assertThat(instant(row["fx_observed_at"])).isEqualTo(minutesAgo(20))
+        assertThat(row["foreign_realized_pnl_usdt"] as BigDecimal).isEqualByComparingTo("20")
+        assertThat(row["foreign_commission_usdt"] as BigDecimal).isEqualByComparingTo("2")
+        assertThat(row["foreign_funding_usdt"] as BigDecimal).isEqualByComparingTo("-1")
+        assertThat(row["settlement_failure"]).isEqualTo("KOREA_READ")
+        assertThat(row["settlement_target_seq"]).isEqualTo(5)
+        assertThat(instant(row["settlement_next_at"])).isEqualTo(NOW.plusSeconds(300))
+    }
+
+    @Test
     fun `같은 건에 더 작은 seq 로 기록하면 false 이고 행을 바꾸지 않는다`() {
         val episode = closedEpisode(opened = minutesAgo(30), closed = minutesAgo(20))
         assertThat(store.record(confirmed(target(episode, 3)), null)).isTrue()
