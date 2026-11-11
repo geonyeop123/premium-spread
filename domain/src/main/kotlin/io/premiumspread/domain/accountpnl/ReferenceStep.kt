@@ -38,22 +38,29 @@ data class ReferenceGap(val phase: ReferencePhase, val reference: ReferenceLegs,
         /** design D2 표. 판정 안 하는 회차는 null. [bootstrap] 은 state.reference 가 없을 때만 쓴다. */
         fun of(round: PositionHistoryRound, state: ReferenceStepState, bootstrap: ReferenceLegs?): ReferenceGap? {
             val pnl = round.pnl
-            if (pnl != null) {
-                val position = pnl.position
-                val reference = ReferenceLegs(
-                    koreaQuantity = position.korea.quantity,
-                    koreaAveragePrice = position.korea.averageBuyPrice,
-                    foreignQuantity = position.foreign.signedQuantity.abs(),
-                    foreignEntryPrice = position.foreign.entryPrice,
-                )
-                val observation = PositionObservation.holdingOrNull(pnl) ?: return null
-                return ReferenceGap(ReferencePhase.HOLDING, reference, observation)
+            return when {
+                pnl != null -> holding(pnl)
+                isFlat(round) -> (state.reference ?: bootstrap)?.let { flat(round, it) }
+                else -> null
             }
-            if (!isFlat(round)) return null
-            val reference = state.reference ?: bootstrap ?: return null
-            val observation = PositionObservation.flat(reference, round.market, round.observedAt) ?: return null
-            return ReferenceGap(ReferencePhase.FLAT, reference, observation)
         }
+
+        /** 헤지 성립 회차: 기준 = 현재 leg(바이낸스 수량은 절댓값). 관측 계산 불가면 null. */
+        private fun holding(pnl: AccountNetPnl): ReferenceGap? {
+            val position = pnl.position
+            val reference = ReferenceLegs(
+                koreaQuantity = position.korea.quantity,
+                koreaAveragePrice = position.korea.averageBuyPrice,
+                foreignQuantity = position.foreign.signedQuantity.abs(),
+                foreignEntryPrice = position.foreign.entryPrice,
+            )
+            return PositionObservation.holdingOrNull(pnl)?.let { ReferenceGap(ReferencePhase.HOLDING, reference, it) }
+        }
+
+        /** 완전 flat 회차: 기준 수량으로 현재 호가 VWAP. 호가 깊이 부족·계산 불가면 null. */
+        private fun flat(round: PositionHistoryRound, reference: ReferenceLegs): ReferenceGap? =
+            PositionObservation.flat(reference, round.market, round.observedAt)
+                ?.let { ReferenceGap(ReferencePhase.FLAT, reference, it) }
 
         private fun isFlat(round: PositionHistoryRound): Boolean {
             val legs = PositionEpisodePolicy.normalize(round.legs)

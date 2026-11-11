@@ -392,20 +392,6 @@ class JdbcAccountPnlAlertStore(
         )
     }
 
-    private fun ResultSet.toReferenceStep(): ReferenceStepState {
-        val koreaQuantity = getString("reference_korea_quantity") ?: return ReferenceStepState.INITIAL
-        return ReferenceStepState(
-            reference = ReferenceLegs(
-                koreaQuantity = BigDecimal(koreaQuantity),
-                koreaAveragePrice = BigDecimal(getString("reference_korea_price")),
-                foreignQuantity = BigDecimal(getString("reference_foreign_quantity")),
-                foreignEntryPrice = BigDecimal(getString("reference_foreign_price")),
-            ),
-            phase = ReferencePhase.valueOf(getString("reference_step_phase")),
-            level = getInt("reference_step_level"),
-        )
-    }
-
     private fun ResultSet.toPendingMail(): PendingMail {
         val channel = OwnerAlertChannel.valueOf(getString("channel"))
         val discord = channel == OwnerAlertChannel.DISCORD
@@ -484,4 +470,19 @@ class JdbcAccountPnlAlertStore(
         const val MAX_DECIMAL_TEXT_LENGTH = 64 // VARCHAR(64)
         val MAX_BASELINE_PERCENT_EXCLUSIVE: BigDecimal = BigDecimal.TEN.pow(10) // DECIMAL(12,2)
     }
+}
+
+/** V25 단계 상태 6열 → [ReferenceStepState]. 열은 DB CHECK 로 전부 NULL 이거나 전부 값이 있으므로 첫 열만 보고 INITIAL 을 판단한다. */
+private fun ResultSet.toReferenceStep(): ReferenceStepState {
+    val koreaQuantity = getString("reference_korea_quantity") ?: return ReferenceStepState.INITIAL
+    return ReferenceStepState(
+        reference = ReferenceLegs(
+            koreaQuantity = BigDecimal(koreaQuantity),
+            koreaAveragePrice = BigDecimal(getString("reference_korea_price")),
+            foreignQuantity = BigDecimal(getString("reference_foreign_quantity")),
+            foreignEntryPrice = BigDecimal(getString("reference_foreign_price")),
+        ),
+        phase = ReferencePhase.valueOf(getString("reference_step_phase")),
+        level = getInt("reference_step_level"),
+    )
 }
