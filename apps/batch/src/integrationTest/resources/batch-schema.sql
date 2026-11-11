@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS premium_day (
     INDEX idx_day_at (day_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- V18 + V20 (owner 계정 알림 상태)과 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.
+-- V18 + V20 (owner 계정 알림 상태) + V25 (기준 포지션 단계 상태)와 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.
 -- 실계정 순손익 알림의 단일 상태 행. 두 실행이 겹쳐도 늦은 쪽이 덮어쓰지 못하도록 version 조건부로 갱신한다.
 CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
     id                        TINYINT       NOT NULL PRIMARY KEY,
@@ -205,6 +205,12 @@ CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
     reminder_day_start        DATETIME(6)   NULL,
     manual_funding_usdt       VARCHAR(64)   NULL,
     manual_funding_changed_at DATETIME(6)   NULL,
+    reference_korea_quantity   VARCHAR(64)  NULL,
+    reference_korea_price      VARCHAR(64)  NULL,
+    reference_foreign_quantity VARCHAR(64)  NULL,
+    reference_foreign_price    VARCHAR(64)  NULL,
+    reference_step_phase       VARCHAR(8)   NULL,
+    reference_step_level       INT          NULL,
     CONSTRAINT ck_account_pnl_monitor_state_singleton CHECK (id = 1),
     CONSTRAINT ck_account_pnl_monitor_state_legs CHECK (
         (korea_quantity IS NULL AND korea_average_buy_price IS NULL
@@ -218,6 +224,14 @@ CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
     ),
     CONSTRAINT ck_account_pnl_monitor_state_funding CHECK (
         manual_funding_changed_at IS NOT NULL OR manual_funding_usdt IS NULL
+    ),
+    CONSTRAINT ck_account_pnl_monitor_state_reference_step CHECK (
+        (reference_korea_quantity IS NULL AND reference_korea_price IS NULL
+            AND reference_foreign_quantity IS NULL AND reference_foreign_price IS NULL
+            AND reference_step_phase IS NULL AND reference_step_level IS NULL)
+        OR (reference_korea_quantity IS NOT NULL AND reference_korea_price IS NOT NULL
+            AND reference_foreign_quantity IS NOT NULL AND reference_foreign_price IS NOT NULL
+            AND reference_step_phase IN ('HOLDING', 'FLAT') AND reference_step_level IS NOT NULL)
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
