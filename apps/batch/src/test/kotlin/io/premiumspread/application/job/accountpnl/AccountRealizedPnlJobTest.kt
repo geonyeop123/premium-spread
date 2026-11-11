@@ -228,6 +228,28 @@ class AccountRealizedPnlJobTest {
     }
 
     @Test
+    fun `감싸진 조회 한도 초과도 cause 체인에서 찾아 WINDOW_LIMIT 이다`() {
+        korea.failure = IllegalStateException("outer", RuntimeException("mid", FillHistoryWindowLimitException("limit")))
+        foreign.fundingFailure = AccountReadException(
+            AccountReadFailureCategory.UNEXPECTED,
+            "wrapped",
+            FillHistoryWindowLimitException("limit"),
+        )
+
+        job().run()
+
+        val outcome = store.records.single().first
+        assertThat(outcome.koreaStatus).isEqualTo(SettlementStatus.PENDING)
+        assertThat(outcome.foreignStatus).isEqualTo(SettlementStatus.PENDING)
+        assertThat(outcome.failure).isEqualTo(SettlementFailure.WINDOW_LIMIT)
+
+        // 바이낸스 쪽만 감싸진 한도 초과면 바이낸스 사유도 WINDOW_LIMIT 이다
+        korea.failure = null
+        job().run()
+        assertThat(store.records.last().first.failure).isEqualTo(SettlementFailure.WINDOW_LIMIT)
+    }
+
+    @Test
     fun `실패 사유가 둘 이상이면 빗썸 → 바이낸스 순으로 먼저 난 것을 남긴다`() {
         korea.failure = AccountReadException(AccountReadFailureCategory.NETWORK, "down")
         foreign.fills = FOREIGN_FILLS.dropLast(1)

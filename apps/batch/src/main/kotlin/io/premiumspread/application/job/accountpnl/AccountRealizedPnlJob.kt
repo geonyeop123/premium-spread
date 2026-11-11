@@ -117,13 +117,15 @@ class AccountRealizedPnlJob(
         }
     }
 
-    /** null 결과는 수량 불일치, [FillHistoryWindowLimitException] 은 한도 초과, 그 밖의 예외는 조회 실패다. */
+    /** null 결과는 수량 불일치, cause 체인에 [FillHistoryWindowLimitException] 이 있으면 한도 초과, 그 밖의 예외는 조회 실패다. */
     private fun <T : Any> read(side: String, failures: SideFailures, compute: () -> T?): Side<T> = try {
         compute()?.let { Side(SettlementStatus.CONFIRMED, it, null) }
             ?: Side(SettlementStatus.PENDING, null, failures.quantity)
     } catch (exception: Exception) {
         rethrowIfCancelled(exception)
-        val failure = if (exception is FillHistoryWindowLimitException) SettlementFailure.WINDOW_LIMIT else failures.read
+        // adapter·클라이언트가 감싸 던져도 한도 초과로 본다
+        val windowLimit = exception.causeChain().any { it is FillHistoryWindowLimitException }
+        val failure = if (windowLimit) SettlementFailure.WINDOW_LIMIT else failures.read
         log.warn("Account realized PnL {} read failed: failure={}, error={}", side, failure, exception.javaClass.simpleName)
         Side(SettlementStatus.PENDING, null, failure)
     }
@@ -217,9 +219,11 @@ class AccountRealizedPnlJob(
     }
 }
 
+/** 자기 자신부터 cause 를 따라간다. 순환·과도한 깊이는 [MAX_CAUSE_DEPTH] 에서 자른다. */
+private fun Throwable.causeChain(): Sequence<Throwable> =
+    generateSequence(this) { current -> current.cause?.takeUnless { it === current } }.take(MAX_CAUSE_DEPTH)
+
 private fun Throwable.isCancellation(): Boolean =
-    generateSequence(this) { current -> current.cause?.takeUnless { it === current } }
-        .take(MAX_CAUSE_DEPTH)
-        .any { it is InterruptedException || it is CancellationException }
+    causeChain().any { it is InterruptedException || it is CancellationException }
 
 private const val MAX_CAUSE_DEPTH = 16
