@@ -17,7 +17,7 @@
 **비목표**
 - 확정 손익 알림 발송, 조회 API·화면. 값은 DB에서 확인한다.
 - 모니터 순손익(추정치) 계산식과 기존 알림 변경.
-- 6개월 넘게 지난 건의 바이낸스 체결 복원. 바이낸스는 userTrades를 최근 6개월까지만 제공합니다.
+- 90일 넘게 지난 건의 복원. 바이낸스는 userTrades를 6개월, 펀딩(income)을 3개월까지만 제공합니다.
 
 **반목표** (기술적으로 돌아가도 실패로 보는 것)
 - 같은 체결이 두 번 합산된다. 재시도, 재시작, 겹치는 조회 창 모두 포함한다.
@@ -52,6 +52,8 @@
 - **lower:** 바로 앞 건의 `closed_at`입니다. 앞 건이 없으면 `opened_at − first-episode-lookback`(기본 1시간)입니다.
   - 앞 건이 닫힌 뒤 이 건이 열리기 전까지의 체결은 이 건을 연 체결입니다.
 
+**귀속 전제:** #129 정의상 포지션 건은 계좌의 빗썸 KRW-BTC 보유와 바이낸스 BTCUSDT 포지션 **전체**입니다. 그래서 창 안의 이 두 상품 체결은 모두 이 건에 속합니다. 같은 계좌에서 전략과 무관한 BTC 거래를 따로 하지 않는다는 것이 운영 전제이고, runbook에 명시합니다. 체결이 1분 안에 0→x→0으로 왕복해 모니터가 보지 못한 경우에도 그 손익은 계좌 현금 흐름이므로 이 건에 넣습니다.
+
 **수량 대조가 확정 조건입니다.** 창 안 체결의 순수량이 목표 사건 leg와 같아야 그 쪽(빗썸·바이낸스)을 확정합니다.
 - 빗썸: `Σ매수 수량 − Σ매도 수량`과 사건 `korea_quantity`의 차이가 `KOREA_DUST`(0.0001) 미만이어야 합니다. 사건 leg는 dust 미만을 0으로 정규화하기 때문입니다.
 - 바이낸스: `Σ부호 수량`이 사건 `foreign_signed_quantity`와 정확히 같아야 합니다(숏은 음수).
@@ -65,7 +67,7 @@
 - 한 번의 조회 안에서 겹치는 창이나 페이지로 같은 체결이 다시 오면 체결 id로 한 번만 셉니다.
 - 체결을 행 단위로 저장하는 테이블은 두지 않습니다(D7). 중복 방지의 근거는 "증분이 없다"는 구조입니다.
 
-**빗썸 (KRW)** — 주문 단위로 셉니다.
+**빗썸 (KRW)** — 체결(trade) 단위로 셉니다.
 - 체결 시각 순으로 이동평균 원가를 씁니다. 원가에는 매수 수수료가 포함됩니다.
 - 매수: 원가 합 += 체결금액 + 수수료, 보유 수량 += 수량.
 - 매도: 실현 += (체결금액 − 수수료) − 수량 × (원가 합 / 보유 수량). 원가 합과 보유 수량은 그 비율만큼 줄입니다.
@@ -74,7 +76,7 @@
 
 **바이낸스 (USDT)**
 - 실현 손익 = Σ `realizedPnl`
-- 수수료 = Σ `commission`. BNB 수수료는 정산 시점 `BNBUSDT` 시세로 환산합니다(기존 adapter 규칙과 같음).
+- 수수료 = Σ |`commission`|. 거래소 응답의 부호와 무관하게 비용으로 보고 절댓값을 씁니다. BNB 수수료는 정산 시점 `BNBUSDT` 시세로 환산합니다(기존 adapter 규칙과 같음).
 - 펀딩 = 창 안 `FUNDING_FEE` income 합
 - 순 = 실현 손익 − 수수료 + 펀딩
 
@@ -97,7 +99,7 @@
 - 한쪽만 확정되면 확정된 쪽 값은 저장하고 `settled_seq`는 올리지 않습니다. 다음 회차에 다시 시도하며, 두 쪽 모두 다시 계산합니다.
 - 실패 사유는 `settlement_failure`에 범주 하나로 남깁니다: `KOREA_READ`·`FOREIGN_READ`·`KOREA_QUANTITY`·`FOREIGN_QUANTITY`·`FX`·`WINDOW_LIMIT`. 시도 횟수는 `settlement_attempts`에 남습니다. 금액·수량은 로그에 남기지 않습니다.
 - 포기 규칙은 없습니다. 같은 사건이 계속 맞지 않으면 다음 정리 사건이 생길 때까지 5분마다 다시 봅니다.
-  - 6개월이 지난 건은 대상에서 뺍니다. 바이낸스 조회 한계 때문입니다.
+  - `lower`가 90일보다 오래된 건은 대상에서 뺍니다. 바이낸스 펀딩 이력이 3개월만 보관되기 때문입니다. 그런 건의 상태 열은 NULL 또는 PENDING으로 남고, runbook에 그 뜻을 적습니다.
 
 ### D7. 저장 — V26, 건 테이블에 nullable 열 추가
 
@@ -130,19 +132,20 @@
 
 **`BithumbFillHistoryPrivateAccountAdapter`** : `KoreaSpotFillReadPort`
 - `/v1/orders`(state done·cancel, 최신순, 100건 페이지)를 읽습니다. 주문 생성 시각이 `lower − 7일`보다 오래되면 멈추고, 최대 20페이지입니다.
-- 체결 수량이 있는 주문마다 `/v1/order?uuid=` 상세의 `trades[]`로 체결금액 합과 마지막 체결 시각을 구합니다.
-- 체결 시각이 창 안인 주문만 체결로 돌려줍니다. 수수료는 주문의 `paid_fee`입니다.
+  - 7일보다 오래 걸려 있던 지정가 주문이 창 안에서 체결되면 그 체결은 빠집니다. 그러면 순수량이 맞지 않아 PENDING으로 남습니다. 틀린 값으로 확정하지는 않습니다.
+- 체결 수량이 있는 주문마다 `/v1/order?uuid=` 상세의 `trades[]`를 읽습니다. **체결 하나하나**의 `created_at`이 창 안인 것만 돌려줍니다(id = `주문 uuid:체결 uuid`).
+- 수수료는 주문의 `paid_fee`를 그 주문 체결들의 `funds` 비율로 나눕니다. 나머지는 마지막 체결에 넣어, 주문 전체 체결 수수료의 합이 `paid_fee`와 같게 합니다.
 - 페이지 한도에 걸리면 `WINDOW_LIMIT`로 실패시킵니다.
 
 **`BinanceFillHistoryPrivateAccountAdapter`** : `ForeignPerpFillReadPort`
 - `/fapi/v1/userTrades`를 `lower`부터 7일 창으로 **앞으로** 걸어 `upper`까지 읽습니다. 창 하나가 1000건이면 `WINDOW_LIMIT`로 실패시킵니다.
-- `/fapi/v1/income?incomeType=FUNDING_FEE`는 `startTime`/`endTime`, 1000건 페이지로 읽습니다.
+- `/fapi/v1/income?incomeType=FUNDING_FEE&symbol=BTCUSDT`는 `startTime`/`endTime`, 1000건 페이지로 읽습니다. 응답 행의 `symbol`이 BTCUSDT가 아니면 버리고, `asset`이 USDT가 아니면 실패시킵니다.
 - 체결 id와 `tranId`로 중복을 없앱니다. BNB 수수료 환산은 `/fapi/v1/ticker/price` 공개 시세입니다.
 - 수동 모드에서는 이 adapter를 만들지 않고, 정산은 바이낸스 쪽을 `MANUAL`로 둡니다.
 
 ### D9. 도메인
 
-- **값 타입:** `KoreaSpotFill`(id, side, quantity, fundsKrw, feeKrw, filledAt), `ForeignPerpFill`(id, signedQuantity, realizedPnlUsdt, commissionUsdt, filledAt), `ForeignFunding`(id, incomeUsdt, at). toString은 타입명과 시각만 냅니다(실계정 값 금지).
+- **값 타입:** `KoreaSpotFill`(id(문자열), side, quantity, fundsKrw, feeKrw, filledAt), `ForeignPerpFill`(id, signedQuantity, realizedPnlUsdt, commissionUsdt, filledAt), `ForeignFunding`(id, incomeUsdt, at). toString은 타입명과 시각만 냅니다(실계정 값 금지).
 - **`RealizedPnlPolicy`(순수 함수):**
   - `korea(fills, expectedQuantity): KoreaRealized?`
   - `foreign(fills, funding, expectedSignedQuantity): ForeignRealized?`
