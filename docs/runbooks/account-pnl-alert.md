@@ -88,7 +88,7 @@
 
 ## owner 알림 채널 (메일·Discord)
 
-owner 알림(실계정 순손익 4종, 계정 알림 3종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
+owner 알림(실계정 순손익 4종, 계정 알림 4종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
 
 **채널 bean 은 PnL 모니터와 독립이다(#91).** 메일·Discord sender 는 batch scheduling 이 켜져 있고 채널 구성이 ready 이면 PnL 모니터를 꺼도 뜬다(운영 알림용).
 독립 전달 Job(60초 주기, `OwnerAlertDeliveryJob`)이 PnL 모니터 회차와 별개로 같은 outbox(`account_pnl_mail`)를 비운다. PnL 모니터가 켜져 있으면 회차 안 디스패처와 전달 Job 이
@@ -694,7 +694,7 @@ GROUP BY kind;
 ## 끄는 법과 데이터 정리
 
 - 끄기: `ACCOUNT_PNL_MONITOR_ENABLED=false`(또는 미설정) 후 batch 재시작. `BATCH_SCHEDULING_ENABLED=false` 면 전체 스케줄러가 꺼진다.
-- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 7종(계정 알림 3종 포함)은 모두 메일로 온다.
+- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 8종(계정 알림 4종 포함)은 모두 메일로 온다.
 - 모드 전환(`api` ↔ `manual`)은 env 수정 + batch 재시작이다. 수량·진입가가 같으면 에피소드가 유지된다.
 - 상태·outbox 테이블:
   - `account_pnl_monitor_state` — 단일 행(`id=1`). 에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각 + 기준 포지션 단계 상태(기준 leg·국면·단계, V25).
