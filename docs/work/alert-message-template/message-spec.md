@@ -376,6 +376,7 @@ BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch�
 ### 기준 포지션 단계 알림(직전 진입 수준 도달)
 
 무포지션 국면에서 경계가 0(level 0)이면 제목만 `직전 진입 수준 도달`(Discord `📉 직전 진입 수준 도달`, 메일 `[실계정] 직전 진입 수준 도달`)이다. 칸·footer·본문은 위와 같다. 보유 중 level 0 은 일반 제목(`기준 대비 김프 +0.00%p`)을 쓴다.
+
 ### 미반영 리마인더
 
 **Discord**
