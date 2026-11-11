@@ -24,3 +24,4 @@
 - [apps/web 트래킹 조회 훅 분리와 set-state-in-effect override 제거](issue-96-trackings-fetch/README.md)
 - [실계정 포지션 기록과 매분 관측 이력 저장](issue-129-position-history/README.md)
 - [기준 포지션 대비 단계 알림](issue-131-reference-position-step-alert/README.md)
+- [정리한 포지션의 확정 손익 — 체결 기준](issue-130-realized-pnl/README.md)

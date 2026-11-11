@@ -10,7 +10,7 @@
 | `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
 | `apps:web` | Active | Next.js 대시보드, 인증, position UI |
 | `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
-| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V25 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V26 |
 | `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
 | `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
 | `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
@@ -149,6 +149,10 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   `account_pnl_monitor_state` nullable 6열(V25, CHECK 포함)에 outbox 와 원자 저장하고, 기준이 없을 때만 Domain port
   `AccountReferencePositionReadPort` 로 #129 이력에서 부트스트랩한다. API·Redis 무변경.
   [설계](../docs/work/issue-131-reference-position-step-alert/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다.
+- 확정 손익(#130, 구현 완료, owner 확인 AC10 대기): 배치 Job `AccountRealizedPnlJob`(`account_realized_pnl`, 5분,
+  lock `lock:account-pnl:settlement`)이 종료·축소된 포지션 건의 확정 손익을 빗썸·바이낸스 체결 내역(GET 전용)으로 확정해
+  `account_position_episode` nullable 컬럼(V26)에 저장한다. `ACCOUNT_PNL_REALIZED_PNL_ENABLED`로 켠다. API·Redis 무변경.
+  [설계](../docs/work/issue-130-realized-pnl/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)의 "확정 손익 (#130)" 절을 따른다.
 
 ## Migration 상태와 소유권
 
@@ -166,6 +170,7 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 | V23 | `account_pnl_mail.discord_layout` 추가 | owner 알림 Discord embed 칸 배치 보존(additive nullable, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
 | V24 | `account_position_episode`·`account_position_event`·`account_pnl_observation` 신규 | 실계정 포지션 건·사건·매분 관측 이력(additive, 롤백 SQL 없음, 열린 건 1개 unique). API(Flyway) 먼저 배포 |
 | V25 | `account_pnl_monitor_state` 에 기준 포지션 단계 상태 nullable 6열 + CHECK | 기준 leg·국면·단계(additive, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
+| V26 | `account_position_episode` 에 확정 손익 nullable 컬럼 추가 | 거래소 체결 기반 확정 손익(additive, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
 
 - migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
 - Batch Flyway는 항상 비활성이다.
@@ -198,6 +203,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
    체크리스트는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)에 있다.
 10. #107 AC7·AC8(cleanup workflow 실제 삭제·일정 실행)은 머지 뒤 관찰 대기다. AC7 표본은 cache 가 남은 PR 이 닫힐 때만 생긴다.
 11. #129 AC8(owner 로컬 실계정에서 포지션 이력 행 확인)은 대기다. 확인 쿼리는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)의 "포지션 이력" 절에 있다.
+12. #130 AC10(owner 실계정에서 확정 손익 값 확인)은 대기다. 후속: `JobExecutor`가 취소를 모든 Job에서 Failure로 변환한다(기존 동작,
+    #130 이전부터). 7일보다 오래된 지정가 주문의 왕복은 체결 조회 범위 밖이라 확정 값이 틀릴 수 있는 잔여 위험이 있다.
 
 ## 운영 정본
 
