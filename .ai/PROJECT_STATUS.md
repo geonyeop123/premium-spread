@@ -153,6 +153,11 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   lock `lock:account-pnl:settlement`)이 종료·축소된 포지션 건의 확정 손익을 빗썸·바이낸스 체결 내역(GET 전용)으로 확정해
   `account_position_episode` nullable 컬럼(V26)에 저장한다. `ACCOUNT_PNL_REALIZED_PNL_ENABLED`로 켠다. API·Redis 무변경.
   [설계](../docs/work/issue-130-realized-pnl/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)의 "확정 손익 (#130)" 절을 따른다.
+- batch 종료 시 운영 알림 오탐 정리(#135, 구현 완료): `JobExecutor`가 루트 컨텍스트 `ContextClosedEvent`(HIGHEST_PRECEDENCE)를 받은 뒤
+  새 실행은 락 없이 `Skipped("shutdown")`, 진행 중 실행의 Failure(timeout·Redis/DB 중단·인터럽트 포함)는 `SKIPPED("shutdown")`으로
+  기록해 `BATCH_JOB_FAILED` 운영 알림과 연속 실패 카운트를 건드리지 않는다. Binance/Bithumb WebSocket client도 같은 이벤트에서
+  Redis lifecycle stop 전에 멈추고 이후 payload는 버린다. API·Redis·DB 무변경.
+  [설계](../docs/work/issue-135-shutdown-false-alerts/design.md)와 [owner 운영 알림 runbook](../docs/runbooks/owner-ops-alert.md)을 따른다.
 
 ## Migration 상태와 소유권
 
@@ -203,8 +208,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
    체크리스트는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)에 있다.
 10. #107 AC7·AC8(cleanup workflow 실제 삭제·일정 실행)은 머지 뒤 관찰 대기다. AC7 표본은 cache 가 남은 PR 이 닫힐 때만 생긴다.
 11. #129 AC8(owner 로컬 실계정에서 포지션 이력 행 확인)은 대기다. 확인 쿼리는 [`account-pnl-alert.md`](../docs/runbooks/account-pnl-alert.md)의 "포지션 이력" 절에 있다.
-12. #130 AC10(owner 실계정에서 확정 손익 값 확인)은 대기다. 후속: `JobExecutor`가 취소를 모든 Job에서 Failure로 변환한다(기존 동작,
-    #130 이전부터). 7일보다 오래된 지정가 주문의 왕복은 체결 조회 범위 밖이라 확정 값이 틀릴 수 있는 잔여 위험이 있다.
+12. #130 AC10(owner 실계정에서 확정 손익 값 확인)은 대기다. `JobExecutor`가 취소를 Failure로 변환하는 문제 중 앱 종료 때 생기는 경우는
+    #135에서 `SKIPPED(shutdown)`으로 정리했다. timeout·lock 상실로 인한 취소는 운영 신호라 의도적으로 Failure로 남긴다. 7일보다 오래된 지정가 주문의 왕복은 체결 조회 범위 밖이라 확정 값이 틀릴 수 있는 잔여 위험이 있다.
 
 ## 운영 정본
 
