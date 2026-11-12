@@ -8,6 +8,7 @@ import io.premiumspread.domain.alertmessage.MailDocument
 import io.premiumspread.domain.alertmessage.MailPair
 import io.premiumspread.domain.alertmessage.OwnerAlertMessage
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Instant
 import java.time.ZoneId
 
@@ -120,8 +121,8 @@ object LiquidationProximityContent {
         private val liquidation: BigDecimal,
         private val config: ForeignPerpSymbolConfig?,
     ) {
-        /** 진행률 소수 1자리 — `85.2%`. */
-        val progress: String = AlertFormat.format("0.0", progressPercent) + "%"
+        /** 진행률 소수 1자리 — `85.2%`. 판정(절사)과 같게 먼저 절사한다: 59.96 이 "60.0%" 로 50% 제목 아래 보이지 않게 한다. */
+        val progress: String = AlertFormat.format("0.0", progressPercent.setScale(1, RoundingMode.DOWN)) + "%"
         val sideName: String = if (side == PerpSide.SHORT) "숏" else "롱"
 
         fun cells(): List<EmbedCell> = listOf(

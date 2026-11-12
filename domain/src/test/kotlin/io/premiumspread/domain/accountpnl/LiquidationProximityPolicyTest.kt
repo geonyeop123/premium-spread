@@ -235,6 +235,7 @@ class LiquidationProximityPolicyTest {
         assertThat(eased.progressPercent).isEqualByComparingTo("45")
         assertThat(eased.side).isEqualTo(PerpSide.SHORT)
         assertThat(afterEase.level).isEqualTo(50)
+        assertThat(more).hasSize(1)
         assertThat(more.upLevels()).containsExactly(60)
         assertThat(last.level).isEqualTo(60)
 

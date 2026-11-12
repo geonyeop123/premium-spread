@@ -75,6 +75,15 @@ class LiquidationProximityContentTest {
     }
 
     @Test
+    fun `진행률 표시는 판정처럼 절사해 경계 아래 값이 올림으로 경계처럼 보이지 않는다`() {
+        val alert = proximity().copy(level = 50, progressPercent = BigDecimal("59.96"))
+        val m = AccountAlertContent.message(alert, zone)
+
+        assertThat(m.discord.rows.flatten()).contains(EmbedCell("진행률", "59.9%"))
+        assertThat(m.mail.body()).contains("59.9%").doesNotContain("60.0%")
+    }
+
+    @Test
     fun `심볼 설정이 없으면 레버리지와 마진 모드는 확인 불가다`() {
         val m = AccountAlertContent.message(proximity(config = null), zone)
         val cells = m.discord.rows.flatten()
@@ -92,11 +101,11 @@ class LiquidationProximityContentTest {
 
         assertThat(m.eventKey).isEqualTo("account-pnl-liquidation-eased-50-${at.toEpochMilli()}")
         assertThat(AccountAlertContent.eventKey(alert)).isEqualTo(m.eventKey)
-        assertThat(m.mail.subject).isEqualTo("[실계정] 청산 위험 완화 45.1%")
-        assertThat(m.discord.title).isEqualTo("✅ 청산 위험 완화 45.1%")
+        assertThat(m.mail.subject).isEqualTo("[실계정] 청산 위험 완화 45.0%")
+        assertThat(m.discord.title).isEqualTo("✅ 청산 위험 완화 45.0%")
         assertThat(cells).contains(
             EmbedCell("직전 알림 경계", "60%"),
-            EmbedCell("진행률", "45.1%"),
+            EmbedCell("진행률", "45.0%"),
             EmbedCell("레버리지", "10x"),
             EmbedCell("마진 모드", "교차"),
         )

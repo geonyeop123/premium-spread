@@ -9,8 +9,9 @@ import org.junit.jupiter.api.Test
  * `infrastructure/common/src/main/resources/db/migration/V18__create_account_pnl_alert.sql` 과
  * `infrastructure/common/src/main/resources/db/migration/V19__add_owner_alert_channel.sql`,
  * `infrastructure/common/src/main/resources/db/migration/V20__add_owner_account_alert_state.sql`,
- * `infrastructure/common/src/main/resources/db/migration/V25__add_reference_step_state.sql` 에서 옮긴 것이다.
- * V18·V19·V20·V25 가 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
+ * `infrastructure/common/src/main/resources/db/migration/V25__add_reference_step_state.sql`,
+ * `infrastructure/common/src/main/resources/db/migration/V27__add_liquidation_proximity_state.sql` 에서 옮긴 것이다.
+ * V18·V19·V20·V25·V27 이 바뀌면(또는 새 migration 이 이 테이블을 바꾸면) 이 목록과 fixture 를 함께 고쳐야 한다.
  */
 class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
 
@@ -44,6 +45,9 @@ class AccountPnlFixtureSchemaIntegrationTest : BatchIntegrationTestBase() {
             "reference_foreign_price:varchar:YES",
             "reference_step_phase:varchar:YES",
             "reference_step_level:int:YES",
+            "liquidation_side:varchar:YES",
+            "liquidation_entry_price:varchar:YES",
+            "liquidation_level:int:YES",
         )
     }
 
