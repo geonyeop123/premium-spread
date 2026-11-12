@@ -3,4 +3,4 @@
  "scope_note": "후보 'Job 취소 정합성(L)'을 실측 후 owner 결정으로 '종료 오탐 정리(M)'로 축소",
  "codex": {"mode": "standard", "spec_rounds": 0, "findings": 1, "fixed": 0, "held": 1, "timeout": false},
  "claude_review": {"findings": 11, "fixed": 9},
- "dod_verdict": "PASS", "mr_url": null}
+ "dod_verdict": "PASS", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/136"}
