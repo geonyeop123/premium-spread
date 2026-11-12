@@ -11,8 +11,8 @@
 ## 목표 · 비목표 · 반목표
 
 - **목표:** 진행률이 50·60·70·80·90% 경계를 위로 처음 넘을 때 1회씩 메일 + Discord PNL(소리)로 알린다.
-  상태는 재시작 후에도 유지된다.
-- **비목표:** 회복(하락) 방향 알림, 대응 동작, 수동 모드 판정, 청산가 자체 계산(거래소 값을 그대로 쓴다).
+  알린 경계가 재무장될 만큼 내려가면 완화 알림 1건을 보낸다(D4). 상태는 재시작 후에도 유지된다.
+- **비목표:** 대응 동작, 수동 모드 판정, 청산가 자체 계산(거래소 값을 그대로 쓴다).
 - **반목표:** 진동(55↔49↔55)으로 같은 경계가 반복 발송되는 것. 청산가를 못 읽은 회차가 상태를 바꾸는 것.
   이 판정이 다른 알림·상태 저장을 실패시키는 것.
 
@@ -57,9 +57,16 @@
 예시(이슈 수용 기준): 45→55→65→95 는 50·60·90 세 건(95 에서 70·80 을 건너뛰고 가장 높은 90 하나).
 55→49→55 는 49 가 40 밑이 아니라 50 이 재무장되지 않아 추가 발송 없음. 55→39→55 는 50 을 다시 알린다.
 
-### D4. 회복 알림 없음 (계약 결정)
+### D4. 회복(완화) 알림 (계약 결정 2026-11-12: 보냄)
 
-진행률이 내려가도 알리지 않는다. 내려가면 D3 재무장만 일어난다.
+- D3 1단계에서 `armed < level` 이면(진행률이 알린 경계보다 한 단계 아래 경계 밑으로 내려감) 그 회차에 완화 알림 1건을
+  보낸다. 한 회차에 경계 여럿이 재무장돼도 1건이다. 같은 회차에 상승 알림이 나는 경우는 없다(재무장 뒤 lvl(progress) 는
+  armed 이하다).
+- 보내지 않는 경우: D5 진입가 변경 재무장(가격 회복이 아니다), 바이낸스 flat 초기화(포지션 변경 알림이 따로 있다),
+  방향 변경.
+- 종류 `OwnerAlertKind.LIQUIDATION_EASED` — 기본 메일 없음, Discord `PNL`·`SILENT`. 회복 알림은 기존
+  `MONITORING_RECOVERED`·`OPS_RECOVERED` 처럼 낮은 강도로 둔다(구현자 결정, 이슈에 라우팅 지정 없음). env 로 덮어쓸 수 있다.
+- 진동 상한: 완화 → 상승 → 완화 한 바퀴에 진행률이 최소 10%p 를 오가야 하므로 가격 진동으로 매 회차 발송되지 않는다.
 
 ### D5. 상태 초기화 (계약 결정)
 
@@ -96,7 +103,8 @@ CHECK: 셋 다 NULL 이거나, 셋 다 `IS NOT NULL` 이고 `side IN ('SHORT','L
 - 덮어쓰기: `apps/batch` `application.yml` `owner-alert.routes.liquidation-proximity` 블록과 env
   `OWNER_ALERT_LIQUIDATION_PROXIMITY_EMAIL`·`_DISCORD`·`_PUSH`. 기존 종류와 같은 형식이고,
   `OwnerAlertYamlContractTest` 가 종류 집합·env 연결을 이미 강제한다.
-- eventKey: `account-pnl-liquidation-{level}-{observedAt ms}`.
+- eventKey: `account-pnl-liquidation-{level}-{observedAt ms}`. 완화는 `LIQUIDATION_EASED`(D4),
+  `owner-alert.routes.liquidation-eased`·`OWNER_ALERT_LIQUIDATION_EASED_*`, eventKey `account-pnl-liquidation-eased-{armed}-{observedAt ms}`.
 
 ### D8. 문구 (정본 `docs/work/alert-message-template/message-spec.md` "계정 알림 — 청산 근접")
 
@@ -104,6 +112,8 @@ CHECK: 셋 다 NULL 이거나, 셋 다 `IS NOT NULL` 이고 `side IN ('SHORT','L
 - 칸: 진행률(소수 1자리 %) · 현재 마크가 · 청산가 · 진입가 · 레버리지(`{n}x`) · 마진 모드(교차/격리).
   `symbolConfig == null` 이면 레버리지·마진 모드는 `확인 불가`.
 - footer: `진입가→청산가 진행률 · 50%부터 10% 단위 · 같은 경계는 한 단계 내려간 뒤 다시 알림`.
+- 완화: 제목 Discord `✅ 청산 위험 완화 {진행률}%` / 메일 `[실계정] 청산 위험 완화 {진행률}%`. 칸은 위와 같고
+  `직전 알림 경계`({level}%)를 더한다. footer `알린 경계보다 한 단계 아래로 내려가 다시 알릴 수 있습니다`.
 - 실계정 가격을 담는다(이슈 결정). 수량·증거금 금액은 담지 않는다.
 
 ### D9. 조립 위치

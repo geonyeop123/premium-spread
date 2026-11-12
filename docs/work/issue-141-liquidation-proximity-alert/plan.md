@@ -19,7 +19,7 @@ Spec: [design.md](design.md) · 완료 기준: [dod.md](dod.md)
   - `enum class PerpSide { SHORT, LONG }`
   - `data class LiquidationProximityState(val side: PerpSide?, val entryPrice: BigDecimal?, val level: Int?)` — 셋 다 null 이거나
     셋 다 non-null, level ∈ {0,50,60,70,80,90}. `INITIAL`. `toString` 은 side·level 만(진입가 없음).
-  - `data class LiquidationProximityDecision(val next: LiquidationProximityState, val alert: AccountAlert.LiquidationProximity?)`
+  - `data class LiquidationProximityDecision(val next: LiquidationProximityState, val alert: AccountAlert?)` — 상승(`LiquidationProximity`) 또는 완화(`LiquidationEased`) 중 하나 또는 null
   - `object LiquidationProximityPolicy { fun decide(state, round: AccountRound?): LiquidationProximityDecision; fun progress(entry, mark, liq): BigDecimal? }`
     - design D1(식·scale 4 DOWN), D2(제외 표), D3(재무장 알고리즘), D5(flat 초기화·방향 변경·진입가 변경 재무장) 그대로.
     - `BOUNDARIES = listOf(50, 60, 70, 80, 90)`, `REARM_WIDTH = 10`.
@@ -29,18 +29,19 @@ Spec: [design.md](design.md) · 완료 기준: [dod.md](dod.md)
 - 수정 `AccountAlert.kt` — `data class LiquidationProximity(val level: Int, val progressPercent: BigDecimal, val side: PerpSide,
   val entryPrice: BigDecimal, val markPrice: BigDecimal, val liquidationPrice: BigDecimal, val config: ForeignPerpSymbolConfig?,
   val observedAt: Instant)`, `kind = LIQUIDATION_PROXIMITY`, `toString` 은 level·side·observedAt 만.
+  같은 필드 + `previousLevel`·`armedLevel` 을 가진 `LiquidationEased`(`kind = LIQUIDATION_EASED`, design D4).
 - 수정 `AccountAlertPolicy.kt` — 단계 판정 다음에 `LiquidationProximityPolicy.decide(state.liquidation, round)`. 알림 순서 마지막.
-- 수정 `OwnerAlertRouting.kt` — `LIQUIDATION_PROXIMITY(email = true, Discord PNL·SOUND)` 를 `REFERENCE_STEP` 바로 뒤에.
+- 수정 `OwnerAlertRouting.kt` — `LIQUIDATION_PROXIMITY(email = true, Discord PNL·SOUND)`, `LIQUIDATION_EASED(email = false, Discord PNL·SILENT)` 를 `REFERENCE_STEP` 바로 뒤에.
 - 신규 `LiquidationProximityContent.kt` — `eventKey`, `message(alert, zone)` (design D8). `AccountAlertContent.eventKey/message`
   의 sealed `when` 에 위임 분기 추가.
 
 **테스트**
-- 신규 `LiquidationProximityPolicyTest` — AC1~AC5 의 테스트 이름(dod 표 그대로).
+- 신규 `LiquidationProximityPolicyTest` — AC1~AC5·AC10 의 테스트 이름(dod 표 그대로).
 - 신규 `LiquidationProximityContentTest` — AC9.
 - 수정 `OwnerAccountAlertKindTest`(`청산 근접 기본 경로는 메일과 PNL 소리다` 추가, 계정 종류 목록 갱신), `OwnerAlertRoutingTest`(이름·key 순서 갱신).
 - 수정 `AccountAlertPolicyTest` — 청산 근접 알림이 기준 단계 뒤에 온다는 단언 1개.
 
-**DoD:** AC1·AC2·AC3·AC4·AC5·AC8(도메인 부분)·AC9
+**DoD:** AC1·AC2·AC3·AC4·AC5·AC8(도메인 부분)·AC9·AC10
 **검증:** `./gradlew :domain:test --offline`
 
 ## Task 2 — 저장: migration V27 · JdbcAccountPnlAlertStore
@@ -75,8 +76,8 @@ ALTER TABLE account_pnl_monitor_state
 **파일**
 - 수정 `AccountPnlMonitorJob.round()` — `foreignSnapshot.positionRisk`, `foreignSnapshot.symbolConfig` 를 `AccountRound` 에 넘긴다.
   다른 변경 없음.
-- 수정 `apps/batch/src/main/resources/application.yml` — `owner-alert.routes.liquidation-proximity` 블록(email·discord·push → env).
-- 문서: `docs/work/alert-message-template/message-spec.md` "청산 근접" 절, `docs/runbooks/account-pnl-alert.md`
+- 수정 `apps/batch/src/main/resources/application.yml` — `owner-alert.routes.liquidation-proximity`·`liquidation-eased` 블록(email·discord·push → env).
+- 문서: `docs/work/alert-message-template/message-spec.md` "청산 근접"·"청산 위험 완화" 절, `docs/runbooks/account-pnl-alert.md`
   (기본 라우팅 표 행, override env, 동작·한계, 운영 체크리스트), `.ai/PROJECT_STATUS.md`, `.ai/architecture/ARCHITECTURE_DESIGN.md` 한 줄.
 
 **테스트**
