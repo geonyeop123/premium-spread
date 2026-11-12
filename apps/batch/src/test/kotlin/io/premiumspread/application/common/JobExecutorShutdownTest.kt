@@ -93,18 +93,23 @@ class JobExecutorShutdownTest {
     @Test
     fun `종료 중 timeout 은 shutdown 으로 기록한다`() {
         val shortConfig = config.copy(lease = Duration.ofMillis(500), executionTimeout = Duration.ofMillis(100))
-        val neverReleased = CountDownLatch(1)
+        val mayFinish = CountDownLatch(1)
 
         val result = executor.execute(shortConfig) {
             // 이벤트를 action 안에서 보내 timeout 보다 반드시 먼저 일어나게 한다.
             executor.onApplicationEvent(closedEvent)
-            neverReleased.await()
+            awaitIgnoringInterrupt(mayFinish)
             JobResult.Success
         }
 
+        // action 이 cancel interrupt 를 무시하므로 반드시 보류 해제(actionMayStillRun) 경로를 탄다.
         assertThat(result).isEqualTo(JobResult.Skipped("shutdown"))
         verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SKIPPED, clock.instant(), "shutdown") }
-        verify(timeout = 1_000) { lock.release("lock:fx", any()) }
+        verify(exactly = 0) { lock.release(any(), any()) }
+
+        mayFinish.countDown()
+
+        verify(timeout = 2_000, exactly = 1) { lock.release("lock:fx", any()) }
         verify(exactly = 0) { alert.send(any()) }
     }
 
@@ -134,6 +139,38 @@ class JobExecutorShutdownTest {
         assertThat(caller.isAlive).isFalse()
         assertThat(result.get()).isEqualTo(JobResult.Skipped("shutdown"))
         assertThat(interruptedAfter.get()).isTrue()
+        verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SKIPPED, any(), "shutdown") }
+        verify(exactly = 0) { alert.send(any()) }
+    }
+
+    @Test
+    fun `종료 중 lock 획득 예외는 shutdown 으로 기록하고 알리지 않는다`() {
+        every { lock.tryAcquire(any(), any(), any(), any()) } answers {
+            executor.onApplicationEvent(closedEvent)
+            throw IllegalStateException("LettuceConnectionFactory is STOPPING")
+        }
+
+        val result = executor.execute(config) { JobResult.Success }
+
+        assertThat(result).isEqualTo(JobResult.Skipped("shutdown"))
+        verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SKIPPED, clock.instant(), "shutdown") }
+        verify(exactly = 0) { recorder.completed(any(), any(), JobRunOutcome.FAILED, any(), any()) }
+        verify(exactly = 0) { alert.send(any()) }
+    }
+
+    @Test
+    fun `종료 중 lock 해제 예외는 shutdown 으로 기록하고 알리지 않는다`() {
+        every { lock.release(any(), any()) } throws IllegalStateException("LettuceConnectionFactory is STOPPING")
+
+        val result = executor.execute(config) {
+            executor.onApplicationEvent(closedEvent)
+            JobResult.Success
+        }
+
+        assertThat(result).isEqualTo(JobResult.Skipped("shutdown"))
+        verify(exactly = 1) { lock.release("lock:fx", any()) }
+        verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SKIPPED, clock.instant(), "shutdown") }
+        verify(exactly = 0) { recorder.completed(any(), any(), JobRunOutcome.FAILED, any(), any()) }
         verify(exactly = 0) { alert.send(any()) }
     }
 
@@ -181,6 +218,17 @@ class JobExecutorShutdownTest {
 
         assertThat(stopResult.get()).isEqualTo(JobResult.Skipped("shutdown"))
         verify(exactly = 0) { lock.tryAcquire(any(), any(), any(), any()) }
+    }
+
+    private fun awaitIgnoringInterrupt(latch: CountDownLatch) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (System.nanoTime() < deadline) {
+            try {
+                if (latch.await(100, TimeUnit.MILLISECONDS)) return
+            } catch (_: InterruptedException) {
+                // 취소를 무시하는 외부 I/O를 재현한다.
+            }
+        }
     }
 
     private fun runFailingDuringShutdown(failure: Exception): JobResult {
