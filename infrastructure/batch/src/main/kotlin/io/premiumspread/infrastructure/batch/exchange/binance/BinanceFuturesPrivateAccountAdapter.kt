@@ -109,7 +109,6 @@ class BinanceFuturesPrivateAccountAdapter(
         }
     }
 
-
     private data class Position(
         val amount: BigDecimal,
         val entryPrice: BigDecimal,
@@ -310,7 +309,6 @@ class BinanceFuturesPrivateAccountAdapter(
         const val INCOME_LIMIT = 1000
         const val MAX_WINDOWS = 13
         const val WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000
-
 
         /** 잔고·symbolConfig(부분 실패 허용 호출) 전용 timeout. 다른 호출은 생성자 timeout(기본 5초)을 쓴다. */
         val BALANCE_TIMEOUT: Duration = Duration.ofMillis(1500)
