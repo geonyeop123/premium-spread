@@ -110,6 +110,10 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   쓰며 실패는 adapter 안에서 null + WARN 으로 흡수해 순손익·중단 판정에 영향이 없다. 공통 Discord 렌더러의 2칸 행 뒤
   채움 칸을 non-inline 행 끊기 칸(U+200B)으로 바꿔 시장·운영 알림에도 적용된다. Flyway/Redis/API 무변경.
   [설계](../docs/work/account-balance-alert/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다.
+  - 바이낸스 위험 지표(#138): api 모드 포지션이 열려 있을 때 `/fapi/v3/positionRisk` 위험 필드와 서명 GET `/fapi/v1/symbolConfig`
+    (레버리지·마진 모드, 1.5초 단발)를 `ForeignPerpAccountSnapshot.positionRisk`·`symbolConfig`(nullable)에 싣는다. 실패는 그 항목만 null + WARN
+    (`BINANCE_POSITION_RISK`·`BINANCE_SYMBOL_CONFIG`). 알림 형식·API·DB·Redis 무변경.
+    [설계](../docs/work/issue-138-binance-risk-metrics/design.md)를 따른다.
 - 환율 제공자 Twelve Data 교체(#93, 구현·검증 완료, PR #99, AC8 로컬 운영 실기동 관찰 완료 — 주말 동작 미관찰):
   수집 5분·허용 공백 30분(`FxIngestionFreshness`)·캐시 TTL 40분을 테스트와 기동 검증으로 묶었다.
   [설계](../docs/work/fx-provider-twelve-data/design.md)와 [runbook](../docs/runbooks/deployment.md)을 따른다. 후속 후보:

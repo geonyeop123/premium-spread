@@ -2,6 +2,8 @@ package io.premiumspread.infrastructure.batch.exchange.binance
 
 import io.premiumspread.domain.accountpnl.AccountReadException
 import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
+import io.premiumspread.domain.accountpnl.ForeignPerpMarginType
+import io.premiumspread.domain.accountpnl.ForeignPerpPositionRisk
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -37,6 +39,7 @@ class BinanceFuturesPrivateAccountAdapterTest {
     private val requests = CopyOnWriteArrayList<RecordedRequest>()
     private var positionBody = positionRisk("BOTH", "-0.002", "61000")
     private var accountBody = fixture("account.json")
+    private var symbolConfigBody = fixture("symbol-config.json")
     private var bnbPrice = "600"
     private var serverTimeOffset = 0L
 
@@ -61,6 +64,8 @@ class BinanceFuturesPrivateAccountAdapterTest {
                     "/fapi/v1/commissionRate" -> json(fixture("commission-rate.json"))
 
                     "/fapi/v3/account" -> json(accountBody)
+
+                    "/fapi/v1/symbolConfig" -> json(symbolConfigBody)
 
                     "/fapi/v1/depth" -> json(fixture("depth.json"))
 
@@ -580,6 +585,195 @@ class BinanceFuturesPrivateAccountAdapterTest {
         }
     }
 
+    @Test
+    fun `positionRisk 위험 지표를 숏 롱 hedge 에서 읽는다`() {
+        val short = adapter().read().positionRisk
+        assertRisk(short, "91234.56", "60500.10", "12.3", "12.0", "0.48", "24.2", "-121.0002")
+
+        positionBody = positionRisk("BOTH", "0.002", "61000", "liquidationPrice" to "30500.25", "notional" to "121.0002")
+        val long = adapter().read().positionRisk
+        assertRisk(long, "30500.25", "60500.10", "12.3", "12.0", "0.48", "24.2", "121.0002")
+
+        positionBody = fixture("position-risk-hedge.json")
+        val hedge = adapter().read().positionRisk
+        assertRisk(hedge, "92000.10000000", "60000.00000000", "0", "0", "0.48000000", "6.00000000", "-120.00000000")
+    }
+
+    @Test
+    fun `청산가 0 이면 청산가만 없음이다`() {
+        positionBody = positionRisk("BOTH", "-0.002", "61000", "liquidationPrice" to "0")
+
+        val risk = adapter().read().positionRisk
+
+        assertThat(risk).isNotNull()
+        assertThat(risk!!.liquidationPrice).isNull()
+        assertThat(risk.markPrice).isEqualByComparingTo("60500.10")
+        assertThat(risk.isolatedMargin).isEqualByComparingTo("12.3")
+        assertThat(risk.isolatedWallet).isEqualByComparingTo("12.0")
+        assertThat(risk.maintMargin).isEqualByComparingTo("0.48")
+        assertThat(risk.positionInitialMargin).isEqualByComparingTo("24.2")
+        assertThat(risk.notional).isEqualByComparingTo("-121.0002")
+    }
+
+    @Test
+    fun `symbolConfig 레버리지와 마진 모드를 서명 GET 한 건으로 읽는다`() {
+        val isolated = adapter().read().symbolConfig
+
+        assertThat(isolated).isNotNull()
+        assertThat(isolated!!.leverage).isEqualTo(5)
+        assertThat(isolated.marginType).isEqualTo(ForeignPerpMarginType.ISOLATED)
+        val calls = requests.filter { it.requestUrl!!.encodedPath == "/fapi/v1/symbolConfig" }
+        assertThat(calls).hasSize(1)
+        assertThat(calls.single().method).isEqualTo("GET")
+        assertThat(calls.single().getHeader("X-MBX-APIKEY")).isEqualTo("test-api-key")
+        val query = calls.single().requestUrl!!.encodedQuery!!
+        assertThat(query).startsWith("symbol=BTCUSDT&").contains("recvWindow=10000", "timestamp=$now", "signature=")
+        assertThat(query.substringAfter("&signature=")).isEqualTo(BinanceRequestSigner.sign("test-secret-key", query.substringBefore("&signature=")))
+        val paths = requests.map { it.requestUrl!!.encodedPath }.filterNot { it == "/fapi/v1/time" }
+        assertThat(paths.indexOf("/fapi/v1/symbolConfig")).isGreaterThan(paths.indexOf("/fapi/v1/commissionRate"))
+        assertThat(paths.indexOf("/fapi/v1/symbolConfig")).isLessThan(paths.indexOf("/fapi/v3/account"))
+        assertThat(paths.last()).isEqualTo("/fapi/v1/depth")
+
+        symbolConfigBody = """[{"symbol":"ETHUSDT","marginType":"ISOLATED","isAutoAddMargin":"false","leverage":3,"maxNotionalValue":"1"},""" +
+            """{"symbol":"BTCUSDT","marginType":"CROSSED","isAutoAddMargin":"false","leverage":20,"maxNotionalValue":"1000000"}]"""
+        requests.clear()
+        val crossed = adapter().read().symbolConfig
+
+        assertThat(crossed).isNotNull()
+        assertThat(crossed!!.leverage).isEqualTo(20)
+        assertThat(crossed.marginType).isEqualTo(ForeignPerpMarginType.CROSSED)
+        assertThat(requests.count { it.requestUrl!!.encodedPath == "/fapi/v1/symbolConfig" }).isEqualTo(1)
+        assertThat(requests.map { it.requestUrl!!.encodedPath }.last()).isEqualTo("/fapi/v1/depth")
+    }
+
+    @Test
+    fun `포지션이 없으면 위험 지표가 없고 symbolConfig 를 부르지 않는다`() {
+        listOf("[]", positionRisk("BOTH", "0", "0")).forEach { body ->
+            positionBody = body
+            requests.clear()
+
+            val snapshot = adapter().read()
+
+            assertThat(snapshot.signedQuantity.signum()).isZero()
+            assertThat(snapshot.positionRisk).isNull()
+            assertThat(snapshot.symbolConfig).isNull()
+            assertThat(requests.map { it.requestUrl!!.encodedPath }).doesNotContain("/fapi/v1/symbolConfig")
+            assertThat(requests.map { it.requestUrl!!.encodedPath }.last()).isEqualTo("/fapi/v1/depth")
+        }
+    }
+
+    @Test
+    fun `symbolConfig 실패는 그 항목만 null 로 흡수하고 사유만 WARN 한다`(output: CapturedOutput) {
+        val baseline = adapter().read()
+        assertThat(baseline.symbolConfig).isNotNull()
+        assertThat(baseline.positionRisk).isNotNull()
+        assertThat(baseline.balance).isNotNull()
+        val fixtureBody = symbolConfigBody
+
+        data class Case(val response: (() -> MockResponse)?, val body: String?, val expected: List<String>)
+        val cases = listOf(
+            Case({ MockResponse().setResponseCode(401).setBody("""{"code":-2015,"msg":"Invalid API-key"}""") }, null, listOf("reason=REQUEST_FAILED", "category=BINANCE_AUTH", "error=Unauthorized")),
+            Case({ MockResponse().setResponseCode(503) }, null, listOf("reason=REQUEST_FAILED", "category=NETWORK", "error=ServiceUnavailable")),
+            Case({ json("{not json") }, null, listOf("reason=REQUEST_FAILED", "category=UNEXPECTED", "error=JsonParseException")),
+            Case({ MockResponse().setResponseCode(400).setBody("""{"code":-1021,"msg":"outside of the recvWindow."}""") }, null, listOf("reason=REQUEST_FAILED", "category=NETWORK")),
+            Case({ MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE) }, null, listOf("reason=REQUEST_FAILED", "category=NETWORK", "error=TimeoutException")),
+            Case(null, """[{"symbol":"ETHUSDT","marginType":"ISOLATED","leverage":7}]""", listOf("reason=MISSING", "category=-", "error=-")),
+            Case(null, """{"symbol":"BTCUSDT","marginType":"ISOLATED","leverage":7}""", listOf("reason=MISSING", "category=-", "error=-")),
+            Case(null, """[{"symbol":"BTCUSDT","marginType":"ISOLATED","leverage":"lev-value-x"}]""", listOf("reason=NOT_NUMBER", "category=-", "error=-")),
+            Case(null, """[{"symbol":"BTCUSDT","marginType":"ISOLATED","leverage":0}]""", listOf("reason=NOT_POSITIVE", "category=-", "error=-")),
+            Case(null, """[{"symbol":"BTCUSDT","marginType":"MARGIN_MODE_X","leverage":7}]""", listOf("reason=UNKNOWN", "category=-", "error=-")),
+        )
+        cases.forEach { case ->
+            responses.remove("/fapi/v1/symbolConfig")
+            case.response?.let { responses["/fapi/v1/symbolConfig"] = it }
+            symbolConfigBody = case.body ?: fixtureBody
+            requests.clear()
+            val before = output.all.length
+
+            val snapshot = adapter().read()
+
+            assertThat(snapshot.symbolConfig).describedAs(case.expected.toString()).isNull()
+            assertThat(snapshot.signedQuantity).isEqualTo(baseline.signedQuantity)
+            assertThat(snapshot.entryPrice).isEqualTo(baseline.entryPrice)
+            assertThat(snapshot.takerFeeRate).isEqualTo(baseline.takerFeeRate)
+            assertThat(snapshot.balance).isEqualTo(baseline.balance)
+            assertThat(snapshot.askLevels).isEqualTo(baseline.askLevels)
+            assertThat(snapshot.positionRisk).isEqualTo(baseline.positionRisk)
+            assertThat(requests.count { it.requestUrl!!.encodedPath == "/fapi/v1/symbolConfig" }).describedAs("한 번만 보낸다").isEqualTo(1)
+            assertThat(requests.count { it.requestUrl!!.encodedPath == "/fapi/v1/time" }).describedAs("서버 시각을 다시 재지 않는다").isEqualTo(1)
+            assertThat(requests.map { it.requestUrl!!.encodedPath }.last()).isEqualTo("/fapi/v1/depth")
+            assertThat(output.all.substring(before)).contains(listOf("item=BINANCE_SYMBOL_CONFIG") + case.expected)
+        }
+        assertSecretsAbsent(output)
+        assertThat(output.all).doesNotContain("lev-value-x", "MARGIN_MODE_X", "leverage")
+    }
+
+    @Test
+    fun `symbolConfig 요청 중 취소되면 흡수하지 않고 던진다`(output: CapturedOutput) {
+        val testThread = Thread.currentThread()
+        responses["/fapi/v1/symbolConfig"] = {
+            testThread.interrupt()
+            json(fixture("symbol-config.json")).setBodyDelay(1, TimeUnit.SECONDS)
+        }
+        try {
+            catchRead()
+
+            val paths = requests.map { it.requestUrl!!.encodedPath }
+            assertThat(paths).contains("/fapi/v1/symbolConfig")
+            assertThat(paths).doesNotContain("/fapi/v3/account", "/fapi/v1/depth")
+            assertThat(output.all).doesNotContain("item=BINANCE_SYMBOL_CONFIG")
+            assertSecretsAbsent(output)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
+    fun `positionRisk 위험 필드 해석 실패는 그 항목만 null 로 흡수한다`(output: CapturedOutput) {
+        val cases = listOf(
+            positionRisk("BOTH", "-0.002", "61000", "markPrice" to null) to "MISSING",
+            positionRisk("BOTH", "-0.002", "61000", "maintMargin" to "abc") to "NOT_NUMBER",
+            positionRisk("BOTH", "-0.002", "61000", "isolatedMargin" to "-1") to "NEGATIVE",
+            positionRisk("BOTH", "-0.002", "61000", "liquidationPrice" to "-5") to "NEGATIVE",
+            positionRisk("BOTH", "-0.002", "61000", "markPrice" to "0") to "NOT_POSITIVE",
+        )
+        cases.forEach { (body, reason) ->
+            positionBody = body
+            val before = output.all.length
+
+            val snapshot = adapter().read()
+
+            assertThat(snapshot.positionRisk).describedAs(reason).isNull()
+            assertThat(snapshot.signedQuantity).isEqualByComparingTo("-0.002")
+            assertThat(snapshot.entryPrice).isEqualByComparingTo("61000")
+            assertThat(snapshot.symbolConfig).isNotNull()
+            assertThat(snapshot.askLevels).isNotEmpty()
+            assertThat(output.all.substring(before)).contains("item=BINANCE_POSITION_RISK", "reason=$reason", "category=-", "error=-")
+        }
+        assertSecretsAbsent(output)
+        assertThat(output.all).doesNotContain("60500.10", "91234.56", "121.0002")
+    }
+
+    private fun assertRisk(
+        risk: ForeignPerpPositionRisk?,
+        liquidation: String,
+        mark: String,
+        isolatedMargin: String,
+        isolatedWallet: String,
+        maint: String,
+        positionInitial: String,
+        notional: String,
+    ) {
+        assertThat(risk).isNotNull()
+        assertThat(risk!!.liquidationPrice).isEqualByComparingTo(liquidation)
+        assertThat(risk.markPrice).isEqualByComparingTo(mark)
+        assertThat(risk.isolatedMargin).isEqualByComparingTo(isolatedMargin)
+        assertThat(risk.isolatedWallet).isEqualByComparingTo(isolatedWallet)
+        assertThat(risk.maintMargin).isEqualByComparingTo(maint)
+        assertThat(risk.positionInitialMargin).isEqualByComparingTo(positionInitial)
+        assertThat(risk.notional).isEqualByComparingTo(notional)
+    }
+
     private fun assertSecretsAbsent(output: CapturedOutput) {
         assertThat(output.all).doesNotContain("test-api-key", "test-secret-key", "signature=", "10000.50", "8000.25")
     }
@@ -640,8 +834,21 @@ class BinanceFuturesPrivateAccountAdapterTest {
         }
     }
 
-    private fun positionRisk(side: String, amt: String, entry: String) =
-        """[{"symbol":"BTCUSDT","positionSide":"$side","positionAmt":"$amt","entryPrice":"$entry"}]"""
+    /** 숏 BOTH 표본의 위험 필드. [risk] 로 값을 바꾸고, 값이 null 이면 그 필드를 뺀다. */
+    private fun positionRisk(side: String, amt: String, entry: String, vararg risk: Pair<String, String?>): String {
+        val fields = linkedMapOf<String, String?>(
+            "liquidationPrice" to "91234.56",
+            "markPrice" to "60500.10",
+            "isolatedMargin" to "12.3",
+            "isolatedWallet" to "12.0",
+            "maintMargin" to "0.48",
+            "positionInitialMargin" to "24.2",
+            "notional" to "-121.0002",
+        )
+        fields.putAll(risk)
+        val extra = fields.entries.filter { it.value != null }.joinToString("") { ""","${it.key}":"${it.value}"""" }
+        return """[{"symbol":"BTCUSDT","positionSide":"$side","positionAmt":"$amt","entryPrice":"$entry"$extra}]"""
+    }
 
     private fun json(body: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(body)
 

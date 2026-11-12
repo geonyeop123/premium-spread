@@ -529,6 +529,11 @@ manual 모드는 자산 칸의 "수동 모드 — 표시 안 함" 으로도 보�
 
 잔고·USDT 시세 실패는 중단 메일 범주가 아니다 — 로그 `Account balance unavailable` 를 본다.
 
+바이낸스 위험 지표(#138)도 같은 방식이다. api 모드에서 포지션이 열려 있을 때만 `/fapi/v3/positionRisk` 의 청산가·mark price·증거금 등을 읽고
+서명 GET `/fapi/v1/symbolConfig?symbol=BTCUSDT`(레버리지·마진 모드, 1.5초 timeout, 재시도 없음)를 한 번 부른다. 실패하거나 해석되지 않으면
+그 항목만 비우고 WARN `item=BINANCE_POSITION_RISK` 또는 `item=BINANCE_SYMBOL_CONFIG` 와 `reason`(알 수 없는 마진 모드는 `UNKNOWN`)만 남기며
+순손익·알림·중단 판정에는 영향이 없다. 값은 로그에 남기지 않는다. manual 모드와 포지션 없음에서는 읽지 않는다. 알림 형식은 바뀌지 않았다.
+
 PC 가 잠자기 상태였다면 깨어난 뒤 지난 시간을 감지해 메일이 늦게 올 수 있다.
 
 ## AC13 owner 검산 체크리스트

@@ -6,6 +6,9 @@ import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.ForeignPerpBalance
+import io.premiumspread.domain.accountpnl.ForeignPerpMarginType
+import io.premiumspread.domain.accountpnl.ForeignPerpPositionRisk
+import io.premiumspread.domain.accountpnl.ForeignPerpSymbolConfig
 import io.premiumspread.infrastructure.batch.exchange.AccountBalanceLog
 import io.premiumspread.infrastructure.batch.exchange.BalanceItem
 import io.premiumspread.infrastructure.batch.exchange.BalanceUnavailableReason
@@ -35,8 +38,10 @@ class BinanceFuturesPrivateAccountAdapter(
     @Synchronized
     override fun read(): ForeignPerpAccountSnapshot {
         val position = readPosition()
-        val history = if (position.amount.signum() != 0) resolveHistory(position) else null
+        val open = position.amount.signum() != 0
+        val history = if (open) resolveHistory(position) else null
         val fee = readTakerFeeRate()
+        val symbolConfig = if (open) readSymbolConfig() else null
         val balance = readBalance()
         val entryCommission = history?.let { commissionUsdt(it) }
         val lastPrice = client.price(SYMBOL)
@@ -51,74 +56,65 @@ class BinanceFuturesPrivateAccountAdapter(
             lastPrice = lastPrice,
             askObservedAt = depth.observedAt,
             balance = balance,
+            positionRisk = position.risk,
+            symbolConfig = symbolConfig,
         )
     }
 
     /**
      * /fapi/v3/account 의 USDT 잔고. 요청 실패·해석 실패는 null + WARN. 취소는 다시 던진다.
-     * 이 호출은 깊이 조회 앞이라 회차 시세 신선도를 잡아먹지 않게 [BALANCE_TIMEOUT] 으로 한 번만 보낸다 —
-     * `-1021` 이어도 서버 시각을 다시 재거나 재시도하지 않고 요청 실패로 흡수한다.
+     * 이 호출은 깊이 조회 앞이라 회차 시세 신선도를 잡아먹지 않게 [sendOnceOrNull] 로 한 번만 보낸다.
      */
     private fun readBalance(): ForeignPerpBalance? {
-        val root = try {
-            sendBalance()
-        } catch (e: AccountReadException) {
-            if (AccountBalanceLog.isCancellation(e)) throw e
-            AccountBalanceLog.unavailable(
-                BalanceItem.BINANCE_USDT_ASSET,
-                BalanceUnavailableReason.REQUEST_FAILED,
-                e.category,
-                AccountBalanceLog.rootErrorClass(e),
-            )
-            return null
-        }
-        return when (val parsed = parseBalance(root)) {
-            is BalanceParse.Ok -> parsed.balance
-
-            is BalanceParse.Unavailable -> {
-                AccountBalanceLog.unavailable(BalanceItem.BINANCE_USDT_ASSET, parsed.reason)
-                null
-            }
-        }
+        val root = sendOnceOrNull("/fapi/v3/account", "", BalanceItem.BINANCE_USDT_ASSET) ?: return null
+        return valueOrWarn(BalanceItem.BINANCE_USDT_ASSET, BinanceAccountResponseParser.parseBalance(root))
     }
 
-    private fun sendBalance(): JsonNode = try {
-        signed.send("/fapi/v3/account", "", BALANCE_TIMEOUT)
-    } catch (e: BinanceTimestampRejectedException) {
-        throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance /fapi/v3/account timestamp rejected", e)
+    /**
+     * /fapi/v1/symbolConfig 의 BTCUSDT 레버리지·마진 모드. 열린 포지션이 있을 때만 부른다.
+     * 요청 실패·해석 실패는 null + WARN, 취소는 다시 던진다(잔고와 같은 계약).
+     */
+    private fun readSymbolConfig(): ForeignPerpSymbolConfig? {
+        val root = sendOnceOrNull("/fapi/v1/symbolConfig", "symbol=$SYMBOL", BalanceItem.BINANCE_SYMBOL_CONFIG) ?: return null
+        return valueOrWarn(BalanceItem.BINANCE_SYMBOL_CONFIG, BinanceAccountResponseParser.parseSymbolConfig(root, SYMBOL))
     }
 
-    /** 응답 해석. 예외를 던지지 않고 사유를 돌려준다. */
-    private fun parseBalance(root: JsonNode): BalanceParse {
-        val assets = root.get("assets")?.takeIf { it.isArray }
-        val usdt = assets?.firstOrNull { it.path("asset").asText() == "USDT" }
-            ?: return BalanceParse.Unavailable(BalanceUnavailableReason.MISSING)
-        val margin = usdt.get("marginBalance")?.let { decimalOrNull(it) }
-        val available = usdt.get("availableBalance")?.let { decimalOrNull(it) }
-        return when {
-            margin == null || available == null -> BalanceParse.Unavailable(BalanceUnavailableReason.NOT_NUMBER)
-            margin.signum() < 0 || available.signum() < 0 -> BalanceParse.Unavailable(BalanceUnavailableReason.NEGATIVE)
-            else -> BalanceParse.Ok(ForeignPerpBalance(margin, available))
+    /**
+     * 부분 실패를 허용하는 서명 GET. [BALANCE_TIMEOUT] 으로 한 번만 보낸다 — `-1021` 이어도 서버 시각을 다시 재거나
+     * 재시도하지 않고 요청 실패로 본다. 요청 실패는 null + WARN 으로 흡수하고 취소(인터럽트)는 다시 던진다.
+     */
+    private fun sendOnceOrNull(path: String, params: String, item: BalanceItem): JsonNode? = try {
+        try {
+            signed.send(path, params, BALANCE_TIMEOUT)
+        } catch (e: BinanceTimestampRejectedException) {
+            throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance $path timestamp rejected", e)
         }
-    }
-
-    private fun decimalOrNull(node: JsonNode): BigDecimal? = try {
-        when {
-            node.isNumber -> node.decimalValue()
-            node.isTextual -> BigDecimal(node.asText())
-            else -> null
-        }
-    } catch (_: NumberFormatException) {
+    } catch (e: AccountReadException) {
+        if (AccountBalanceLog.isCancellation(e)) throw e
+        AccountBalanceLog.unavailable(
+            item,
+            BalanceUnavailableReason.REQUEST_FAILED,
+            e.category,
+            AccountBalanceLog.rootErrorClass(e),
+        )
         null
     }
 
-    private sealed interface BalanceParse {
-        class Ok(val balance: ForeignPerpBalance) : BalanceParse
+    private fun <T : Any> valueOrWarn(item: BalanceItem, parsed: Parsed<T>): T? = when (parsed) {
+        is Parsed.Ok -> parsed.value
 
-        class Unavailable(val reason: BalanceUnavailableReason) : BalanceParse
+        is Parsed.Unavailable -> {
+            AccountBalanceLog.unavailable(item, parsed.reason)
+            null
+        }
     }
 
-    private data class Position(val amount: BigDecimal, val entryPrice: BigDecimal, val positionSide: String)
+    private data class Position(
+        val amount: BigDecimal,
+        val entryPrice: BigDecimal,
+        val positionSide: String,
+        val risk: ForeignPerpPositionRisk? = null,
+    )
 
     private data class Trade(
         val id: Long,
@@ -162,7 +158,8 @@ class BinanceFuturesPrivateAccountAdapter(
         val entry = row.requireDecimal("entryPrice")
         if (amount.signum() == 0) return Position(BigDecimal.ZERO, BigDecimal.ZERO, row.path("positionSide").asText())
         if (entry.signum() <= 0) binanceUnexpected("entry price is not positive for an open position")
-        return Position(amount, entry, row.path("positionSide").asText())
+        val risk = valueOrWarn(BalanceItem.BINANCE_POSITION_RISK, BinanceAccountResponseParser.parsePositionRisk(row))
+        return Position(amount, entry, row.path("positionSide").asText(), risk)
     }
 
     private fun resolveHistory(position: Position): History? {
@@ -313,7 +310,7 @@ class BinanceFuturesPrivateAccountAdapter(
         const val MAX_WINDOWS = 13
         const val WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000
 
-        /** 잔고 호출 전용 timeout. 다른 호출은 생성자 timeout(기본 5초)을 쓴다. */
+        /** 잔고·symbolConfig(부분 실패 허용 호출) 전용 timeout. 다른 호출은 생성자 timeout(기본 5초)을 쓴다. */
         val BALANCE_TIMEOUT: Duration = Duration.ofMillis(1500)
     }
 }

@@ -75,6 +75,8 @@ class BinanceFuturesManualAccountAdapterTest {
 
         assertThat(snapshot.positionSource).isEqualTo(ForeignPerpPositionSource.MANUAL_ENV)
         assertThat(snapshot.balance).isNull()
+        assertThat(snapshot.positionRisk).isNull()
+        assertThat(snapshot.symbolConfig).isNull()
     }
 
     @Test

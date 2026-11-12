@@ -53,6 +53,40 @@ enum class ForeignPerpPositionSource {
     MANUAL_ENV,
 }
 
+enum class ForeignPerpMarginType {
+    CROSSED,
+    ISOLATED,
+}
+
+data class ForeignPerpPositionRisk(
+    val liquidationPrice: BigDecimal?,
+    val markPrice: BigDecimal,
+    val isolatedMargin: BigDecimal,
+    val isolatedWallet: BigDecimal,
+    val maintMargin: BigDecimal,
+    val positionInitialMargin: BigDecimal,
+    val notional: BigDecimal,
+) {
+    init {
+        require(markPrice.signum() > 0) { "markPrice must be positive." }
+        require(liquidationPrice == null || liquidationPrice.signum() > 0) { "liquidationPrice must be positive." }
+        require(isolatedMargin.signum() >= 0) { "isolatedMargin must not be negative." }
+        require(isolatedWallet.signum() >= 0) { "isolatedWallet must not be negative." }
+        require(maintMargin.signum() >= 0) { "maintMargin must not be negative." }
+        require(positionInitialMargin.signum() >= 0) { "positionInitialMargin must not be negative." }
+    }
+
+    override fun toString(): String = "ForeignPerpPositionRisk"
+}
+
+data class ForeignPerpSymbolConfig(val leverage: Int, val marginType: ForeignPerpMarginType) {
+    init {
+        require(leverage >= 1) { "leverage must be at least 1." }
+    }
+
+    override fun toString(): String = "ForeignPerpSymbolConfig(marginType=$marginType)"
+}
+
 data class ForeignPerpAccountSnapshot(
     val signedQuantity: BigDecimal,
     val entryPrice: BigDecimal,
@@ -64,6 +98,8 @@ data class ForeignPerpAccountSnapshot(
     val askObservedAt: Instant,
     val positionSource: ForeignPerpPositionSource = ForeignPerpPositionSource.EXCHANGE_API,
     val balance: ForeignPerpBalance? = null,
+    val positionRisk: ForeignPerpPositionRisk? = null,
+    val symbolConfig: ForeignPerpSymbolConfig? = null,
 ) {
     override fun toString(): String =
         "ForeignPerpAccountSnapshot(positionSource=$positionSource, askObservedAt=$askObservedAt)"

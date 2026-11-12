@@ -98,6 +98,19 @@ class PrivateAccountReadOnlyArchitectureTest {
         assertTrue(hits.isEmpty(), "조회 전용 표본을 위반으로 잡았다: $hits")
     }
 
+    @Test
+    fun `위험 지표 읽기 경로는 GET 전용 스캔 대상 안에 있다`() {
+        val texts = targetSources().map { Files.readString(it) }
+        val missing = REQUIRED_READ_PATHS.filter { path ->
+            texts.none { it.contains("\"$path\"") }
+        }
+        assertTrue(
+            missing.isEmpty(),
+            "위험 지표 읽기 경로 $missing 가 GET 전용 스캔 대상 어디에도 없다 — " +
+                "스캔 밖 파일에 두면 조회 전용 검사를 우회한다. root=${root()}",
+        )
+    }
+
     private fun targetSources(): List<Path> = Files.walk(root()).use { paths ->
         paths.filter { path ->
             val normalized = path.toString().replace('\\', '/')
@@ -131,6 +144,7 @@ class PrivateAccountReadOnlyArchitectureTest {
             "BithumbFillHistoryPrivateAccountAdapter.kt",
             "BinanceFillHistoryPrivateAccountAdapter.kt",
         )
+        val REQUIRED_READ_PATHS = setOf("/fapi/v3/positionRisk", "/fapi/v1/symbolConfig")
         const val MINIMUM_RULES = 19
 
         val FORBIDDEN: List<Rule> = listOf(
