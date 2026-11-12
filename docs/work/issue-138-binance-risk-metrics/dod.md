@@ -3,7 +3,7 @@ feature: 바이낸스 위험 지표 조회 — 레버리지·마진 모드·청�
 slug: issue-138-binance-risk-metrics
 status: FROZEN
 frozen_at: 2026-11-12 (사용자 계약 승인 — AC7 흡수안 포함)
-verdict_commit:
+verdict_commit: 708dc47
 source: https://github.com/geonyeop123/premium-spread/issues/138
 ---
 
@@ -132,6 +132,33 @@ $ ./gradlew :apps:batch:test --offline
 BUILD SUCCESSFUL (389 tests, 0 failures)
 ```
 
+### AC4 (mutation RED — 컨트롤러 보강)
+
+```
+[RED] 2026-11-12 708dc47 + 임시 변이(커밋 안 함): 어댑터 44행 `if (open) readSymbolConfig() else null` → `readSymbolConfig()`
+$ ./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest --offline
+BinanceFuturesPrivateAccountAdapterTest > 포지션이 없으면 위험 지표가 없고 symbolConfig 를 부르지 않는다() FAILED
+org.opentest4j.AssertionFailedError: expected: null but was: ForeignPerpSymbolConfig(marginType=ISOLATED)
+exit=1
+(변이 원복 후 git status 깨끗)
+
+[GREEN] 2026-11-12 708dc47
+$ ./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest --offline
+exit=0
+```
+
+### Gate 2 일괄 실행
+
+```
+[GREEN] 2026-11-12 708dc47
+$ ./gradlew test architectureTest --parallel --offline --no-daemon --rerun-tasks
+exit=0 — test-results XML 집계 1672 tests, 0 failures, 0 errors, 0 skipped (R1~R4 포함)
+$ ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.ForeignPerpRiskMetricsTest --offline  → exit=0 (AC8)
+$ ./gradlew architectureTest --offline  → exit=0 (AC9)
+$ ./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapterTest --offline  → exit=0 (R2)
+R5 ktlint: 로컬 jar 없음 — PR quality-gate CI 결과로 판정(미실행을 green 으로 기록하지 않는다)
+```
+
 ## 사람 확인 (T4)
 
 해당 없음
@@ -144,11 +171,11 @@ BUILD SUCCESSFUL (389 tests, 0 failures)
 ## 최종 판정
 
 ```
-DoD VERDICT: issue-138-binance-risk-metrics @ <commit SHA>
+DoD VERDICT: issue-138-binance-risk-metrics @ 708dc47
   수용기준 표:     9개  (T1 9 · T2 0 · T3 0 · T4 0)
-  T1/T2 자동:      9개 중 <p>개 PASS
+  T1/T2 자동:      9개 중 9개 PASS
   T3 기록 제출:    0개 중 0건
   T4 사람 확인:    0개 중 0건 완료, 0건 대기
   변경 요청:       0건
-  =>
+  => VERIFIED
 ```
