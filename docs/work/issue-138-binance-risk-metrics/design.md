@@ -33,6 +33,7 @@
 - `signed.send(path, "symbol=BTCUSDT", BALANCE_TIMEOUT)` 한 번. `-1021`도 재측정·재시도 없이 요청 실패로 흡수한다 — 회차 시세 신선도를 잡아먹지 않게 한다(잔고 호출과 같은 이유).
 - 응답 배열에서 `symbol == BTCUSDT` 행을 찾는다. 없으면 MISSING, `leverage`가 양의 정수가 아니면 NOT_NUMBER/NOT_POSITIVE, `marginType`이 CROSSED/ISOLATED가 아니면 UNKNOWN.
 - 취소(인터럽트)는 흡수하지 않고 다시 던진다(잔고와 동일).
+- **timeout 예산:** 깊이 조회 전 선택 호출은 잔고·symbolConfig 둘이고 각각 1.5초라 최악 합계는 3초다. Job 의 시세 skew 한도(`MAX_QUOTE_SKEW` 5초) 안에 들어간다. 선택 호출을 더 붙이면 이 합계를 다시 계산한다(최종 리뷰 지적 반영).
 
 ### D5. 로그는 `AccountBalanceLog`를 재사용한다
 
