@@ -96,6 +96,7 @@ data class AccountAlertState(
     val swing: SwingState,
     val reminder: ReminderState,
     val step: ReferenceStepState = ReferenceStepState.INITIAL,
+    val liquidation: LiquidationProximityState = LiquidationProximityState.INITIAL,
 ) {
     companion object {
         val INITIAL = AccountAlertState(PositionWatchState.INITIAL, SwingState.INITIAL, ReminderState.INITIAL)
@@ -127,6 +128,7 @@ data class AccountAlertSettings(
 /**
  * 성공 회차 1개의 관측 (design §3.5). 실패 회차는 만들지 않는다(null 로 넘긴다).
  * [pnl] == null 은 포지션 없음. [observedAt] 은 두 계정 조회를 마친 시각이며 pnl 이 있으면 pnl.calculatedAt 과 같다.
+ * [foreignRisk]·[foreignConfig] 는 #138 바이낸스 위험 지표 — 청산 근접 판정(#141)에만 쓴다. 조회 못 하면 null.
  */
 data class AccountRound(
     val legs: PositionLegs,
@@ -134,6 +136,8 @@ data class AccountRound(
     val fundingUsdt: BigDecimal?,
     val pnl: AccountNetPnl?,
     val observedAt: Instant,
+    val foreignRisk: ForeignPerpPositionRisk? = null,
+    val foreignConfig: ForeignPerpSymbolConfig? = null,
 ) {
     init {
         require(pnl == null || pnl.calculatedAt == observedAt) { "pnl must be calculated at observedAt." }

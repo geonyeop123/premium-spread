@@ -43,6 +43,10 @@ object AccountAlertContent {
         is AccountAlert.UnrecoveredReminder -> "account-pnl-reminder-${alert.dayStart.toEpochMilli()}"
 
         is AccountAlert.ReferenceStep -> ReferenceStepContent.eventKey(alert)
+
+        is AccountAlert.LiquidationProximity -> LiquidationProximityContent.eventKey(alert)
+
+        is AccountAlert.LiquidationEased -> LiquidationProximityContent.eventKey(alert)
     }
 
     /** basis: 포지션·리마인더 = detectedAt, 급변 = pnl.calculatedAt. author = [AccountPnlAlertContent.AUTHOR]. */
@@ -51,6 +55,8 @@ object AccountAlertContent {
         is AccountAlert.NetPercentSwing -> swing(alert, zone)
         is AccountAlert.UnrecoveredReminder -> reminder(alert, zone)
         is AccountAlert.ReferenceStep -> ReferenceStepContent.message(alert, zone)
+        is AccountAlert.LiquidationProximity -> LiquidationProximityContent.message(alert, zone)
+        is AccountAlert.LiquidationEased -> LiquidationProximityContent.message(alert, zone)
     }
 
     // 포지션 변경

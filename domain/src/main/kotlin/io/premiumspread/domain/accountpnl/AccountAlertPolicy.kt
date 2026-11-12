@@ -4,12 +4,13 @@ import java.time.ZoneId
 
 data class AccountAlertDecision(val next: AccountAlertState, val alerts: List<AccountAlert>)
 
-/** 세 정책(포지션 변경·순수익률 급변·미반영 리마인더)을 한 회차에 조합한다 (design §3.5). */
+/** 계정 알림 정책(포지션 변경·순수익률 급변·미반영 리마인더·기준 포지션 단계·청산 근접)을 한 회차에 조합한다 (design §3.5). */
 object AccountAlertPolicy {
     /**
      * design §3.5. [round] == null(실패 회차)이면 (state, []).
      * 순서: 포지션 → 급변(positionChanged = 포지션 알림 있음, bucket = NetPercentSwingPolicy.bucketStart(round.observedAt, zone))
-     *       → 리마인더 → 기준 포지션 단계([gap] 이 null 이면 판정 안 함, 상태 유지). alerts 도 이 순서.
+     *       → 리마인더 → 기준 포지션 단계([gap] 이 null 이면 판정 안 함, 상태 유지)
+     *       → 청산 근접(#141, [LiquidationProximityPolicy]). alerts 도 이 순서.
      */
     fun decide(
         state: AccountAlertState,
@@ -26,8 +27,10 @@ object AccountAlertPolicy {
         val reminder = UnrecoveredReminderPolicy.decide(state.reminder, round, settings, zone)
 
         val step = ReferenceStepPolicy.decide(state.step, gap, settings.referenceStepWidth)
+        val liquidation = LiquidationProximityPolicy.decide(state.liquidation, round)
 
-        val alerts = listOfNotNull(position.alert, swing.alert, reminder.alert, step.alert)
-        return AccountAlertDecision(AccountAlertState(position.next, swing.next, reminder.next, step.next), alerts)
+        val alerts = listOfNotNull(position.alert, swing.alert, reminder.alert, step.alert, liquidation.alert)
+        val next = AccountAlertState(position.next, swing.next, reminder.next, step.next, liquidation.next)
+        return AccountAlertDecision(next, alerts)
     }
 }

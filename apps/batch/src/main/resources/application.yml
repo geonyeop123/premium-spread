@@ -179,6 +179,14 @@ owner-alert:
       email: ${OWNER_ALERT_REFERENCE_STEP_EMAIL:}
       discord: ${OWNER_ALERT_REFERENCE_STEP_DISCORD:}
       push: ${OWNER_ALERT_REFERENCE_STEP_PUSH:}
+    liquidation-proximity:
+      email: ${OWNER_ALERT_LIQUIDATION_PROXIMITY_EMAIL:}
+      discord: ${OWNER_ALERT_LIQUIDATION_PROXIMITY_DISCORD:}
+      push: ${OWNER_ALERT_LIQUIDATION_PROXIMITY_PUSH:}
+    liquidation-eased:
+      email: ${OWNER_ALERT_LIQUIDATION_EASED_EMAIL:}
+      discord: ${OWNER_ALERT_LIQUIDATION_EASED_DISCORD:}
+      push: ${OWNER_ALERT_LIQUIDATION_EASED_PUSH:}
     fx-ingestion-delayed:
       email: ${OWNER_ALERT_FX_INGESTION_DELAYED_EMAIL:}
       discord: ${OWNER_ALERT_FX_INGESTION_DELAYED_DISCORD:}

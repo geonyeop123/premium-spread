@@ -80,4 +80,56 @@ sealed interface AccountAlert {
         override val kind: OwnerAlertKind get() = OwnerAlertKind.REFERENCE_STEP
         val boundary: BigDecimal get() = stepWidth.multiply(BigDecimal(level))
     }
+
+    /**
+     * 바이낸스 선물 진입가→청산가 진행률이 경계 [level](50·60·70·80·90)을 위로 넘었다 (#141 design D3).
+     * [config] == null 은 심볼 설정을 못 읽은 회차. 실계정 가격이므로 toString 은 level·side·observedAt 만.
+     */
+    data class LiquidationProximity(
+        val level: Int,
+        val progressPercent: BigDecimal,
+        val side: PerpSide,
+        val entryPrice: BigDecimal,
+        val markPrice: BigDecimal,
+        val liquidationPrice: BigDecimal,
+        val config: ForeignPerpSymbolConfig?,
+        val observedAt: Instant,
+    ) : AccountAlert {
+        override val kind: OwnerAlertKind get() = OwnerAlertKind.LIQUIDATION_PROXIMITY
+
+        init {
+            require(level in LiquidationProximityPolicy.BOUNDARIES) { "level must be a liquidation boundary." }
+        }
+
+        override fun toString(): String = "LiquidationProximity(level=$level, side=$side, observedAt=$observedAt)"
+    }
+
+    /**
+     * 알린 경계 [previousLevel] 이 재무장될 만큼 진행률이 내려갔다 (#141 design D4). [armedLevel] = 재무장 뒤 단계(0 = 없음).
+     * 실계정 가격이므로 toString 은 단계·side·observedAt 만.
+     */
+    data class LiquidationEased(
+        val previousLevel: Int,
+        val armedLevel: Int,
+        val progressPercent: BigDecimal,
+        val side: PerpSide,
+        val entryPrice: BigDecimal,
+        val markPrice: BigDecimal,
+        val liquidationPrice: BigDecimal,
+        val config: ForeignPerpSymbolConfig?,
+        val observedAt: Instant,
+    ) : AccountAlert {
+        override val kind: OwnerAlertKind get() = OwnerAlertKind.LIQUIDATION_EASED
+
+        init {
+            require(previousLevel in LiquidationProximityPolicy.BOUNDARIES) { "previousLevel must be a liquidation boundary." }
+            require(armedLevel == 0 || armedLevel in LiquidationProximityPolicy.BOUNDARIES) {
+                "armedLevel must be 0 or a liquidation boundary."
+            }
+            require(armedLevel < previousLevel) { "armedLevel must be below previousLevel." }
+        }
+
+        override fun toString(): String =
+            "LiquidationEased(previousLevel=$previousLevel, armedLevel=$armedLevel, side=$side, observedAt=$observedAt)"
+    }
 }
