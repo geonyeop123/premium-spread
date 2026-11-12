@@ -2,7 +2,7 @@
 
 설계: `design.md`, 계약: `dod.md`(FROZEN). 태스크는 순서대로 한다. 각 태스크는 테스트를 먼저 쓰고 기대한 assertion 실패(RED)를 확인한 뒤 구현한다. RED/GREEN 출력은 `dod.md` 증거 로그에 append 한다.
 
-## T1. 도메인 값 타입 (AC8)
+## Task 1: 도메인 값 타입 (AC8)
 
 **파일**
 - 수정 `domain/src/main/kotlin/io/premiumspread/domain/accountpnl/AccountSnapshots.kt`
@@ -19,7 +19,7 @@
 
 **검증** `./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.ForeignPerpRiskMetricsTest --offline`
 
-## T2. 어댑터 (AC1~AC7)
+## Task 2: 어댑터 (AC1~AC7)
 
 **파일**
 - 수정 `infrastructure/batch/src/main/kotlin/io/premiumspread/infrastructure/batch/exchange/binance/BinanceFuturesPrivateAccountAdapter.kt`
@@ -44,7 +44,7 @@
 
 **검증** `./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest --offline`
 
-## T3. 아키텍처 테스트 (AC9)
+## Task 3: 아키텍처 테스트 (AC9)
 
 **파일** 수정 `architecture-tests/src/architectureTest/kotlin/io/premiumspread/architecture/PrivateAccountReadOnlyArchitectureTest.kt`
 
