@@ -315,3 +315,107 @@ CREATE TABLE IF NOT EXISTS account_pnl_latest (
         OR (has_position = FALSE AND net_percent IS NULL AND net_krw IS NULL)
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- V24 (실계정 포지션 이력) + V26 (확정 손익 정산 열)과 같은 스키마. Batch 는 Flyway 를 쓰지 않으므로 fixture 로 만든다.
+-- leg 수량·평단은 정규화한 10진 문자열이고 정산 금액은 DECIMAL 이다.
+CREATE TABLE IF NOT EXISTS account_position_episode (
+    id                         BIGINT         NOT NULL AUTO_INCREMENT,
+    status                     VARCHAR(8)     NOT NULL,
+    opened_at                  DATETIME(6)    NOT NULL,
+    closed_at                  DATETIME(6)    NULL,
+    korea_quantity             VARCHAR(64)    NOT NULL,
+    korea_average_price        VARCHAR(64)    NOT NULL,
+    foreign_signed_quantity    VARCHAR(64)    NOT NULL,
+    foreign_entry_price        VARCHAR(64)    NOT NULL,
+    reference_korea_quantity   VARCHAR(64)    NULL,
+    reference_korea_price      VARCHAR(64)    NULL,
+    reference_foreign_quantity VARCHAR(64)    NULL,
+    reference_foreign_price    VARCHAR(64)    NULL,
+    position_source            VARCHAR(16)    NOT NULL,
+    event_count                INT            NOT NULL,
+    open_marker                TINYINT        AS (CASE WHEN status = 'OPEN' THEN 1 ELSE NULL END) STORED,
+    created_at                 DATETIME(6)    NOT NULL,
+    updated_at                 DATETIME(6)    NOT NULL,
+    korea_settlement           VARCHAR(16)    NULL,
+    foreign_settlement         VARCHAR(16)    NULL,
+    korea_realized_krw         DECIMAL(24,4)  NULL,
+    foreign_realized_pnl_usdt  DECIMAL(30,8)  NULL,
+    foreign_commission_usdt    DECIMAL(30,8)  NULL,
+    foreign_funding_usdt       DECIMAL(30,8)  NULL,
+    fx_rate                    DECIMAL(20,8)  NULL,
+    fx_observed_at             DATETIME(6)    NULL,
+    total_realized_krw         DECIMAL(24,0)  NULL,
+    settled_seq                INT            NULL,
+    settled_at                 DATETIME(6)    NULL,
+    settlement_attempts        INT            NULL,
+    settlement_failure         VARCHAR(32)    NULL,
+    settlement_next_at         DATETIME(6)    NULL,
+    settlement_target_seq      INT            NULL,
+    CONSTRAINT pk_account_position_episode PRIMARY KEY (id),
+    CONSTRAINT uk_account_position_episode_open UNIQUE (open_marker),
+    CONSTRAINT ck_account_position_episode_status CHECK (
+        (status = 'OPEN' AND closed_at IS NULL) OR (status = 'CLOSED' AND closed_at IS NOT NULL)
+    ),
+    CONSTRAINT ck_account_position_episode_reference CHECK (
+        (reference_korea_quantity IS NULL AND reference_korea_price IS NULL
+            AND reference_foreign_quantity IS NULL AND reference_foreign_price IS NULL)
+        OR (reference_korea_quantity IS NOT NULL AND reference_korea_price IS NOT NULL
+            AND reference_foreign_quantity IS NOT NULL AND reference_foreign_price IS NOT NULL)
+    ),
+    CONSTRAINT ck_account_position_episode_source CHECK (position_source IN ('EXCHANGE_API', 'MANUAL_ENV')),
+    CONSTRAINT ck_account_position_episode_settlement_status CHECK (
+        (korea_settlement IS NULL OR korea_settlement IN ('PENDING', 'CONFIRMED', 'MANUAL'))
+        AND (foreign_settlement IS NULL OR foreign_settlement IN ('PENDING', 'CONFIRMED', 'MANUAL'))
+    ),
+    CONSTRAINT ck_account_position_episode_settlement_failure CHECK (
+        settlement_failure IS NULL OR settlement_failure IN (
+            'KOREA_READ', 'FOREIGN_READ', 'KOREA_QUANTITY', 'FOREIGN_QUANTITY', 'FX', 'WINDOW_LIMIT'
+        )
+    ),
+    INDEX ix_account_position_episode_closed (status, closed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- V24 와 같은 스키마.
+CREATE TABLE IF NOT EXISTS account_position_event (
+    id                      BIGINT         NOT NULL AUTO_INCREMENT,
+    episode_id              BIGINT         NOT NULL,
+    seq                     INT            NOT NULL,
+    event_type              VARCHAR(16)    NOT NULL,
+    occurred_at             DATETIME(6)    NOT NULL,
+    korea_quantity          VARCHAR(64)    NOT NULL,
+    korea_average_price     VARCHAR(64)    NOT NULL,
+    foreign_signed_quantity VARCHAR(64)    NOT NULL,
+    foreign_entry_price     VARCHAR(64)    NOT NULL,
+    hedged                  BOOLEAN        NOT NULL,
+    position_source         VARCHAR(16)    NOT NULL,
+    created_at              DATETIME(6)    NOT NULL,
+    CONSTRAINT pk_account_position_event PRIMARY KEY (id),
+    CONSTRAINT uk_account_position_event_seq UNIQUE (episode_id, seq),
+    CONSTRAINT fk_account_position_event_episode FOREIGN KEY (episode_id) REFERENCES account_position_episode (id),
+    CONSTRAINT ck_account_position_event_type CHECK (
+        event_type IN ('OPENED', 'INCREASED', 'REDUCED', 'ADJUSTED', 'CLOSED')
+    ),
+    CONSTRAINT ck_account_position_event_source CHECK (position_source IN ('EXCHANGE_API', 'MANUAL_ENV'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- V24 와 같은 스키마.
+CREATE TABLE IF NOT EXISTS account_pnl_observation (
+    id                        BIGINT         NOT NULL AUTO_INCREMENT,
+    episode_id                BIGINT         NOT NULL,
+    kind                      VARCHAR(8)     NOT NULL,
+    observed_at               DATETIME(6)    NOT NULL,
+    net_percent               DECIMAL(12,2)  NULL,
+    net_krw                   DECIMAL(20,0)  NULL,
+    current_premium_percent   DECIMAL(12,2)  NOT NULL,
+    entry_premium_percent     DECIMAL(12,2)  NOT NULL,
+    premium_gap_percent_point DECIMAL(12,2)  NOT NULL,
+    fx_rate                   DECIMAL(20,8)  NOT NULL,
+    korea_exit_price          DECIMAL(30,8)  NOT NULL,
+    foreign_exit_price        DECIMAL(30,8)  NOT NULL,
+    created_at                DATETIME(6)    NOT NULL,
+    CONSTRAINT pk_account_pnl_observation PRIMARY KEY (id),
+    CONSTRAINT uk_account_pnl_observation_round UNIQUE (episode_id, observed_at),
+    CONSTRAINT fk_account_pnl_observation_episode FOREIGN KEY (episode_id) REFERENCES account_position_episode (id),
+    CONSTRAINT ck_account_pnl_observation_kind CHECK (
+        (kind = 'HOLDING' AND net_percent IS NOT NULL AND net_krw IS NOT NULL)
+        OR (kind = 'FLAT' AND net_percent IS NULL AND net_krw IS NULL)
+    ),
+    INDEX ix_account_pnl_observation_observed_at (observed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

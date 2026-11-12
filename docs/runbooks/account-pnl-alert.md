@@ -51,6 +51,7 @@
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 | `ACCOUNT_PNL_SWING_THRESHOLD_PERCENT` | 아니오 | 순수익률 급변 임계값(%p, 양수). 기본 `0.5`. 0 이하면 기동 실패 | `0.5` |
 | `ACCOUNT_PNL_REFERENCE_STEP_PERCENT` | 아니오 | 기준 포지션 대비 단계 알림의 단계 폭(%p, 양수). 기본 `0.5`. 0 이하이거나 0.01 미만이면 기동 실패(김프 정밀도가 0.01%p 이고 더 좁으면 단계 계산이 넘칠 수 있다). 아래 "기준 포지션 대비 단계" 절 | `0.5` |
+| `ACCOUNT_PNL_REALIZED_PNL_ENABLED` | 아니오 | 정리한 포지션의 확정 손익 정산 Job(5분 주기) on/off. 기본 `true`, `false` 면 정산만 끄고 모니터·알림은 그대로다. 아래 "확정 손익" 절 | `true` |
 | `ACCOUNT_PNL_REMINDER_HOUR` | 아니오 | 미반영 리마인더 판정을 시작하는 시각(`Asia/Seoul` 시, `0`~`23`). 기본 `9`. 범위 밖이면 기동 실패 | `9` |
 | `ACCOUNT_PNL_MANUAL_FUNDING_STALE_DAYS` | 아니오 | 수동 펀딩 값을 "미갱신"으로 보는 일수(양의 정수). 기본 `3`. 0 이하면 기동 실패 | `3` |
 
@@ -690,6 +691,75 @@ GROUP BY kind;
 - **API(Flyway V25) 먼저 → batch.** 새 batch 가 V25 보다 먼저 뜨면 상태 로드가 `Unknown column` 으로 실패해 회차가 실패로 남는다.
 - 구 binary 로 되돌려도 안전하다 — 구 binary 의 INSERT·UPDATE 는 새 열을 건드리지 않아 그대로 동작하고 새 열 값을 보존한다. 단계 알림만 멈춘다.
   다시 신 binary 로 올리면 보존된 기준·단계에서 이어 판정한다. 이때 단계 상태는 롤백 시점의 값이다 — 롤백 기간 중 같은 가격으로 재진입한 경우에만 오래된 level 때문에 알림이 한 번 나갈 수 있다. 스키마는 되돌리지 않는다.
+
+## 확정 손익 (#130)
+
+정리 사건(`REDUCED`·`ADJUSTED`·`CLOSED`)이 생긴 포지션 건에 대해, 별도 Job `account_realized_pnl`이 5분마다 거래소 체결 내역을 읽어 실현 손익을 건 행에 확정한다.
+모니터 회차(순손익·알림)와 분리돼 있어 정산이 실패해도 알림은 바뀌지 않는다. 거래소 호출은 모두 GET이다.
+
+### 어떻게 계산하나
+
+- 조회 창은 `(max(앞 건 closed_at, opened_at − 1시간), 정리 사건 시각]`이다. 앞 건이 없으면 `opened_at − 1시간`부터다. 사건 시각 뒤 2분이 지나야 읽는다(체결 반영 지연).
+  - 앞 건이 90일 넘게 전에 닫혔어도 창은 진입 1시간 전부터라 새 건은 정산 대상이다.
+  - 대신 모니터가 1시간 넘게 꺼진 동안 연 체결은 창 밖이 되어 수량이 맞지 않고 `PENDING`(`KOREA_QUANTITY`·`FOREIGN_QUANTITY`)으로 남는다.
+- 빗썸(KRW): 창 안 KRW-BTC 체결을 시각 순으로 이동평균 원가(매수 수수료 포함)에 적용한다. 매도마다 `(체결금액 − 수수료) − 판 수량 × 평균 원가`를 더한다.
+  - 보유 0 에서 dust(0.0001 BTC) 미만을 팔면(앞 건의 dust 잔량을 이 건 첫 매수 전에 판 경우) 원가 0 으로 `(체결금액 − 수수료)`를 실현한다. dust 이상이면 원가를 정할 수 없어 `KOREA_QUANTITY`로 미확정이다.
+- 바이낸스(USDT): 창 안 BTCUSDT 체결의 `realizedPnl` 합 − 수수료(절댓값) 합 + 펀딩(`FUNDING_FEE`) 합. BNB 수수료는 체결 시각 1분봉 시가로 USDT 환산한다.
+- 합계(KRW) = 빗썸 + 바이낸스 순 × 환율. 환율은 정리 회차에 모니터가 남긴 관측 행의 환율(실시간)이고, 없으면 10분 안 직전 관측, 그것도 없으면 FX 최신 값이다. `fx_observed_at`이 실제로 쓴 환율 시각이다.
+- 매번 창 전체를 다시 계산한다. 같은 사건을 다시 정산해도 증분을 더하지 않으므로 같은 체결이 두 번 세어지지 않는다.
+
+### 확정 조건과 상태
+
+- 창 안 체결의 순수량이 사건 시점 보유량과 맞아야 그 쪽을 확정한다. 빗썸은 dust(0.0001 BTC) 미만 차이, 바이낸스는 정확히 같아야 한다.
+- `korea_settlement`·`foreign_settlement`: `PENDING`(미확정) · `CONFIRMED`(확정) · `MANUAL`(바이낸스 수동 모드 — 바이낸스 값과 합계는 `NULL`). `NULL`이면 정리 사건이 아직 없다.
+- 두 쪽이 확정(또는 바이낸스 MANUAL)되면 `settled_seq`·`settled_at`이 채워진다.
+- **값의 뜻:** `total_realized_krw`·`fx_rate`·`fx_observed_at`은 `settled_seq` 사건 기준의 확정 합계다. 뒤 사건 정산이 미확정으로 끝나도 지워지거나 바뀌지 않는다.
+  쪽별 값(`korea_realized_krw`, 바이낸스 3값)은 그 쪽의 마지막으로 성공한 계산 결과다(환율 실패로 `foreign_settlement = PENDING`인 바이낸스 값 포함). 조회·수량 실패로 계산하지 못한 시도는 이전 값을 그대로 둔다. `settlement_target_seq`가 `settled_seq`보다 크면 쪽 값이 합계보다 새 사건 기준일 수 있다.
+- 두 쪽이 모두 확정됐는데 환율을 못 구하면 `foreign_settlement = PENDING`, `settlement_failure = FX`다. 이때 바이낸스 값은 채워져 있지만 합계는 `NULL`이고 다음 시도에 다시 계산한다.
+- 실패 사유 `settlement_failure`: `KOREA_READ`·`FOREIGN_READ`(조회 실패) · `KOREA_QUANTITY`·`FOREIGN_QUANTITY`(순수량 불일치 — 체결 반영 지연이나 창 밖 체결) · `FX` · `WINDOW_LIMIT`(빗썸 20페이지, 바이낸스 한 7일 창 1000건 초과).
+- 시도 횟수와 `settlement_next_at`(5분 × 2^(시도−1), 최대 6시간)은 **거래소를 읽기 전, 시도를 시작할 때** 기록한다. 그래서 timeout·취소로 결과를 기록하지 못한 시도도 미뤄진다.
+  확정되면 `settlement_attempts`·`settlement_next_at`·`settlement_failure`를 비운다.
+  미룬 건은 건너뛰고 다음 건을 정산하므로 한 건이 다른 건을 막지 않는다. 새 정리 사건이 생기면 바로 다시 본다.
+
+### 전제와 한계
+
+- **전용 계좌 전제:** 포지션 건은 계좌의 빗썸 KRW-BTC와 바이낸스 BTCUSDT **전체**다. 같은 계좌에서 전략과 무관한 BTC 거래를 하면 그 손익도 건에 들어간다. 바이낸스 롱 체결도 창 안이면 합산되며, 사건 시점에 롱이 남아 있으면 수량이 맞지 않아 PENDING이다.
+- **90일 한도:** 조회 창 시작이 90일보다 오래된 건은 정산하지 않는다(바이낸스 펀딩 이력 보관 3개월). 상태가 `NULL`이나 `PENDING`으로 남는다. 창 시작은 늦어도 `opened_at − 1시간`이므로 진입 뒤 90일 안에 정리한 건은 이 한도에 걸리지 않는다.
+- **dust:** 팔지 않고 남은 dust(0.0001 BTC 미만)의 원가는 실현 손익에 넣지 않는다. 그만큼 `Σ매도 − Σ매수` 현금 흐름과 다를 수 있다.
+- **잔여 위험:** 7일보다 오래 전에 낸 지정가 주문 두 개가 창 안에서 같은 수량으로 사고팔면, 순수량이 0이라 대조를 통과하고 그 왕복 손익만 빠진 채 확정될 수 있다.
+- 입출금으로 BTC가 들어오고 나가면 수량이 맞지 않아 그 건은 PENDING으로 남는다.
+
+### 확인 쿼리
+
+금액 열은 이슈·PR·채팅에 붙여넣지 않는다.
+
+```sql
+-- 정산 상태 (금액 제외)
+SELECT id, status, closed_at, korea_settlement, foreign_settlement, settled_seq, settled_at,
+       settlement_attempts, settlement_failure, settlement_next_at, fx_observed_at
+FROM account_position_episode
+ORDER BY id DESC
+LIMIT 10;
+```
+
+### owner 대조 체크리스트 (#130 AC10)
+
+seed 건(2026-10-28~11-08) 또는 실제 정리 건으로 로컬 batch를 띄워 확인하고, 결과를 **PR 코멘트**로 남긴다(금액은 적지 않고 일치 여부만).
+
+- [ ] (a) 정산 로그 `Account realized PnL settlement`에 대상 건 id·seq와 상태가 남는다.
+- [ ] (b) 위 쿼리에서 그 건의 두 상태가 `CONFIRMED`다. `PENDING`이면 `settlement_failure` 범주를 기록한다(seed 건은 `opened_at`이 근사값이라 수량이 맞지 않을 수 있다).
+- [ ] (c) `korea_realized_krw`가 빗썸 거래 내역(해당 기간 KRW-BTC 매수·매도 체결금액과 수수료)으로 손계산한 값과 맞는다.
+- [ ] (d) `foreign_realized_pnl_usdt`·`foreign_commission_usdt`·`foreign_funding_usdt`가 바이낸스 거래 내역(실현 손익·수수료·펀딩비)의 기간 합과 맞는다.
+
+### 끄는 법
+
+`ACCOUNT_PNL_REALIZED_PNL_ENABLED=false` 후 batch 재시작. 정산만 멈추고 다시 켜면 남은 정리 사건을 이어서 정산한다.
+
+### V26 배포와 롤백
+
+- V26은 **additive**다 — `account_position_episode`에 NULL 허용 열과 CHECK 두 개를 더한다. **롤백 SQL은 없다.**
+- **API(Flyway V26) 먼저 → batch.** 새 batch가 V26보다 먼저 뜨면 정산 Job이 `Unknown column`으로 실패한다(ops 신호 대상). 모니터·알림은 영향 없다.
+- 구 binary로 되돌려도 안전하다 — 구 binary는 새 열을 쓰지 않는다.
 
 ## 끄는 법과 데이터 정리
 

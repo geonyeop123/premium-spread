@@ -1,0 +1,5 @@
+{"workflow": "feature-track", "version": 1, "track": "L", "track_reason": "금액 계산 + 체결 중복 방지 + 4모듈(domain·infra common·infra batch·apps batch)",
+ "upgraded_from": null, "user_override": false,
+ "codex": {"mode": "standard+focused", "spec_rounds": 2, "findings": 2, "fixed": 0, "held": 2, "timeout": false},
+ "claude_review": {"findings": 6, "fixed": 5},
+ "dod_verdict": "AWAITING_HUMAN", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/134"}

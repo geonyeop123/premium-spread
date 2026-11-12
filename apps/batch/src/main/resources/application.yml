@@ -47,6 +47,8 @@ batch:
       fixed-rate: ${TRADE_PREPARATION_RECONCILE_FIXED_RATE:1m}
     account-pnl-monitor:
       fixed-rate: ${ACCOUNT_PNL_MONITOR_FIXED_RATE:60000}
+    account-realized-pnl:
+      fixed-rate: ${ACCOUNT_REALIZED_PNL_FIXED_RATE:300000}
     owner-alert-delivery:
       fixed-rate: ${OWNER_ALERT_DELIVERY_FIXED_RATE:60s}
     owner-ops-signal:
@@ -73,6 +75,7 @@ batch:
     owner-alert-delivery: { lock-key: "${OWNER_ALERT_DELIVERY_LOCK_KEY:lock:owner-alert:delivery}", lease: "${OWNER_ALERT_DELIVERY_LEASE:50s}", execution-timeout: "${OWNER_ALERT_DELIVERY_TIMEOUT:40s}" }
     owner-ops-signal: { lock-key: "${OWNER_OPS_SIGNAL_LOCK_KEY:lock:owner-ops:signal}", lease: "${OWNER_OPS_SIGNAL_LEASE:20s}", execution-timeout: "${OWNER_OPS_SIGNAL_TIMEOUT:10s}" }
     owner-market-signal: { lock-key: "${OWNER_MARKET_SIGNAL_LOCK_KEY:lock:owner-market:signal}", lease: "${OWNER_MARKET_SIGNAL_LEASE:20s}", execution-timeout: "${OWNER_MARKET_SIGNAL_TIMEOUT:10s}" }
+    account-realized-pnl: { lock-key: "${ACCOUNT_REALIZED_PNL_LOCK_KEY:lock:account-pnl:settlement}", lease: "${ACCOUNT_REALIZED_PNL_LEASE:150s}", execution-timeout: "${ACCOUNT_REALIZED_PNL_TIMEOUT:120s}" }
 
 # 실계정 순손익 알림 (기본 꺼짐). credential 은 환경변수로만 주입하며 기본값을 두지 않는다.
 account-pnl-monitor:
@@ -83,6 +86,12 @@ account-pnl-monitor:
   # 포지션 이력(#129) 기록. false 면 회차마다 쓰는 DB 기록만 끈다(알림은 그대로).
   position-history:
     enabled: ${ACCOUNT_PNL_POSITION_HISTORY_ENABLED:true}
+  # 정리한 포지션의 확정 손익(#130). 체결 기준으로 5분마다 정산한다. false 면 정산 Job 만 끈다(모니터는 그대로).
+  realized-pnl:
+    enabled: ${ACCOUNT_PNL_REALIZED_PNL_ENABLED:true}
+    settle-delay: 2m
+    first-episode-lookback: 1h
+    max-age: 90d
   # owner 계정 알림(포지션 변경·순수익률 급변·미반영 리마인더). 경로는 owner-alert.routes 가 정한다.
   account-alerts:
     swing-threshold-percent: ${ACCOUNT_PNL_SWING_THRESHOLD_PERCENT:0.5}

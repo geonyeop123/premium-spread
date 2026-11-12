@@ -128,6 +128,8 @@ class PrivateAccountReadOnlyArchitectureTest {
             "BinanceFuturesPrivateAccountAdapter.kt",
             "BinanceFuturesManualAccountAdapter.kt",
             "BinanceFuturesReadClient.kt",
+            "BithumbFillHistoryPrivateAccountAdapter.kt",
+            "BinanceFillHistoryPrivateAccountAdapter.kt",
         )
         const val MINIMUM_RULES = 19
 

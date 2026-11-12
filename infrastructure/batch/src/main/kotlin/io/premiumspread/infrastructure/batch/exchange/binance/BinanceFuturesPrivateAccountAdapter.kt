@@ -17,16 +17,14 @@ import java.time.Duration
 /** 바이낸스 USDⓈ-M 선물 read-only 계정 조회. 모든 호출은 GET 이며 실패는 [AccountReadException] 으로만 던진다. */
 class BinanceFuturesPrivateAccountAdapter(
     webClient: WebClient,
-    private val apiKey: String,
-    private val secretKey: String,
-    private val clock: Clock,
-    private val recvWindowMillis: Long = 10_000,
+    apiKey: String,
+    secretKey: String,
+    clock: Clock,
+    recvWindowMillis: Long = 10_000,
     timeout: Duration = Duration.ofSeconds(5),
 ) : ForeignPerpAccountReadPort {
     private val client = BinanceFuturesReadClient(webClient, timeout)
-
-    @Volatile
-    private var serverOffsetMillis: Long? = null
+    private val signed = BinanceFuturesSignedReadClient(client, apiKey, secretKey, clock, recvWindowMillis)
 
     private var cache: EntryCache? = null
 
@@ -85,7 +83,7 @@ class BinanceFuturesPrivateAccountAdapter(
     }
 
     private fun sendBalance(): JsonNode = try {
-        send("/fapi/v3/account", "", BALANCE_TIMEOUT)
+        signed.send("/fapi/v3/account", "", BALANCE_TIMEOUT)
     } catch (e: BinanceTimestampRejectedException) {
         throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance /fapi/v3/account timestamp rejected", e)
     }
@@ -304,34 +302,9 @@ class BinanceFuturesPrivateAccountAdapter(
         return rate
     }
 
-    private fun nowMillis() = clock.millis() + (serverOffsetMillis ?: 0L)
+    private fun nowMillis() = signed.nowMillis()
 
-    private fun measureOffset(): Long {
-        val server = client.get("/fapi/v1/time", "").get("serverTime")?.takeIf { it.isIntegralNumber }?.asLong()
-            ?: binanceUnexpected("serverTime is missing")
-        return (server - clock.millis()).also { serverOffsetMillis = it }
-    }
-
-    private fun signedGet(path: String, params: String): JsonNode {
-        try {
-            return send(path, params)
-        } catch (_: BinanceTimestampRejectedException) {
-            measureOffset()
-        }
-        try {
-            return send(path, params)
-        } catch (e: BinanceTimestampRejectedException) {
-            throw AccountReadException(AccountReadFailureCategory.NETWORK, "Binance $path timestamp rejected after re-sync", e)
-        }
-    }
-
-    private fun send(path: String, params: String, timeout: Duration? = null): JsonNode {
-        val offset = serverOffsetMillis ?: measureOffset()
-        val prefix = if (params.isEmpty()) "" else "$params&"
-        val base = prefix + "recvWindow=$recvWindowMillis&timestamp=${clock.millis() + offset}"
-        val query = "$base&signature=${BinanceRequestSigner.sign(secretKey, base)}"
-        return if (timeout == null) client.get(path, query, apiKey) else client.get(path, query, apiKey, timeout)
-    }
+    private fun signedGet(path: String, params: String): JsonNode = signed.get(path, params)
 
     private companion object {
         const val SYMBOL = "BTCUSDT"

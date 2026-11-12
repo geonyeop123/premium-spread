@@ -1,7 +1,9 @@
 package io.premiumspread.infrastructure.batch.accountpnl
 
+import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFillHistoryPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesManualAccountAdapter
 import io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapter
+import io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbFillHistoryPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.exchange.bithumb.BithumbPrivateAccountAdapter
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelAvailableCondition
 import io.premiumspread.infrastructure.batch.owneralert.OwnerAlertChannelRequirements
@@ -119,6 +121,31 @@ class AccountPnlMonitorAdapterConfiguration {
         properties: AccountPnlMonitorProperties,
         clock: Clock,
     ): BinanceFuturesPrivateAccountAdapter = BinanceFuturesPrivateAccountAdapter(
+        webClient = client(properties.binance.baseUrl),
+        apiKey = properties.binance.apiKey,
+        secretKey = properties.binance.secretKey,
+        clock = clock,
+    )
+
+    /** 확정 손익(#130) 빗썸 체결 조회. 조회 전용 GET 만 쓴다. */
+    @Bean
+    fun bithumbFillHistoryPrivateAccountAdapter(
+        properties: AccountPnlMonitorProperties,
+        clock: Clock,
+    ): BithumbFillHistoryPrivateAccountAdapter = BithumbFillHistoryPrivateAccountAdapter(
+        webClient = client(properties.bithumb.baseUrl),
+        accessKey = properties.bithumb.accessKey,
+        secretKey = properties.bithumb.secretKey,
+        clock = clock,
+    )
+
+    /** 확정 손익(#130) 바이낸스 체결·펀딩 조회. 수동 모드에는 없다 — 정산이 바이낸스 쪽을 MANUAL 로 둔다. */
+    @Bean
+    @Conditional(BinanceApiModeCondition::class)
+    fun binanceFillHistoryPrivateAccountAdapter(
+        properties: AccountPnlMonitorProperties,
+        clock: Clock,
+    ): BinanceFillHistoryPrivateAccountAdapter = BinanceFillHistoryPrivateAccountAdapter(
         webClient = client(properties.binance.baseUrl),
         apiKey = properties.binance.apiKey,
         secretKey = properties.binance.secretKey,

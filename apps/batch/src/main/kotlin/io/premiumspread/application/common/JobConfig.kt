@@ -106,5 +106,12 @@ object DefaultJobConfigProvider : JobConfigProvider {
             Duration.ofSeconds(20),
             Duration.ofSeconds(10),
         )
+
+        JobId.ACCOUNT_REALIZED_PNL -> JobConfig(
+            jobId,
+            "lock:account-pnl:settlement",
+            Duration.ofSeconds(150),
+            Duration.ofSeconds(120),
+        )
     }
 }

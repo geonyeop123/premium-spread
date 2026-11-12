@@ -125,6 +125,8 @@ outbox 행은 채널(EMAIL·DISCORD)별로 만들고, Discord 는 `infrastructur
 
 같은 회차가 기준 포지션 단계 알림(`REFERENCE_STEP`, Discord PNL·SOUND, 메일 없음)도 판정한다. Domain `ReferenceStep` 이 기준 포지션 매수김프 대비 현재 김프 차이(실시간 환율)가 단계 폭(`ACCOUNT_PNL_REFERENCE_STEP_PERCENT`, 기본 0.5, 최소 0.01) 경계를 넘을 때 히스테리시스로 1회 알림을 정하고, 포지션이 없어도 직전 포지션을 기준으로 판정한다. 기준 leg·국면·단계는 `account_pnl_monitor_state`(V25 nullable 6열)에 outbox 와 같은 트랜잭션으로 저장하며, 상태에 기준이 없을 때만 Domain port `AccountReferencePositionReadPort`(`JdbcAccountPositionHistoryStore` 구현)로 #129 이력에서 부트스트랩한다.
 
+별도 Job `AccountRealizedPnlJob`(JobId `account_realized_pnl`, 5분 주기, lock `lock:account-pnl:settlement`)이 종료·축소된 포지션 건의 확정 손익을 거래소 체결 내역으로 확정한다. Domain port `KoreaSpotFillReadPort`·`ForeignPerpFillReadPort`(GET 전용 `BithumbFillHistoryPrivateAccountAdapter`·`BinanceFillHistoryPrivateAccountAdapter`, 공용 서명 클라이언트 `BithumbPrivateReadClient`·`BinanceFuturesSignedReadClient`)로 체결을 읽고 Domain `RealizedPnlPolicy` 가 계산하며, `AccountRealizedPnlStore`(`JdbcAccountRealizedPnlStore`)가 `account_position_episode` 의 nullable 확정 컬럼(V26)에 저장한다. `ACCOUNT_PNL_REALIZED_PNL_ENABLED` 로 켠다(옵션).
+
 `notification_delivery`를 재사용하지 않는 전용 outbox다. 조회 전용 경계는 `PrivateAccountReadOnlyArchitectureTest`가
 강제하며 운영 절차는 [`docs/runbooks/account-pnl-alert.md`](../../docs/runbooks/account-pnl-alert.md)를 따른다.
 
