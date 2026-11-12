@@ -70,6 +70,25 @@ source: https://github.com/geonyeop123/premium-spread/issues/138
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
 
+### AC8
+
+```
+[RED] 2026-11-12 uncommitted
+$ ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.ForeignPerpRiskMetricsTest --offline
+ForeignPerpRiskMetricsTest > 증거금 4종이 음수이면 거부한다() FAILED  (AssertionError at :43)
+ForeignPerpRiskMetricsTest > 레버리지가 1 미만이면 거부한다() FAILED  (AssertionError at :58)
+ForeignPerpRiskMetricsTest > 마크가가 0 이하이면 거부한다() FAILED  (AssertionError at :26)
+ForeignPerpRiskMetricsTest > 청산가는 null 이거나 양수다() FAILED  (AssertionError at :34)
+6 tests completed, 4 failed
+BUILD FAILED
+
+[GREEN] 2026-11-12 uncommitted
+$ ./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.ForeignPerpRiskMetricsTest --offline
+BUILD SUCCESSFUL (6 tests passed)
+$ ./gradlew :domain:test --offline
+BUILD SUCCESSFUL
+```
+
 ## 사람 확인 (T4)
 
 해당 없음
