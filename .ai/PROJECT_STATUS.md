@@ -153,6 +153,12 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   `account_pnl_monitor_state` nullable 6열(V25, CHECK 포함)에 outbox 와 원자 저장하고, 기준이 없을 때만 Domain port
   `AccountReferencePositionReadPort` 로 #129 이력에서 부트스트랩한다. API·Redis 무변경.
   [설계](../docs/work/issue-131-reference-position-step-alert/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다.
+- 청산 근접 단계 알림(#141, 구현·검증 완료, PR 예정): 새 owner 알림 `LIQUIDATION_PROXIMITY`(메일 + Discord PNL·SOUND)와
+  `LIQUIDATION_EASED`(Discord PNL·SILENT, 메일 없음). 바이낸스 진입가→청산가 진행률이 50~90% 경계(10% 단위)를 넘을 때
+  가장 높은 경계 하나만 알리고, 한 단계 아래로 내려가면 재무장하며 완화 알림 1건을 보낸다. 상태는
+  `account_pnl_monitor_state` nullable 3열(V27, CHECK 포함)에 outbox 와 원자 저장한다. 수동 모드·청산가 없음 회차는 판정하지 않는다.
+  API·Redis 무변경. [설계](../docs/work/issue-141-liquidation-proximity-alert/design.md)와
+  [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다.
 - 확정 손익(#130, 구현 완료, owner 확인 AC10 대기): 배치 Job `AccountRealizedPnlJob`(`account_realized_pnl`, 5분,
   lock `lock:account-pnl:settlement`)이 종료·축소된 포지션 건의 확정 손익을 빗썸·바이낸스 체결 내역(GET 전용)으로 확정해
   `account_position_episode` nullable 컬럼(V26)에 저장한다. `ACCOUNT_PNL_REALIZED_PNL_ENABLED`로 켠다. API·Redis 무변경.
