@@ -16,6 +16,7 @@ import org.springframework.context.annotation.AnnotationConfigUtils
 import org.springframework.context.support.GenericApplicationContext
 import java.net.URI
 import java.time.Clock
+import java.util.function.Supplier
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -39,23 +40,31 @@ class WebSocketShutdownOrderingTest {
             clientRef.get().handlePayload(PAYLOAD)
         }
 
-        GenericApplicationContext().apply {
-            AnnotationConfigUtils.registerAnnotationConfigProcessors(this)
-            beanFactory.registerSingleton("ingestion", ingestion)
-            beanFactory.registerSingleton("metrics", WebSocketMetrics(registry, Clock.systemUTC()))
-            beanFactory.registerSingleton("operatorAlert", OperatorAlert { })
-            beanFactory.registerSingleton("objectMapper", ObjectMapper())
-            beanFactory.registerSingleton("meterRegistry", registry)
-            beanFactory.registerSingleton("properties", properties)
-            registerBean("binanceClient", BinanceWebSocketClient::class.java, *emptyArray<Any>())
-            registerBean("connectionLike", LastPhaseLifecycle::class.java, java.util.function.Supplier { connectionLike })
-            refresh()
-            clientRef.set(getBean(BinanceWebSocketClient::class.java))
-            close()
+        val context = GenericApplicationContext()
+        try {
+            context.apply {
+                AnnotationConfigUtils.registerAnnotationConfigProcessors(this)
+                beanFactory.registerSingleton("ingestion", ingestion)
+                beanFactory.registerSingleton("metrics", WebSocketMetrics(registry, Clock.systemUTC()))
+                beanFactory.registerSingleton("operatorAlert", OperatorAlert { })
+                beanFactory.registerSingleton("objectMapper", ObjectMapper())
+                beanFactory.registerSingleton("meterRegistry", registry)
+                beanFactory.registerSingleton("properties", properties)
+                registerBean("binanceClient", BinanceWebSocketClient::class.java, *emptyArray<Any>())
+                registerBean("connectionLike", LastPhaseLifecycle::class.java, Supplier { connectionLike })
+                refresh()
+                clientRef.set(getBean(BinanceWebSocketClient::class.java))
+            }
+            // 종료 전에는 같은 payload 가 ingestion 까지 전달된다 (payload 유효성 증명).
+            clientRef.get().handlePayload(PAYLOAD)
+            verify(exactly = 1) { ingestion.onMessage(any()) }
+        } finally {
+            context.close()
         }
 
         assertThat(stopCalls.get()).isEqualTo(1)
-        verify(exactly = 0) { ingestion.onMessage(any()) }
+        // lifecycle stop 안에서의 handlePayload 는 추가 전달을 만들지 않는다.
+        verify(exactly = 1) { ingestion.onMessage(any()) }
     }
 
     private class LastPhaseLifecycle(private val onStop: () -> Unit) : SmartLifecycle {
