@@ -18,7 +18,13 @@ class ForeignPerpRiskMetricsTest {
         positionInitialMargin: BigDecimal = one,
         notional: BigDecimal = BigDecimal("100"),
     ) = ForeignPerpPositionRisk(
-        liquidationPrice, markPrice, isolatedMargin, isolatedWallet, maintMargin, positionInitialMargin, notional,
+        liquidationPrice,
+        markPrice,
+        isolatedMargin,
+        isolatedWallet,
+        maintMargin,
+        positionInitialMargin,
+        notional,
     )
 
     @Test
