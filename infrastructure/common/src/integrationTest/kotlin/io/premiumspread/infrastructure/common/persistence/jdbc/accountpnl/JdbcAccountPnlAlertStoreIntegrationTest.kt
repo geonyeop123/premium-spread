@@ -6,7 +6,9 @@ import io.premiumspread.domain.accountpnl.AccountPnlMail
 import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.ForeignLeg
 import io.premiumspread.domain.accountpnl.KoreaLeg
+import io.premiumspread.domain.accountpnl.LiquidationProximityState
 import io.premiumspread.domain.accountpnl.OutageState
+import io.premiumspread.domain.accountpnl.PerpSide
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.PositionWatchState
 import io.premiumspread.domain.accountpnl.ReferenceLegs
@@ -636,6 +638,55 @@ class JdbcAccountPnlAlertStoreIntegrationTest {
         )
 
         assertThatThrownBy { store.save(0, STATE.copy(account = FULL_ACCOUNT.copy(step = step)), emptyList()) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageNotContaining("1111")
+    }
+
+    @Test
+    fun `청산 근접 단계 상태를 저장하고 복원한다`() {
+        val liquidation = LiquidationProximityState(PerpSide.SHORT, BigDecimal("83549.4"), 70)
+        val state = STATE.copy(account = FULL_ACCOUNT.copy(liquidation = liquidation))
+
+        assertThat(store.save(0, state, emptyList())).isTrue()
+
+        val loaded = store.load().account.liquidation
+        assertThat(loaded.side).isEqualTo(PerpSide.SHORT)
+        assertThat(loaded.entryPrice).isEqualByComparingTo("83549.4")
+        assertThat(loaded.level).isEqualTo(70)
+
+        val cleared = state.copy(account = FULL_ACCOUNT, version = 1)
+        assertThat(store.save(1, cleared, emptyList())).isTrue()
+        assertThat(store.load().account.liquidation).isEqualTo(LiquidationProximityState.INITIAL)
+    }
+
+    @Test
+    fun `청산 근접 단계 열이 모두 NULL 인 행은 INITIAL 로 읽힌다`() {
+        jdbcTemplate.update(
+            "INSERT INTO account_pnl_monitor_state (id, in_episode, outage_notified, version, updated_at) " +
+                "VALUES (1, TRUE, FALSE, 3, ?)",
+            Timestamp.from(NOW),
+        )
+
+        assertThat(store.load().account.liquidation).isEqualTo(LiquidationProximityState.INITIAL)
+    }
+
+    @Test
+    fun `청산 근접 단계 일부 열만 채운 직접 UPDATE 는 제약 위반이다`() {
+        assertThat(store.save(0, STATE, emptyList())).isTrue()
+
+        assertThatThrownBy {
+            jdbcTemplate.update("UPDATE account_pnl_monitor_state SET liquidation_side = 'SHORT' WHERE id = 1")
+        }.hasMessageContaining("ck_account_pnl_monitor_state_liquidation")
+        assertThatThrownBy {
+            jdbcTemplate.update("UPDATE account_pnl_monitor_state SET liquidation_level = 50 WHERE id = 1")
+        }.hasMessageContaining("ck_account_pnl_monitor_state_liquidation")
+    }
+
+    @Test
+    fun `청산 근접 단계 64자를 넘는 진입가는 저장 전에 거절한다`() {
+        val liquidation = LiquidationProximityState(PerpSide.LONG, BigDecimal("1." + "1".repeat(70)), 50)
+
+        assertThatThrownBy { store.save(0, STATE.copy(account = FULL_ACCOUNT.copy(liquidation = liquidation)), emptyList()) }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageNotContaining("1111")
     }

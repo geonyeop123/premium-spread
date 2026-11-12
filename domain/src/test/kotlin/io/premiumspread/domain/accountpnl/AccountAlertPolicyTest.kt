@@ -197,6 +197,30 @@ class AccountAlertPolicyTest {
     }
 
     @Test
+    fun `청산 근접 알림은 기준 단계 알림 뒤에 오고 청산 상태를 갱신한다`() {
+        val gap = stepGap("0.60")
+        val state = AccountAlertState.INITIAL.copy(step = ReferenceStepState(gap.reference, ReferencePhase.HOLDING, 0))
+        val risk = ForeignPerpPositionRisk(
+            liquidationPrice = BigDecimal("80000"),
+            markPrice = BigDecimal("76000"),
+            isolatedMargin = BigDecimal.ZERO,
+            isolatedWallet = BigDecimal.ZERO,
+            maintMargin = BigDecimal("10"),
+            positionInitialMargin = BigDecimal("7000"),
+            notional = BigDecimal("38000"),
+        )
+        val liquidationRound = round(source = ForeignPerpPositionSource.EXCHANGE_API).copy(foreignRisk = risk)
+
+        val decision = AccountAlertPolicy.decide(state, liquidationRound, settings, zone, gap)
+
+        assertThat(decision.alerts.map { it.kind })
+            .endsWith(OwnerAlertKind.REFERENCE_STEP, OwnerAlertKind.LIQUIDATION_PROXIMITY)
+        assertThat(decision.next.liquidation.side).isEqualTo(PerpSide.SHORT)
+        assertThat(decision.next.liquidation.entryPrice).isEqualByComparingTo("70000")
+        assertThat(decision.next.liquidation.level).isEqualTo(60)
+    }
+
+    @Test
     fun `gap 이 없으면 단계 상태는 그대로다`() {
         val step = ReferenceStepState(stepGap("0.60").reference, ReferencePhase.HOLDING, 2)
 

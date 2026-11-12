@@ -89,7 +89,7 @@
 
 ## owner 알림 채널 (메일·Discord)
 
-owner 알림(실계정 순손익 4종, 계정 알림 4종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
+owner 알림(실계정 순손익 4종, 계정 알림 6종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
 
 **채널 bean 은 PnL 모니터와 독립이다(#91).** 메일·Discord sender 는 batch scheduling 이 켜져 있고 채널 구성이 ready 이면 PnL 모니터를 꺼도 뜬다(운영 알림용).
 독립 전달 Job(60초 주기, `OwnerAlertDeliveryJob`)이 PnL 모니터 회차와 별개로 같은 outbox(`account_pnl_mail`)를 비운다. PnL 모니터가 켜져 있으면 회차 안 디스패처와 전달 Job 이
@@ -126,17 +126,19 @@ owner 알림(실계정 순손익 4종, 계정 알림 4종, 운영 알림 4종)�
 | 신고가·신저가(`PREMIUM_NEW_EXTREME`) | market | 무음 | **아니오** |
 | 일일 요약(`DAILY_SUMMARY`) | market | 무음 | 예 |
 | 기준 포지션 대비 단계(`REFERENCE_STEP`) | pnl | 소리 | **아니오** |
+| 청산 근접(`LIQUIDATION_PROXIMITY`) | pnl | 소리 | 예 |
+| 청산 위험 완화(`LIQUIDATION_EASED`) | pnl | 무음 | **아니오** |
 
 - **Discord 를 켜면 정시 보고·복구 메일은 더 이상 오지 않는다(Discord 로만 온다).** 수익·중단은 메일도 계속 온다.
 - 운영 알림 4종은 [#91](https://github.com/geonyeop123/premium-spread/issues/91) 에서 추가됐다. Discord 가 꺼져 있으면 4종 모두 메일로 온다.
-- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 4종(포지션 변경·순수익률 급변·미반영 리마인더·기준 포지션 단계)도 Discord 가 꺼져 있으면 메일로 온다**(`reference-step` 은 기본 메일 없음이지만 Discord 를 쓸 수 없으면 메일로 폴백한다. 종류별 `_EMAIL=false` 로 명시하면 메일도 보내지 않는다).
+- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 6종(포지션 변경·순수익률 급변·미반영 리마인더·기준 포지션 단계·청산 근접·청산 위험 완화)도 Discord 가 꺼져 있으면 메일로 온다**(`reference-step`·`liquidation-eased` 는 기본 메일 없음이지만 Discord 를 쓸 수 없으면 메일로 폴백한다. 종류별 `_EMAIL=false` 로 명시하면 메일도 보내지 않는다).
 - 계정 알림 3종은 [#89](https://github.com/geonyeop123/premium-spread/issues/89) 에서 추가됐다. 시장 알림 4종은 [#90](https://github.com/geonyeop123/premium-spread/issues/90) 에서 이 표에 추가됐다. Discord 가 꺼져 있으면 시장 알림 4종도 모두 메일로 온다([owner-market-alert.md](owner-market-alert.md)).
 - PnL 모니터는 매 회차 최신 순수익률을 `account_pnl_latest`(단일 행, V22)에 남긴다. 일일 요약 전용이며 이 저장이 실패해도 모니터 결과·알림에는 영향이 없다.
 - **무음** = 알림 소리·배지 없이 채널에만 쌓인다. **`@here`** = 채널 멤버 전원에게 알림이 간다. **소리** = 일반 알림.
 
 ### 종류별 override env
 
-기본 라우팅을 종류별로 바꾼다. `{KIND}` 는 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED`·`POSITION_CHANGED`·`NET_PERCENT_SWING`·`UNRECOVERED_REMINDER`·`FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED`·`PREMIUM_SWING`·`PREMIUM_THRESHOLD_CROSSED`·`PREMIUM_NEW_EXTREME`·`DAILY_SUMMARY`·`REFERENCE_STEP` 16개. 값은 앞뒤 공백·대소문자를 무시하고 빈 값 = 지정 안 함.
+기본 라우팅을 종류별로 바꾼다. `{KIND}` 는 `PROFIT`·`HOURLY_REPORT`·`MONITORING_OUTAGE`·`MONITORING_RECOVERED`·`POSITION_CHANGED`·`NET_PERCENT_SWING`·`UNRECOVERED_REMINDER`·`FX_INGESTION_DELAYED`·`MARKET_STREAM_DOWN`·`JOB_CONSECUTIVE_FAILURES`·`OPS_RECOVERED`·`PREMIUM_SWING`·`PREMIUM_THRESHOLD_CROSSED`·`PREMIUM_NEW_EXTREME`·`DAILY_SUMMARY`·`REFERENCE_STEP`·`LIQUIDATION_PROXIMITY`·`LIQUIDATION_EASED` 18개. 값은 앞뒤 공백·대소문자를 무시하고 빈 값 = 지정 안 함.
 잘못된 값이면 기동이 실패한다(오류에는 key 만 찍히고 값은 찍히지 않는다).
 
 | env | 값 | 의미 |
@@ -148,6 +150,7 @@ owner 알림(실계정 순손익 4종, 계정 알림 4종, 운영 알림 4종)�
 예: 정시 보고를 소리로 받기 `OWNER_ALERT_HOURLY_REPORT_PUSH=sound`, 중단을 pnl 채널로 `OWNER_ALERT_MONITORING_OUTAGE_DISCORD=pnl`,
 정시 보고도 메일로 받기 `OWNER_ALERT_HOURLY_REPORT_EMAIL=true`.
 기준 포지션 단계 알림(`reference-step`)도 같은 형식이다: `OWNER_ALERT_REFERENCE_STEP_EMAIL`·`OWNER_ALERT_REFERENCE_STEP_DISCORD`·`OWNER_ALERT_REFERENCE_STEP_PUSH`.
+청산 근접(`liquidation-proximity`)·완화(`liquidation-eased`)도 같다: `OWNER_ALERT_LIQUIDATION_PROXIMITY_{EMAIL,DISCORD,PUSH}`·`OWNER_ALERT_LIQUIDATION_EASED_{EMAIL,DISCORD,PUSH}`.
 
 두 채널이 모두 꺼지도록 override 한 알림은 행을 만들지 않는다. `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` 는 정시 보고 **생성** on/off 이고 라우팅과 별개다.
 
@@ -613,6 +616,35 @@ PC 가 잠자기 상태였다면 깨어난 뒤 지난 시간을 감지해 메일
 - [ ] (b) 기동·기준 전환 직후에는 단계 알림이 오지 않는다.
 - [ ] (c) 실계정으로 단계 알림을 pnl 채널에서 **1건 이상** 받았고(소리, 메일 없음), 제목·칸의 차이·기준 매수김프가 실제 값과 합리적으로 맞는다. 관찰 기회가 없으면 "미관찰"로 기록한다.
 
+## 청산 근접 알림 체크리스트 (#141)
+
+- [ ] (a) Discord 가 켜진 상태에서 기동 INFO `owner-alert routes:` 에 `liquidation-proximity=email+discord(PNL,SOUND)` 와 `liquidation-eased=discord(PNL,SILENT)` 가 보인다(Discord 가 꺼져 있으면 둘 다 `email`).
+- [ ] (b) 수동 모드(`MANUAL_ENV`)에서는 청산 근접 알림이 오지 않는다.
+- [ ] (c) 경계를 넘는 관찰 기회가 있으면 메일과 pnl 채널(소리)에서 각 1건을 받았고 진행률·마크가·청산가·진입가가 바이낸스 화면과 합리적으로 맞는다. 없으면 "미관찰"로 기록한다.
+
+## 청산 근접 단계 알림 (#141)
+
+바이낸스 선물 포지션의 진입가→청산가 진행률이 50·60·70·80·90% 경계를 넘을 때 알린다. 같은 모니터 회차·outbox·라우팅을 쓰며 새 Job·테이블은 없다
+(상태는 `account_pnl_monitor_state` 의 V27 nullable 3열에 outbox 와 같은 트랜잭션으로 저장). 문구 정본은 [message-spec](../work/alert-message-template/message-spec.md) 이다.
+
+- **진행률** = `(마크가 − 진입가) / (청산가 − 진입가) × 100`. 숏·롱 모두 이 식 하나다. 소수 4자리에서 0 쪽으로 절사해 49.99 가 50 으로 올라가지 않는다(표시도 소수 1자리 절사).
+  유리한 쪽(숏에서 마크가 < 진입가)이면 0 이하다. 청산가와 진입가가 같거나 청산가가 반대쪽이면 판정하지 않는다.
+- **경계**: 50·60·70·80·90%. 한 회차에 여러 경계를 넘으면 **가장 높은 하나만** 보낸다(45→95 는 90 한 건).
+- **재무장**: 알린 경계에서 한 단계(10%p) 아래 경계 밑으로 내려가야 그 경계를 다시 알린다(60 을 알렸다면 진행률이 50 아래로 가야 한다). 55↔49 진동에는 반복 알리지 않는다.
+- **완화 알림**: 재무장될 만큼 내려가면 `LIQUIDATION_EASED` 1건(기본 Discord pnl 무음, 메일 없음)을 보낸다. 한 회차에 경계 여럿이 재무장돼도 1건이다.
+  진입가 변경 재무장·포지션 종료·방향 변경에는 보내지 않는다.
+- **포지션 종료**: 실계정 성공 회차에서 바이낸스 leg 가 flat 이면 상태를 비운다(알림 없음).
+- **진입가 변경**: 추가 진입 등으로 진입가가 바뀌면 현재 경계가 1회 다시 올 수 있다. 방향이 바뀌면 level 0 에서 판정한다.
+- **판정하지 않는 회차**(상태 유지): 관측 실패, 수동 모드(`MANUAL_ENV`), 청산가 없음(0·조회 실패), 계정 알림이 꺼진 설정.
+
+한계:
+
+- 1분 회차라 그 사이의 급등은 회차 시점 값으로만 본다. 여러 경계를 한 번에 넘으면 가장 높은 것 하나만 온다.
+- 관측 실패 회차(호가 지연·환율 지연 등)에는 판정하지 않는다. 청산가는 거래소 추정값이다.
+- 교차 마진은 지갑 잔고가 청산가를 움직이므로 같은 포지션에서도 진행률이 바뀔 수 있다.
+- hedge mode 의 LONG 행은 바이낸스 어댑터가 읽지 않아 판정하지 않는다.
+- 전달은 at-least-once 다(다른 owner 알림과 같다).
+
 ## 알림 문구 템플릿화 배포 (V23)
 
 owner 알림 21종과 회원 김프 메일 1종의 문구는 `domain.alertmessage` 템플릿이 만들고, Discord 는 embed 칸으로 보낸다.
@@ -772,7 +804,7 @@ seed 건(2026-10-28~11-08) 또는 실제 정리 건으로 로컬 batch를 띄워
 ## 끄는 법과 데이터 정리
 
 - 끄기: `ACCOUNT_PNL_MONITOR_ENABLED=false`(또는 미설정) 후 batch 재시작. `BATCH_SCHEDULING_ENABLED=false` 면 전체 스케줄러가 꺼진다.
-- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 8종(계정 알림 4종 포함)은 모두 메일로 온다.
+- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 10종(계정 알림 6종 포함)은 모두 메일로 온다.
 - 모드 전환(`api` ↔ `manual`)은 env 수정 + batch 재시작이다. 수량·진입가가 같으면 에피소드가 유지된다.
 - 상태·outbox 테이블:
   - `account_pnl_monitor_state` — 단일 행(`id=1`). 에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각 + 기준 포지션 단계 상태(기준 leg·국면·단계, V25).

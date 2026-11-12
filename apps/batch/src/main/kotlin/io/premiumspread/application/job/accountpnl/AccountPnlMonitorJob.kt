@@ -300,6 +300,8 @@ class AccountPnlMonitorJob(
         foreignSnapshot.fundingUsdt,
         pnl,
         completedAt,
+        foreignSnapshot.positionRisk,
+        foreignSnapshot.symbolConfig,
     )
 
     /** 관측 시각은 [completedAt] — Computed 면 `pnl.calculatedAt` 과 같은 값이다. */

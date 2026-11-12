@@ -26,6 +26,8 @@ enum class OwnerAlertKind(val defaultRoute: OwnerAlertRoute) {
     NET_PERCENT_SWING(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.SOUND))),
     UNRECOVERED_REMINDER(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.SILENT))),
     REFERENCE_STEP(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.SOUND))),
+    LIQUIDATION_PROXIMITY(OwnerAlertRoute(email = true, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.SOUND))),
+    LIQUIDATION_EASED(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.PNL, DiscordPush.SILENT))),
     FX_INGESTION_DELAYED(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.OPS, DiscordPush.SOUND))),
     MARKET_STREAM_DOWN(OwnerAlertRoute(email = false, discord = DiscordRoute(DiscordTarget.OPS, DiscordPush.SOUND))),
     JOB_CONSECUTIVE_FAILURES(OwnerAlertRoute(email = true, discord = DiscordRoute(DiscordTarget.OPS, DiscordPush.SOUND))),

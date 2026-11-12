@@ -1,0 +1,6 @@
+{"workflow": "feature-track", "version": 1, "track": "L", "track_reason": "domain·infrastructure:common(V27 migration·저장소)·apps:batch 3개 모듈 + 알림 상태 전이(재무장)·원자 저장",
+ "upgraded_from": null, "user_override": false,
+ "codex": {"mode": "standard+focused", "spec_rounds": 2, "findings": 0, "fixed": 0, "held": 0, "timeout": false},
+ "codex_spec": {"findings": 3, "accepted": 3, "rebutted": 1, "maintained": 1},
+ "claude_review": {"findings": 3, "fixed": 2},
+ "dod_verdict": "PASS", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/145"}

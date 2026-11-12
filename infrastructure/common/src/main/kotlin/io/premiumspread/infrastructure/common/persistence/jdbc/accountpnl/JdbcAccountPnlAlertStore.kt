@@ -7,7 +7,9 @@ import io.premiumspread.domain.accountpnl.AccountPnlMonitorState
 import io.premiumspread.domain.accountpnl.ClaimedAccountPnlMail
 import io.premiumspread.domain.accountpnl.ForeignLeg
 import io.premiumspread.domain.accountpnl.KoreaLeg
+import io.premiumspread.domain.accountpnl.LiquidationProximityState
 import io.premiumspread.domain.accountpnl.OutageState
+import io.premiumspread.domain.accountpnl.PerpSide
 import io.premiumspread.domain.accountpnl.PnlAlertState
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.PositionWatchState
@@ -74,7 +76,8 @@ class JdbcAccountPnlAlertStore(
                    swing_up_sent, swing_down_sent, reminder_day_start,
                    manual_funding_usdt, manual_funding_changed_at,
                    reference_korea_quantity, reference_korea_price, reference_foreign_quantity, reference_foreign_price,
-                   reference_step_phase, reference_step_level
+                   reference_step_phase, reference_step_level,
+                   liquidation_side, liquidation_entry_price, liquidation_level
             FROM account_pnl_monitor_state
             WHERE id = $STATE_ID
             """.trimIndent(),
@@ -207,8 +210,9 @@ class JdbcAccountPnlAlertStore(
                 swing_up_sent, swing_down_sent, reminder_day_start,
                 manual_funding_usdt, manual_funding_changed_at,
                 reference_korea_quantity, reference_korea_price, reference_foreign_quantity, reference_foreign_price,
-                reference_step_phase, reference_step_level
-            ) VALUES ($STATE_ID, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                reference_step_phase, reference_step_level,
+                liquidation_side, liquidation_entry_price, liquidation_level
+            ) VALUES ($STATE_ID, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent(),
             state.alert.inEpisode,
             state.alert.positionFingerprint,
@@ -252,7 +256,10 @@ class JdbcAccountPnlAlertStore(
                 reference_foreign_quantity = ?,
                 reference_foreign_price = ?,
                 reference_step_phase = ?,
-                reference_step_level = ?
+                reference_step_level = ?,
+                liquidation_side = ?,
+                liquidation_entry_price = ?,
+                liquidation_level = ?
             WHERE id = $STATE_ID
               AND version = ?
             """.trimIndent(),
@@ -289,6 +296,9 @@ class JdbcAccountPnlAlertStore(
             account.step.reference?.foreignEntryPrice?.toPlainString(),
             account.step.phase?.name,
             account.step.level,
+            account.liquidation.side?.name,
+            account.liquidation.entryPrice?.toPlainString(),
+            account.liquidation.level,
         )
     }
 
@@ -314,6 +324,11 @@ class JdbcAccountPnlAlertStore(
             )
             require(values.all { it.toPlainString().length <= MAX_DECIMAL_TEXT_LENGTH }) {
                 "reference leg must be at most $MAX_DECIMAL_TEXT_LENGTH characters as a plain decimal."
+            }
+        }
+        account.liquidation.entryPrice?.let {
+            require(it.toPlainString().length <= MAX_DECIMAL_TEXT_LENGTH) {
+                "liquidation entry price must be at most $MAX_DECIMAL_TEXT_LENGTH characters as a plain decimal."
             }
         }
         account.reminder.manualFundingUsdt?.let {
@@ -389,6 +404,7 @@ class JdbcAccountPnlAlertStore(
                 manualFundingChangedAt = getInstantOrNull("manual_funding_changed_at"),
             ),
             step = toReferenceStep(),
+            liquidation = toLiquidation(),
         )
     }
 
@@ -484,5 +500,15 @@ private fun ResultSet.toReferenceStep(): ReferenceStepState {
         ),
         phase = ReferencePhase.valueOf(getString("reference_step_phase")),
         level = getInt("reference_step_level"),
+    )
+}
+
+/** V27 청산 근접 단계 3열 → [LiquidationProximityState]. 열은 DB CHECK 로 전부 NULL 이거나 전부 값이 있으므로 첫 열만 보고 INITIAL 을 판단한다. */
+private fun ResultSet.toLiquidation(): LiquidationProximityState {
+    val side = getString("liquidation_side") ?: return LiquidationProximityState.INITIAL
+    return LiquidationProximityState(
+        side = PerpSide.valueOf(side),
+        entryPrice = BigDecimal(getString("liquidation_entry_price")).stripTrailingZeros(),
+        level = getInt("liquidation_level"),
     )
 }

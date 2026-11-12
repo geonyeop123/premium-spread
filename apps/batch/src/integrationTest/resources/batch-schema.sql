@@ -211,6 +211,9 @@ CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
     reference_foreign_price    VARCHAR(64)  NULL,
     reference_step_phase       VARCHAR(8)   NULL,
     reference_step_level       INT          NULL,
+    liquidation_side           VARCHAR(8)   NULL,
+    liquidation_entry_price    VARCHAR(64)  NULL,
+    liquidation_level          INT          NULL,
     CONSTRAINT ck_account_pnl_monitor_state_singleton CHECK (id = 1),
     CONSTRAINT ck_account_pnl_monitor_state_legs CHECK (
         (korea_quantity IS NULL AND korea_average_buy_price IS NULL
@@ -232,6 +235,12 @@ CREATE TABLE IF NOT EXISTS account_pnl_monitor_state (
         OR (reference_korea_quantity IS NOT NULL AND reference_korea_price IS NOT NULL
             AND reference_foreign_quantity IS NOT NULL AND reference_foreign_price IS NOT NULL
             AND reference_step_phase IN ('HOLDING', 'FLAT') AND reference_step_level IS NOT NULL)
+    ),
+    -- V27 과 같은 스키마
+    CONSTRAINT ck_account_pnl_monitor_state_liquidation CHECK (
+        (liquidation_side IS NULL AND liquidation_entry_price IS NULL AND liquidation_level IS NULL)
+        OR (liquidation_side IS NOT NULL AND liquidation_entry_price IS NOT NULL AND liquidation_level IS NOT NULL
+            AND liquidation_side IN ('SHORT', 'LONG') AND liquidation_level IN (0, 50, 60, 70, 80, 90))
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
