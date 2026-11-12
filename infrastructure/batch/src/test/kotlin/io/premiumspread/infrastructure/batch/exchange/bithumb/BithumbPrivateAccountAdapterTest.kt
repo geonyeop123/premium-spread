@@ -284,6 +284,58 @@ class BithumbPrivateAccountAdapterTest {
     }
 
     @Test
+    fun `가장 최근 체결 주문의 실효 요율을 매도 수수료율로 쓰고 진입 수수료 합산은 그대로다`() {
+        orderPages[1] = orders(order("u1", "0.002", "40", funds = "100000"), order("u2", "0.003", "75", funds = "150000"))
+
+        val snapshot = adapter().read()
+
+        assertThat(snapshot.sellFeeRate).isEqualByComparingTo("0.0004")
+        assertThat(snapshot.entryFeeKrw).isEqualByComparingTo("115")
+    }
+
+    @Test
+    fun `가장 최근 체결이 매도 주문이어도 그 실효 요율을 쓴다`() {
+        orderPages[1] = orders(
+            order("a1", "0.001", "30", side = "ask", funds = "100000"),
+            order("u1", "0.005", "40", funds = "100000"),
+        )
+
+        assertThat(adapter().read().sellFeeRate).isEqualByComparingTo("0.0003")
+    }
+
+    @Test
+    fun `체결 없는 주문은 건너뛰고 그다음 체결 주문의 실효 요율을 쓴다`() {
+        orderPages[1] = orders(order("z1", "0", "0", state = "cancel", funds = "0"), order("u1", "0.005", "20", funds = "100000"))
+
+        assertThat(adapter().read().sellFeeRate).isEqualByComparingTo("0.0002")
+    }
+
+    @Test
+    fun `가장 최근 체결에 executed_funds 가 없거나 0 이면 ask_fee 를 쓴다`() {
+        orderPages[1] = orders(order("u1", "0.005", "20"), order("u2", "0.001", "4", funds = "100000"))
+        assertThat(adapter().read().sellFeeRate).isEqualByComparingTo("0.0025")
+
+        orderPages[1] = orders(order("u1", "0.005", "20", funds = "0"), order("u2", "0.001", "4", funds = "100000"))
+        assertThat(adapter().read().sellFeeRate).isEqualByComparingTo("0.0025")
+    }
+
+    @Test
+    fun `보유가 없으면 주문 이력을 읽지 않고 ask_fee 를 쓴다`() {
+        accountsBody = accounts(balance = "0", locked = "0")
+        orderPages[1] = orders(order("u1", "0.005", "20", funds = "100000"))
+
+        assertThat(adapter().read().sellFeeRate).isEqualByComparingTo("0.0025")
+        assertThat(orderRequestPages()).isEmpty()
+    }
+
+    @Test
+    fun `executed_funds 가 음수이면 UNEXPECTED`() {
+        orderPages[1] = orders(order("u1", "0.005", "20", funds = "-1"))
+
+        assertCategory(AccountReadFailureCategory.UNEXPECTED)
+    }
+
+    @Test
     fun `호가는 계정 수수료율 현재가 주문이력 다음 마지막으로 조회한다`() {
         orderPages[1] = orders(order("u1", "0.005", "10"))
 
@@ -573,8 +625,18 @@ class BithumbPrivateAccountAdapterTest {
     private fun accounts(balance: String, locked: String, modified: Boolean = false) =
         """[{"currency":"BTC","balance":"$balance","locked":"$locked","avg_buy_price":"36340973","avg_buy_price_modified":$modified,"unit_currency":"KRW"}]"""
 
-    private fun order(uuid: String, volume: String, fee: String, side: String = "bid", state: String = "done") =
-        """{"uuid":"$uuid","side":"$side","state":"$state","market":"KRW-BTC","executed_volume":"$volume","paid_fee":"$fee"}"""
+    private fun order(
+        uuid: String,
+        volume: String,
+        fee: String,
+        side: String = "bid",
+        state: String = "done",
+        funds: String? = null,
+    ): String {
+        val fundsField = funds?.let { ""","executed_funds":"$it"""" } ?: ""
+        return """{"uuid":"$uuid","side":"$side","state":"$state","market":"KRW-BTC",""" +
+            """"executed_volume":"$volume","paid_fee":"$fee"$fundsField}"""
+    }
 
     private fun orders(vararg rows: String) = rows.joinToString(",", "[", "]")
 }

@@ -11,6 +11,7 @@ import io.premiumspread.infrastructure.batch.exchange.BalanceItem
 import io.premiumspread.infrastructure.batch.exchange.BalanceUnavailableReason
 import org.springframework.web.reactive.function.client.WebClient
 import java.math.BigDecimal
+import java.math.MathContext
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -35,16 +36,17 @@ class BithumbPrivateAccountAdapter(
     @Synchronized
     override fun read(): KoreaSpotAccountSnapshot {
         val account = readAccount()
-        val sellFeeRate = readSellFeeRate()
+        val askFeeRate = readSellFeeRate()
         val prices = readPrices()
-        val entryFee = if (account.quantity.signum() > 0) readEntryFee(account.quantity, account.averageBuyPrice) else null
+        val firstOrderPage = if (account.quantity.signum() > 0) readOrderPage(1) else null
+        val entryFee = firstOrderPage?.let { readEntryFee(account.quantity, account.averageBuyPrice, it) }
         val orderbook = readOrderbook()
         return KoreaSpotAccountSnapshot(
             quantity = account.quantity,
             averageBuyPrice = account.averageBuyPrice,
             averageBuyPriceModified = account.modified,
             entryFeeKrw = entryFee,
-            sellFeeRate = sellFeeRate,
+            sellFeeRate = firstOrderPage?.let { effectiveFeeRate(it) } ?: askFeeRate,
             bidLevels = orderbook.first,
             lastPrice = prices.btc,
             krwBalance = account.krwBalance,
@@ -170,8 +172,18 @@ class BithumbPrivateAccountAdapter(
         return fee
     }
 
-    private fun readEntryFee(quantity: BigDecimal, averageBuyPrice: BigDecimal): BigDecimal? {
-        val firstPage = readOrderPage(1)
+    /**
+     * 가장 최근 체결 주문(매수·매도 무관)의 실효 요율 `paid_fee ÷ executed_funds` (#142).
+     * `orders/chance` 의 `ask_fee` 는 쿠폰·할인 전 기본 요율이라 정리 예상 수수료를 과대 추정한다.
+     * 체결 주문이 없거나 그 주문의 `executed_funds` 가 없거나 0 이면 null — 호출자가 `ask_fee` 로 대체한다.
+     */
+    private fun effectiveFeeRate(firstPage: List<OrderRow>): BigDecimal? {
+        val latest = firstPage.firstOrNull { it.executedVolume.signum() > 0 } ?: return null
+        val funds = latest.executedFunds?.takeIf { it.signum() > 0 } ?: return null
+        return latest.paidFee.divide(funds, MathContext.DECIMAL64)
+    }
+
+    private fun readEntryFee(quantity: BigDecimal, averageBuyPrice: BigDecimal, firstPage: List<OrderRow>): BigDecimal? {
         val newest = firstPage.firstOrNull { it.qualifies() }?.id
         val cached = feeCache
         if (cached != null && cached.quantity.compareTo(quantity) == 0 &&
@@ -204,7 +216,14 @@ class BithumbPrivateAccountAdapter(
         }
     }
 
-    private data class OrderRow(val id: String, val side: String, val executedVolume: BigDecimal, val paidFee: BigDecimal) {
+    private data class OrderRow(
+        val id: String,
+        val side: String,
+        val executedVolume: BigDecimal,
+        val paidFee: BigDecimal,
+        /** 응답에 없으면 null. 실효 요율에만 쓴다. */
+        val executedFunds: BigDecimal?,
+    ) {
         fun qualifies() = side == "bid" && executedVolume.signum() > 0
     }
 
@@ -214,12 +233,16 @@ class BithumbPrivateAccountAdapter(
         return root.requireArray("orders").map {
             val executed = it.dec("executed_volume")
             val paid = it.dec("paid_fee")
-            if (executed.signum() < 0 || paid.signum() < 0) unexpected("order value is negative")
+            val funds = if (it.hasNonNull("executed_funds")) it.dec("executed_funds") else null
+            if (executed.signum() < 0 || paid.signum() < 0 || (funds != null && funds.signum() < 0)) {
+                unexpected("order value is negative")
+            }
             OrderRow(
                 it.path("uuid").asText().ifEmpty { unexpected("order id is missing") },
                 it.path("side").asText(),
                 executed,
                 paid,
+                funds,
             )
         }
     }
