@@ -67,7 +67,7 @@ class BinanceFuturesPrivateAccountAdapter(
      */
     private fun readBalance(): ForeignPerpBalance? {
         val root = sendOnceOrNull("/fapi/v3/account", "", BalanceItem.BINANCE_USDT_ASSET) ?: return null
-        return valueOrWarn(BalanceItem.BINANCE_USDT_ASSET, parseBalance(root))
+        return valueOrWarn(BalanceItem.BINANCE_USDT_ASSET, BinanceAccountResponseParser.parseBalance(root))
     }
 
     /**
@@ -76,7 +76,7 @@ class BinanceFuturesPrivateAccountAdapter(
      */
     private fun readSymbolConfig(): ForeignPerpSymbolConfig? {
         val root = sendOnceOrNull("/fapi/v1/symbolConfig", "symbol=$SYMBOL", BalanceItem.BINANCE_SYMBOL_CONFIG) ?: return null
-        return valueOrWarn(BalanceItem.BINANCE_SYMBOL_CONFIG, parseSymbolConfig(root))
+        return valueOrWarn(BalanceItem.BINANCE_SYMBOL_CONFIG, BinanceAccountResponseParser.parseSymbolConfig(root, SYMBOL))
     }
 
     /**
@@ -109,92 +109,6 @@ class BinanceFuturesPrivateAccountAdapter(
         }
     }
 
-    /** 응답 해석. 예외를 던지지 않고 사유를 돌려준다. */
-    private fun parseBalance(root: JsonNode): Parsed<ForeignPerpBalance> {
-        val assets = root.get("assets")?.takeIf { it.isArray }
-        val usdt = assets?.firstOrNull { it.path("asset").asText() == "USDT" }
-            ?: return Parsed.Unavailable(BalanceUnavailableReason.MISSING)
-        val margin = usdt.get("marginBalance")?.let { decimalOrNull(it) }
-        val available = usdt.get("availableBalance")?.let { decimalOrNull(it) }
-        return when {
-            margin == null || available == null -> Parsed.Unavailable(BalanceUnavailableReason.NOT_NUMBER)
-            margin.signum() < 0 || available.signum() < 0 -> Parsed.Unavailable(BalanceUnavailableReason.NEGATIVE)
-            else -> Parsed.Ok(ForeignPerpBalance(margin, available))
-        }
-    }
-
-    /** symbolConfig 응답 배열에서 BTCUSDT 행을 해석한다. 예외를 던지지 않고 사유를 돌려준다. */
-    private fun parseSymbolConfig(root: JsonNode): Parsed<ForeignPerpSymbolConfig> {
-        val row = root.takeIf { it.isArray }?.firstOrNull { it.path("symbol").asText() == SYMBOL }
-            ?: return Parsed.Unavailable(BalanceUnavailableReason.MISSING)
-        val leverageNode = row.get("leverage") ?: return Parsed.Unavailable(BalanceUnavailableReason.MISSING)
-        val leverage = intOrNull(leverageNode) ?: return Parsed.Unavailable(BalanceUnavailableReason.NOT_NUMBER)
-        if (leverage < 1) return Parsed.Unavailable(BalanceUnavailableReason.NOT_POSITIVE)
-        val marginType = when (row.path("marginType").asText()) {
-            "CROSSED" -> ForeignPerpMarginType.CROSSED
-            "ISOLATED" -> ForeignPerpMarginType.ISOLATED
-            else -> return Parsed.Unavailable(BalanceUnavailableReason.UNKNOWN)
-        }
-        return Parsed.Ok(ForeignPerpSymbolConfig(leverage, marginType))
-    }
-
-    /**
-     * positionRisk 행의 위험 필드 7개. 하나라도 없거나 숫자가 아니거나 범위를 벗어나면 묶음 전체를 버린다 — 필수 필드와 달리
-     * 회차를 실패시키지 않는다. `liquidationPrice` 0 은 청산가 없음(null)이다.
-     */
-    private fun parsePositionRisk(row: JsonNode): Parsed<ForeignPerpPositionRisk> {
-        val values = HashMap<String, BigDecimal>()
-        for (name in RISK_FIELDS) {
-            val node = row.get(name) ?: return Parsed.Unavailable(BalanceUnavailableReason.MISSING)
-            values[name] = decimalOrNull(node) ?: return Parsed.Unavailable(BalanceUnavailableReason.NOT_NUMBER)
-        }
-        val liquidation = values.getValue("liquidationPrice")
-        val mark = values.getValue("markPrice")
-        val margins = MARGIN_FIELDS.map { values.getValue(it) }
-        if (mark.signum() <= 0) return Parsed.Unavailable(BalanceUnavailableReason.NOT_POSITIVE)
-        if (liquidation.signum() < 0 || margins.any { it.signum() < 0 }) {
-            return Parsed.Unavailable(BalanceUnavailableReason.NEGATIVE)
-        }
-        return try {
-            Parsed.Ok(
-                ForeignPerpPositionRisk(
-                    liquidationPrice = liquidation.takeIf { it.signum() != 0 },
-                    markPrice = mark,
-                    isolatedMargin = values.getValue("isolatedMargin"),
-                    isolatedWallet = values.getValue("isolatedWallet"),
-                    maintMargin = values.getValue("maintMargin"),
-                    positionInitialMargin = values.getValue("positionInitialMargin"),
-                    notional = values.getValue("notional"),
-                ),
-            )
-        } catch (_: IllegalArgumentException) {
-            // 위 사전 검사가 도메인 불변식과 갈라져도 회차를 깨지 않는다
-            Parsed.Unavailable(BalanceUnavailableReason.NEGATIVE)
-        }
-    }
-
-    private fun intOrNull(node: JsonNode): Int? = when {
-        node.isIntegralNumber && node.canConvertToInt() -> node.intValue()
-        node.isTextual -> node.asText().toIntOrNull()
-        else -> null
-    }
-
-    private fun decimalOrNull(node: JsonNode): BigDecimal? = try {
-        when {
-            node.isNumber -> node.decimalValue()
-            node.isTextual -> BigDecimal(node.asText())
-            else -> null
-        }
-    } catch (_: NumberFormatException) {
-        null
-    }
-
-    /** 부분 실패 허용 항목의 해석 결과. */
-    private sealed interface Parsed<out T : Any> {
-        class Ok<T : Any>(val value: T) : Parsed<T>
-
-        class Unavailable(val reason: BalanceUnavailableReason) : Parsed<Nothing>
-    }
 
     private data class Position(
         val amount: BigDecimal,
@@ -245,7 +159,7 @@ class BinanceFuturesPrivateAccountAdapter(
         val entry = row.requireDecimal("entryPrice")
         if (amount.signum() == 0) return Position(BigDecimal.ZERO, BigDecimal.ZERO, row.path("positionSide").asText())
         if (entry.signum() <= 0) binanceUnexpected("entry price is not positive for an open position")
-        val risk = valueOrWarn(BalanceItem.BINANCE_POSITION_RISK, parsePositionRisk(row))
+        val risk = valueOrWarn(BalanceItem.BINANCE_POSITION_RISK, BinanceAccountResponseParser.parsePositionRisk(row))
         return Position(amount, entry, row.path("positionSide").asText(), risk)
     }
 
@@ -397,16 +311,6 @@ class BinanceFuturesPrivateAccountAdapter(
         const val MAX_WINDOWS = 13
         const val WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000
 
-        val RISK_FIELDS = listOf(
-            "liquidationPrice",
-            "markPrice",
-            "isolatedMargin",
-            "isolatedWallet",
-            "maintMargin",
-            "positionInitialMargin",
-            "notional",
-        )
-        val MARGIN_FIELDS = listOf("isolatedMargin", "isolatedWallet", "maintMargin", "positionInitialMargin")
 
         /** 잔고·symbolConfig(부분 실패 허용 호출) 전용 timeout. 다른 호출은 생성자 timeout(기본 5초)을 쓴다. */
         val BALANCE_TIMEOUT: Duration = Duration.ofMillis(1500)
