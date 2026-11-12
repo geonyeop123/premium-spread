@@ -24,6 +24,9 @@
 
 - 숏·롱 모두 이 식 하나로 된다. 숏은 liq > entry 라 mark 가 오르면 양수, 롱은 liq < entry 라 mark 가 내리면 양수다.
   이슈의 "롱은 부호를 반대로"와 같은 값이다.
+- **판정 대상은 #138 어댑터가 관측하는 포지션뿐이다** (codex 스펙 리뷰 ISSUE-3). 어댑터는 hedge mode 에서 SHORT 행을
+  우선하고 없으면 BOTH 행을 읽는다. 따라서 숏(SHORT 행 또는 BOTH 음수)과 one-way 모드 롱(BOTH 양수)만 판정한다.
+  hedge mode 의 LONG 행만 열린 경우는 어댑터가 flat 으로 보므로 판정하지 않는다(범위 밖, 한계에 적는다).
 - 유리한 쪽(숏에서 mark < entry)이면 0 이하다.
 - 입력: `entry` = `round.legs.foreign.entryPrice`, `mark`·`liq` = #138 `ForeignPerpPositionRisk.markPrice`·`liquidationPrice`.
 - 계산은 `BigDecimal` 로 하고 scale 4, `RoundingMode.DOWN`(0 쪽 절사)으로 나눈다 — 49.99999 가 50 경계로 올라가지 않는다.
@@ -60,20 +63,28 @@
 
 ### D5. 상태 초기화 (계약 결정)
 
-상태는 `(side, level)` 이다. `side` 는 판정한 포지션의 방향(SHORT/LONG).
+상태는 `(side, entry, level)` 이다. `side` 는 판정한 포지션의 방향(SHORT/LONG), `entry` 는 마지막 판정 회차의 진입가.
 
 - 실계정(`EXCHANGE_API`) 성공 회차에서 바이낸스 leg 가 flat 이면 상태를 비운다(INITIAL). 그 포지션이 끝났다.
 - 판정 회차의 방향이 저장된 `side` 와 다르면 `level = 0` 에서 판정한다(분 사이에 숏→롱으로 뒤집힌 경우).
-- 같은 포지션 안에서 진입가·청산가가 바뀌면(추가 진입·부분 정리·증거금 변화·펀딩) 상태는 유지하고 현재 값으로
-  다시 계산한다(이슈 제안).
+- **진입가가 저장된 `entry` 와 다르면** D3 1단계 전에 `level = min(level, lvl(progress) − 10)`(0 미만이면 0)으로 내려
+  현재 경계를 한 번 다시 알릴 수 있게 한다 (codex 스펙 리뷰 ISSUE-2).
+  - 이유: 바이낸스 진입가는 추가 진입과 새 포지션에서만 바뀐다(부분 정리·펀딩·증거금 변화는 진입가를 바꾸지 않는다).
+    회차 사이에 같은 방향으로 닫고 다시 열면 flat 을 못 보고 진입가만 바뀐다. 이전 level 을 물려받으면 새 포지션의
+    첫 경계 알림이 빠진다(예: 이전 90 → 새 포지션 85% 면 90 까지 무알림).
+  - 대가: 추가 진입 때마다 현재 경계가 1회 더 올 수 있다. 사용자 행동 횟수로 한정되고 가격 진동으로는 생기지 않는다.
+- 청산가만 바뀌면(증거금 변화·교차 마진 지갑 변동·펀딩) 상태를 유지하고 현재 값으로 다시 계산한다(이슈 제안).
 - #129 episode 를 쓰지 않는 이유: episode 는 빗썸·바이낸스 두 leg 가 모두 비어야 닫힌다. 바이낸스만 닫고 다시
   열면 같은 episode 라서 새 포지션이 이전 단계를 물려받는다. 청산 위험은 바이낸스 leg 의 것이므로 바이낸스 flat 을
   경계로 쓴다. 또 Job 이 판정 시점에 episode id 를 알려면 저장소 조회가 하나 더 필요하다.
 
 ### D6. 저장 (migration V27, nullable 열 추가)
 
-`account_pnl_monitor_state` 에 `liquidation_side VARCHAR(8) NULL`, `liquidation_level INT NULL` 을 더한다.
-CHECK: 둘 다 NULL 이거나 `side IN ('SHORT','LONG') AND level IN (0,50,60,70,80,90)`.
+`account_pnl_monitor_state` 에 `liquidation_side VARCHAR(8) NULL`, `liquidation_entry_price VARCHAR(64) NULL`,
+`liquidation_level INT NULL` 을 더한다. 진입가는 V25 처럼 정규화한 10진 문자열이다(scale 무관 비교).
+CHECK: 셋 다 NULL 이거나, 셋 다 `IS NOT NULL` 이고 `side IN ('SHORT','LONG') AND level IN (0,50,60,70,80,90)`.
+`IS NOT NULL` 을 명시해야 한다 — `level IN (...)` 은 level 이 NULL 이면 UNKNOWN 이고 MySQL CHECK 는 UNKNOWN 을
+통과시킨다 (codex 스펙 리뷰 ISSUE-1, V25 와 같은 방식).
 
 - V25 와 같은 방식이다. 새 열이 nullable 이라 이전 binary 의 INSERT·UPDATE 가 그대로 돌고 값을 보존한다.
 - 상태는 기존 `AccountPnlMonitorState.account` 안(`AccountAlertState.liquidation`)에 있어 기존 버전 조건부 `save`
@@ -109,6 +120,16 @@ CHECK: 둘 다 NULL 이거나 `side IN ('SHORT','LONG') AND level IN (0,50,60,70
 - 1분 회차라 그 사이의 급등은 회차 시점 값으로만 본다. 여러 경계를 한 번에 넘으면 가장 높은 것 하나만 온다.
 - 관측 실패 회차(호가 지연·환율 지연 등)에는 판정하지 않는다. 청산가는 거래소 추정값이다.
 - 교차 마진은 지갑 잔고가 청산가를 움직이므로 같은 포지션에서도 진행률이 바뀔 수 있다.
+- hedge mode 의 LONG 행은 #138 어댑터가 읽지 않아 판정하지 않는다.
+- 추가 진입으로 진입가가 바뀌면 현재 경계가 1회 다시 올 수 있다(D5).
+
+## codex 스펙 리뷰 기록
+
+| # | 지적 | 판정 | 반영 |
+|---|---|---|---|
+| ISSUE-1 | CHECK 가 NULL 때문에 side 만 있는 행을 허용 | 수용 | D6 `IS NOT NULL` 명시, AC6 부분 행 거부 |
+| ISSUE-2 | 회차 사이 같은 방향 재진입 시 새 포지션이 이전 level 을 물려받아 첫 경계 누락 | 반박 → codex 고수 → 수용 | D5 진입가 변경 시 현재 경계 재무장, AC5 |
+| ISSUE-3 | hedge mode LONG 은 어댑터가 관측하지 않음 | 수용 | D1 판정 대상 한정, 한계 |
 
 ## builder 에게 남기는 것
 
