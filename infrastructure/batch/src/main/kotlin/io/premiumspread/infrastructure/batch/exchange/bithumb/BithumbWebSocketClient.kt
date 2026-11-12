@@ -17,6 +17,8 @@ import io.premiumspread.infrastructure.batch.websocket.WebSocketStreamProperties
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationContext
+import org.springframework.context.ApplicationContextAware
 import org.springframework.context.ApplicationListener
 import org.springframework.context.annotation.Profile
 import org.springframework.context.event.ContextClosedEvent
@@ -49,6 +51,7 @@ class BithumbWebSocketClient(
     properties: WebSocketStreamProperties,
 ) : MarketTickerStream,
     ApplicationListener<ContextClosedEvent>,
+    ApplicationContextAware,
     Ordered {
     private val log = LoggerFactory.getLogger(javaClass)
     private val consecutiveParseErrors = AtomicInteger(0)
@@ -88,7 +91,22 @@ class BithumbWebSocketClient(
         manager.start()
     }
 
-    override fun onApplicationEvent(event: ContextClosedEvent) = stop()
+    @Volatile
+    private var ownContext: ApplicationContext? = null
+
+    override fun setApplicationContext(applicationContext: ApplicationContext) {
+        ownContext = applicationContext
+    }
+
+    /** 자식 컨텍스트(management 등) 종료 이벤트는 부모 리스너로 전파되므로 자기 컨텍스트 것만 받는다. */
+    private fun isOwnContextEvent(event: ContextClosedEvent): Boolean {
+        val own = ownContext
+        return own == null || event.applicationContext === own
+    }
+
+    override fun onApplicationEvent(event: ContextClosedEvent) {
+        if (isOwnContextEvent(event)) stop()
+    }
 
     override fun getOrder(): Int = Ordered.HIGHEST_PRECEDENCE
 

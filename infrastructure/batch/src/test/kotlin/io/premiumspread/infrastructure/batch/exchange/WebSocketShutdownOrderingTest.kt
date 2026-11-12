@@ -67,6 +67,43 @@ class WebSocketShutdownOrderingTest {
         verify(exactly = 1) { ingestion.onMessage(any()) }
     }
 
+    @Test
+    fun `자식 컨텍스트 종료 이벤트에는 클라이언트가 정지하지 않는다`() {
+        val registry = SimpleMeterRegistry()
+        val ingestion = mockk<BinanceTickerIngestion>(relaxed = true)
+        val properties = WebSocketStreamProperties(
+            binance = WebSocketStreamProperties.Stream(
+                URI.create("ws://127.0.0.1:1/ws/btcusdt@bookTicker"),
+                "BTC",
+                "USDT",
+            ),
+        )
+        val parent = GenericApplicationContext()
+        try {
+            parent.apply {
+                AnnotationConfigUtils.registerAnnotationConfigProcessors(this)
+                beanFactory.registerSingleton("ingestion", ingestion)
+                beanFactory.registerSingleton("metrics", WebSocketMetrics(registry, Clock.systemUTC()))
+                beanFactory.registerSingleton("operatorAlert", OperatorAlert { })
+                beanFactory.registerSingleton("objectMapper", ObjectMapper())
+                beanFactory.registerSingleton("meterRegistry", registry)
+                beanFactory.registerSingleton("properties", properties)
+                registerBean("binanceClient", BinanceWebSocketClient::class.java, *emptyArray<Any>())
+                refresh()
+            }
+            val child = GenericApplicationContext()
+            child.setParent(parent)
+            child.refresh()
+            child.close()
+
+            parent.getBean(BinanceWebSocketClient::class.java).handlePayload(PAYLOAD)
+
+            verify(exactly = 1) { ingestion.onMessage(any()) }
+        } finally {
+            parent.close()
+        }
+    }
+
     private class LastPhaseLifecycle(private val onStop: () -> Unit) : SmartLifecycle {
         private val running = AtomicBoolean(false)
 

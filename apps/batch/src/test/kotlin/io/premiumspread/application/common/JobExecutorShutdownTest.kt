@@ -220,6 +220,46 @@ class JobExecutorShutdownTest {
         verify(exactly = 0) { lock.tryAcquire(any(), any(), any(), any()) }
     }
 
+    @Test
+    fun `자식 컨텍스트 종료 이벤트에는 반응하지 않는다`() {
+        val parentExecutor = JobExecutor(lock, recorder, alert, clock)
+        val parent = GenericApplicationContext()
+        parent.registerBean(JobExecutor::class.java, Supplier { parentExecutor })
+        parent.refresh()
+        try {
+            val child = GenericApplicationContext()
+            child.setParent(parent)
+            child.refresh()
+            child.close()
+
+            var invoked = false
+            val result = parentExecutor.execute(config) {
+                invoked = true
+                JobResult.Success
+            }
+
+            assertThat(result).isEqualTo(JobResult.Success)
+            assertThat(invoked).isTrue()
+            verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SUCCEEDED, any(), any()) }
+        } finally {
+            parent.close()
+            parentExecutor.close()
+        }
+    }
+
+    @Test
+    fun `종료 중 성공한 action 은 SUCCEEDED 로 기록한다`() {
+        val result = executor.execute(config) {
+            executor.onApplicationEvent(closedEvent)
+            JobResult.Success
+        }
+
+        assertThat(result).isEqualTo(JobResult.Success)
+        verify { recorder.completed(JobId.FX_INGESTION, any(), JobRunOutcome.SUCCEEDED, any(), any()) }
+        verify(exactly = 0) { recorder.completed(any(), any(), JobRunOutcome.FAILED, any(), any()) }
+        verify(exactly = 0) { alert.send(any()) }
+    }
+
     private fun awaitIgnoringInterrupt(latch: CountDownLatch) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         while (System.nanoTime() < deadline) {
