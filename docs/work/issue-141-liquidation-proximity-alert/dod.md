@@ -1,9 +1,9 @@
 ---
 feature: 청산 근접 단계 알림 — 진입가→청산가 진행률 50%부터 10% 단위
 slug: issue-141-liquidation-proximity-alert
-status: FROZEN
+status: FROZEN · VERIFIED
 frozen_at: 2026-11-12 (사용자 계약 승인 — 재무장 한 단계 아래·flat+진입가 변경 재알림·회복 알림 보냄)
-verdict_commit:
+verdict_commit: b3cc952
 source: https://github.com/geonyeop123/premium-spread/issues/141
 ---
 
@@ -74,4 +74,37 @@ dev 에 머지된다(이슈 수용 기준 2 위반). 예상 diff 는 테스트 �
 
 ## 증거 로그
 
-(구현 중 RED/GREEN 을 붙인다)
+**RED** (구현 전, 기대한 assertion 실패)
+
+| AC | 명령 | 결과 |
+|---|---|---|
+| AC1·AC2·AC3·AC5·AC9·AC10 | `./gradlew :domain:test --offline` (정책은 상태 그대로, 문구는 `TODO()` 스텁) | `691 tests completed, 16 failed` — 정책 12·문구 4·조합 1 중 16건 (Task 1, 8405db6 이전) |
+| AC4 | 같은 테스트, **mutation RED**: `LiquidationProximity.kt:57` 의 수동 모드 제외를 지움 | `판정하지 않는 회차는 상태를 바꾸지 않는다` FAILED — `expected: (SHORT, 60) but was: (SHORT, 90)`. 되돌린 뒤 exit 0. 이 기준은 스텁(상태 그대로)에서 통과하는 성격이라 mutation 으로 RED 를 냈다 |
+| AC6 | `./gradlew :infrastructure:common:integrationTest --tests …JdbcAccountPnlAlertStoreIntegrationTest --offline` | 저장·복원, CHECK 위반, 64자 초과 3건 실패 (V27 없음). NULL → INITIAL 은 처음부터 통과 (Task 2) |
+| AC7 | `./gradlew :apps:batch:test --tests …AccountPnlMonitorJobLiquidationTest --offline` | 4건 중 양성 2건 실패 — `round()` 가 위험 지표를 넘기지 않아 행 0개. 음성 2건(수동·청산가 null)은 AC4 mutation 과 같은 경로가 막는다 (Task 3) |
+| AC8 | `./gradlew :apps:batch:test --tests io.premiumspread.config.OwnerAlertYamlContractTest --offline` (enum 추가, yml 없음) | `routes 하위 key 집합은 OwnerAlertKind 와 같다`, `… env 로 기본값 없이 연결된다` FAILED (Task 1) |
+
+**GREEN** @ b3cc952 (2026-11-12, 각 명령 `--rerun` 으로 새로 실행)
+
+| AC | 명령 | 결과 |
+|---|---|---|
+| AC1~AC5 | dod 표 명령 | exit 0 — `LiquidationProximityPolicyTest` 14 tests, 0 failures |
+| AC6 | dod 표 명령 | exit 0 — `JdbcAccountPnlAlertStoreIntegrationTest` 32 tests, 0 failures |
+| AC7 | dod 표 명령 | exit 0 — `AccountPnlMonitorJobLiquidationTest` 4 tests, 0 failures |
+| AC8 | dod 표 명령 | exit 0 — `OwnerAlertYamlContractTest` 2, `OwnerAccountAlertKindTest` 7, 0 failures |
+| AC9 | dod 표 명령 | exit 0 — `LiquidationProximityContentTest` 5 tests, 0 failures |
+| AC10 | dod 표 명령 | exit 0 |
+
+**회귀 방어선** @ b3cc952: `./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:api:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon` → BUILD SUCCESSFUL (exit 0). `docs/check-documentation.sh` → passed. ktlint·detekt 는 CI `quality-gate.yml` 에서 확인한다(로컬 실행 불가).
+
+## 판정
+
+```
+DoD VERDICT: issue-141-liquidation-proximity-alert @ b3cc952
+  수용기준 표:     10개  (T1 10 · T2 0 · T3 0 · T4 0)
+  T1/T2 자동:      10개 중 10개 PASS
+  T3 기록 제출:    0개 중 0건
+  T4 사람 확인:    0개 중 0건 완료, 0건 대기
+  변경 요청:       0건
+  => VERIFIED
+```
