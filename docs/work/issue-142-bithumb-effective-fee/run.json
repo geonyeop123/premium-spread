@@ -1,0 +1,5 @@
+{"workflow": "feature-track", "version": 1, "track": "S", "track_reason": "어댑터 1파일 + 테스트, 원인·위치 특정. 규칙상 금액 계산 변경(L)이나 사용자가 S 지정",
+ "upgraded_from": null, "user_override": true,
+ "codex": {"mode": "quick", "spec_rounds": 0, "findings": 0, "fixed": 0, "held": 0, "timeout": false},
+ "claude_review": {"findings": null, "fixed": null},
+ "dod_verdict": "n/a", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/143"}

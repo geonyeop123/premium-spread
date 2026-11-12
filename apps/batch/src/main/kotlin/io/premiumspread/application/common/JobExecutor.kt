@@ -8,6 +8,9 @@ import io.premiumspread.domain.job.OperatorAlert
 import io.premiumspread.domain.job.OperatorAlertMessage
 import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationListener
+import org.springframework.context.event.ContextClosedEvent
+import org.springframework.core.Ordered
 import org.springframework.stereotype.Component
 import java.time.Clock
 import java.util.UUID
@@ -27,24 +30,47 @@ class JobExecutor(
     private val runRecorder: JobRunRecorder,
     private val operatorAlert: OperatorAlert,
     private val clock: Clock,
-) {
+) : ApplicationListener<ContextClosedEvent>,
+    Ordered {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val shuttingDown = AtomicBoolean(false)
     private val taskExecutor = Executors.newVirtualThreadPerTaskExecutor()
     private val leaseExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "batch-job-lock-renewal").apply { isDaemon = true }
     }
 
+    /**
+     * 자식 컨텍스트(management 등) 종료 이벤트는 부모 리스너로 전파되므로 루트 컨텍스트 종료만 받는다.
+     * `ApplicationContextAware` 로 자기 컨텍스트를 받지 않는 이유: 테스트가 이 타입의 strict mock 을 빈으로 등록한다.
+     */
+    private fun isOwnContextEvent(event: ContextClosedEvent): Boolean = event.applicationContext.parent == null
+
+    /**
+     * Context 종료 신호는 lifecycle stop·bean destroy 보다 먼저 온다.
+     * 이후 종료 과정에서 생긴 실패는 장애가 아니라 종료로 분류한다.
+     */
+    override fun onApplicationEvent(event: ContextClosedEvent) {
+        if (!isOwnContextEvent(event)) return
+        shuttingDown.set(true)
+    }
+
+    override fun getOrder(): Int = Ordered.HIGHEST_PRECEDENCE
+
     fun execute(config: JobConfig, action: () -> JobResult): JobResult {
+        if (shuttingDown.get()) {
+            log.debug("{} skipped - application shutting down", config.jobId.tag)
+            return JobResult.Skipped(SHUTDOWN).also { recordCompletion(config, UUID.randomUUID().toString(), it) }
+        }
         val runId = UUID.randomUUID().toString()
         val acquiredAt = clock.instant()
         val acquired = try {
             jobLock.tryAcquire(config.lockKey, runId, config.lease, acquiredAt)
         } catch (exception: Exception) {
-            log.error("{} failed while acquiring lock", config.jobId.tag, exception)
-            val failure = JobResult.Failure(exception)
-            recordCompletion(config, runId, failure)
-            alertAfterRelease(config, failure)
-            return failure
+            val result = shutdownAware(config, JobResult.Failure(exception))
+            if (result is JobResult.Failure) log.error("{} failed while acquiring lock", config.jobId.tag, exception)
+            recordCompletion(config, runId, result)
+            if (result is JobResult.Failure) alertAfterRelease(config, result)
+            return result
         }
 
         if (!acquired) {
@@ -62,13 +88,14 @@ class JobExecutor(
             // Timeout 응답은 즉시 반환하되, 실제 action 종료 전에는 lock을 절대 해제하지 않는다.
             // 취소를 무시하는 JDBC/Redis I/O가 남아 있어도 renewal이 중복 실행을 막는다.
             // 종료가 영원히 지연되더라도 timeout 자체는 즉시 운영 신호로 남긴다.
-            recordCompletion(config, runId, awaited.result)
-            if (awaited.result is JobResult.Failure) alertWhileLockRetained(config, awaited.result)
+            val result = shutdownAware(config, awaited.result)
+            recordCompletion(config, runId, result)
+            if (result is JobResult.Failure) alertWhileLockRetained(config, result)
             taskExecutor.submit {
                 submitted.completion.await()
                 releaseAfterDeferredAction(config, runId, renewal)
             }
-            return awaited.result
+            return result
         }
 
         return completeAfterAction(config, runId, awaited.result, renewal)
@@ -162,6 +189,7 @@ class JobExecutor(
             log.error("{} failed while releasing lock", config.jobId.tag, exception)
             result = JobResult.Failure(exception)
         }
+        result = shutdownAware(config, result)
         recordCompletion(config, runId, result)
         if (result is JobResult.Failure) alertAfterRelease(config, result)
         return result
@@ -181,6 +209,12 @@ class JobExecutor(
     fun close() {
         taskExecutor.shutdownNow()
         leaseExecutor.shutdownNow()
+    }
+
+    private fun shutdownAware(config: JobConfig, result: JobResult): JobResult {
+        if (!shuttingDown.get() || result !is JobResult.Failure) return result
+        log.warn("{} interrupted by application shutdown - recorded as skipped", config.jobId.tag, result.exception)
+        return JobResult.Skipped(SHUTDOWN)
     }
 
     private fun recordCompletion(config: JobConfig, runId: String, result: JobResult) {
@@ -226,6 +260,10 @@ class JobExecutor(
                 ),
             )
         }.onFailure { log.error("Failed to enqueue {} operator alert", config.jobId.tag, it) }
+    }
+
+    companion object {
+        const val SHUTDOWN = "shutdown"
     }
 }
 

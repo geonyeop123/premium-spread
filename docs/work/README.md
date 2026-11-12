@@ -26,3 +26,4 @@
 - [기준 포지션 대비 단계 알림](issue-131-reference-position-step-alert/README.md)
 - [정리한 포지션의 확정 손익 — 체결 기준](issue-130-realized-pnl/README.md)
 - [바이낸스 위험 지표 조회 — 레버리지·마진 모드·청산가·증거금](issue-138-binance-risk-metrics/README.md)
+- [batch 종료 시 운영 알림 오탐 정리](issue-135-shutdown-false-alerts/README.md)
