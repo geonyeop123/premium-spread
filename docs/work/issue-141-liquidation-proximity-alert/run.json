@@ -3,4 +3,4 @@
  "codex": {"mode": "standard+focused", "spec_rounds": 2, "findings": 0, "fixed": 0, "held": 0, "timeout": false},
  "codex_spec": {"findings": 3, "accepted": 3, "rebutted": 1, "maintained": 1},
  "claude_review": {"findings": 3, "fixed": 2},
- "dod_verdict": "PASS", "mr_url": null}
+ "dod_verdict": "PASS", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/145"}
