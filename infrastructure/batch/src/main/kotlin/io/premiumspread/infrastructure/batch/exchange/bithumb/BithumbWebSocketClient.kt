@@ -17,13 +17,17 @@ import io.premiumspread.infrastructure.batch.websocket.WebSocketStreamProperties
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationListener
 import org.springframework.context.annotation.Profile
+import org.springframework.context.event.ContextClosedEvent
+import org.springframework.core.Ordered
 import org.springframework.stereotype.Component
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -43,7 +47,9 @@ class BithumbWebSocketClient(
     private val objectMapper: ObjectMapper,
     private val meterRegistry: MeterRegistry,
     properties: WebSocketStreamProperties,
-) : MarketTickerStream {
+) : MarketTickerStream,
+    ApplicationListener<ContextClosedEvent>,
+    Ordered {
     private val log = LoggerFactory.getLogger(javaClass)
     private val consecutiveParseErrors = AtomicInteger(0)
     private val parseErrorCounter: Counter = Counter.builder("ws.parse.error")
@@ -52,6 +58,7 @@ class BithumbWebSocketClient(
     private val stream = properties.bithumb
     private val connection = properties.connection
     private val externalSink = AtomicReference<TickerSink?>()
+    private val stopped = AtomicBoolean(false)
 
     private val manager = WebSocketConnectionManager(
         config = WebSocketConnectionConfig(
@@ -81,13 +88,21 @@ class BithumbWebSocketClient(
         manager.start()
     }
 
+    override fun onApplicationEvent(event: ContextClosedEvent) = stop()
+
+    override fun getOrder(): Int = Ordered.HIGHEST_PRECEDENCE
+
     @PreDestroy
     override fun stop() {
-        log.info("Stopping Bithumb WebSocket client")
+        // ContextClosedEvent 와 @PreDestroy 가 모두 부르므로 멱등. 종료 신호 이후 도착 tick 은 handlePayload 에서 버린다.
+        if (stopped.compareAndSet(false, true)) {
+            log.info("Stopping Bithumb WebSocket client")
+        }
         manager.stop()
     }
 
     internal fun handlePayload(payload: String) {
+        if (stopped.get()) return
         val ticker = parse(payload)
         if (ticker == null) {
             // 구독 응답(`type != "ticker"`) 등 정상 흐름은 parse가 null 반환하지만 parse 실패와 구분 불가하므로
