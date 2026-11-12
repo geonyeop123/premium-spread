@@ -84,7 +84,8 @@ PremiumRealtimeJob (1초)
 ```
 
 WebSocket connection은 first-message timeout, idle watchdog, generation fencing, exponential reconnect를
-사용한다. ticker flush는 관측값이 10초보다 오래되면 기록을 중단한다. 외부 거래소/FX 구현과 Redis/JDBC
+사용한다. 종료 시 WebSocket client는 `ContextClosedEvent`에서 Redis lifecycle stop 전에 멈추고 이후 payload는 버린다
+(`JobExecutor`도 같은 이벤트 이후 새 실행을 `Skipped("shutdown")`으로 건너뛴다). ticker flush는 관측값이 10초보다 오래되면 기록을 중단한다. 외부 거래소/FX 구현과 Redis/JDBC
 구현은 모두 infrastructure에 있고 Batch Application Job은 port만 호출한다.
 
 ### 집계와 조회

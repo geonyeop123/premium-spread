@@ -3,7 +3,7 @@ feature: batch 종료 시 운영 알림 오탐 정리
 slug: issue-135-shutdown-false-alerts
 status: FROZEN
 frozen_at: 2026-11-12
-verdict_commit:
+verdict_commit: 0a52411
 source: https://github.com/geonyeop123/premium-spread/issues/135 · design.md
 ---
 
@@ -50,6 +50,46 @@ source: https://github.com/geonyeop123/premium-spread/issues/135 · design.md
 ### Gate 1 기준선
 - 2026-11-12 `batch-run-05.log` 종료 구간(09:25:29.749 `Commencing graceful shutdown` 이후): `[ALERT][CRITICAL]` 12건(전부 `[binance] WebSocket ingestion hash 저장 5회 연속 실패`). AC4 의 기준선이다.
 - 2026-11-12 AC1~AC3 검증 명령을 작성 시점에 실행했다. 세 명령 모두 exit 1(`No tests found for given includes`)이다. 테스트 클래스가 없어서 생긴 실패라 RED 가 아니다. RED 는 구현 중 assertion 실패로 따로 남긴다.
+
+### RED (구현 전, assertion 수준)
+- **AC1** (`onApplicationEvent` 빈 stub, 95e1a7a 이전): `JobExecutorShutdownTest` 7건 중 6건이 실패했다. 대조군 1건은 통과했다.
+  - 실패 예: `expected Skipped(reason=shutdown) but was: Success`, `but was: Failure(RuntimeException: LettuceConnectionFactory is STOPPING)`, `but was: Failure(JobExecutionTimeoutException: fx_ingestion exceeded execution timeout 100ms)`.
+- **AC1 자식 컨텍스트:** 자식 컨텍스트 종료를 무시하는 테스트는 리스너가 모든 이벤트를 받던 상태에서 실패했다(5b605d7 전).
+- **AC2** (43af740 이전): 종료 뒤 전달 금지 테스트 4건이 `onMessage(any())) should not be called`로 실패했다. 종료 전 전달 테스트 2건은 기대대로 통과했다.
+- **AC3** (43af740 이전): phase `Integer.MAX_VALUE` lifecycle `stop()` 안에서 `BinanceTickerIngestion.onMessage`가 호출돼 실패했다.
+
+### GREEN (Gate 2 @ 0a52411, `--rerun-tasks`)
+- **AC1** `./gradlew :apps:batch:test --tests io.premiumspread.application.common.JobExecutorShutdownTest --offline --no-daemon` → exit 0, BUILD SUCCESSFUL
+- **AC2** `./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.WebSocketClientShutdownTest --offline --no-daemon` → exit 0
+- **AC3** `./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.WebSocketShutdownOrderingTest --offline --no-daemon` → exit 0
+- **회귀 방어선** `test architectureTest :apps:batch:integrationTest :infrastructure:common:integrationTest --continue` → exit 0. JUnit 결과는 1,947건 실행, 실패·에러·skip 0이다.
+  - 5b605d7(`ApplicationContextAware` 판) 에서는 같은 명령이 wiring 테스트 17건 실패로 exit 1 이었다. strict `mockk<JobExecutor>` 빈에 `setApplicationContext`가 호출됐기 때문이다.
+  - 0a52411 에서 판정을 루트 컨텍스트(`parent == null`)로 바꿔 해소했다. 기존 테스트는 수정하지 않았다.
+- **ktlint** (CI 패턴 `**/src/**/*.kt`) 위반 0. detekt 는 로컬 bootstrap 이 CI 전용이라 PR CI 에서 확인한다.
+
+### AC4 (T3 기록된 관찰)
+- 명령: `$CLAUDE_JOB_DIR/tmp/ac4-135.sh`. 순서는 다음과 같다.
+  1. 실계정 env 로 `SPRING_PROFILES_ACTIVE=local ./gradlew :apps:batch:bootRun`을 실행한다.
+  2. `Started` 이후 75초를 기다린다.
+  3. JVM 에 `kill -TERM`을 보낸다.
+  4. `Commencing graceful shutdown` 이후 구간의 줄을 센다.
+- 로그: `$CLAUDE_JOB_DIR/tmp/batch-135-shutdown.log` (로컬 보관).
+- 결과 @ 0a52411 (2026-11-12 14:19:39): 종료 구간 `[ALERT][CRITICAL]` 0건, `[ALERT]` 0건, `ingestion hash save failed` 0건이다.
+  - `Stopping Binance/Bithumb WebSocket client`가 14:19:39.153 에 각 1회 찍혔다. graceful shutdown(.155)보다 앞선다.
+  - 같은 측정을 5b605d7 에서도 했고(14:01:23) 결과가 같았다.
+- 기준선(변경 전 09:25:31) 은 12건이다.
+
+## 판정
+
+```
+DoD VERDICT: issue-135-shutdown-false-alerts @ 0a52411
+  수용기준 표:     4개  (T1 3 · T2 0 · T3 1 · T4 0)
+  T1/T2 자동:      3개 중 3개 PASS
+  T3 기록 제출:    1개 중 1건
+  T4 사람 확인:    0개
+  변경 요청:       0건
+  => VERIFIED
+```
 
 ## 변경 요청
 
