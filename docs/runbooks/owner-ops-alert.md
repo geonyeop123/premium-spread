@@ -103,6 +103,12 @@ ready             = ¬recipientMissing ∧ ¬discordMisconfigured ∧ (emailEffe
   FAILED 시 `lastFailureAt` 은 늦은 값으로 유지해 동시 완료가 역순으로 도착해도 되감기지 않는다.
 - **`Unknown` 대기:** 재시작 직후에는 FX 성공 기록·tick·카운터가 비어 있다. 이 상태는 정상도 장애도 아닌 `Unknown` 이라 DB 에 남은 장애를 닫지도(가짜 복구) 열지도 않는다.
   이 batch 인스턴스의 첫 실행부터 FX 는 30분, 시세는 5분이 지나도 근거가 없으면 그때 장애로 본다. Job 신호에는 대기 규칙이 없다(카운터가 비면 실패가 없었거나 재시작이다).
+- **종료 중 결과 (#135):** batch 가 종료 신호(`ContextClosedEvent`)를 받으면 Job 결과가 바뀐다.
+  - 그 뒤 새로 시작하려던 Job 은 lock 을 잡지 않고 `SKIPPED(shutdown)`으로 기록된다.
+  - 실행 중이던 Job 의 실패도 원인을 가리지 않고 `SKIPPED(shutdown)`으로 기록된다. 원인에는 timeout, Redis·DB 종료 예외, interrupt 가 모두 들어간다.
+  - 이때는 `BATCH_JOB_FAILED` 운영 알림을 보내지 않고 연속 실패 카운터도 바꾸지 않는다. 원래 예외는 WARN 로그 `{job} interrupted by application shutdown - recorded as skipped`에 남는다.
+  - WebSocket 시세 클라이언트도 같은 신호에서 Redis 보다 먼저 멈춘다. 그래서 종료 때 `WebSocket ingestion hash 저장 5회 연속 실패` CRITICAL 이 나지 않는다.
+  - 종료와 겹친 진짜 실패는 다음 기동의 실행이 다시 알린다.
 - **다중 인스턴스:** 카운터와 tick 은 인스턴스마다 따로 센다. 이 기능은 batch 한 인스턴스를 전제한다.
 - 이 경로의 판정 지연: 운영 신호 Job 주기 30초 + 전달 주기 60초가 더해진다.
 - `batch.market` 을 바꿔 감시 대상에서 빠진 신호 행은 남는다. 장애 중이었으면 복구 알림이 오지 않는다(아래 "상태 확인과 정리").
