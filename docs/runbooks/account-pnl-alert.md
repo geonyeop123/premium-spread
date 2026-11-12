@@ -89,7 +89,7 @@
 
 ## owner 알림 채널 (메일·Discord)
 
-owner 알림(실계정 순손익 4종, 계정 알림 4종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
+owner 알림(실계정 순손익 4종, 계정 알림 6종, 운영 알림 4종)은 메일과 Discord webhook 두 채널로 보낼 수 있다. 알림 하나는 켜진 채널 수만큼 outbox 행이 되고 채널별로 따로 재시도한다.
 
 **채널 bean 은 PnL 모니터와 독립이다(#91).** 메일·Discord sender 는 batch scheduling 이 켜져 있고 채널 구성이 ready 이면 PnL 모니터를 꺼도 뜬다(운영 알림용).
 독립 전달 Job(60초 주기, `OwnerAlertDeliveryJob`)이 PnL 모니터 회차와 별개로 같은 outbox(`account_pnl_mail`)를 비운다. PnL 모니터가 켜져 있으면 회차 안 디스패처와 전달 Job 이
@@ -131,7 +131,7 @@ owner 알림(실계정 순손익 4종, 계정 알림 4종, 운영 알림 4종)�
 
 - **Discord 를 켜면 정시 보고·복구 메일은 더 이상 오지 않는다(Discord 로만 온다).** 수익·중단은 메일도 계속 온다.
 - 운영 알림 4종은 [#91](https://github.com/geonyeop123/premium-spread/issues/91) 에서 추가됐다. Discord 가 꺼져 있으면 4종 모두 메일로 온다.
-- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 4종(포지션 변경·순수익률 급변·미반영 리마인더·기준 포지션 단계)도 Discord 가 꺼져 있으면 메일로 온다**(`reference-step` 은 기본 메일 없음이지만 Discord 를 쓸 수 없으면 메일로 폴백한다. 종류별 `_EMAIL=false` 로 명시하면 메일도 보내지 않는다).
+- Discord 가 꺼져 있으면(기본) 지금처럼 4종 모두 메일로 온다. **계정 알림 6종(포지션 변경·순수익률 급변·미반영 리마인더·기준 포지션 단계·청산 근접·청산 위험 완화)도 Discord 가 꺼져 있으면 메일로 온다**(`reference-step`·`liquidation-eased` 는 기본 메일 없음이지만 Discord 를 쓸 수 없으면 메일로 폴백한다. 종류별 `_EMAIL=false` 로 명시하면 메일도 보내지 않는다).
 - 계정 알림 3종은 [#89](https://github.com/geonyeop123/premium-spread/issues/89) 에서 추가됐다. 시장 알림 4종은 [#90](https://github.com/geonyeop123/premium-spread/issues/90) 에서 이 표에 추가됐다. Discord 가 꺼져 있으면 시장 알림 4종도 모두 메일로 온다([owner-market-alert.md](owner-market-alert.md)).
 - PnL 모니터는 매 회차 최신 순수익률을 `account_pnl_latest`(단일 행, V22)에 남긴다. 일일 요약 전용이며 이 저장이 실패해도 모니터 결과·알림에는 영향이 없다.
 - **무음** = 알림 소리·배지 없이 채널에만 쌓인다. **`@here`** = 채널 멤버 전원에게 알림이 간다. **소리** = 일반 알림.
@@ -618,7 +618,7 @@ PC 가 잠자기 상태였다면 깨어난 뒤 지난 시간을 감지해 메일
 
 ## 청산 근접 알림 체크리스트 (#141)
 
-- [ ] (a) 기동 INFO `owner-alert routes:` 에 `liquidation-proximity=email+discord(PNL,SOUND)` 와 `liquidation-eased=discord(PNL,SILENT)` 가 보인다.
+- [ ] (a) Discord 가 켜진 상태에서 기동 INFO `owner-alert routes:` 에 `liquidation-proximity=email+discord(PNL,SOUND)` 와 `liquidation-eased=discord(PNL,SILENT)` 가 보인다(Discord 가 꺼져 있으면 둘 다 `email`).
 - [ ] (b) 수동 모드(`MANUAL_ENV`)에서는 청산 근접 알림이 오지 않는다.
 - [ ] (c) 경계를 넘는 관찰 기회가 있으면 메일과 pnl 채널(소리)에서 각 1건을 받았고 진행률·마크가·청산가·진입가가 바이낸스 화면과 합리적으로 맞는다. 없으면 "미관찰"로 기록한다.
 
@@ -804,7 +804,7 @@ seed 건(2026-10-28~11-08) 또는 실제 정리 건으로 로컬 batch를 띄워
 ## 끄는 법과 데이터 정리
 
 - 끄기: `ACCOUNT_PNL_MONITOR_ENABLED=false`(또는 미설정) 후 batch 재시작. `BATCH_SCHEDULING_ENABLED=false` 면 전체 스케줄러가 꺼진다.
-- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 8종(계정 알림 4종 포함)은 모두 메일로 온다.
+- Discord 만 끄기: `OWNER_ALERT_DISCORD_ENABLED=false` 후 batch 재시작(쌓여 있던 Discord 행은 1회 시도 후 `FAILED`). 이후 10종(계정 알림 6종 포함)은 모두 메일로 온다.
 - 모드 전환(`api` ↔ `manual`)은 env 수정 + batch 재시작이다. 수량·진입가가 같으면 에피소드가 유지된다.
 - 상태·outbox 테이블:
   - `account_pnl_monitor_state` — 단일 행(`id=1`). 에피소드·마지막 발송·중단 알림 여부 + 계정 알림 leg·급변 기준선·리마인더 보낸 날·수동 펀딩 변경 시각 + 기준 포지션 단계 상태(기준 leg·국면·단계, V25).
