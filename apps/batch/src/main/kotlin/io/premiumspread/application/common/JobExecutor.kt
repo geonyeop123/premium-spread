@@ -8,8 +8,6 @@ import io.premiumspread.domain.job.OperatorAlert
 import io.premiumspread.domain.job.OperatorAlertMessage
 import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
-import org.springframework.context.ApplicationContext
-import org.springframework.context.ApplicationContextAware
 import org.springframework.context.ApplicationListener
 import org.springframework.context.event.ContextClosedEvent
 import org.springframework.core.Ordered
@@ -33,7 +31,6 @@ class JobExecutor(
     private val operatorAlert: OperatorAlert,
     private val clock: Clock,
 ) : ApplicationListener<ContextClosedEvent>,
-    ApplicationContextAware,
     Ordered {
     private val log = LoggerFactory.getLogger(javaClass)
     private val shuttingDown = AtomicBoolean(false)
@@ -42,18 +39,11 @@ class JobExecutor(
         Thread(runnable, "batch-job-lock-renewal").apply { isDaemon = true }
     }
 
-    @Volatile
-    private var ownContext: ApplicationContext? = null
-
-    override fun setApplicationContext(applicationContext: ApplicationContext) {
-        ownContext = applicationContext
-    }
-
-    /** 자식 컨텍스트(management 등) 종료 이벤트는 부모 리스너로 전파되므로 자기 컨텍스트 것만 받는다. */
-    private fun isOwnContextEvent(event: ContextClosedEvent): Boolean {
-        val own = ownContext
-        return own == null || event.applicationContext === own
-    }
+    /**
+     * 자식 컨텍스트(management 등) 종료 이벤트는 부모 리스너로 전파되므로 루트 컨텍스트 종료만 받는다.
+     * `ApplicationContextAware` 로 자기 컨텍스트를 받지 않는 이유: 테스트가 이 타입의 strict mock 을 빈으로 등록한다.
+     */
+    private fun isOwnContextEvent(event: ContextClosedEvent): Boolean = event.applicationContext.parent == null
 
     /**
      * Context 종료 신호는 lifecycle stop·bean destroy 보다 먼저 온다.
