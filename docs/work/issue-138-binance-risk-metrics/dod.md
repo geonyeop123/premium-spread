@@ -89,6 +89,18 @@ $ ./gradlew :domain:test --offline
 BUILD SUCCESSFUL
 ```
 
+### AC9
+
+```
+[RED] 2026-11-12 uncommitted
+$ ./gradlew architectureTest --offline
+PrivateAccountReadOnlyArchitectureTest > 위험 지표 읽기 경로는 GET 전용 스캔 대상 안에 있다() FAILED
+    AssertionFailedError: 위험 지표 읽기 경로 [/fapi/v1/symbolConfig] 가 GET 전용 스캔 대상 어디에도 없다
+36 tests completed, 1 failed
+BUILD FAILED
+(GREEN 은 Task 2 에서 symbolConfig 경로가 들어간 뒤 기록)
+```
+
 ## 사람 확인 (T4)
 
 해당 없음
