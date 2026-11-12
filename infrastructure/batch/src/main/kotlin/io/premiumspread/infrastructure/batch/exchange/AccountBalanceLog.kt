@@ -4,9 +4,23 @@ import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import org.slf4j.LoggerFactory
 import java.util.concurrent.CancellationException
 
-internal enum class BalanceItem { BITHUMB_KRW, BITHUMB_USDT_PRICE, BINANCE_USDT_ASSET }
+internal enum class BalanceItem {
+    BITHUMB_KRW,
+    BITHUMB_USDT_PRICE,
+    BINANCE_USDT_ASSET,
+    BINANCE_POSITION_RISK,
+    BINANCE_SYMBOL_CONFIG,
+}
 
-internal enum class BalanceUnavailableReason { MISSING, NOT_NUMBER, NEGATIVE, NOT_POSITIVE, REQUEST_FAILED, TICKER_FALLBACK }
+internal enum class BalanceUnavailableReason {
+    MISSING,
+    NOT_NUMBER,
+    NEGATIVE,
+    NOT_POSITIVE,
+    REQUEST_FAILED,
+    TICKER_FALLBACK,
+    UNKNOWN,
+}
 
 /**
  * 잔고·시세 칸을 채우지 못한 사유 로그. 금액·key·secret·query·URL·응답 본문·예외 메시지는 담지 않고

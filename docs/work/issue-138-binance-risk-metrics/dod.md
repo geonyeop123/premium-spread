@@ -101,6 +101,37 @@ BUILD FAILED
 (GREEN 은 Task 2 에서 symbolConfig 경로가 들어간 뒤 기록)
 ```
 
+```
+[GREEN] 2026-11-12 uncommitted (Task 2 — 어댑터에 "/fapi/v1/symbolConfig" 리터럴 추가 뒤)
+$ ./gradlew :infrastructure:batch:test architectureTest --offline
+BUILD SUCCESSFUL
+architectureTest: 36 tests, 0 failures, 0 errors (PrivateAccountReadOnlyArchitectureTest 포함)
+:infrastructure:batch:test: 279 tests, 0 failures, 0 errors
+```
+
+### AC1-AC7
+
+```
+[RED] 2026-11-12 uncommitted (테스트·픽스처·로그 enum 만 추가, 어댑터 미변경)
+$ ./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest --offline
+BinanceFuturesPrivateAccountAdapterTest > symbolConfig 실패는 그 항목만 null 로 흡수하고 사유만 WARN 한다(CapturedOutput) FAILED  (AssertionError)
+BinanceFuturesPrivateAccountAdapterTest > symbolConfig 요청 중 취소되면 흡수하지 않고 던진다(CapturedOutput) FAILED  (AssertionError)
+BinanceFuturesPrivateAccountAdapterTest > 청산가 0 이면 청산가만 없음이다() FAILED  (AssertionError)
+BinanceFuturesPrivateAccountAdapterTest > positionRisk 위험 지표를 숏 롱 hedge 에서 읽는다() FAILED  (AssertionError)
+BinanceFuturesPrivateAccountAdapterTest > symbolConfig 레버리지와 마진 모드를 서명 GET 한 건으로 읽는다() FAILED  (AssertionError)
+BinanceFuturesPrivateAccountAdapterTest > positionRisk 위험 필드 해석 실패는 그 항목만 null 로 흡수한다(CapturedOutput) FAILED  (AssertionError)
+42 tests completed, 6 failed
+BUILD FAILED
+(AC4 `포지션이 없으면 위험 지표가 없고 symbolConfig 를 부르지 않는다` 는 미구현 상태에서도 참이라 RED 가 없다 — 구현 뒤 회귀 방어선)
+
+[GREEN] 2026-11-12 uncommitted
+$ ./gradlew :infrastructure:batch:test --tests io.premiumspread.infrastructure.batch.exchange.binance.BinanceFuturesPrivateAccountAdapterTest --offline
+BUILD SUCCESSFUL
+BinanceFuturesPrivateAccountAdapterTest: 42 tests, 0 failures, 0 errors, 0 skipped
+$ ./gradlew :apps:batch:test --offline
+BUILD SUCCESSFUL (389 tests, 0 failures)
+```
+
 ## 사람 확인 (T4)
 
 해당 없음
