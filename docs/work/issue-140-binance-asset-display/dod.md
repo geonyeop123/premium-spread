@@ -75,3 +75,15 @@ source: https://github.com/geonyeop123/premium-spread/issues/140
 
 ### AC4 (2026-11-13, 0d5fbd9)
 - RED: `바이낸스 잔고가 없으면 …`·`수동 모드는 …` FAILED. GREEN: 위 명령 통과. 전체 `:domain:test` 695건 중 실패 2건은 `AlertMessageSpecConformanceTest`(수익·정시) — message-spec.md 가 아직 옛 행 수 [3,2,3,2,1,2,2]; Task 3 에서 해소 예정.
+
+### AC5 (Task 3)
+```
+docs/runbooks/account-pnl-alert.md:180 포지션 규모  29,579.20 USDT (5x)
+docs/runbooks/account-pnl-alert.md:511, 582, 584 (자산 설명·체크리스트 b·d)
+docs/work/alert-message-template/message-spec.md:23, 50, 72, 86, 113, 135
+```
+spec 6회, runbook 4회.
+
+### R1/R3 (Task 3)
+- `:domain:test` 전체 BUILD SUCCESSFUL, AlertMessageSpecConformanceTest 수익/정시 통과. 테스트 안의 하드코딩 cellsPerRow [3,2,3,2,1,2,2] 를 [3,2,3,2,1,1,2] 로 갱신(구 레이아웃 잔재).
+- `bash docs/check-documentation.sh` exit 0.
