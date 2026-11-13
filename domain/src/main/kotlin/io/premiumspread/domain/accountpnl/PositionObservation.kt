@@ -108,5 +108,11 @@ data class PositionHistoryRound(
     val observedAt: Instant,
     val legObservations: LegObservations = LegObservations.NONE,
 ) {
+    init {
+        require(source != ForeignPerpPositionSource.MANUAL_ENV || legObservations.foreign == null) {
+            "수동 모드 회차는 바이낸스 레그 관측을 가질 수 없다"
+        }
+    }
+
     override fun toString(): String = "PositionHistoryRound(observedAt=$observedAt)"
 }

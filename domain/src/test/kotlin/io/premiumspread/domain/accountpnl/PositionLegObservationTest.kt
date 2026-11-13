@@ -1,6 +1,7 @@
 package io.premiumspread.domain.accountpnl
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.time.Instant
@@ -148,10 +149,43 @@ class PositionLegObservationTest {
         assertThat(LegObservations.NONE.toString()).isEqualTo("LegObservations")
     }
 
+    private fun emptyRound(source: ForeignPerpPositionSource, legObservations: LegObservations? = null): PositionHistoryRound {
+        val legs = PositionLegs(KoreaLeg.EMPTY, ForeignLeg.FLAT)
+        val market = MarketQuote(
+            listOf(PriceLevel(BigDecimal("100000000"), BigDecimal("1.0"))),
+            listOf(PriceLevel(BigDecimal("70000"), BigDecimal("1.0"))),
+            BigDecimal("1300"),
+        )
+        return if (legObservations == null) {
+            PositionHistoryRound(legs, source, null, market, at)
+        } else {
+            PositionHistoryRound(legs, source, null, market, at, legObservations)
+        }
+    }
+
     @Test
     fun `PositionHistoryRound 의 기본 레그 관측은 NONE 이다`() {
-        val field = PositionHistoryRound::class.java.getDeclaredField("legObservations")
-        assertThat(field.type).isEqualTo(LegObservations::class.java)
-        assertThat(LegObservations.NONE).isSameAs(LegObservations.NONE)
+        val round = emptyRound(ForeignPerpPositionSource.EXCHANGE_API)
+
+        assertThat(round.legObservations).isSameAs(LegObservations.NONE)
+    }
+
+    @Test
+    fun `MANUAL_ENV 회차에 바이낸스 레그가 있으면 거부한다`() {
+        val withForeign = LegObservations.of(korea(), foreign())
+
+        assertThatThrownBy { emptyRound(ForeignPerpPositionSource.MANUAL_ENV, withForeign) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `MANUAL_ENV 는 바이낸스 레그 없이, 거래소 API 는 레그와 함께 만들어진다`() {
+        val manual = LegObservations.of(korea(), foreign(source = ForeignPerpPositionSource.MANUAL_ENV))
+        assertThat(manual.foreign).isNull()
+        assertThat(emptyRound(ForeignPerpPositionSource.MANUAL_ENV, manual).legObservations).isSameAs(manual)
+
+        val api = LegObservations.of(korea(), foreign())
+        assertThat(api.foreign).isNotNull()
+        assertThat(emptyRound(ForeignPerpPositionSource.EXCHANGE_API, api).legObservations).isSameAs(api)
     }
 }
