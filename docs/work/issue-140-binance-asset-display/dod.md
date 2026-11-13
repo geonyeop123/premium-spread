@@ -62,3 +62,16 @@ source: https://github.com/geonyeop123/premium-spread/issues/140
 ## 증거 로그
 
 > 구현 중 append only. 지우거나 고쳐 쓰지 말 것.
+
+### AC1 (2026-11-13, 0d5fbd9)
+- RED: Breakdown 필드 교체는 컴파일 실패(`Unresolved reference 'valueKrw'/'valueUsdt'`)로 확인. main 을 컴파일만 되게 맞춘 뒤 `수익 알림 golden`·`정시 보고 golden` 이 기대 문자열 불일치로 FAILED (알림 테스트 8건 FAILED / 27).
+- GREEN: `./gradlew :domain:test --tests io.premiumspread.domain.accountpnl.AccountPnlAlertContentTest --offline` 통과.
+
+### AC2 (2026-11-13, 0d5fbd9)
+- RED: `세 평가액의 합은 총 자산과 같다` FAILED (바이낸스 평가액이 명목가였음). GREEN: 위 명령 통과 (|합 − 총 자산| ≤ 2).
+
+### AC3 (2026-11-13, 0d5fbd9)
+- RED: `레버리지를 모르면 포지션 규모에 배수를 붙이지 않는다` FAILED. GREEN: 위 명령 통과.
+
+### AC4 (2026-11-13, 0d5fbd9)
+- RED: `바이낸스 잔고가 없으면 …`·`수동 모드는 …` FAILED. GREEN: 위 명령 통과. 전체 `:domain:test` 695건 중 실패 2건은 `AlertMessageSpecConformanceTest`(수익·정시) — message-spec.md 가 아직 옛 행 수 [3,2,3,2,1,2,2]; Task 3 에서 해소 예정.
