@@ -106,6 +106,7 @@ data class PositionHistoryRound(
     val pnl: AccountNetPnl?,
     val market: MarketQuote,
     val observedAt: Instant,
+    val legObservations: LegObservations = LegObservations.NONE,
 ) {
     override fun toString(): String = "PositionHistoryRound(observedAt=$observedAt)"
 }
