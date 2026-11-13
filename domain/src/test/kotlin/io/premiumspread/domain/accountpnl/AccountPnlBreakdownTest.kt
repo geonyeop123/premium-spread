@@ -25,6 +25,7 @@ class AccountPnlBreakdownTest {
         entryCommission: BigDecimal? = BigDecimal("14.36"),
         funding: BigDecimal? = BigDecimal("4.2"),
         source: ForeignPerpPositionSource = ForeignPerpPositionSource.EXCHANGE_API,
+        symbolConfig: ForeignPerpSymbolConfig? = ForeignPerpSymbolConfig(5, ForeignPerpMarginType.ISOLATED),
     ): AccountNetPnl {
         val korea = KoreaSpotAccountSnapshot(
             quantity = BigDecimal("0.266"),
@@ -46,6 +47,7 @@ class AccountPnlBreakdownTest {
             lastPrice = BigDecimal("111200"),
             askObservedAt = observedAt,
             positionSource = source,
+            symbolConfig = symbolConfig,
         )
         return AccountNetPnl.calculate(AccountHedgePosition(korea, foreign), fx, fxObservedAt, calculatedAt)
     }
@@ -76,8 +78,8 @@ class AccountPnlBreakdownTest {
         assertNum(b.foreign.currentPrice, "111200")
         assertNum(b.foreign.pnlUsdt, "-851.2")
         assertNum(b.foreign.pnlKrw, "-1191680")
-        assertNum(b.foreign.valueUsdt, "29579.2")
-        assertNum(b.foreign.valueKrw, "41410880")
+        assertNum(b.foreign.notionalUsdt, "29579.2")
+        assertThat(b.foreign.leverage).isEqualTo(5)
         assertNum(b.foreign.entryFeeUsdt, "14.36")
         assertNum(b.foreign.entryFeeKrw, "20104")
         assertNum(b.foreign.exitFeeUsdt, "14.7896")
@@ -92,6 +94,14 @@ class AccountPnlBreakdownTest {
         assertNum(b.netPercent, "1.11")
         assertNum(b.fxRate, "1400")
         assertThat(b.calculatedAt).isEqualTo(calculatedAt)
+    }
+
+    @Test
+    fun `바이낸스 레버리지는 symbolConfig 에서 오고 없으면 null 이다`() {
+        assertThat(AccountPnlBreakdown.of(pnl()).foreign.leverage).isEqualTo(5)
+        val none = AccountPnlBreakdown.of(pnl(symbolConfig = null))
+        assertThat(none.foreign.leverage).isNull()
+        assertNum(none.foreign.notionalUsdt, "29579.2")
     }
 
     @Test

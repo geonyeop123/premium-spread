@@ -56,7 +56,7 @@ class AccountPnlMonitorJobBalanceTest {
 
         assertThat(keys()).anyMatch { it.startsWith("account-pnl-profit-") }
         assertThat(keys()).anyMatch { it.startsWith("account-pnl-hourly-") }
-        assertThat(profitBody()).contains("■ 자산").contains("총 자산               없음")
+        assertThat(profitBody()).contains("■ 자산").contains("총 자산      없음")
     }
 
     @Test
