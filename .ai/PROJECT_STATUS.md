@@ -105,7 +105,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   - api integrationTest Tracking 계열 간헐 실패(`TrackingControllerE2ETest:90` 409, `TrackingArchiveIntegrationTest:130` — 단독 재실행 통과)
   - 태스크 리뷰에서 미룬 테스트 보강 묶음(창 경계 정각·KST 자정, 대칭 경로, 동시성 중간 예외 등)
 - 실계정 알림 자산 칸(#105, 구현·검증 완료, PR 예정, 사람 확인 AC8·AC9 머지 후 배포 환경에서 대기): 수익·정시 알림에
-  메일 `■ 자산`, Discord 2칸+2칸(총 자산·바이낸스 증거금+손익 / 잔여 금액·USDT 원화가)을 추가했다. 빗썸 `/v1/accounts`
+  메일 `■ 자산`, Discord 2칸+2칸(총 자산·바이낸스 증거금+손익 / 잔여 금액·USDT 원화가)을 추가했다(#140 이후 `바이낸스 증거금+손익` 칸은 없고
+  바이낸스 블록 `평가액`이 증거금+손익, 새 줄 `포지션 규모`가 notional·레버리지). 빗썸 `/v1/accounts`
   KRW 잔고와 `/v1/ticker`(KRW-BTC,KRW-USDT), 바이낸스 `/fapi/v3/account` 1회(전용 timeout 1.5초, `-1021` 미재시도)를
   쓰며 실패는 adapter 안에서 null + WARN 으로 흡수해 순손익·중단 판정에 영향이 없다. 공통 Discord 렌더러의 2칸 행 뒤
   채움 칸을 non-inline 행 끊기 칸(U+200B)으로 바꿔 시장·운영 알림에도 적용된다. Flyway/Redis/API 무변경.

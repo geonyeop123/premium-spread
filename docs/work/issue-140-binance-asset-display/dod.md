@@ -1,9 +1,9 @@
 ---
 feature: 실계정 알림 자산 표기 정합 — 바이낸스 평가액을 증거금+손익 기준으로
 slug: issue-140-binance-asset-display
-status: FROZEN
+status: FROZEN · VERIFIED
 frozen_at: 2026-11-13 (사용자 계약 승인 — 자산 칸 `바이낸스 증거금+손익` 행 삭제)
-verdict_commit:
+verdict_commit: 2cd5f00
 source: https://github.com/geonyeop123/premium-spread/issues/140
 ---
 
@@ -87,3 +87,18 @@ spec 6회, runbook 4회.
 ### R1/R3 (Task 3)
 - `:domain:test` 전체 BUILD SUCCESSFUL, AlertMessageSpecConformanceTest 수익/정시 통과. 테스트 안의 하드코딩 cellsPerRow [3,2,3,2,1,2,2] 를 [3,2,3,2,1,1,2] 로 갱신(구 레이아웃 잔재).
 - `bash docs/check-documentation.sh` exit 0.
+
+### Gate 2 재실행 (2026-11-13, 2cd5f00 — 최종 리뷰 수정 반영 후)
+- `./gradlew :domain:test architectureTest --offline --no-daemon` exit 0 (AC1~AC4·R1·R2)
+- `bash docs/check-documentation.sh` exit 0 — documentation check passed (20 files, 15 required paths) (R3)
+- AC5 grep: message-spec 6건(23·50·72·86·113·135), runbook 4건(180·511·582·584)
+
+```
+DoD VERDICT: issue-140-binance-asset-display @ 2cd5f00
+  수용기준 표:     5개  (T1 4 · T2 1 · T3 0 · T4 0)
+  T1/T2 자동:      5개 중 5개 PASS
+  T3 기록 제출:    0개 중 0건
+  T4 사람 확인:    0개 중 0건 완료, 0건 대기
+  변경 요청:       0건
+  => VERIFIED
+```
