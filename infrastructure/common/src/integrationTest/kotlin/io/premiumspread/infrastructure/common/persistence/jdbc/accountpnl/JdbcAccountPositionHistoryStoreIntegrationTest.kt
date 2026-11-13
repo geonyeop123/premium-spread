@@ -313,8 +313,14 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
 
         val foreign = foreignLegs().single()
         listOf(
-            "leverage", "margin_type", "liquidation_price", "mark_price", "isolated_margin", "maint_margin",
-            "entry_commission_usdt", "funding_usdt",
+            "leverage",
+            "margin_type",
+            "liquidation_price",
+            "mark_price",
+            "isolated_margin",
+            "maint_margin",
+            "entry_commission_usdt",
+            "funding_usdt",
         ).forEach { column -> assertThat(foreign[column]).describedAs(column).isNull() }
         assertThat(foreign["position_source"]).isEqualTo("EXCHANGE_API")
         assertThat(koreaLegs().single()["entry_fee_krw"]).isNull()
