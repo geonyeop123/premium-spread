@@ -2,4 +2,4 @@
  "upgraded_from": null, "user_override": false,
  "codex": {"mode": "standard", "spec_rounds": 0, "findings": 0, "fixed": 0, "held": 0, "timeout": false},
  "claude_review": {"findings": 2, "fixed": 2},
- "dod_verdict": "PASS", "mr_url": null}
+ "dod_verdict": "PASS", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/146"}
