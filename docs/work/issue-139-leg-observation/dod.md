@@ -1,8 +1,9 @@
 ---
 feature: 레그별 관측 이력 테이블 — 바이낸스 위험·비용 지표, 빗썸 진입 수수료
 slug: issue-139-leg-observation
-status: FROZEN
+status: FROZEN · VERIFIED
 frozen_at: 2026-11-13 (사용자 계약 승인 — 지표 저장 형식 DECIMAL)
+verdict_commit: a59a873
 source: https://github.com/geonyeop123/premium-spread/issues/139
 ---
 
@@ -62,8 +63,25 @@ source: https://github.com/geonyeop123/premium-spread/issues/139
 
 ## 증거 로그
 
-(구현 중 RED/GREEN 기록)
+| # | RED (구현 전) | GREEN |
+|---|---|---|
+| AC1 | `PositionLegObservationTest` 스텁 `of()=NONE` — `10 tests completed, 7 failed`(값·null 보존·수동·수량 0·toString 어서션) | 10/10 통과 (527079e). 수정 1회 후 12/12 (a59a873, 수동 round 거부·기본값 NONE 테스트 추가 — 수정 전 `12 tests completed, 1 failed`: 예외 미발생) |
+| AC2 | `JdbcAccountPositionHistoryStoreIntegrationTest` — `20 tests completed, 6 failed`(레그 행 0개) | 20/20 통과 (86a827b) |
+| AC3 | 같은 클래스 롤백 테스트 — `Expecting code to raise a throwable`(레그 INSERT 없음) | 통과 (86a827b): 관측·건·사건·레그 0행, 다음 회차 정상 |
+| AC4 | `AccountPnlMonitorJobPositionHistoryTest.kt:114` — `round.legObservations` 가 NONE, `11 tests, 1 failed` | 11/11 통과 (57a39f6) |
+| AC5 | `V28LegObservationMigrationIntegrationTest` — `4 tests completed, 4 failed`(테이블 없음). 첫 GREEN 시도에서 `leverage=5, margin_type=NULL` 이 CHECK 를 UNKNOWN 으로 통과한 결함을 잡아 `margin_type IS NOT NULL` 추가(미커밋 V28) | 4/4 통과 (1ef522e) |
+| AC6 | `AccountPositionHistoryFixtureSchemaIntegrationTest` — `5 tests completed, 3 failed`(fixture 에 테이블 없음) | 5/5 통과 (1ef522e) |
+| R1~R3 | — | `./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon` @ a59a873 → `BUILD SUCCESSFUL in 3m 7s`, exit 0, FAILED 0 |
+| R4 | — | `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)` |
 
 ## 판정
 
-(Gate 2)
+```
+DoD VERDICT: issue-139-leg-observation @ a59a873
+  수용기준 표:     6개  (T1 6 · T2 0 · T3 0 · T4 0)
+  T1/T2 자동:      6개 중 6개 PASS
+  T3 기록 제출:    0개
+  T4 사람 확인:    0개
+  변경 요청:       0건
+  => VERIFIED
+```
