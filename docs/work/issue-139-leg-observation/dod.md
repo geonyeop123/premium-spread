@@ -1,8 +1,8 @@
 ---
 feature: 레그별 관측 이력 테이블 — 바이낸스 위험·비용 지표, 빗썸 진입 수수료
 slug: issue-139-leg-observation
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-13 (사용자 계약 승인 — 지표 저장 형식 DECIMAL)
 source: https://github.com/geonyeop123/premium-spread/issues/139
 ---
 
