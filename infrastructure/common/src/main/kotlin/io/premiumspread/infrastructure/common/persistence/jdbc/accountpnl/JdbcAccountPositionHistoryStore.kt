@@ -3,9 +3,7 @@ package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
 import io.premiumspread.domain.accountpnl.AccountReferencePositionReadPort
 import io.premiumspread.domain.accountpnl.ForeignLeg
-import io.premiumspread.domain.accountpnl.ForeignLegObservation
 import io.premiumspread.domain.accountpnl.KoreaLeg
-import io.premiumspread.domain.accountpnl.KoreaLegObservation
 import io.premiumspread.domain.accountpnl.LegObservations
 import io.premiumspread.domain.accountpnl.OpenEpisode
 import io.premiumspread.domain.accountpnl.PositionEvent
@@ -266,50 +264,46 @@ class JdbcAccountPositionHistoryStore(
 
     /** HOLDING 관측 행과 같은 키. FK 가 관측 행을 요구하므로 반드시 [insertObservation] 다음에 부른다. */
     private fun insertLegs(episodeId: Long, observedAt: Instant, legs: LegObservations, now: Timestamp) {
-        legs.foreign?.let { insertForeignLeg(episodeId, observedAt, it, now) }
-        legs.korea?.let { insertKoreaLeg(episodeId, observedAt, it, now) }
+        val at = observedAt.toSqlTimestamp()
+        legs.foreign?.let { leg ->
+            jdbcTemplate.update(
+                """
+                INSERT INTO account_foreign_leg_observation (
+                    episode_id, observed_at, leverage, margin_type,
+                    liquidation_price, mark_price, isolated_margin, maint_margin,
+                    entry_commission_usdt, funding_usdt, position_source, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE episode_id = episode_id
+                """.trimIndent(),
+                episodeId,
+                at,
+                leg.leverage,
+                leg.marginType?.name,
+                leg.liquidationPrice,
+                leg.markPrice,
+                leg.isolatedMargin,
+                leg.maintMargin,
+                leg.entryCommissionUsdt,
+                leg.fundingUsdt,
+                FOREIGN_LEG_POSITION_SOURCE,
+                now,
+            )
+        }
+        legs.korea?.let { leg ->
+            jdbcTemplate.update(
+                """
+                INSERT INTO account_korea_leg_observation (episode_id, observed_at, entry_fee_krw, created_at)
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE episode_id = episode_id
+                """.trimIndent(),
+                episodeId,
+                at,
+                leg.entryFeeKrw,
+                now,
+            )
+        }
     }
 
-    private fun insertForeignLeg(episodeId: Long, observedAt: Instant, leg: ForeignLegObservation, now: Timestamp) {
-        jdbcTemplate.update(
-            """
-            INSERT INTO account_foreign_leg_observation (
-                episode_id, observed_at, leverage, margin_type,
-                liquidation_price, mark_price, isolated_margin, maint_margin,
-                entry_commission_usdt, funding_usdt, position_source, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE episode_id = episode_id
-            """.trimIndent(),
-            episodeId,
-            observedAt.toSqlTimestamp(),
-            leg.leverage,
-            leg.marginType?.name,
-            leg.liquidationPrice,
-            leg.markPrice,
-            leg.isolatedMargin,
-            leg.maintMargin,
-            leg.entryCommissionUsdt,
-            leg.fundingUsdt,
-            FOREIGN_LEG_POSITION_SOURCE,
-            now,
-        )
-    }
-
-    private fun insertKoreaLeg(episodeId: Long, observedAt: Instant, leg: KoreaLegObservation, now: Timestamp) {
-        jdbcTemplate.update(
-            """
-            INSERT INTO account_korea_leg_observation (episode_id, observed_at, entry_fee_krw, created_at)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE episode_id = episode_id
-            """.trimIndent(),
-            episodeId,
-            observedAt.toSqlTimestamp(),
-            leg.entryFeeKrw,
-            now,
-        )
-    }
-
-    /** 값은 메시지에 넣지 않는다. reference 는 정규화 leg 에서만 만들어지므로 같은 검사로 덮인다. */
     private fun validateLegs(legs: PositionLegs) {
         val values = listOf(
             legs.korea.quantity,
