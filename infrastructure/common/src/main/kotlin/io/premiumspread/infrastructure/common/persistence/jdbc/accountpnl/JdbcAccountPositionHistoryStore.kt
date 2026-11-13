@@ -3,7 +3,10 @@ package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 import io.premiumspread.domain.accountpnl.AccountPositionHistoryStore
 import io.premiumspread.domain.accountpnl.AccountReferencePositionReadPort
 import io.premiumspread.domain.accountpnl.ForeignLeg
+import io.premiumspread.domain.accountpnl.ForeignLegObservation
 import io.premiumspread.domain.accountpnl.KoreaLeg
+import io.premiumspread.domain.accountpnl.KoreaLegObservation
+import io.premiumspread.domain.accountpnl.LegObservations
 import io.premiumspread.domain.accountpnl.OpenEpisode
 import io.premiumspread.domain.accountpnl.PositionEvent
 import io.premiumspread.domain.accountpnl.PositionEventType
@@ -35,6 +38,8 @@ import java.time.Instant
  * - leg·reference 는 V20 과 같이 `toPlainString()` 10진 문자열로 저장하고 [KoreaLeg.of]·[ForeignLeg.of] 로 복원한다
  *   (DECIMAL 반올림이 다음 회차 비교를 깨지 않도록).
  * - 관측 중복 `(episode_id, observed_at)` 은 `ON DUPLICATE KEY UPDATE id = id` 로 무시한다. 다른 오류는 삼키지 않는다.
+ * - 레그 행(#139)은 HOLDING 관측 INSERT 직후 같은 트랜잭션·같은 `(episode_id, observed_at)` 으로 레그당 0~1행 쓰고(FLAT 은 0행),
+ *   없는 값은 NULL 로 두며 중복은 `ON DUPLICATE KEY UPDATE episode_id = episode_id` 로 무시한다 — 실패하면 회차 전체가 롤백된다.
  * - 동시 OPENED 경합은 `uk_account_position_episode_open` 위반으로 드러나며 잡지 않고 전파한다.
  * - 로그에는 사건 종류·건 id·seq 만 남긴다(수량·가격 금지).
  */
@@ -105,6 +110,7 @@ class JdbcAccountPositionHistoryStore(
             val pnl = round.pnl ?: return
             val observation = PositionObservation.holdingOrNull(pnl) ?: return
             insertObservation(openEpisodeId, observation, now)
+            insertLegs(openEpisodeId, observation.observedAt, round.legObservations, now)
             return
         }
         val (referenceEpisodeId, reference) = latestReferenceEpisode() ?: return
@@ -258,6 +264,51 @@ class JdbcAccountPositionHistoryStore(
         )
     }
 
+    /** HOLDING 관측 행과 같은 키. FK 가 관측 행을 요구하므로 반드시 [insertObservation] 다음에 부른다. */
+    private fun insertLegs(episodeId: Long, observedAt: Instant, legs: LegObservations, now: Timestamp) {
+        legs.foreign?.let { insertForeignLeg(episodeId, observedAt, it, now) }
+        legs.korea?.let { insertKoreaLeg(episodeId, observedAt, it, now) }
+    }
+
+    private fun insertForeignLeg(episodeId: Long, observedAt: Instant, leg: ForeignLegObservation, now: Timestamp) {
+        jdbcTemplate.update(
+            """
+            INSERT INTO account_foreign_leg_observation (
+                episode_id, observed_at, leverage, margin_type,
+                liquidation_price, mark_price, isolated_margin, maint_margin,
+                entry_commission_usdt, funding_usdt, position_source, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE episode_id = episode_id
+            """.trimIndent(),
+            episodeId,
+            observedAt.toSqlTimestamp(),
+            leg.leverage,
+            leg.marginType?.name,
+            leg.liquidationPrice,
+            leg.markPrice,
+            leg.isolatedMargin,
+            leg.maintMargin,
+            leg.entryCommissionUsdt,
+            leg.fundingUsdt,
+            FOREIGN_LEG_POSITION_SOURCE,
+            now,
+        )
+    }
+
+    private fun insertKoreaLeg(episodeId: Long, observedAt: Instant, leg: KoreaLegObservation, now: Timestamp) {
+        jdbcTemplate.update(
+            """
+            INSERT INTO account_korea_leg_observation (episode_id, observed_at, entry_fee_krw, created_at)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE episode_id = episode_id
+            """.trimIndent(),
+            episodeId,
+            observedAt.toSqlTimestamp(),
+            leg.entryFeeKrw,
+            now,
+        )
+    }
+
     /** 값은 메시지에 넣지 않는다. reference 는 정규화 leg 에서만 만들어지므로 같은 검사로 덮인다. */
     private fun validateLegs(legs: PositionLegs) {
         val values = listOf(
@@ -303,5 +354,8 @@ class JdbcAccountPositionHistoryStore(
 
     private companion object {
         const val MAX_DECIMAL_TEXT_LENGTH = 64 // VARCHAR(64)
+
+        /** 바이낸스 레그는 MANUAL_ENV 이면 만들어지지 않는다(LegObservations.of) — V28 CHECK 와 같은 값. */
+        const val FOREIGN_LEG_POSITION_SOURCE = "EXCHANGE_API"
     }
 }
