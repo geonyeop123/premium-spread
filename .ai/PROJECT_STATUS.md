@@ -10,7 +10,7 @@
 | `apps:batch` | Active | thin scheduler, Application Job, Batch 조립 루트(8081/management 9081) |
 | `apps:web` | Active | Next.js 대시보드, 인증, position UI |
 | `domain` | Stable | Entity/Value/Policy/Service/Port, MarketPair와 계산 정본 |
-| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V26 |
+| `infrastructure:common` | Active | JPA/JDBC, Redis business cache, Flyway V1~V28 |
 | `infrastructure:api` | Active | JWT/cookie/refresh-session Security, cache warmup |
 | `infrastructure:batch` | Active | 거래소/FX/WebSocket, cache/lock/metric/email adapter |
 | `modules:jpa` | Stable | 표준 DataSource/JPA/auditing foundation |
@@ -147,7 +147,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   `account_position_event`·`account_pnl_observation`(V24)에 남긴다. 기록 실패·취소는 회차 결과에 영향이 없고
   `ACCOUNT_PNL_POSITION_HISTORY_ENABLED`(기본 true)로 끈다. API·Redis 무변경.
   [설계](../docs/work/issue-129-position-history/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)을 따른다. 후속 #130·#131 이
-  이 저장 기반을 읽는다.
+  이 저장 기반을 읽는다. #139 는 HOLDING 관측과 같은 트랜잭션에 바이낸스·한국 leg 관측을
+  `account_foreign_leg_observation`·`account_korea_leg_observation`(V28)에 더한다(수동 모드는 바이낸스 행 없음, 미반영 값은 NULL).
 - 기준 포지션 대비 단계 알림(#131, 구현·검증 완료, PR 예정): 새 owner 알림 `REFERENCE_STEP`(Discord PNL·SOUND, 메일 없음).
   기준 포지션 매수김프 대비 현재 김프 차이(실시간 환율)가 단계 폭(`ACCOUNT_PNL_REFERENCE_STEP_PERCENT`, 기본 0.5, 최소 0.01)
   경계를 넘을 때마다 히스테리시스로 1회 알림하고, 포지션이 없는 기간도 직전 포지션을 기준으로 판정한다. 상태는
@@ -187,6 +188,8 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
 | V24 | `account_position_episode`·`account_position_event`·`account_pnl_observation` 신규 | 실계정 포지션 건·사건·매분 관측 이력(additive, 롤백 SQL 없음, 열린 건 1개 unique). API(Flyway) 먼저 배포 |
 | V25 | `account_pnl_monitor_state` 에 기준 포지션 단계 상태 nullable 6열 + CHECK | 기준 leg·국면·단계(additive, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
 | V26 | `account_position_episode` 에 확정 손익 nullable 컬럼 추가 | 거래소 체결 기반 확정 손익(additive, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
+| V27 | `account_pnl_monitor_state` 에 청산 근접 상태 nullable 3열(`liquidation_side`·`liquidation_entry_price`·`liquidation_level`) + CHECK | 청산 근접 단계 알림 상태(#141, additive, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
+| V28 | `account_foreign_leg_observation`·`account_korea_leg_observation` 신규 | HOLDING 관측별 바이낸스·한국 leg 관측(#139, CREATE TABLE only, 롤백 SQL 없음). API(Flyway) 먼저 배포 |
 
 - migration 파일과 Flyway 실행 owner는 `infrastructure:common`, runtime 실행 owner는 API 하나뿐이다.
 - Batch Flyway는 항상 비활성이다.

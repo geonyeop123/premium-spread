@@ -47,7 +47,7 @@
 | `ALERT_EMAIL_FROM` | 메일 채널을 쓸 때 | 발신 주소 | `alert@example.com` |
 | `BATCH_SCHEDULING_ENABLED` | 아니오 | 기본 `true`. `false` 면 Scheduler 가 함께 꺼진다 | `true` |
 | `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고(메일·Discord) 생성 on/off. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
-| `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` | 아니오 | 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`) 기록 on/off. 기본 `true`, `false` 면 이 기록만 끄고 알림은 그대로다. 아래 "포지션 이력" 절 | `true` |
+| `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` | 아니오 | 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`·`account_foreign_leg_observation`·`account_korea_leg_observation`) 기록 on/off. 기본 `true`, `false` 면 이 기록만 끄고 알림은 그대로다. 아래 "포지션 이력" 절 | `true` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 | `ACCOUNT_PNL_SWING_THRESHOLD_PERCENT` | 아니오 | 순수익률 급변 임계값(%p, 양수). 기본 `0.5`. 0 이하면 기동 실패 | `0.5` |
 | `ACCOUNT_PNL_REFERENCE_STEP_PERCENT` | 아니오 | 기준 포지션 대비 단계 알림의 단계 폭(%p, 양수). 기본 `0.5`. 0 이하이거나 0.01 미만이면 기동 실패(김프 정밀도가 0.01%p 이고 더 좁으면 단계 계산이 넘칠 수 있다). 아래 "기준 포지션 대비 단계" 절 | `0.5` |
@@ -670,6 +670,8 @@ owner 알림 21종과 회원 김프 메일 1종의 문구는 `domain.alertmessag
 | `account_position_episode` | 포지션 한 건. 어느 한 leg 라도 있으면 열림(`status='OPEN'`), 둘 다 비면 닫힘(`'CLOSED'`). 열린 건은 항상 최대 1개 |
 | `account_position_event` | 건 안의 사건(`OPENED`·`INCREASED`·`REDUCED`·`ADJUSTED`·`CLOSED`). 회차당 최대 1건, `seq` 로 순서 |
 | `account_pnl_observation` | 1분 관측. `kind='HOLDING'`(열린 건 — 순수익률·순손익 있음), `kind='FLAT'`(열린 건 없음 + 기준 건 있음 — 순수익률·순손익은 `NULL`, 김프·환율·청산가만) |
+| `account_foreign_leg_observation` | 바이낸스 leg 관측(V28, #139). 키 `(episode_id, observed_at)`, HOLDING 관측과 같은 트랜잭션에만 생긴다(FLAT·관측 0행이면 없음). 수동 모드면 행이 없다. `leverage`·`margin_type`·`liquidation_price`·`mark_price`·`isolated_margin`·`maint_margin`·`entry_commission_usdt`·`funding_usdt`·`position_source='EXCHANGE_API'`. 반영되지 않은 값은 0 이 아니라 `NULL` |
+| `account_korea_leg_observation` | 한국 leg 관측(V28, #139). 키 `(episode_id, observed_at)`, HOLDING 관측과 같은 트랜잭션에만 생긴다. `entry_fee_krw`, 미반영이면 `NULL` |
 
 - 수량·평단은 소수 손실 없이 비교하려고 10진 **문자열** 열로 저장한다(`korea_quantity` 등). 숫자 연산이 필요하면 `CAST` 한다.
 - 건 행의 `position_source` 는 개설 시 출처이며, 이후 바뀐 출처(바이낸스 manual 모드 env 변경 등)는 사건 행의 `position_source` 에 남는다.
@@ -722,7 +724,7 @@ GROUP BY kind;
 - **API(Flyway V24) 먼저 → batch.** 새 batch 가 V24 보다 먼저 뜨면 이력 INSERT 가 `Table ... doesn't exist` 로 실패하지만 위 WARN 만 남고
   알림은 정상이다. API 배포 뒤 다음 회차부터 기록된다.
 - 구 binary 로 되돌려도 안전하다 — 구 binary 는 새 테이블을 쓰지 않으며 테이블은 남는다.
-- 완전히 접으려면 끄는 법대로 끄고 세 테이블의 행을 `account_pnl_observation` → `account_position_event` → `account_position_episode` 순(FK)으로 지운다.
+- 완전히 접으려면 끄는 법대로 끄고 테이블의 행을 `account_foreign_leg_observation`·`account_korea_leg_observation` → `account_pnl_observation` → `account_position_event` → `account_position_episode` 순(FK)으로 지운다.
   테이블 자체는 migration 소유이므로 drop 하지 않는다.
 
 ### V25 배포와 롤백 (#131)
@@ -731,6 +733,13 @@ GROUP BY kind;
 - **API(Flyway V25) 먼저 → batch.** 새 batch 가 V25 보다 먼저 뜨면 상태 로드가 `Unknown column` 으로 실패해 회차가 실패로 남는다.
 - 구 binary 로 되돌려도 안전하다 — 구 binary 의 INSERT·UPDATE 는 새 열을 건드리지 않아 그대로 동작하고 새 열 값을 보존한다. 단계 알림만 멈춘다.
   다시 신 binary 로 올리면 보존된 기준·단계에서 이어 판정한다. 이때 단계 상태는 롤백 시점의 값이다 — 롤백 기간 중 같은 가격으로 재진입한 경우에만 오래된 level 때문에 알림이 한 번 나갈 수 있다. 스키마는 되돌리지 않는다.
+
+### V28 배포와 롤백 (#139)
+
+- V28 은 **additive** 다 — 새 테이블 2개(`account_foreign_leg_observation`·`account_korea_leg_observation`)만 만들고(CREATE TABLE) 기존 테이블을 건드리지 않는다. **롤백 SQL 은 없다.**
+- **API(Flyway V28) 먼저 → batch.** 새 batch 가 V28 보다 먼저 뜨면 레그 INSERT 가 `Table ... doesn't exist` 로 실패한다. 레그 저장 실패는 그 회차의 관측·건·사건까지 롤백하지만 Job 은 기존처럼 best-effort 라 WARN 만 남고 알림은 정상이다. API 배포 뒤 다음 회차부터 기록된다.
+- 구 binary 로 되돌려도 안전하다 — 구 binary 는 새 테이블을 쓰지 않으며 테이블은 남는다.
+- 레그 테이블의 행을 지워야 하면 자식인 두 레그 테이블을 먼저 지운 뒤 `account_pnl_observation` 을 지운다(FK). 테이블 자체는 migration 소유이므로 drop 하지 않는다.
 
 ## 확정 손익 (#130)
 
