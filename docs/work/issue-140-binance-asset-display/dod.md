@@ -102,3 +102,8 @@ DoD VERDICT: issue-140-binance-asset-display @ 2cd5f00
   변경 요청:       0건
   => VERIFIED
 ```
+
+### CI 회귀 수정 (2026-11-13)
+- PR #146 CI `2. Unit + coverage` 실패: `apps:batch` `AccountPnlMonitorJobBalanceTest` 가 옛 자산 칸 정렬 `총 자산               없음` 을 단언(자산 칸 최장 라벨 `바이낸스 증거금+손익` 삭제로 패딩이 줄어듦). 로컬 Gate 2 가 `:domain:test` 만 돌려 놓쳤다.
+- 수정: 기대값을 `총 자산      없음` 으로 갱신.
+- `./gradlew test jacocoTestReport jacocoTestCoverageVerification --parallel --offline --no-daemon` exit 0 (전 모듈 unit + 커버리지). 판정 VERIFIED 유지.
