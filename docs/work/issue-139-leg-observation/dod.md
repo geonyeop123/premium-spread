@@ -3,7 +3,7 @@ feature: 레그별 관측 이력 테이블 — 바이낸스 위험·비용 지�
 slug: issue-139-leg-observation
 status: FROZEN · VERIFIED
 frozen_at: 2026-11-13 (사용자 계약 승인 — 지표 저장 형식 DECIMAL)
-verdict_commit: a59a873
+verdict_commit: 6fabf74
 source: https://github.com/geonyeop123/premium-spread/issues/139
 ---
 
@@ -72,12 +72,13 @@ source: https://github.com/geonyeop123/premium-spread/issues/139
 | AC5 | `V28LegObservationMigrationIntegrationTest` — `4 tests completed, 4 failed`(테이블 없음). 첫 GREEN 시도에서 `leverage=5, margin_type=NULL` 이 CHECK 를 UNKNOWN 으로 통과한 결함을 잡아 `margin_type IS NOT NULL` 추가(미커밋 V28) | 4/4 통과 (1ef522e) |
 | AC6 | `AccountPositionHistoryFixtureSchemaIntegrationTest` — `5 tests completed, 3 failed`(fixture 에 테이블 없음) | 5/5 통과 (1ef522e) |
 | R1~R3 | — | `./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon` @ a59a873 → `BUILD SUCCESSFUL in 3m 7s`, exit 0, FAILED 0 |
+| CI | — | PR #147 첫 실행에서 `5. ktlint + detekt` 실패: ktlint `argument-list-wrapping` 6건(테스트 87b7cc5 로 수정) → detekt `TooManyFunctions` 20/20(store 레그 INSERT 를 `insertLegs` 하나로 합침, 6fabf74, 동작 불변 — store 통합 테스트 20/20 재실행). 6fabf74 에서 CI 11개 job 전부 pass. lint 도구는 CI 전용이라 로컬 실행 불가 |
 | R4 | — | `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)` |
 
 ## 판정
 
 ```
-DoD VERDICT: issue-139-leg-observation @ a59a873
+DoD VERDICT: issue-139-leg-observation @ 6fabf74
   수용기준 표:     6개  (T1 6 · T2 0 · T3 0 · T4 0)
   T1/T2 자동:      6개 중 6개 PASS
   T3 기록 제출:    0개
