@@ -26,8 +26,8 @@ data class ForeignLegBreakdown(
     val currentPrice: BigDecimal,
     val pnlUsdt: BigDecimal,
     val pnlKrw: BigDecimal,
-    val valueUsdt: BigDecimal,
-    val valueKrw: BigDecimal,
+    val notionalUsdt: BigDecimal,
+    val leverage: Int?,
     val entryFeeUsdt: BigDecimal?,
     val entryFeeKrw: BigDecimal?,
     val exitFeeUsdt: BigDecimal,
@@ -115,7 +115,7 @@ data class AccountPnlBreakdown(
             val koreaExitFee = koreaSnapshot.sellFeeRate.multiply(koreaExit).multiply(koreaQty)
             val foreignExitFeeUsdt = foreignSnapshot.takerFeeRate.multiply(foreignExit).multiply(foreignQty)
             val foreignPnlUsdt = foreignSnapshot.entryPrice.subtract(foreignExit).multiply(foreignQty)
-            val foreignValueUsdt = foreignExit.multiply(foreignQty)
+            val foreignNotionalUsdt = foreignExit.multiply(foreignQty)
 
             val korea = KoreaLegBreakdown(
                 quantity = koreaQty,
@@ -132,8 +132,8 @@ data class AccountPnlBreakdown(
                 currentPrice = foreignExit,
                 pnlUsdt = foreignPnlUsdt,
                 pnlKrw = foreignPnlUsdt.multiply(fx),
-                valueUsdt = foreignValueUsdt,
-                valueKrw = foreignValueUsdt.multiply(fx),
+                notionalUsdt = foreignNotionalUsdt,
+                leverage = foreignSnapshot.symbolConfig?.leverage,
                 entryFeeUsdt = foreignSnapshot.entryCommissionUsdt,
                 entryFeeKrw = foreignSnapshot.entryCommissionUsdt?.multiply(fx),
                 exitFeeUsdt = foreignExitFeeUsdt,

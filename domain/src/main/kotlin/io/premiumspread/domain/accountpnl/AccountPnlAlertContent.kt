@@ -171,12 +171,14 @@ object AccountPnlAlertContent {
             MailPair("평가액", AlertFormat.krwPrice(b.korea.valueKrw)),
         )
         val foreignPnl = "${AlertFormat.krw(b.foreign.pnlKrw)} (${AlertFormat.signedUsdt2(b.foreign.pnlUsdt)})"
-        val foreignValue = "${AlertFormat.krwPrice(b.foreign.valueKrw)} (${AlertFormat.usdt2(b.foreign.valueUsdt)})"
+        val assetTexts = AssetTexts.of(b.assets, manual)
+        val notional = AlertFormat.usdt2(b.foreign.notionalUsdt) + (b.foreign.leverage?.let { " (${it}x)" } ?: "")
         val foreignPairs = listOf(
             MailPair("평단", AlertFormat.usdtPrice(b.foreign.entryPrice)),
             MailPair("현재가", AlertFormat.usdtPrice(b.foreign.currentPrice)),
             MailPair("손익", foreignPnl),
-            MailPair("평가액", foreignValue),
+            MailPair("평가액", assetTexts.margin),
+            MailPair("포지션 규모", notional),
         )
         val fee = AlertFormat.cost(b.feeTotalKrw)
         val gross = AlertFormat.krw(b.grossKrw)
@@ -249,7 +251,6 @@ object AccountPnlAlertContent {
                 MailBlock.Pairs(
                     listOf(
                         MailPair("총 자산", t.total),
-                        MailPair("바이낸스 증거금+손익", t.margin),
                         MailPair("잔여 금액", "", listOf(MailPair("빗썸", t.bithumbKrw), MailPair("바이낸스", t.binanceAvailable))),
                         MailPair("USDT 원화가", t.usdt),
                     ),
@@ -261,7 +262,7 @@ object AccountPnlAlertContent {
     private fun assetRows(b: AccountPnlBreakdown, manual: Boolean): List<List<EmbedCell>> {
         val t = AssetTexts.of(b.assets, manual)
         return listOf(
-            listOf(EmbedCell("총 자산", t.total), EmbedCell("바이낸스 증거금+손익", t.margin)),
+            listOf(EmbedCell("총 자산", t.total)),
             listOf(
                 EmbedCell("잔여 금액", "빗썸 ${t.bithumbKrw}\n바이낸스 ${t.binanceAvailable}"),
                 EmbedCell("USDT 원화가", t.usdt),
