@@ -63,8 +63,10 @@ owner 결정(2026-11-12, 이슈 본문)은 관측과 1:1 로 분리한 레그 �
 - `V28__create_account_leg_observation.sql` — CREATE TABLE 두 개만. 기존 테이블·행은 건드리지 않는다(append-only).
 - batch 는 Flyway 를 쓰지 않으므로 `apps/batch/src/integrationTest/resources/batch-schema.sql` 에 같은 DDL 을 옮기고
   fixture 스키마 테스트로 열 목록을 고정한다.
-- 배포는 API(Flyway) 먼저, batch 나중. 이전 batch binary 는 새 테이블을 쓰지 않으므로 순서가 뒤집혀도 batch 가 쓰기 전까지 무해하다.
-  새 batch 가 먼저 뜨면 레그 INSERT 가 실패해 그 회차 이력 전체가 롤백된다(회차·알림은 영향 없음) — 그래서 API 먼저다.
+- 배포는 API(Flyway) 먼저, batch 나중이다. `docker/deploy.sh` 가 "기존 Batch 중지 → API 단독 기동(Flyway) → API readiness → Batch 기동"을
+  강제하고, migration·readiness 가 실패하면 새 Batch 를 띄우지 않는다(`docs/runbooks/deployment.md` 배포 순서). 새 batch 가 V28 이전 DB 에 붙는
+  정상 경로는 없다. 만약 붙으면 레그 INSERT 실패로 그 회차 이력 전체가 롤백되고 `Account position history record failed` WARN 이 남는다
+  (회차·알림은 영향 없음, #129 best-effort).
 
 ### D6. 로그·개인정보
 
@@ -74,6 +76,12 @@ owner 결정(2026-11-12, 이슈 본문)은 관측과 1:1 로 분리한 레그 �
 
 - 청산 알림 판정(#137 별도 하위), 조회 API·화면, 보존 기간 정책(레그당 분당 1행, 연 약 52만 행).
 - FLAT 회차의 레그 기록, 한쪽 레그만 열린 회차(관측 0행)의 레그 기록.
+
+## codex 스펙 리뷰 (1라운드 + 반박 1회)
+
+- ISSUE-1 FK 가 FLAT 관측 레그를 막지 못함 → 반박, codex ACCEPTED. HOLDING 전용은 writer 하나의 앱 규칙이고 AC2 가 검증한다. DB 강제는 부모 테이블 인덱스 추가가 필요해 범위 밖.
+- ISSUE-2 배포 순서 의존 → 반박, codex ACCEPTED. `deploy.sh` 가 순서를 강제한다(D5).
+- ISSUE-3 짝 CHECK·fixture 제약 미검증 → 수용. AC5·AC6 확장.
 
 ## 위험
 
