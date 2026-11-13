@@ -1,0 +1,5 @@
+{"workflow": "feature-track", "version": 1, "track": "L", "track_reason": "관측·레그 같은 트랜잭션(경계 변경) + 신규 테이블 2개 + domain·infrastructure:common·apps:batch 3모듈",
+ "upgraded_from": null, "user_override": false,
+ "codex": {"mode": "standard+focus", "spec_rounds": 1, "findings": 4, "fixed": 2, "held": 0, "timeout": false},
+ "claude_review": {"findings": 5, "fixed": 5},
+ "dod_verdict": "PASS", "mr_url": "https://github.com/geonyeop123/premium-spread/pull/147"}

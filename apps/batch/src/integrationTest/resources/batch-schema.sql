@@ -428,3 +428,39 @@ CREATE TABLE IF NOT EXISTS account_pnl_observation (
     ),
     INDEX ix_account_pnl_observation_observed_at (observed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- V28 과 같은 스키마.
+CREATE TABLE IF NOT EXISTS account_foreign_leg_observation (
+    episode_id            BIGINT         NOT NULL,
+    observed_at           DATETIME(6)    NOT NULL,
+    leverage              INT            NULL,
+    margin_type           VARCHAR(8)     NULL,
+    liquidation_price     DECIMAL(30,8) NULL,
+    mark_price            DECIMAL(30,8) NULL,
+    isolated_margin       DECIMAL(30,8) NULL,
+    maint_margin          DECIMAL(30,8) NULL,
+    entry_commission_usdt DECIMAL(30,8) NULL,
+    funding_usdt          DECIMAL(30,8) NULL,
+    position_source       VARCHAR(16)    NOT NULL,
+    created_at            DATETIME(6)    NOT NULL,
+    CONSTRAINT pk_account_foreign_leg_observation PRIMARY KEY (episode_id, observed_at),
+    CONSTRAINT fk_account_foreign_leg_observation_round FOREIGN KEY (episode_id, observed_at)
+        REFERENCES account_pnl_observation (episode_id, observed_at),
+    CONSTRAINT ck_account_foreign_leg_observation_config CHECK (
+        (leverage IS NULL AND margin_type IS NULL)
+        OR (leverage IS NOT NULL AND margin_type IS NOT NULL AND margin_type IN ('CROSSED', 'ISOLATED'))
+    ),
+    CONSTRAINT ck_account_foreign_leg_observation_risk CHECK (
+        (mark_price IS NULL AND isolated_margin IS NULL AND maint_margin IS NULL)
+        OR (mark_price IS NOT NULL AND isolated_margin IS NOT NULL AND maint_margin IS NOT NULL)
+    ),
+    CONSTRAINT ck_account_foreign_leg_observation_source CHECK (position_source = 'EXCHANGE_API')
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS account_korea_leg_observation (
+    episode_id    BIGINT        NOT NULL,
+    observed_at   DATETIME(6)   NOT NULL,
+    entry_fee_krw DECIMAL(24,4) NULL,
+    created_at    DATETIME(6)   NOT NULL,
+    CONSTRAINT pk_account_korea_leg_observation PRIMARY KEY (episode_id, observed_at),
+    CONSTRAINT fk_account_korea_leg_observation_round FOREIGN KEY (episode_id, observed_at)
+        REFERENCES account_pnl_observation (episode_id, observed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

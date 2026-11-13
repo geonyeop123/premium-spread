@@ -19,6 +19,7 @@ import io.premiumspread.domain.accountpnl.AccountReadFailureCategory
 import io.premiumspread.domain.accountpnl.ForeignLeg
 import io.premiumspread.domain.accountpnl.ForeignPerpPositionSource
 import io.premiumspread.domain.accountpnl.KoreaLeg
+import io.premiumspread.domain.accountpnl.LegObservations
 import io.premiumspread.domain.accountpnl.PositionHistoryRound
 import io.premiumspread.domain.accountpnl.PositionLegs
 import io.premiumspread.domain.accountpnl.PriceLevel
@@ -101,6 +102,17 @@ class AccountPnlMonitorJobPositionHistoryTest {
         assertThat(round.market.koreaBidLevels).containsExactly(PriceLevel(korea.bid, korea.bidDepth))
         assertThat(round.market.foreignAskLevels)
             .containsExactly(PriceLevel(BigDecimal("70000"), BigDecimal("1")))
+    }
+
+    @Test
+    fun `Computed 회차 round 의 레그 관측은 그 회차 스냅샷에서 만든 값이다`() {
+        assertThat(newJob(history).run()).isEqualTo(JobResult.Success)
+
+        val round = history.rounds.single()
+        val expected = LegObservations.of(korea.read(), foreign.read())
+        assertThat(expected).isNotEqualTo(LegObservations.NONE)
+        assertThat(round.legObservations).isNotEqualTo(LegObservations.NONE)
+        assertThat(round.legObservations).isEqualTo(expected)
     }
 
     @Test

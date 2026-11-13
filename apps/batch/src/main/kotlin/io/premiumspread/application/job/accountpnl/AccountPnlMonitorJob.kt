@@ -29,6 +29,7 @@ import io.premiumspread.domain.accountpnl.ForeignPerpAccountReadPort
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountReadPort
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
+import io.premiumspread.domain.accountpnl.LegObservations
 import io.premiumspread.domain.accountpnl.MarketQuote
 import io.premiumspread.domain.accountpnl.MonitoringOutagePolicy
 import io.premiumspread.domain.accountpnl.OutageNotice
@@ -317,6 +318,7 @@ class AccountPnlMonitorJob(
         pnl,
         MarketQuote(koreaSnapshot.bidLevels, foreignSnapshot.askLevels, fxSnapshot.rate),
         completedAt,
+        LegObservations.of(koreaSnapshot, foreignSnapshot),
     )
 
     /** 회차마다 계산된 순손익 한 줄. 스냅샷에서 계산된 숫자만 남기고 credential·수신자·env 원문은 싣지 않는다. */

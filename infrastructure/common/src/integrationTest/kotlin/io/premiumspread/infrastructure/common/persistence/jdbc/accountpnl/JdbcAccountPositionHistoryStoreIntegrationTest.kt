@@ -3,10 +3,14 @@ package io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl
 import io.premiumspread.domain.accountpnl.AccountHedgePosition
 import io.premiumspread.domain.accountpnl.AccountNetPnl
 import io.premiumspread.domain.accountpnl.ForeignLeg
+import io.premiumspread.domain.accountpnl.ForeignLegObservation
+import io.premiumspread.domain.accountpnl.ForeignPerpMarginType
 import io.premiumspread.domain.accountpnl.ForeignPerpAccountSnapshot
 import io.premiumspread.domain.accountpnl.ForeignPerpPositionSource
 import io.premiumspread.domain.accountpnl.KoreaLeg
+import io.premiumspread.domain.accountpnl.KoreaLegObservation
 import io.premiumspread.domain.accountpnl.KoreaSpotAccountSnapshot
+import io.premiumspread.domain.accountpnl.LegObservations
 import io.premiumspread.domain.accountpnl.MarketQuote
 import io.premiumspread.domain.accountpnl.PositionHistoryRound
 import io.premiumspread.domain.accountpnl.PositionLegs
@@ -263,6 +267,120 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
     }
 
     @Test
+    fun `레그 HOLDING 회차는 관측 바이낸스 빗썸 레그가 같은 키로 1행씩이고 값이 입력과 같다`() {
+        store.record(hedgedRound("0.2", "-0.2", minute(1), FULL_LEGS))
+
+        val observation = observations().single()
+        assertThat(observation["kind"]).isEqualTo("HOLDING")
+        val foreign = foreignLegs().single()
+        val korea = koreaLegs().single()
+        assertThat(foreign["episode_id"]).isEqualTo(observation["episode_id"])
+        assertThat(korea["episode_id"]).isEqualTo(observation["episode_id"])
+        assertThat(instant(foreign["observed_at"])).isEqualTo(instant(observation["observed_at"]))
+        assertThat(instant(korea["observed_at"])).isEqualTo(instant(observation["observed_at"]))
+        assertThat(instant(foreign["observed_at"])).isEqualTo(minute(1))
+
+        assertThat(foreign["leverage"]).isEqualTo(3)
+        assertThat(foreign["margin_type"]).isEqualTo("ISOLATED")
+        assertThat(foreign["liquidation_price"] as BigDecimal).isEqualByComparingTo("112345.12345678")
+        assertThat(foreign["mark_price"] as BigDecimal).isEqualByComparingTo("83550.1")
+        assertThat(foreign["isolated_margin"] as BigDecimal).isEqualByComparingTo("5570.25")
+        assertThat(foreign["maint_margin"] as BigDecimal).isEqualByComparingTo("66.84")
+        assertThat(foreign["entry_commission_usdt"] as BigDecimal).isEqualByComparingTo("8.35494")
+        assertThat(foreign["funding_usdt"] as BigDecimal).isEqualByComparingTo("-1.2345")
+        assertThat(foreign["position_source"]).isEqualTo("EXCHANGE_API")
+        assertThat(instant(foreign["created_at"])).isEqualTo(NOW)
+        assertThat(korea["entry_fee_krw"] as BigDecimal).isEqualByComparingTo("9041.3022")
+        assertThat(instant(korea["created_at"])).isEqualTo(NOW)
+    }
+
+    @Test
+    fun `레그 바이낸스 레그가 없으면 바이낸스 행은 0행이고 빗썸 행은 남는다`() {
+        store.record(hedgedRound("0.2", "-0.2", minute(1), LegObservations(FULL_LEGS.korea, null)))
+
+        assertThat(observations()).hasSize(1)
+        assertThat(foreignLegs()).isEmpty()
+        assertThat(koreaLegs().single()["entry_fee_krw"] as BigDecimal).isEqualByComparingTo("9041.3022")
+    }
+
+    @Test
+    fun `레그 미반영 값은 0 이 아니라 NULL 로 저장된다`() {
+        val unknown = LegObservations(
+            korea = KoreaLegObservation(null),
+            foreign = ForeignLegObservation(null, null, null, null, null, null, null, null),
+        )
+        store.record(hedgedRound("0.2", "-0.2", minute(1), unknown))
+
+        val foreign = foreignLegs().single()
+        listOf(
+            "leverage",
+            "margin_type",
+            "liquidation_price",
+            "mark_price",
+            "isolated_margin",
+            "maint_margin",
+            "entry_commission_usdt",
+            "funding_usdt",
+        ).forEach { column -> assertThat(foreign[column]).describedAs(column).isNull() }
+        assertThat(foreign["position_source"]).isEqualTo("EXCHANGE_API")
+        assertThat(koreaLegs().single()["entry_fee_krw"]).isNull()
+    }
+
+    @Test
+    fun `레그 FLAT 관측 회차에는 레그 행이 없다`() {
+        store.record(hedgedRound("0.2", "-0.2", minute(1), FULL_LEGS))
+        store.record(round(EMPTY_LEGS, null, minute(2), FULL_LEGS))
+        store.record(round(EMPTY_LEGS, null, minute(3), FULL_LEGS))
+
+        assertThat(observations().map { it["kind"] }).containsExactly("HOLDING", "FLAT", "FLAT")
+        assertThat(foreignLegs().map { instant(it["observed_at"]) }).containsExactly(minute(1))
+        assertThat(koreaLegs().map { instant(it["observed_at"]) }).containsExactly(minute(1))
+    }
+
+    @Test
+    fun `레그 같은 round 재기록은 레그 행을 늘리지 않는다`() {
+        val same = hedgedRound("0.2", "-0.2", minute(1), FULL_LEGS)
+        store.record(same)
+        store.record(same)
+        newStore(jdbcTemplate).record(same)
+
+        assertThat(observations()).hasSize(1)
+        assertThat(foreignLegs()).hasSize(1)
+        assertThat(koreaLegs()).hasSize(1)
+    }
+
+    @Test
+    fun `트랜잭션 레그 INSERT 가 실패하면 같은 회차의 관측 건 사건도 롤백된다`() {
+        val failingStore = newStore(ForeignLegFailingJdbcTemplate(dataSource))
+
+        assertThatThrownBy { failingStore.record(hedgedRound("0.2", "-0.2", minute(1), FULL_LEGS)) }
+            .isInstanceOf(DataAccessResourceFailureException::class.java)
+        assertThat(episodes()).isEmpty()
+        assertThat(events()).isEmpty()
+        assertThat(observations()).isEmpty()
+        assertThat(foreignLegs()).isEmpty()
+        assertThat(koreaLegs()).isEmpty()
+
+        store.record(hedgedRound("0.2", "-0.2", minute(2), FULL_LEGS))
+
+        assertThat(episodes()).hasSize(1)
+        assertThat(events().map { it["event_type"] }).containsExactly("OPENED")
+        assertThat(observations()).hasSize(1)
+        assertThat(foreignLegs()).hasSize(1)
+        assertThat(koreaLegs()).hasSize(1)
+    }
+
+    /** 바이낸스 레그 INSERT 만 실패시키는 위임 래퍼. 같은 DataSource 라 트랜잭션 연결을 공유한다. */
+    private class ForeignLegFailingJdbcTemplate(dataSource: DataSource) : JdbcTemplate(dataSource) {
+        override fun update(sql: String, vararg args: Any?): Int {
+            if (sql.contains("INSERT INTO account_foreign_leg_observation")) {
+                throw DataAccessResourceFailureException("injected foreign leg failure")
+            }
+            return super.update(sql, *args)
+        }
+    }
+
+    @Test
     fun `latestReference 열린 건의 reference 가 닫힌 건보다 우선한다`() {
         store.record(hedgedRound("0.2", "-0.2", minute(1)))
         store.record(round(EMPTY_LEGS, null, minute(2)))
@@ -299,10 +417,16 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
         assertThat(store.findLatestReference()).isNull()
     }
 
-    private fun hedgedRound(koreaQuantity: String, foreignSigned: String, at: Instant) = round(
+    private fun hedgedRound(
+        koreaQuantity: String,
+        foreignSigned: String,
+        at: Instant,
+        legObservations: LegObservations = LegObservations.NONE,
+    ) = round(
         legs(koreaQuantity, KOREA_PRICE, foreignSigned, FOREIGN_PRICE),
         pnl(koreaQuantity, foreignSigned, at),
         at,
+        legObservations,
     )
 
     private fun legs(koreaQuantity: String, koreaPrice: String, foreignSigned: String, foreignEntry: String) =
@@ -311,8 +435,12 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
             ForeignLeg.of(BigDecimal(foreignSigned), BigDecimal(foreignEntry)),
         )
 
-    private fun round(legs: PositionLegs, pnl: AccountNetPnl?, at: Instant) =
-        PositionHistoryRound(legs, ForeignPerpPositionSource.EXCHANGE_API, pnl, MARKET, at)
+    private fun round(
+        legs: PositionLegs,
+        pnl: AccountNetPnl?,
+        at: Instant,
+        legObservations: LegObservations = LegObservations.NONE,
+    ) = PositionHistoryRound(legs, ForeignPerpPositionSource.EXCHANGE_API, pnl, MARKET, at, legObservations)
 
     private fun pnl(koreaQuantity: String, foreignSigned: String, at: Instant): AccountNetPnl {
         val korea = KoreaSpotAccountSnapshot(
@@ -345,6 +473,12 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
     private fun observations() =
         jdbcTemplate.queryForList("SELECT * FROM account_pnl_observation ORDER BY observed_at, id")
 
+    private fun foreignLegs() =
+        jdbcTemplate.queryForList("SELECT * FROM account_foreign_leg_observation ORDER BY episode_id, observed_at")
+
+    private fun koreaLegs() =
+        jdbcTemplate.queryForList("SELECT * FROM account_korea_leg_observation ORDER BY episode_id, observed_at")
+
     private fun count(sql: String): Int = jdbcTemplate.queryForObject(sql, Int::class.java)!!
 
     private fun instant(value: Any?): Instant = when (value) {
@@ -365,6 +499,19 @@ class JdbcAccountPositionHistoryStoreIntegrationTest {
         private val KOREA_BIDS = listOf(PriceLevel(BigDecimal("109500000"), BigDecimal("10.0")))
         private val FOREIGN_ASKS = listOf(PriceLevel(BigDecimal("81580"), BigDecimal("50.0")))
         private val MARKET = MarketQuote(KOREA_BIDS, FOREIGN_ASKS, FX)
+        private val FULL_LEGS = LegObservations(
+            korea = KoreaLegObservation(BigDecimal("9041.3022")),
+            foreign = ForeignLegObservation(
+                leverage = 3,
+                marginType = ForeignPerpMarginType.ISOLATED,
+                liquidationPrice = BigDecimal("112345.12345678"),
+                markPrice = BigDecimal("83550.1"),
+                isolatedMargin = BigDecimal("5570.25"),
+                maintMargin = BigDecimal("66.84"),
+                entryCommissionUsdt = BigDecimal("8.35494"),
+                fundingUsdt = BigDecimal("-1.2345"),
+            ),
+        )
 
         val mysql: TestDatabase = SharedMySqlContainer.database("premiumspread_account_position_history")
         private val latestSchema = LatestSchemaFixture(mysql)
