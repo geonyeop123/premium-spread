@@ -388,7 +388,7 @@ BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch�
 
 ### 메일 표기
 
-수익·정시 메일과 Discord 는 바이낸스 출처(api/manual)를 따로 표시하지 않는다(#102). 예외: 자산 칸(#105)의 바이낸스 두 값은 manual 모드에서 "수동 모드 — 표시 안 함" 으로 쓰므로 이 칸에서만 모드가 드러난다.
+수익·정시 메일과 Discord 는 바이낸스 출처(api/manual)를 따로 표시하지 않는다(#102). 예외: 바이낸스 블록 `평가액`과 자산 칸 `잔여 금액 — 바이낸스`는 manual 모드에서 "수동 모드 — 표시 안 함" 으로 쓰므로 이 두 곳에서만 모드가 드러난다(#105·#140).
 기존 칸은 값을 입력했으면 두 모드의 표기가 같고, 값이 없을 때만 미반영 사유가 갈린다. 숫자는 형식 예시다. 전체 형식은 `docs/work/alert-message-template/message-spec.md` 의 수익 알림 절을 본다.
 
 | 위치 | 값 있음 (api·manual 공통) | 값 없음 — api | 값 없음 — manual |
@@ -400,7 +400,7 @@ BINANCE_MANUAL_SHORT_QUANTITY · BINANCE_MANUAL_ENTRY_PRICE를 고치고 batch�
 
 ※ 자산 행의 "값 있음" 은 api 모드에서만 나온다 — manual 모드는 잔고를 조회하지 않으므로(/fapi/v3/account 미호출) 항상 오른쪽 열이다.
 
-manual 모드는 자산 칸의 "수동 모드 — 표시 안 함" 으로도 보이지만, 확인의 정본은 batch 기동 설정(`BINANCE_MODE`)이다.
+manual 모드는 바이낸스 블록 `평가액`과 자산 칸 `잔여 금액 — 바이낸스`의 "수동 모드 — 표시 안 함" 으로도 보이지만, 확인의 정본은 batch 기동 설정(`BINANCE_MODE`)이다.
 
 ### 한계
 

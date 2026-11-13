@@ -400,7 +400,7 @@ class AccountPnlAlertContentTest {
         val manual = "수동 모드 \u2014 표시 안 함"
         listOf(null, ForeignPerpBalance(BigDecimal("10000.50"), BigDecimal("8000.25"))).forEach { balance ->
             val message = AccountPnlAlertContent.profit(
-                pnl(source = ForeignPerpPositionSource.MANUAL_ENV, balance = balance),
+                pnl(source = ForeignPerpPositionSource.MANUAL_ENV, balance = balance, symbolConfig = null),
                 zone,
             )
 
@@ -409,6 +409,8 @@ class AccountPnlAlertContentTest {
             assertThat(body).contains("평가액       $manual")
             assertThat(body).doesNotContain("바이낸스 증거금+손익")
             assertThat(foreignCell(message).value).contains("평가액 $manual\n포지션 규모")
+            assertThat(foreignCell(message).value).endsWith("\n포지션 규모 29,579.20 USDT")
+            assertThat(body).contains("포지션 규모  29,579.20 USDT\n")
             assertThat(body).contains("  - 빗썸      1,234,567원")
             assertThat(body).contains("  - 바이낸스  $manual")
             assertThat(body).contains("USDT 원화가  1,412원")
