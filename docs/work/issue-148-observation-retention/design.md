@@ -35,6 +35,11 @@
 - **시작 검증:** `retention` 이 `account-pnl-monitor.realized-pnl.max-age`(바인딩 안 됐으면 기본 90d) + 1일 이하이면 batch 가 시작하지 않는다
   (`IllegalStateException`, 메시지에 두 설정 키 이름만). 1일 여유는 환율 조회 허용 10분과 시계 오차를 덮는다.
   정산을 꺼 둔 경우에도 같은 검증을 한다 — 다시 켜는 순간 근거가 사라져 있으면 안 되기 때문이다.
+  `AccountRealizedPnlProperties` bean 은 모니터·정산 조건을 통과할 때만 등록되므로 **그 bean 에 의존하지 않는다.**
+  retention Configuration 이 `Binder.get(environment).bind("account-pnl-monitor.realized-pnl.max-age", Duration::class.java).orElse(90d)` 로
+  직접 읽는다(모니터·정산 on/off 와 무관하게 사용자가 넣은 값을 본다).
+- **기본 보존 기간은 `{RETENTION_DEFAULT}` 로 고정한다**(계약 승인 결정). 환경 변수 `ACCOUNT_PNL_OBSERVATION_RETENTION` 으로 바꾼다.
+  나머지 설정의 환경 변수: `ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED`, `..._BATCH_SIZE`, `..._MAX_BATCHES_PER_RUN`, `..._INTERVAL`.
 
 ### D3. 삭제 알고리즘 — 배치 1회 = 트랜잭션 1개
 
@@ -69,6 +74,11 @@
 ## 범위 밖
 
 - 시간 단위 다운샘플링 보관, 건·사건·정산 데이터 정리, premium·ticker 시계열 정리, 조회 API.
+
+## codex 스펙 리뷰 (1라운드)
+
+- ISSUE-1 정산 비활성 시 max-age 출처 → 수용. bean 대신 `Binder` 로 직접 바인딩(D2), AC4 에 모니터·정산 꺼짐 조합 추가.
+- ISSUE-2 기본 보존 기간 미확정 → 수용. 계약 승인 때 고정하고 AC6(설정 없을 때 기본값 cutoff) 추가.
 
 ## 위험
 
