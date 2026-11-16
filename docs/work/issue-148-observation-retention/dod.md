@@ -1,8 +1,8 @@
 ---
 feature: 실계정 포지션 관측 이력 보존 기간 정책 — 관측·레그 행 정리 Job
 slug: issue-148-observation-retention
-status: DRAFT
-frozen_at:
+status: FROZEN
+frozen_at: 2026-11-16 (사용자 계약 승인 — 기본 보존 기간 365d)
 source: https://github.com/geonyeop123/premium-spread/issues/148
 ---
 
@@ -39,7 +39,7 @@ source: https://github.com/geonyeop123/premium-spread/issues/148
 | AC3 | Job 은 `cutoff = clock.now − retention` 으로 store 를 부르고, 배치가 `batch-size` 보다 적게 지우면 멈추며, `max-batches-per-run` 에 닿으면 더 부르지 않고 WARN 한다. `JobId.ACCOUNT_OBSERVATION_RETENTION` 설정으로 `JobExecutor` 를 거친다. store 예외면 `JobResult.Failure`, interrupt 가 서 있으면 다음 배치를 부르지 않는다 | 이슈 수용 기준 4, design D4 | `요구`(상한) + `추론`(취소·실패) | T1 | `신규테스트` `io.premiumspread.application.job.accountpnl.AccountObservationRetentionJobTest` | `./gradlew :apps:batch:test --tests io.premiumspread.application.job.accountpnl.AccountObservationRetentionJobTest --offline --no-daemon` | exit 0 |
 | AC4 | `retention` 이 `realized-pnl.max-age` + 1일 이하(기본 max-age 90d 면 91d 이하)면 context 시작이 실패하고, 초과면 시작된다. max-age 를 바꾸면 기준도 따라간다. `account-pnl-monitor.enabled=false` 이거나 `realized-pnl.enabled=false` 여도 사용자가 넣은 max-age 로 같은 경계가 적용된다 | 이슈 수용 기준 3, design D2 | `요구` + `리뷰`(codex ISSUE-1: 비활성 조합) | T1 | `신규테스트` `io.premiumspread.config.AccountObservationRetentionConfigurationTest` | `./gradlew :apps:batch:test --tests io.premiumspread.config.AccountObservationRetentionConfigurationTest --offline --no-daemon` | exit 0 |
 | AC5 | `retention.enabled=false` 면 Scheduler bean 이 없고, 기본값이면 있다. `account-pnl-monitor.enabled=false` 여도 기본값이면 Scheduler 가 있다 | 이슈 수용 기준 5, design D5 | `요구`(끄기) + `추론`(모니터 무관) | T1 | `신규테스트` AC4 와 같은 클래스 | AC4 와 같음 | exit 0 |
-| AC6 | 보존 설정을 하나도 넣지 않으면 retention 은 `{RETENTION_DEFAULT}`, batch-size 1000, max-batches-per-run 50, enabled true 로 바인딩되고 기본 max-age(90d) 검증을 통과해 시작된다 | design D2(기본값 고정) | `리뷰`(codex ISSUE-2) | T1 | `신규테스트` AC4 와 같은 클래스 | AC4 와 같음 | exit 0 |
+| AC6 | 보존 설정을 하나도 넣지 않으면 retention 은 `365d`, batch-size 1000, max-batches-per-run 50, enabled true 로 바인딩되고 기본 max-age(90d) 검증을 통과해 시작된다 | design D2(기본값 고정) | `리뷰`(codex ISSUE-2) | T1 | `신규테스트` AC4 와 같은 클래스 | AC4 와 같음 | exit 0 |
 
 **기준 개수**: 6개
 

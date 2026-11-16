@@ -28,7 +28,7 @@
 - 삭제 조건: `observed_at < now − retention`. 시각은 주입한 `Clock` 이다.
 - 설정 `account-pnl-monitor.position-history.retention.*`:
   - `enabled` (기본 true)
-  - `retention` (기본값 = 계약 승인 결정. 후보 180d)
+  - `retention` (기본 365d, 계약 승인 결정)
   - `batch-size` (기본 1000, 1~10000)
   - `max-batches-per-run` (기본 50, 1~10000)
   - `interval` (기본 1h, Scheduler `fixedDelay`)
@@ -38,7 +38,7 @@
   `AccountRealizedPnlProperties` bean 은 모니터·정산 조건을 통과할 때만 등록되므로 **그 bean 에 의존하지 않는다.**
   retention Configuration 이 `Binder.get(environment).bind("account-pnl-monitor.realized-pnl.max-age", Duration::class.java).orElse(90d)` 로
   직접 읽는다(모니터·정산 on/off 와 무관하게 사용자가 넣은 값을 본다).
-- **기본 보존 기간은 `{RETENTION_DEFAULT}` 로 고정한다**(계약 승인 결정). 환경 변수 `ACCOUNT_PNL_OBSERVATION_RETENTION` 으로 바꾼다.
+- **기본 보존 기간은 `365d` 로 고정한다**(계약 승인 결정). 환경 변수 `ACCOUNT_PNL_OBSERVATION_RETENTION` 으로 바꾼다.
   나머지 설정의 환경 변수: `ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED`, `..._BATCH_SIZE`, `..._MAX_BATCHES_PER_RUN`, `..._INTERVAL`.
 
 ### D3. 삭제 알고리즘 — 배치 1회 = 트랜잭션 1개
