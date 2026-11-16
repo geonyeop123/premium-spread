@@ -87,6 +87,13 @@ account-pnl-monitor:
   # 포지션 이력(#129) 기록. false 면 회차마다 쓰는 DB 기록만 끈다(알림은 그대로).
   position-history:
     enabled: ${ACCOUNT_PNL_POSITION_HISTORY_ENABLED:true}
+    # 보존 기간이 지난 매분 관측·레그 행 정리(#148). realized-pnl.max-age + 1d 보다 길어야 시작한다. 모니터 on/off 와 무관하다.
+    retention:
+      enabled: ${ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED:true}
+      retention: ${ACCOUNT_PNL_OBSERVATION_RETENTION:365d}
+      batch-size: ${ACCOUNT_PNL_OBSERVATION_RETENTION_BATCH_SIZE:1000}
+      max-batches-per-run: ${ACCOUNT_PNL_OBSERVATION_RETENTION_MAX_BATCHES_PER_RUN:50}
+      interval: ${ACCOUNT_PNL_OBSERVATION_RETENTION_INTERVAL:1h}
   # 정리한 포지션의 확정 손익(#130). 체결 기준으로 5분마다 정산한다. false 면 정산 Job 만 끈다(모니터는 그대로).
   realized-pnl:
     enabled: ${ACCOUNT_PNL_REALIZED_PNL_ENABLED:true}

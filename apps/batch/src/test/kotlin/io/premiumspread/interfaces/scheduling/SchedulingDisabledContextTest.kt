@@ -1,6 +1,7 @@
 package io.premiumspread.interfaces.scheduling
 
 import io.mockk.mockk
+import io.premiumspread.application.job.accountpnl.AccountObservationRetentionJob
 import io.premiumspread.application.job.aggregation.PremiumAggregationJob
 import io.premiumspread.application.job.aggregation.TickerAggregationJob
 import io.premiumspread.application.job.fx.FxIngestionJob
@@ -65,7 +66,7 @@ class SchedulingDisabledContextTest {
      * `@Component` 가 빠지면 여기서 실패한다.
      *
      * 단언 목록이 [SCHEDULERS] 가 아니라 [SCANNED_SCHEDULERS] 인 이유: 이 package 의 `@Component`
-     * scheduler 는 **10개**이고 그 전부가 등록 대상이다. 위 disabled 테스트 2건은 `@Import` 로
+     * scheduler 는 **11개**이고 그 전부가 등록 대상이다. 위 disabled 테스트 2건은 `@Import` 로
      * 직접 등록한 8개만 다루므로(그 목록을 넓히면 import 목록도 함께 넓혀야 한다) 목록을 나눈다 —
      * "빠짐없이 등록되는가"는 scan 을 쓰는 이 테스트만 판정할 수 있다.
      *
@@ -131,6 +132,9 @@ class SchedulingDisabledContextTest {
 
         @Bean
         fun notificationDeliveryJob(): NotificationDeliveryJob = mockk()
+
+        @Bean
+        fun accountObservationRetentionJob(): AccountObservationRetentionJob = mockk()
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -171,6 +175,7 @@ class SchedulingDisabledContextTest {
             SCHEDULERS + listOf(
                 NotificationDeliveryScheduler::class.java,
                 NotificationPiiRetentionScheduler::class.java,
+                AccountObservationRetentionScheduler::class.java,
             )
     }
 }
