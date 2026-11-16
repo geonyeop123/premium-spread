@@ -76,6 +76,7 @@ batch:
     owner-ops-signal: { lock-key: "${OWNER_OPS_SIGNAL_LOCK_KEY:lock:owner-ops:signal}", lease: "${OWNER_OPS_SIGNAL_LEASE:20s}", execution-timeout: "${OWNER_OPS_SIGNAL_TIMEOUT:10s}" }
     owner-market-signal: { lock-key: "${OWNER_MARKET_SIGNAL_LOCK_KEY:lock:owner-market:signal}", lease: "${OWNER_MARKET_SIGNAL_LEASE:20s}", execution-timeout: "${OWNER_MARKET_SIGNAL_TIMEOUT:10s}" }
     account-realized-pnl: { lock-key: "${ACCOUNT_REALIZED_PNL_LOCK_KEY:lock:account-pnl:settlement}", lease: "${ACCOUNT_REALIZED_PNL_LEASE:150s}", execution-timeout: "${ACCOUNT_REALIZED_PNL_TIMEOUT:120s}" }
+    account-observation-retention: { lock-key: "${ACCOUNT_OBSERVATION_RETENTION_LOCK_KEY:lock:account-pnl:observation-retention}", lease: "${ACCOUNT_OBSERVATION_RETENTION_LEASE:150s}", execution-timeout: "${ACCOUNT_OBSERVATION_RETENTION_TIMEOUT:120s}" }
 
 # 실계정 순손익 알림 (기본 꺼짐). credential 은 환경변수로만 주입하며 기본값을 두지 않는다.
 account-pnl-monitor:

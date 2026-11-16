@@ -113,5 +113,12 @@ object DefaultJobConfigProvider : JobConfigProvider {
             Duration.ofSeconds(150),
             Duration.ofSeconds(120),
         )
+
+        JobId.ACCOUNT_OBSERVATION_RETENTION -> JobConfig(
+            jobId,
+            "lock:account-pnl:observation-retention",
+            Duration.ofSeconds(150),
+            Duration.ofSeconds(120),
+        )
     }
 }
