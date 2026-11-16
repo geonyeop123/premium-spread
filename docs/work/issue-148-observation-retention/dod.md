@@ -67,7 +67,7 @@ source: https://github.com/geonyeop123/premium-spread/issues/148
 | 배선 회귀 | codex 표준 리뷰 P1: store 가 `CommonInfrastructureAutoConfiguration` 에 없어 실제 batch 앱이 기본 설정으로 시작 실패. `BatchComponentScanBoundaryTest` 에 bean 1개 단언 — 등록 제거 시 FAILED | 복원 후 2/2 (430ae32) |
 | R1·R2 | — | `./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon` @ 48533d0 → `BUILD SUCCESSFUL in 4m 18s`, exit 0, FAILED 0 |
 | R3 | — | `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)` |
-| R4 | — | CI `5. ktlint + detekt` — PR 에서 확인 |
+| R4 | — | PR #151 CI 11개 job 전부 pass(`5. ktlint + detekt` 포함, 첫 실행) |
 | 환경 | Task 1 GREEN 직전 Gradle 자동 캐시 정리가 `junit-bom 5.11.4` 를 지워 `--offline` 빌드 불가 → 온라인 `compileKotlin compileTestKotlin` 1회로 캐시만 복구(프로젝트 변경 없음), 이후 모든 검증은 `--offline` | — |
 
 ## 판정
