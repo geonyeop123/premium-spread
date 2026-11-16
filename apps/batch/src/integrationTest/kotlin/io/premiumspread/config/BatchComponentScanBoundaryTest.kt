@@ -2,6 +2,7 @@ package io.premiumspread.config
 
 import io.premiumspread.infrastructure.batch.cache.TickerCacheService
 import io.premiumspread.application.job.premium.PremiumRealtimeJob
+import io.premiumspread.domain.accountpnl.AccountObservationRetentionStore
 import io.premiumspread.domain.exchangerate.ExchangeRateService
 import io.premiumspread.domain.member.MemberService
 import io.premiumspread.domain.notification.NotificationSubscriptionService
@@ -35,5 +36,10 @@ class BatchComponentScanBoundaryTest : BatchIntegrationTestBase() {
         }
         assertThat(context.getBeansOfType(TickerCacheService::class.java)).hasSize(1)
         assertThat(context.getBeansOfType(PremiumRealtimeJob::class.java)).hasSize(1)
+    }
+
+    @Test
+    fun `관측 보존 store 는 자동 구성으로 정확히 하나 등록된다`() {
+        assertThat(context.getBeansOfType(AccountObservationRetentionStore::class.java)).hasSize(1)
     }
 }

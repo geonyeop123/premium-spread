@@ -9,6 +9,7 @@ import io.premiumspread.application.common.JobResult
 import io.premiumspread.domain.accountpnl.AccountObservationRetentionStore
 import io.premiumspread.domain.job.JobId
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -86,6 +87,24 @@ class AccountObservationRetentionJobTest {
 
         assertThat(result).isInstanceOf(JobResult.Failure::class.java)
         assertThat((result as JobResult.Failure).exception).isSameAs(store.failure)
+    }
+
+    @Test
+    fun `cause 체인에 InterruptedException 이 있으면 다시 던지고 interrupt 를 되살린다`() {
+        store.failure = IllegalStateException("wrapped", RuntimeException("mid", InterruptedException("stop")))
+
+        assertThatThrownBy { job().run() }.isSameAs(store.failure)
+
+        assertThat(Thread.currentThread().isInterrupted).isTrue()
+    }
+
+    @Test
+    fun `CancellationException 도 다시 던지고 interrupt 를 되살린다`() {
+        store.failure = java.util.concurrent.CancellationException("cancelled")
+
+        assertThatThrownBy { job().run() }.isSameAs(store.failure)
+
+        assertThat(Thread.currentThread().isInterrupted).isTrue()
     }
 
     @Test

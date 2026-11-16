@@ -69,7 +69,10 @@ class AccountObservationRetentionConfiguration {
     }
 }
 
-/** `account-pnl-monitor.position-history.retention.*`. [enabled] 는 [AccountObservationRetentionEnabledCondition] 이 읽는다(바인딩은 기록용). */
+/**
+ * `account-pnl-monitor.position-history.retention.*`.
+ * [enabled] 는 [AccountObservationRetentionEnabledCondition] 이 읽는다(바인딩은 기록용).
+ */
 @Validated
 @ConfigurationProperties(prefix = "account-pnl-monitor.position-history.retention")
 data class AccountObservationRetentionProperties(

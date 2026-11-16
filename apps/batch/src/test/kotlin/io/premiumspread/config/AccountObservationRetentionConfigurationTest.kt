@@ -11,6 +11,8 @@ import io.premiumspread.application.job.accountpnl.AccountObservationRetentionJo
 import io.premiumspread.interfaces.scheduling.AccountObservationRetentionScheduler
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.boot.autoconfigure.AutoConfigurations
+import org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -23,6 +25,7 @@ import java.time.ZoneOffset
 class AccountObservationRetentionConfigurationTest {
 
     private val runner = ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(ValidationAutoConfiguration::class.java))
         .withUserConfiguration(
             Stubs::class.java,
             AccountObservationRetentionConfiguration::class.java,
@@ -45,6 +48,7 @@ class AccountObservationRetentionConfigurationTest {
     fun `max-age 를 바꾸면 경계도 따라간다`() {
         runner.withPropertyValues("$PREFIX.retention=100d", "$MAX_AGE=99d").run { ctx ->
             assertThat(ctx).hasFailed()
+            assertThat(rootCause(ctx.startupFailure)).isInstanceOf(IllegalStateException::class.java)
         }
         runner.withPropertyValues("$PREFIX.retention=100d", "$MAX_AGE=98d").run { ctx ->
             assertThat(ctx).hasNotFailed()
@@ -57,7 +61,10 @@ class AccountObservationRetentionConfigurationTest {
     @Test
     fun `모니터가 꺼져 있어도 사용자 max-age 로 검증한다`() {
         runner.withPropertyValues("account-pnl-monitor.enabled=false", "$PREFIX.retention=100d", "$MAX_AGE=99d")
-            .run { ctx -> assertThat(ctx).hasFailed() }
+            .run { ctx ->
+                assertThat(ctx).hasFailed()
+                assertThat(rootCause(ctx.startupFailure)).isInstanceOf(IllegalStateException::class.java)
+            }
     }
 
     @Test
@@ -66,7 +73,31 @@ class AccountObservationRetentionConfigurationTest {
             "account-pnl-monitor.realized-pnl.enabled=false",
             "$PREFIX.retention=100d",
             "$MAX_AGE=99d",
-        ).run { ctx -> assertThat(ctx).hasFailed() }
+        ).run { ctx ->
+            assertThat(ctx).hasFailed()
+            assertThat(rootCause(ctx.startupFailure)).isInstanceOf(IllegalStateException::class.java)
+        }
+    }
+
+    @Test
+    fun `batch-size 가 범위를 벗어나면 시작하지 않는다`() {
+        listOf("0", "10001").forEach { size ->
+            runner.withPropertyValues("$PREFIX.batch-size=$size").run { ctx ->
+                assertThat(ctx).hasFailed()
+                assertThat(rootCause(ctx.startupFailure)).isInstanceOf(org.springframework.boot.context.properties.bind.validation.BindValidationException::class.java)
+            }
+        }
+        runner.withPropertyValues("$PREFIX.batch-size=10000").run { ctx -> assertThat(ctx).hasNotFailed() }
+    }
+
+    @Test
+    fun `보존 기간이 0 이거나 음수면 시작하지 않는다`() {
+        listOf("0d", "-1d").forEach { retention ->
+            runner.withPropertyValues("$PREFIX.retention=$retention").run { ctx ->
+                assertThat(ctx).hasFailed()
+                assertThat(rootCause(ctx.startupFailure)).isInstanceOf(IllegalArgumentException::class.java)
+            }
+        }
     }
 
     @Test
