@@ -1,8 +1,9 @@
 ---
 feature: 실계정 포지션 관측 이력 보존 기간 정책 — 관측·레그 행 정리 Job
 slug: issue-148-observation-retention
-status: FROZEN
+status: FROZEN · VERIFIED
 frozen_at: 2026-11-16 (사용자 계약 승인 — 기본 보존 기간 365d)
+verdict_commit: 48533d0
 source: https://github.com/geonyeop123/premium-spread/issues/148
 ---
 
@@ -58,8 +59,25 @@ source: https://github.com/geonyeop123/premium-spread/issues/148
 
 ## 증거 로그
 
-(구현 중 RED/GREEN 기록)
+| # | RED (구현 전) | GREEN |
+|---|---|---|
+| AC1·AC2 | `JdbcAccountObservationRetentionStoreIntegrationTest` 스텁 store — `6 tests completed, 5 failed`(단언 실패, "지울 것이 없으면 0" 만 통과) | 6/6 (679305d). 롤백 테스트는 실패 주입 전 레그 DELETE 4행을 확인해 공허 통과를 막는다 |
+| AC3 | `AccountObservationRetentionJobTest` 스텁 — Job 6 중 5 실패(`cutoff …` AssertionFailedError) | 6/6 (2beb4e9) → 취소 cause 체인 2건 추가 8/8 (430ae32) |
+| AC4·AC5·AC6 | `AccountObservationRetentionConfigurationTest` 스텁 — 7 중 5 실패 | 7/7 (2beb4e9) → 검증 범위·root cause 단언 추가 9/9 (430ae32) |
+| 배선 회귀 | codex 표준 리뷰 P1: store 가 `CommonInfrastructureAutoConfiguration` 에 없어 실제 batch 앱이 기본 설정으로 시작 실패. `BatchComponentScanBoundaryTest` 에 bean 1개 단언 — 등록 제거 시 FAILED | 복원 후 2/2 (430ae32) |
+| R1·R2 | — | `./gradlew test architectureTest :infrastructure:common:verifyMigrations :infrastructure:common:integrationTest :apps:batch:integrationTest --parallel --continue --offline --no-daemon` @ 48533d0 → `BUILD SUCCESSFUL in 4m 18s`, exit 0, FAILED 0 |
+| R3 | — | `bash docs/check-documentation.sh` → `documentation check passed (20 files, 15 required paths)` |
+| R4 | — | CI `5. ktlint + detekt` — PR 에서 확인 |
+| 환경 | Task 1 GREEN 직전 Gradle 자동 캐시 정리가 `junit-bom 5.11.4` 를 지워 `--offline` 빌드 불가 → 온라인 `compileKotlin compileTestKotlin` 1회로 캐시만 복구(프로젝트 변경 없음), 이후 모든 검증은 `--offline` | — |
 
 ## 판정
 
-(Gate 2)
+```
+DoD VERDICT: issue-148-observation-retention @ 48533d0
+  수용기준 표:     6개  (T1 6 · T2 0 · T3 0 · T4 0)
+  T1/T2 자동:      6개 중 6개 PASS
+  T3 기록 제출:    0개
+  T4 사람 확인:    0개
+  변경 요청:       0건
+  => VERIFIED
+```

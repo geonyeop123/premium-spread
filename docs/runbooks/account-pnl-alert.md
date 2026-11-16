@@ -737,7 +737,7 @@ GROUP BY kind;
 - **삭제는 되돌릴 수 없다.** 복구는 DB 백업뿐이다.
 - **시작 검증:** `ACCOUNT_PNL_OBSERVATION_RETENTION` 이 `account-pnl-monitor.realized-pnl.max-age`(기본 90d) + 1일 이하이면 batch 가 시작하지 않는다
   (`IllegalStateException`). 정산(#130)이 정리 시점 환율을 관측에서 찾기 때문이다(`findFxAt`, 10분 허용). 실패 메시지:
-  `account-pnl-monitor.position-history.retention.retention (<값>) must be longer than account-pnl-monitor.realized-pnl.max-age (<값>) plus <1일>`.
+  `account-pnl-monitor.position-history.retention.retention (PT2160H) must be longer than account-pnl-monitor.realized-pnl.max-age (PT2160H) plus PT24H` (Duration 은 ISO-8601 로 찍힌다 — `PT2160H` = 90일, `PT24H` = 1일).
   두 키 중 하나를 고친다.
 - **긴급 중지:** `ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED=false` 후 batch 재시작. migration·롤백 SQL 은 없다. 이미 지운 행은 돌아오지 않는다.
 - **처리량:** 회차당 최대 50배치(5만 행). 1h 간격이면 하루 약 120만 행이다. 상한에 닿으면 WARN 을 남기고 다음 회차에 이어 간다.
