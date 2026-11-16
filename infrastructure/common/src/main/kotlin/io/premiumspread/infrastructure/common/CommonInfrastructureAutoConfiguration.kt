@@ -14,6 +14,7 @@ import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheReader
 import io.premiumspread.infrastructure.common.cache.ticker.TickerCacheWriter
 import io.premiumspread.infrastructure.common.config.AggregationInfrastructureProperties
 import io.premiumspread.infrastructure.common.persistence.CommonPersistenceMarker
+import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountObservationRetentionStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlAlertStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPnlLatestStore
 import io.premiumspread.infrastructure.common.persistence.jdbc.accountpnl.JdbcAccountPositionHistoryStore
@@ -82,6 +83,7 @@ class CommonInfrastructureAutoConfiguration
     JdbcAccountPnlLatestStore::class,
     JdbcAccountPositionHistoryStore::class,
     JdbcAccountRealizedPnlStore::class,
+    JdbcAccountObservationRetentionStore::class,
     JdbcNotificationDeliveryRepository::class,
     PremiumAggregationQueryRepository::class,
     PremiumAggregationRepository::class,

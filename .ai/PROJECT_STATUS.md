@@ -165,6 +165,11 @@ Application Job 하나를 호출한다. Application은 Domain service/port만 �
   lock `lock:account-pnl:settlement`)이 종료·축소된 포지션 건의 확정 손익을 빗썸·바이낸스 체결 내역(GET 전용)으로 확정해
   `account_position_episode` nullable 컬럼(V26)에 저장한다. `ACCOUNT_PNL_REALIZED_PNL_ENABLED`로 켠다. API·Redis 무변경.
   [설계](../docs/work/issue-130-realized-pnl/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)의 "확정 손익 (#130)" 절을 따른다.
+- 관측 이력 보존 정리(#148, 구현 완료): 배치 Job `AccountObservationRetentionJob`(`account_observation_retention`, fixedDelay 1h,
+  lock `lock:account-pnl:observation-retention`)가 `observed_at` 이 보존 기간(`ACCOUNT_PNL_OBSERVATION_RETENTION`, 기본 365d)보다 오래된
+  `account_pnl_observation` 과 그 레그 관측 행을 1000행씩(회차당 최대 50배치) 삭제한다. 건·사건 테이블은 지우지 않으며 삭제는 되돌릴 수 없다.
+  보존 기간이 `account-pnl-monitor.realized-pnl.max-age` + 1일 이하이면 batch 가 시작하지 않는다. API·Redis·migration 무변경.
+  [설계](../docs/work/issue-148-observation-retention/design.md)와 [runbook](../docs/runbooks/account-pnl-alert.md)의 "보존 정리 (#148)" 절을 따른다.
 - batch 종료 시 운영 알림 오탐 정리(#135, 구현 완료): `JobExecutor`가 루트 컨텍스트 `ContextClosedEvent`(HIGHEST_PRECEDENCE)를 받은 뒤
   새 실행은 락 없이 `Skipped("shutdown")`, 진행 중 실행의 Failure(timeout·Redis/DB 중단·인터럽트 포함)는 `SKIPPED("shutdown")`으로
   기록해 `BATCH_JOB_FAILED` 운영 알림과 연속 실패 카운트를 건드리지 않는다. Binance/Bithumb WebSocket client도 같은 이벤트에서
