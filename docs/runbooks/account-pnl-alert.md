@@ -47,7 +47,15 @@
 | `ALERT_EMAIL_FROM` | 메일 채널을 쓸 때 | 발신 주소 | `alert@example.com` |
 | `BATCH_SCHEDULING_ENABLED` | 아니오 | 기본 `true`. `false` 면 Scheduler 가 함께 꺼진다 | `true` |
 | `ACCOUNT_PNL_HOURLY_REPORT_ENABLED` | 아니오 | 정시 보고(메일·Discord) 생성 on/off. 기본 `true`, `false` 면 정시 보고를 끈다(모니터가 켜져 있을 때만 의미 있다) | `true` |
-| `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` | 아니오 | 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`·`account_foreign_leg_observation`·`account_korea_leg_observation`) 기록 on/off. 기본 `true`, `false` 면 이 기록만 끄고 알림은 그대로다. 아래 "포지션 이력" 절 | `true` |
+| `ACCOUNT_PNL_POSITION_HISTORY_ENABLED` | 아니오 | 포지션 이력(`account_position_episode`·`account_position_event`·`account_pnl_observation`·`account_foreign_leg_observation`·`account_korea_leg_observation`) 기록 on/off. 기본 `true`, `false` 면 이 기록만 끄고 알림은 그대로다. `false` 여도 보존 정리는 멈추지 않는다(별도 `ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED`). 아래 "포지션 이력" 절 | `true` |
+| `ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED` | 아니오 | 보존 기간이 지난 관측·레그 행 삭제 Job(#148) on/off. 기본 `true`. 모니터·이력 기록 on/off 와 무관하다. **삭제는 되돌릴 수 없다.** 아래 "보존 정리 (#148)" 절 | `true` |
+| `ACCOUNT_PNL_OBSERVATION_RETENTION` | 아니오 | 관측 보존 기간. 기본 `365d`. `account-pnl-monitor.realized-pnl.max-age`(기본 `90d`) + 1일 이하이면 batch 가 기동 실패 | `365d` |
+| `ACCOUNT_PNL_OBSERVATION_RETENTION_BATCH_SIZE` | 아니오 | 한 트랜잭션에서 지우는 관측 행 수. 기본 `1000`, 범위 `1`~`10000` | `1000` |
+| `ACCOUNT_PNL_OBSERVATION_RETENTION_MAX_BATCHES_PER_RUN` | 아니오 | 회차당 최대 배치 수. 기본 `50`, 범위 `1`~`10000` | `50` |
+| `ACCOUNT_PNL_OBSERVATION_RETENTION_INTERVAL` | 아니오 | 정리 Job 실행 간격(fixedDelay). 기본 `1h` | `1h` |
+| `ACCOUNT_OBSERVATION_RETENTION_LOCK_KEY` | 아니오 | 정리 Job 분산 락 key. 기본 `lock:account-pnl:observation-retention` | `lock:account-pnl:observation-retention` |
+| `ACCOUNT_OBSERVATION_RETENTION_LEASE` | 아니오 | 정리 Job 락 lease. 기본 `150s` | `150s` |
+| `ACCOUNT_OBSERVATION_RETENTION_TIMEOUT` | 아니오 | 정리 Job 실행 timeout. 기본 `120s` | `120s` |
 | `ACCOUNT_PNL_MONITOR_FIXED_RATE` | 아니오 | 실행 주기(ms). 기본 `60000` | `60000` |
 | `ACCOUNT_PNL_SWING_THRESHOLD_PERCENT` | 아니오 | 순수익률 급변 임계값(%p, 양수). 기본 `0.5`. 0 이하면 기동 실패 | `0.5` |
 | `ACCOUNT_PNL_REFERENCE_STEP_PERCENT` | 아니오 | 기준 포지션 대비 단계 알림의 단계 폭(%p, 양수). 기본 `0.5`. 0 이하이거나 0.01 미만이면 기동 실패(김프 정밀도가 0.01%p 이고 더 좁으면 단계 계산이 넘칠 수 있다). 아래 "기준 포지션 대비 단계" 절 | `0.5` |
@@ -717,6 +725,29 @@ GROUP BY kind;
 
 `ACCOUNT_PNL_POSITION_HISTORY_ENABLED=false` 후 batch 재시작. 이력 기록만 멈추고 알림·정시 보고·계정 알림은 그대로다.
 다시 켜면 그 시점의 포지션을 새 관측으로 이어 쓰며, 꺼 둔 동안의 변화는 사건으로 복원되지 않는다.
+
+### 보존 정리 (#148)
+
+배치 Job `AccountObservationRetentionJob`(JobId `account_observation_retention`, 락 `lock:account-pnl:observation-retention`, lease 150s, timeout 120s)이
+1시간(`fixedDelay`)마다 `observed_at < now − retention`(기본 365일) 인 `account_pnl_observation` 행과 그 키의
+`account_foreign_leg_observation`·`account_korea_leg_observation` 행을 오래된 순 1000행씩, 레그 먼저·관측 나중으로 한 트랜잭션에 지운다.
+`account_position_episode`·`account_position_event`(건·사건)는 **절대 지우지 않는다.** `ACCOUNT_PNL_MONITOR_ENABLED`·`ACCOUNT_PNL_POSITION_HISTORY_ENABLED` 와 무관하게
+돈다(batch scheduling 이 켜져 있고 `ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED` 가 `true` 이면).
+
+- **삭제는 되돌릴 수 없다.** 복구는 DB 백업뿐이다.
+- **시작 검증:** `ACCOUNT_PNL_OBSERVATION_RETENTION` 이 `account-pnl-monitor.realized-pnl.max-age`(기본 90d) + 1일 이하이면 batch 가 시작하지 않는다
+  (`IllegalStateException`). 정산(#130)이 정리 시점 환율을 관측에서 찾기 때문이다(`findFxAt`, 10분 허용). 실패 메시지:
+  `account-pnl-monitor.position-history.retention.retention (<값>) must be longer than account-pnl-monitor.realized-pnl.max-age (<값>) plus <1일>`.
+  두 키 중 하나를 고친다.
+- **긴급 중지:** `ACCOUNT_PNL_OBSERVATION_RETENTION_ENABLED=false` 후 batch 재시작. migration·롤백 SQL 은 없다. 이미 지운 행은 돌아오지 않는다.
+- **처리량:** 회차당 최대 50배치(5만 행). 1h 간격이면 하루 약 120만 행이다. 상한에 닿으면 WARN 을 남기고 다음 회차에 이어 간다.
+- **확인할 로그:**
+  - `Account observation retention done - deleted=…, batches=…` — 정상 종료(INFO).
+  - `Account observation retention reached per-run safety cap - deleted=…, maxBatches=…, batchSize=…` — 상한 도달(WARN). 밀린 양이 많다는 뜻이며 다음 회차에 이어진다.
+  - `Account observation retention failed - error=…` — 삭제 실패(ERROR). 그 회차는 Failure 다.
+  - `Account observation retention cancelled - deleted=…, batches=…` — 종료·취소로 중단(WARN).
+- **주의:** `..._BATCH_SIZE` 를 크게 올리면 레그 DELETE 의 row constructor 가 최대 2만 placeholder 가 되고, MySQL `range_optimizer_max_mem_size` 를 넘으면
+  full scan 으로 떨어질 수 있다. 올리기 전에 EXPLAIN 으로 확인한다. `..._BATCH_SIZE` 와 `..._MAX_BATCHES_PER_RUN` 을 함께 올리면 120s timeout 에 걸릴 수 있다.
 
 ### V24 배포와 롤백
 
