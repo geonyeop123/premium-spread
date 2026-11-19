@@ -149,6 +149,25 @@ cf1 = S["capital_factor"]["1"]
 fundA_y = A["test_cost0.3"]["fund_sum"] / test_years; fundB_y = B["test_cost0.3"]["fund_sum"] / test_years
 fund_test_y = S["fund_only_test_per_year"]; fund_ratio = fr["last_365d_sum_pct"] / fund_test_y
 adjA = capA - fundA_y * (1 - fund_ratio); adjB = capB - fundB_y * (1 - fund_ratio)
+
+L_FX = block("def fx_views", 7)
+fxa = S["fx_accept"]; fxp = S["fx_path"]
+faL1, faL2, fbL1, fbL2 = fxa["A"]["cost0.3"]["L1"], fxa["A"]["cost0.3"]["L2"], fxa["B"]["cost0.3"]["L1"], fxa["B"]["cost0.3"]["L2"]
+fa_y26 = next(r for r in fxa["A"]["yearly_test_cost0.3"] if r[0] == 2026)
+fb_y26 = next(r for r in fxa["B"]["yearly_test_cost0.3"] if r[0] == 2026)
+def fx_rows(name, L1, L2):
+    return [
+        [f"{name} · 환율 헤지", f"{f(L1['per_year_ex_fx'],1)}%", f"{f(L1['per_year_ex_fx']/2,1)}%", pct(L1['win_ex_fx']), f(L1['worst_ex_fx']), f(L1['std_ex_fx'])],
+        [f"{name} · 앱 공식 (한국 측 환율만)", f"{f(L1['per_year_app'],1)}%", f"{f(L1['per_year_app']/2,1)}%", pct(L1['win_app']), f(L1['worst_app']), f(L1['std_app'])],
+        [f"{name} · <b>실제 계좌, Short 1배</b>", f"{f(L1['per_year_full'],1)}%", f"<b>{f(L1['per_year_full_on_capital'],1)}%</b>", pct(L1['win_full']), f(L1['worst_full']), f(L1['std_full'])],
+        [f"{name} · 실제 계좌, Short 2배", f"{f(L2['per_year_full'],1)}%", f"{f(L2['per_year_full_on_capital'],1)}%", pct(L2['win_full']), f(L2['worst_full']), f(L2['std_full'])],
+    ]
+fx_tbl = table(["전략 · 환율 처리", "연환산(한국 진입금 대비)", "연환산(자본 대비)", "승률", "최악 거래(%)", "거래당 표준편차"],
+               fx_rows("A", faL1, faL2) + fx_rows("B", fbL1, fbL2), num=(1, 2, 3, 4, 5))
+_ya = {r[0]: r for r in fxa["A"]["yearly_test_cost0.3"]}; _yb = {r[0]: r for r in fxa["B"]["yearly_test_cost0.3"]}
+fx_year_tbl = table(["연도", "A 거래", "A 환율 헤지", "A 실계좌 1배", "B 거래", "B 환율 헤지", "B 실계좌 1배"],
+    [[y, _ya[y][1], sg(_ya[y][6]), sg(_ya[y][8]), _yb[y][1], sg(_yb[y][6]), sg(_yb[y][8])] for y in sorted(_ya)], num=(0, 1, 2, 3, 4, 5, 6))
+
 c180_top = cond180[("90–100", 30)]; c180_bot = cond180[("0–10", 30)]; c90_top = cond90[("90–100", 30)]
 tA = A["trades_full"]; lastA = tA[-1]
 
@@ -187,7 +206,7 @@ body = f"""
   <h2><span class="num">1</span>요약</h2>
   <div class="stat-row" data-required="stats">
     <button class="stat" data-sev="crit" aria-pressed="false"><span class="n">0</span><span class="l">치명</span></button>
-    <button class="stat" data-sev="high" aria-pressed="false"><span class="n">3</span><span class="l">높음</span></button>
+    <button class="stat" data-sev="high" aria-pressed="false"><span class="n">4</span><span class="l">높음</span></button>
     <button class="stat" data-sev="med"  aria-pressed="false"><span class="n">2</span><span class="l">보통</span></button>
     <button class="stat" data-sev="low"  aria-pressed="false"><span class="n">0</span><span class="l">낮음</span></button>
     <button class="stat" data-sev="info" aria-pressed="false"><span class="n">2</span><span class="l">정보</span></button>
@@ -203,6 +222,7 @@ body = f"""
     <p><b>지금:</b> 박스 상단이다. 이 구간(상위 10%)에서 진입한 과거 {c180_top['n']}일을 보면 30일 뒤 김프는 평균 {sg(c180_top['dP_mean'])}%p 움직였다. 펀딩비 수취({sg(c180_top['fund'])}%)가 그 하락을 겨우 메워 기대값은 0 근처이고, 하위 10%는 {f(c180_top['p10_ex_fx'])}%다.</p>
     <p><b>전략:</b> 박스 하위 10%에서 진입하면 30일 기대값이 {sg(c180_bot['mean_ex_fx'])}%이고 비용 0.3%p를 넘길 확률은 {pct(c180_bot['win_ex_fx_0.3'])}다. 이 비대칭을 규칙으로 만든 전략 A(180일 P30 아래 진입 → P50 회귀 시 청산)가 2023~2026 표본 외 구간에서 연 {f(capA,1)}%(환율 제외, 비용 0.3%p)를 냈다. 주변 파라미터 {len(A['neighbors'])}개도 전부 양수였다.</p>
     <p><b>조심할 것:</b> ① 이 구조는 USD/KRW Long이라 거래당 환율 성분(검증 구간 최대 ±3.7%)이 거래당 김프 이익(평균 1.15%p)보다 크다. ② 수익의 약 {pct(fundA_y/(A['test_cost0.3']['per_year']+A['test_cost0.3']['cost_sum']/test_years))}가 펀딩비인데 펀딩비가 최근 절반으로 줄었다. ③ 보유 중 BTC가 최대 {f(A['btc_max_rally_pct'],0)}% 올랐다 — 선물 Short는 1배에 가깝게 둬야 한다.</p>
+    <p><b>환율을 인정하면(헤지 없음):</b> USDT 증거금까지 원화로 재평가한 실제 계좌 기준 전략 A는 연 {f(faL1['per_year_full'],1)}%(한국 진입금 대비), <b>자본 대비 연 {f(faL1['per_year_full_on_capital'],1)}%</b>다. 헤지했을 때(연 {f(faL1['per_year_ex_fx'],1)}%)와 평균은 비슷하지만 승률이 {pct(faL1['win_ex_fx'])} → {pct(faL1['win_full'])}, 거래당 표준편차가 {f(faL1['std_ex_fx'])} → {f(faL1['std_full'])}로 커지고, 원화가 강해진 2026년은 {sg(fa_y26[8])}%였다(F8).</p>
   </div>
   {chart}
 </section>
@@ -341,6 +361,23 @@ body = f"""
       <div class="field"><span class="k">근거</span><p>박스 기간 ±절반, 진입 분위 ±0.1, 청산 분위 ±0.2, 보유 한도 ½배를 바꾼 조합을 모두 검증 구간에 돌렸다. 박스 하단 진입이라는 구조 자체가 수익을 낸 것이고, 특정 숫자에 기대지 않는다. 다만 이 견고함에는 검증 구간 내내 펀딩비가 양수였던 영향도 들어 있다(F5).</p></div>
     </article>
 
+    <article class="finding high" data-sev="high">
+      <h3><span class="id">F8</span><span class="badge high">높음</span>환율을 인정하면 연 수익률은 비슷하지만 거래당 변동이 4.5배 — 2025~2026년은 환율이 김프 이익을 거의 지웠다</h3>
+      <p class="locline">{loc(L_FX)}</p>
+      {code(L_FX, "실제 원화 계좌: 한국 측 환율 노출 + USDT 증거금 재평가")}
+      <h3>검증 구간 2023~2026 · 비용 0.3%p</h3>
+      {fx_tbl}
+      <h3>연도별 (진입 연도 기준, %)</h3>
+      {fx_year_tbl}
+      <div class="field"><span class="k">실패 시나리오 (실제 데이터)</span>
+        <div class="scenario"><ol>
+          <li>2026년에 전략 A를 환율 헤지 없이 1배로 운용. 김프 회귀 이익은 9번 거래 합계 {sg(fa_y26[2])}%로 정상 작동</li>
+          <li>그 사이 USD/KRW가 {f(fxp['test_max'],0)}원({fxp['test_max_date']}) → {f(fxp['now'],0)}원으로 약 {f((1-fxp['now']/fxp['test_max'])*100,0)}% 하락</li>
+          <li class="then">한국 측 환율 성분 {sg(fa_y26[3])}%에 USDT 증거금 재평가까지 더해 실제 계좌 손익 {sg(fa_y26[8])}%. 1년 내내 일하고 0이다. B는 {sg(fb_y26[8])}%</li>
+        </ol></div></div>
+      <div class="field"><span class="k">근거</span><p>앱 공식은 한국 현물과 선물 손익만 센다. 실제 계좌에는 Binance의 USDT 증거금(1배면 한국 진입금과 같은 크기)이 있고 이것도 원화로 재평가되므로, 헤지하지 않은 환율 노출은 한국 진입금의 약 2배다. 거래당 환율 성분의 평균은 A {sg(faL1['fx_mean'])}%, B {sg(fbL1['fx_mean'])}%로 0에 가깝다 — 환율은 <b>평균 수익을 더하지도 빼지도 않고 변동만 키운다</b>. 김프 성분과 환율 성분의 상관도 A {f(faL1['corr_prem_fx'])}, B {f(fbL1['corr_prem_fx'])}라 서로 상쇄해 주지 않는다. 지금 진입 시 30일 기대값이 환율 포함(실계좌 1배) {sg(fxa['now_entry_30d']['180']['full_L1'])}%로 양수가 되는 것은 2019~2026년에 원화가 전반적으로 약했던 흐름이 평균에 섞인 결과다 <span class="badge guess">추정 — 환율 방향은 예측하지 않음</span>. "계속 보유" 기준선의 실계좌 연 {f(fxa['hold']['full_L1'],1)}%도 같은 이유로 높다(검증 구간 시작 {f(fxp['test_start'],0)}원 → 현재 {f(fxp['now'],0)}원).</p></div>
+    </article>
+
   </div>
 </section>
 
@@ -380,7 +417,7 @@ body = f"""
       <span class="impact">조건: 왕복 비용 0.4%p 이하(Bithumb 수수료 쿠폰·지정가, Binance 지정가). 비용이 0.8%p를 넘으면 B(90일 P20 → P90, 60일)로 바꾼다 · 근거: F6·F7</span></li>
     <li><b>선물 Short는 1배로 잡고, BTC +20%마다 증거금을 보충하거나 양쪽을 줄이는 규칙을 미리 정한다.</b>
       <span class="impact">근거: F4 — 보유 중 BTC 최대 +{f(A['btc_max_rally_pct'],0)}% · 자본 대비 기대 수익은 1배 기준 연 약 {f(adjA/cf1,1)}~{f(capA/cf1,1)}% (펀딩 현재 수준~검증 구간 수준)</span></li>
-    <li><b>환율 노출을 인정하거나 헤지한다.</b> 헤지하려면 한국 진입금만큼 USD/KRW Short(예: KRX 미국달러선물)가 필요하다. 헤지하지 않으면 "김프 목표 도달 = 이익"이 아님을 기록에 남기고, 환율이 직전 1~3일 1% 넘게 움직였으면 진입을 하루 미룬다.
+    <li><b>환율 노출을 인정하거나 헤지한다.</b> 인정하면 자본 대비 연 약 {f(faL1['per_year_full_on_capital'],1)}%(A, 1배)에 거래당 변동 ±{f(faL1['std_full'],1)}%를 받아들이는 것이고, 이는 한국 진입금 약 2배 크기의 달러 Long을 함께 들고 있는 것과 같다. 헤지하려면 한국 진입금 + USDT 증거금만큼 USD/KRW Short(예: KRX 미국달러선물)가 필요하다. 헤지하지 않으면 "김프 목표 도달 = 이익"이 아님을 기록에 남기고, 환율이 직전 1~3일 1% 넘게 움직였으면 진입을 하루 미룬다.
       <span class="impact">근거: F3 · 달러선물은 별도 계좌·예탁금 필요 <span class="badge guess">추정 — 이번 분석에서 확인하지 않음</span></span></li>
     <li><b>앱 알림으로 감시한다.</b> premium-spread의 임계값 알림에 A의 진입선·청산선을 걸고 주 1회 갱신한다. 펀딩비(최근 30일 합 {f(fr['last_30d_sum_pct'],2)}%)가 연 2% 아래로 떨어지면 기대값을 다시 계산한다.
       <span class="impact">기준선 자동 갱신(이동 분위수 알림)은 앱에 없는 기능이라 넣으려면 별도 작업(orchestrator) 필요</span></li>

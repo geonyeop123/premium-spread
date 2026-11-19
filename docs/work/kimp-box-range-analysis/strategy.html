@@ -330,7 +330,7 @@ main{min-width:0}
   <h1>김프 박스 매매 전략</h1>
   <div class="meta" data-required="meta">
     <div><b>저장소</b><span>premium-spread</span></div>
-    <div><b>브랜치</b><span>docs/kimp-box-range-analysis @ f5647fa</span></div>
+    <div><b>브랜치</b><span>docs/kimp-box-range-analysis @ 1b5918c</span></div>
     <div><b>분석 일시</b><span>2026-11-19</span></div>
     <div><b>관점</b><span>현재 위치 · 기대값 · 전략 선택</span></div>
     <div><b>현재 시점</b><span>2026-11-19 13:59 UTC</span></div>
@@ -345,7 +345,7 @@ main{min-width:0}
   <h2><span class="num">1</span>요약</h2>
   <div class="stat-row" data-required="stats">
     <button class="stat" data-sev="crit" aria-pressed="false"><span class="n">0</span><span class="l">치명</span></button>
-    <button class="stat" data-sev="high" aria-pressed="false"><span class="n">3</span><span class="l">높음</span></button>
+    <button class="stat" data-sev="high" aria-pressed="false"><span class="n">4</span><span class="l">높음</span></button>
     <button class="stat" data-sev="med"  aria-pressed="false"><span class="n">2</span><span class="l">보통</span></button>
     <button class="stat" data-sev="low"  aria-pressed="false"><span class="n">0</span><span class="l">낮음</span></button>
     <button class="stat" data-sev="info" aria-pressed="false"><span class="n">2</span><span class="l">정보</span></button>
@@ -361,6 +361,7 @@ main{min-width:0}
     <p><b>지금:</b> 박스 상단이다. 이 구간(상위 10%)에서 진입한 과거 357일을 보면 30일 뒤 김프는 평균 -1.59%p 움직였다. 펀딩비 수취(+1.39%)가 그 하락을 겨우 메워 기대값은 0 근처이고, 하위 10%는 -3.86%다.</p>
     <p><b>전략:</b> 박스 하위 10%에서 진입하면 30일 기대값이 +2.61%이고 비용 0.3%p를 넘길 확률은 87%다. 이 비대칭을 규칙으로 만든 전략 A(180일 P30 아래 진입 → P50 회귀 시 청산)가 2023~2026 표본 외 구간에서 연 10.6%(환율 제외, 비용 0.3%p)를 냈다. 주변 파라미터 36개도 전부 양수였다.</p>
     <p><b>조심할 것:</b> ① 이 구조는 USD/KRW Long이라 거래당 환율 성분(검증 구간 최대 ±3.7%)이 거래당 김프 이익(평균 1.15%p)보다 크다. ② 수익의 약 20%가 펀딩비인데 펀딩비가 최근 절반으로 줄었다. ③ 보유 중 BTC가 최대 66% 올랐다 — 선물 Short는 1배에 가깝게 둬야 한다.</p>
+    <p><b>환율을 인정하면(헤지 없음):</b> USDT 증거금까지 원화로 재평가한 실제 계좌 기준 전략 A는 연 8.9%(한국 진입금 대비), <b>자본 대비 연 4.5%</b>다. 헤지했을 때(연 10.6%)와 평균은 비슷하지만 승률이 100% → 54%, 거래당 표준편차가 0.71 → 3.25로 커지고, 원화가 강해진 2026년은 -0.21%였다(F8).</p>
   </div>
   
 <figure class="chart">
@@ -519,6 +520,29 @@ def fx_term(i, j):
       <div class="field"><span class="k">근거</span><p>박스 기간 ±절반, 진입 분위 ±0.1, 청산 분위 ±0.2, 보유 한도 ½배를 바꾼 조합을 모두 검증 구간에 돌렸다. 박스 하단 진입이라는 구조 자체가 수익을 낸 것이고, 특정 숫자에 기대지 않는다. 다만 이 견고함에는 검증 구간 내내 펀딩비가 양수였던 영향도 들어 있다(F5).</p></div>
     </article>
 
+    <article class="finding high" data-sev="high">
+      <h3><span class="id">F8</span><span class="badge high">높음</span>환율을 인정하면 연 수익률은 비슷하지만 거래당 변동이 4.5배 — 2025~2026년은 환율이 김프 이익을 거의 지웠다</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:226-232</p>
+      <div class="code"><div class="loc"><span>strategy.py:226-232</span><em>실제 원화 계좌: 한국 측 환율 노출 + USDT 증거금 재평가</em></div><pre>def fx_views(t, years, L):
+    full = t.net + t.fx / L
+    return {&quot;per_year_app&quot;: t.net.sum() / years, &quot;per_year_ex_fx&quot;: (t.net - t.fx).sum() / years,
+            &quot;per_year_full&quot;: full.sum() / years, &quot;per_year_full_on_capital&quot;: full.sum() / years / (1 + 1 / L),
+            &quot;win_ex_fx&quot;: float(((t.net - t.fx) &gt; 0).mean()), &quot;win_app&quot;: float((t.net &gt; 0).mean()), &quot;win_full&quot;: float((full &gt; 0).mean()),
+            &quot;worst_ex_fx&quot;: float((t.net - t.fx).min()), &quot;worst_app&quot;: float(t.net.min()), &quot;worst_full&quot;: float(full.min()),
+            &quot;std_ex_fx&quot;: float((t.net - t.fx).std()), &quot;std_app&quot;: float(t.net.std()), &quot;std_full&quot;: float(full.std()),</pre></div>
+      <h3>검증 구간 2023~2026 · 비용 0.3%p</h3>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>전략 · 환율 처리</th><th>연환산(한국 진입금 대비)</th><th>연환산(자본 대비)</th><th>승률</th><th>최악 거래(%)</th><th>거래당 표준편차</th></tr></thead><tbody><tr><td class="">A · 환율 헤지</td><td class="num">10.6%</td><td class="num">5.3%</td><td class="num">100%</td><td class="num">0.15</td><td class="num">0.71</td></tr><tr><td class="">A · 앱 공식 (한국 측 환율만)</td><td class="num">9.8%</td><td class="num">4.9%</td><td class="num">70%</td><td class="num">-1.58</td><td class="num">1.84</td></tr><tr><td class="">A · <b>실제 계좌, Short 1배</b></td><td class="num">8.9%</td><td class="num"><b>4.5%</b></td><td class="num">54%</td><td class="num">-4.02</td><td class="num">3.25</td></tr><tr><td class="">A · 실제 계좌, Short 2배</td><td class="num">9.3%</td><td class="num">6.2%</td><td class="num">59%</td><td class="num">-2.80</td><td class="num">2.54</td></tr><tr><td class="">B · 환율 헤지</td><td class="num">8.7%</td><td class="num">4.4%</td><td class="num">83%</td><td class="num">-1.87</td><td class="num">2.00</td></tr><tr><td class="">B · 앱 공식 (한국 측 환율만)</td><td class="num">8.5%</td><td class="num">4.3%</td><td class="num">83%</td><td class="num">-4.19</td><td class="num">3.23</td></tr><tr><td class="">B · <b>실제 계좌, Short 1배</b></td><td class="num">8.4%</td><td class="num"><b>4.2%</b></td><td class="num">50%</td><td class="num">-6.50</td><td class="num">5.31</td></tr><tr><td class="">B · 실제 계좌, Short 2배</td><td class="num">8.4%</td><td class="num">5.6%</td><td class="num">56%</td><td class="num">-5.35</td><td class="num">4.23</td></tr></tbody></table></div>
+      <h3>연도별 (진입 연도 기준, %)</h3>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>연도</th><th>A 거래</th><th>A 환율 헤지</th><th>A 실계좌 1배</th><th>B 거래</th><th>B 환율 헤지</th><th>B 실계좌 1배</th></tr></thead><tbody><tr><td class="num">2023</td><td class="num">13</td><td class="num">+12.04</td><td class="num">+8.20</td><td class="num">5</td><td class="num">+12.96</td><td class="num">+17.18</td></tr><tr><td class="num">2024</td><td class="num">8</td><td class="num">+13.26</td><td class="num">+23.57</td><td class="num">5</td><td class="num">+12.52</td><td class="num">+22.84</td></tr><tr><td class="num">2025</td><td class="num">7</td><td class="num">+8.97</td><td class="num">+3.00</td><td class="num">4</td><td class="num">+2.56</td><td class="num">-4.94</td></tr><tr><td class="num">2026</td><td class="num">9</td><td class="num">+6.91</td><td class="num">-0.21</td><td class="num">4</td><td class="num">+5.80</td><td class="num">-2.62</td></tr></tbody></table></div>
+      <div class="field"><span class="k">실패 시나리오 (실제 데이터)</span>
+        <div class="scenario"><ol>
+          <li>2026년에 전략 A를 환율 헤지 없이 1배로 운용. 김프 회귀 이익은 9번 거래 합계 +8.59%로 정상 작동</li>
+          <li>그 사이 USD/KRW가 1554원(2026-06-07) → 1332원으로 약 14% 하락</li>
+          <li class="then">한국 측 환율 성분 -3.56%에 USDT 증거금 재평가까지 더해 실제 계좌 손익 -0.21%. 1년 내내 일하고 0이다. B는 -2.62%</li>
+        </ol></div></div>
+      <div class="field"><span class="k">근거</span><p>앱 공식은 한국 현물과 선물 손익만 센다. 실제 계좌에는 Binance의 USDT 증거금(1배면 한국 진입금과 같은 크기)이 있고 이것도 원화로 재평가되므로, 헤지하지 않은 환율 노출은 한국 진입금의 약 2배다. 거래당 환율 성분의 평균은 A -0.09%, B -0.04%로 0에 가깝다 — 환율은 <b>평균 수익을 더하지도 빼지도 않고 변동만 키운다</b>. 김프 성분과 환율 성분의 상관도 A -0.02, B -0.08라 서로 상쇄해 주지 않는다. 지금 진입 시 30일 기대값이 환율 포함(실계좌 1배) +0.88%로 양수가 되는 것은 2019~2026년에 원화가 전반적으로 약했던 흐름이 평균에 섞인 결과다 <span class="badge guess">추정 — 환율 방향은 예측하지 않음</span>. "계속 보유" 기준선의 실계좌 연 11.6%도 같은 이유로 높다(검증 구간 시작 1259원 → 현재 1332원).</p></div>
+    </article>
+
   </div>
 </section>
 
@@ -558,7 +582,7 @@ def fx_term(i, j):
       <span class="impact">조건: 왕복 비용 0.4%p 이하(Bithumb 수수료 쿠폰·지정가, Binance 지정가). 비용이 0.8%p를 넘으면 B(90일 P20 → P90, 60일)로 바꾼다 · 근거: F6·F7</span></li>
     <li><b>선물 Short는 1배로 잡고, BTC +20%마다 증거금을 보충하거나 양쪽을 줄이는 규칙을 미리 정한다.</b>
       <span class="impact">근거: F4 — 보유 중 BTC 최대 +66% · 자본 대비 기대 수익은 1배 기준 연 약 4.7~5.3% (펀딩 현재 수준~검증 구간 수준)</span></li>
-    <li><b>환율 노출을 인정하거나 헤지한다.</b> 헤지하려면 한국 진입금만큼 USD/KRW Short(예: KRX 미국달러선물)가 필요하다. 헤지하지 않으면 "김프 목표 도달 = 이익"이 아님을 기록에 남기고, 환율이 직전 1~3일 1% 넘게 움직였으면 진입을 하루 미룬다.
+    <li><b>환율 노출을 인정하거나 헤지한다.</b> 인정하면 자본 대비 연 약 4.5%(A, 1배)에 거래당 변동 ±3.3%를 받아들이는 것이고, 이는 한국 진입금 약 2배 크기의 달러 Long을 함께 들고 있는 것과 같다. 헤지하려면 한국 진입금 + USDT 증거금만큼 USD/KRW Short(예: KRX 미국달러선물)가 필요하다. 헤지하지 않으면 "김프 목표 도달 = 이익"이 아님을 기록에 남기고, 환율이 직전 1~3일 1% 넘게 움직였으면 진입을 하루 미룬다.
       <span class="impact">근거: F3 · 달러선물은 별도 계좌·예탁금 필요 <span class="badge guess">추정 — 이번 분석에서 확인하지 않음</span></span></li>
     <li><b>앱 알림으로 감시한다.</b> premium-spread의 임계값 알림에 A의 진입선·청산선을 걸고 주 1회 갱신한다. 펀딩비(최근 30일 합 0.59%)가 연 2% 아래로 떨어지면 기대값을 다시 계산한다.
       <span class="impact">기준선 자동 갱신(이동 분위수 알림)은 앱에 없는 기능이라 넣으려면 별도 작업(orchestrator) 필요</span></li>
@@ -588,7 +612,7 @@ def fx_term(i, j):
 </section>
 
 <footer data-required="footer">
-  premium-spread · docs/kimp-box-range-analysis@f5647fa · 2026-11-19 · 읽기 전용 분석 (앱 코드 변경 없음)
+  premium-spread · docs/kimp-box-range-analysis@1b5918c · 2026-11-19 · 읽기 전용 분석 (앱 코드 변경 없음)
 </footer>
 </main>
 </div>

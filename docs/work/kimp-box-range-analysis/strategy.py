@@ -219,3 +219,46 @@ tail = main.iloc[-365:]
 S["chart_1y"] = [[str(i.date()), round(v, 3), round(r180_30[i], 3), round(r180_50[i], 3), round(r90_20[i], 3), round(r90_90[i], 3)] for i, v in tail.items()]
 json.dump(clean(S), open(f"{HERE}/strategy_results.json", "w"), ensure_ascii=False, indent=1)
 print({n: (round(c["btc_max_rally_pct"], 1), round(c["btc_rally_p90_pct"], 1)) for n, c in S["candidates"].items()})
+
+# ── 6. 환율을 인정했을 때 (헤지 없음) ─────────────────────────────────
+# 실제 원화 계좌: PnL = q(K1-K0) + q(F0-F1)FX1 + M(FX1-FX0),  M = q*F0/L (USDT 증거금)
+#  → 앱 공식 대비 증거금 재평가 항 fx/L 이 더해지고, 자본은 한국 진입금의 (1 + 1/L)배.
+def fx_views(t, years, L):
+    full = t.net + t.fx / L
+    return {"per_year_app": t.net.sum() / years, "per_year_ex_fx": (t.net - t.fx).sum() / years,
+            "per_year_full": full.sum() / years, "per_year_full_on_capital": full.sum() / years / (1 + 1 / L),
+            "win_ex_fx": float(((t.net - t.fx) > 0).mean()), "win_app": float((t.net > 0).mean()), "win_full": float((full > 0).mean()),
+            "worst_ex_fx": float((t.net - t.fx).min()), "worst_app": float(t.net.min()), "worst_full": float(full.min()),
+            "std_ex_fx": float((t.net - t.fx).std()), "std_app": float(t.net.std()), "std_full": float(full.std()),
+            "fx_mean": float(t.fx.mean()), "fx_abs_mean": float(t.fx.abs().mean()),
+            "corr_prem_fx": float(np.corrcoef(t.gross - t.fx, t.fx)[0, 1])}
+S["fx_accept"] = {}
+for name, (N, lo, hi, to, st) in cands.items():
+    out = {}
+    for cost in (0.3, 0.6):
+        te = run(N, lo, hi, to, st, cost, start=idx_test0)
+        al = run(N, lo, hi, to, st, cost)
+        out[f"cost{cost}"] = {f"L{L}": fx_views(te, test_days / 365, L) for L in (1, 2)}
+        out[f"cost{cost}"]["all_L1"] = fx_views(al, (day.index[-1] - day.index[N]).days / 365, 1)
+        if cost == 0.3:
+            te = te.assign(y=te["in"].dt.year)
+            yrs = []
+            for y, d in te.groupby("y"):
+                yrs.append([int(y), len(d), (d.gross - d.fx).sum(), d.fx.sum(), d.fund.sum(), -(d.gross + d.fund - d.net).sum(),
+                            (d.net - d.fx).sum(), d.net.sum(), (d.net + d.fx).sum()])
+            out["yearly_test_cost0.3"] = yrs   # [연도, 거래, 김프, 환율(앱), 펀딩, 비용, 환율제외, 앱, 실계좌 L1]
+            al = al.assign(y=al["in"].dt.year)
+            out["yearly_all_cost0.3"] = [[int(y), len(d), (d.net - d.fx).sum(), d.net.sum(), (d.net + d.fx).sum()] for y, d in al.groupby("y")]
+    S["fx_accept"][name] = out
+# 현재 위치(상위 10%)에서 지금 진입 시 30일: 환율 포함(앱) / 실계좌 L1
+S["fx_accept"]["now_entry_30d"] = {N: {"ex_fx": c[("90–100", 30)]["mean_ex_fx"], "app": c[("90–100", 30)]["mean"],
+                                       "full_L1": 2 * c[("90–100", 30)]["mean"] - c[("90–100", 30)]["mean_ex_fx"]}
+                                   for N, c in ((90, {(r["bucket"], r["H"]): r for r in cond[90]}), (180, {(r["bucket"], r["H"]): r for r in cond[180]}))}
+# 기준선(계속 보유)
+S["fx_accept"]["hold"] = {"ex_fx": S["hold_test"]["per_year_ex_fx"], "app": S["hold_test"]["per_year"],
+                          "full_L1": S["hold_test"]["per_year"] + S["hold_test"]["fx"] / (test_days / 365)}
+# 기간 USD/KRW
+S["fx_path"] = {"test_start": float(day.fx.iloc[idx_test0]), "now": float(day.fx.iloc[-1]),
+                "test_max": float(day.fx.iloc[idx_test0:].max()), "test_max_date": str(day.fx.iloc[idx_test0:].idxmax().date()),
+                "test_min": float(day.fx.iloc[idx_test0:].min()), "test_min_date": str(day.fx.iloc[idx_test0:].idxmin().date())}
+json.dump(clean(S), open(f"{HERE}/strategy_results.json", "w"), ensure_ascii=False, indent=1)
