@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>김프 박스 매매 전략</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   analysis-report — 계기판 성격의 기술 분석 리포트
+   중립색은 강조색(딥 티일) 쪽으로 편향시켜 "선택된 회색"으로 읽히게 한다.
+   심각도(의미색)와 강조색은 겹치지 않는다 — low 파랑 ≠ 강조 티일.
+   웹폰트를 불러오지 않는다: 오프라인 개봉 보장이 우선. 선호 서체를 스택 앞에.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── tokens (light = 기본, bare :root) ─────────────────────────── */
+:root{
+  --bg:#f4f6f6; --surface:#fff; --surface-2:#eaeeef; --surface-3:#e1e7e8;
+  --border:#d8e0e1; --border-hi:#c2cdcf;
+  --text:#14191a; --dim:#5a6567; --faint:#8b9698;
+  --accent:#0b6b74; --accent-soft:#e0f0f1; --accent-line:#0b6b74;
+  --crit:#b3202f; --crit-bg:#fbe9ea; --high:#b35a09; --high-bg:#fbf0e4;
+  --med:#7d6206;  --med-bg:#f8f2dd;  --low:#2f5fa8;  --low-bg:#e8eef8;
+  --info:#5a6567; --info-bg:#eaeeef; --ok:#1a7048;   --ok-bg:#e4f2ea;
+
+  --mono:"IBM Plex Mono","JetBrains Mono",ui-monospace,SFMono-Regular,
+         "SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"IBM Plex Sans KR","Pretendard Variable",Pretendard,-apple-system,
+         BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",
+         "Noto Sans KR",Roboto,sans-serif;
+
+  /* type scale */
+  --t-xs:11px; --t-sm:12px; --t-cap:13px; --t-base:15px;
+  --t-h3:15.5px; --t-h2:19px; --t-h1:27px;
+  --measure:72ch;          /* 산문 최대 폭 — 코드·표는 이 제한을 받지 않는다 */
+  --rail:232px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#101415; --surface:#171d1e; --surface-2:#1f2627; --surface-3:#262f30;
+    --border:#2c3536; --border-hi:#3b4647;
+    --text:#e6eaea; --dim:#9aa6a8; --faint:#6e7a7c;
+    --accent:#4ec5cf; --accent-soft:#123033; --accent-line:#4ec5cf;
+    --crit:#ff8592; --crit-bg:#3a1a1f; --high:#ffa95f; --high-bg:#3a2614;
+    --med:#ddc05a;  --med-bg:#312a12;  --low:#7fb0ee;  --low-bg:#182739;
+    --info:#9aa6a8; --info-bg:#212829; --ok:#5cd096;   --ok-bg:#123020;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101415; --surface:#171d1e; --surface-2:#1f2627; --surface-3:#262f30;
+  --border:#2c3536; --border-hi:#3b4647;
+  --text:#e6eaea; --dim:#9aa6a8; --faint:#6e7a7c;
+  --accent:#4ec5cf; --accent-soft:#123033; --accent-line:#4ec5cf;
+  --crit:#ff8592; --crit-bg:#3a1a1f; --high:#ffa95f; --high-bg:#3a2614;
+  --med:#ddc05a;  --med-bg:#312a12;  --low:#7fb0ee;  --low-bg:#182739;
+  --info:#9aa6a8; --info-bg:#212829; --ok:#5cd096;   --ok-bg:#123020;
+}
+
+/* ── base ─────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+     font-size:var(--t-base);line-height:1.68;
+     font-feature-settings:"kern" 1;text-rendering:optimizeLegibility}
+h1,h2,h3,h4{line-height:1.28;margin:0;text-wrap:balance}
+a{color:var(--accent);text-underline-offset:2px}
+a:hover{text-decoration-thickness:2px}
+code,kbd,samp{font-family:var(--mono);font-size:.88em;font-variant-ligatures:none}
+:where(h1,h2,h3,h4) code{font-size:.92em}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.01ms !important;
+    animation-duration:.01ms !important;scroll-behavior:auto !important}
+}
+
+.wrap{display:grid;grid-template-columns:var(--rail) minmax(0,1fr);gap:38px;
+      max-width:1250px;margin:0 auto;padding:0 26px 96px}
+@media (max-width:920px){.wrap{grid-template-columns:1fr;gap:0}}
+
+/* 산문만 폭을 묶는다. 코드·표·대조·흐름은 열 전체를 쓴다. */
+main :where(p,ul.plain,ol.plain):not(.meta p){max-width:var(--measure)}
+
+/* ── 공통 furniture: mono + 트래킹. 이 문서의 어휘가 file:line 이다 ── */
+.kicker,.stat .l,.field>.k,section>h2 .num,.meta b,.badge,
+.code .loc,.flow-node .loc,.locline,.pane>h4 .p,table.rules th{
+  font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ── sidebar ──────────────────────────────────────────────────── */
+.side{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;
+      padding:28px 0;font-size:var(--t-cap)}
+@media (max-width:920px){.side{position:static;max-height:none;
+  border-bottom:1px solid var(--border);margin-bottom:24px;padding-bottom:18px}}
+.side nav{display:flex;flex-direction:column;gap:1px}
+.side nav a{display:block;padding:6px 11px;border-radius:0 5px 5px 0;
+  color:var(--dim);text-decoration:none;border-left:2px solid transparent}
+.side nav a:hover{background:var(--surface-2);color:var(--text)}
+.side nav a.on{color:var(--accent);background:var(--accent-soft);
+               border-left-color:var(--accent-line);font-weight:600}
+.side nav a .n{font-family:var(--mono);font-size:var(--t-sm);color:var(--faint);
+               margin-right:7px}
+.side nav a.on .n{color:var(--accent)}
+.kicker{font-size:var(--t-xs);letter-spacing:.13em;text-transform:uppercase;
+        color:var(--faint);padding:0 11px;margin:0 0 10px;font-weight:500}
+.theme-btn{margin:20px 11px 0;padding:6px 12px;font-family:var(--mono);
+  font-size:var(--t-sm);background:var(--surface);color:var(--dim);
+  border:1px solid var(--border);border-radius:5px;cursor:pointer;
+  transition:color .12s,border-color .12s}
+.theme-btn:hover{color:var(--text);border-color:var(--border-hi)}
+
+/* ── header ───────────────────────────────────────────────────── */
+header{padding:44px 0 8px}
+header h1{font-size:var(--t-h1);letter-spacing:-.015em;font-weight:650;
+          max-width:24ch}
+.meta{display:flex;flex-wrap:wrap;gap:7px 26px;margin-top:18px;
+      font-size:var(--t-sm);color:var(--dim);
+      padding-top:14px;border-top:1px solid var(--border)}
+.meta b{color:var(--faint);font-weight:500;margin-right:7px;
+        font-size:var(--t-xs);letter-spacing:.09em;text-transform:uppercase}
+.meta span{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.verdict{margin-top:24px;padding:17px 20px;border-radius:3px;
+  background:var(--surface);border:1px solid var(--border);
+  border-left:3px solid var(--accent-line);max-width:none}
+.verdict .kicker{padding:0;margin-bottom:7px;display:block}
+
+/* ── sections ─────────────────────────────────────────────────── */
+section{padding-top:44px;scroll-margin-top:14px}
+section>h2{font-size:var(--t-h2);font-weight:650;letter-spacing:-.01em;
+  padding-bottom:10px;border-bottom:1px solid var(--border-hi);margin-bottom:22px;
+  display:flex;align-items:baseline;gap:12px}
+section>h2 .num{color:var(--faint);font-weight:400;font-size:var(--t-cap)}
+h3{font-size:var(--t-h3);font-weight:650;margin:30px 0 12px;letter-spacing:-.005em}
+
+/* ── stat cards (필터) ─────────────────────────────────────────── */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));
+          gap:9px;margin-bottom:24px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:4px;
+      padding:14px 15px;text-align:left;font:inherit;cursor:pointer;
+      color:var(--text);transition:border-color .12s,background .12s}
+.stat:hover{border-color:var(--border-hi);background:var(--surface-2)}
+.stat[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.stat .n{display:block;font-size:26px;font-weight:600;line-height:1.1;
+         font-family:var(--mono);font-variant-numeric:tabular-nums}
+.stat .l{display:block;font-size:var(--t-xs);color:var(--dim);margin-top:5px;
+         letter-spacing:.1em;text-transform:uppercase}
+.stat[data-sev="crit"] .n{color:var(--crit)} .stat[data-sev="high"] .n{color:var(--high)}
+.stat[data-sev="med"] .n{color:var(--med)}   .stat[data-sev="low"] .n{color:var(--low)}
+.stat[data-sev="info"] .n{color:var(--info)}
+
+/* ── badges ───────────────────────────────────────────────────── */
+.badge{display:inline-block;padding:1px 8px;border-radius:3px;
+       font-size:var(--t-xs);font-weight:600;letter-spacing:.05em;
+       white-space:nowrap;vertical-align:2px}
+.badge.crit{color:var(--crit);background:var(--crit-bg)}
+.badge.high{color:var(--high);background:var(--high-bg)}
+.badge.med{color:var(--med);background:var(--med-bg)}
+.badge.low{color:var(--low);background:var(--low-bg)}
+.badge.info{color:var(--info);background:var(--info-bg)}
+.badge.ok{color:var(--ok);background:var(--ok-bg)}
+.badge.guess{color:var(--med);background:transparent;
+  border:1px dashed currentColor;padding:0 7px}
+
+/* ── code ─────────────────────────────────────────────────────── */
+.code{margin:14px 0;border:1px solid var(--border);border-radius:4px;
+      overflow:hidden;background:var(--surface)}
+.code .loc{display:flex;justify-content:space-between;gap:14px;
+  align-items:baseline;flex-wrap:wrap;padding:7px 13px;background:var(--surface-2);
+  border-bottom:1px solid var(--border);font-size:var(--t-sm);color:var(--dim)}
+.code .loc em{font-style:normal;color:var(--faint);font-family:var(--sans);
+              font-size:var(--t-sm)}
+.code pre{margin:0;padding:13px 15px;overflow-x:auto;font-family:var(--mono);
+          font-size:12.5px;line-height:1.62;tab-size:4}
+.code pre .hl{display:inline-block;width:100%;background:var(--crit-bg);
+  box-shadow:inset 2px 0 var(--crit)}
+.code pre .cm{color:var(--faint)}
+
+/* ── flow ─────────────────────────────────────────────────────── */
+.flow{display:flex;flex-direction:column;margin:18px 0}
+.flow-node{background:var(--surface);border:1px solid var(--border);
+  border-radius:4px;padding:12px 15px;border-left:2px solid var(--border-hi)}
+.flow-node.bad{border-color:var(--crit);border-left-color:var(--crit);
+               background:var(--crit-bg)}
+.flow-node .t{font-weight:600;font-size:14.5px;letter-spacing:-.005em}
+.flow-node .loc{font-size:var(--t-sm);color:var(--dim);margin-top:3px;
+                word-break:break-all}
+.flow-node .d{font-size:var(--t-cap);color:var(--dim);margin-top:7px;
+              max-width:var(--measure)}
+.flow-arrow{align-self:flex-start;margin-left:19px;color:var(--faint);
+  font-size:13px;line-height:1;padding:6px 0;font-family:var(--mono)}
+
+/* ── rules table ──────────────────────────────────────────────── */
+.tbl-wrap{overflow-x:auto;margin:16px 0;border:1px solid var(--border);
+          border-radius:4px}
+table.rules{width:100%;border-collapse:collapse;font-size:var(--t-cap);
+            background:var(--surface);min-width:460px}
+table.rules th,table.rules td{padding:10px 13px;text-align:left;
+  border-bottom:1px solid var(--border);vertical-align:top}
+table.rules th{background:var(--surface-2);font-size:var(--t-xs);
+  color:var(--dim);font-weight:500;letter-spacing:.1em;text-transform:uppercase;
+  white-space:nowrap}
+table.rules tr:last-child td{border-bottom:0}
+table.rules code{background:var(--surface-2);padding:1px 5px;border-radius:3px}
+table.rules td.res{font-weight:650;white-space:nowrap}
+
+/* ── branch tree ──────────────────────────────────────────────── */
+.branch{margin:16px 0;font-family:var(--mono);font-size:12.5px;line-height:1.9;
+  background:var(--surface);border:1px solid var(--border);border-radius:4px;
+  padding:15px 17px;overflow-x:auto}
+.branch ul{list-style:none;margin:0;padding-left:20px;
+  border-left:1px dashed var(--border-hi)}
+.branch>ul{padding-left:0;border-left:0}
+.branch li{padding:1px 0}
+.branch .cond{color:var(--accent)}
+.branch .out{font-weight:650}
+.branch .out.crit{color:var(--crit)}
+.branch .dead{color:var(--faint);text-decoration:line-through}
+.branch .dead em{text-decoration:none;font-style:normal}
+
+/* ── compare ──────────────────────────────────────────────────── */
+.compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+         gap:14px;margin:18px 0}
+.pane{border:1px solid var(--border);border-radius:4px;overflow:hidden;
+      background:var(--surface);min-width:0;display:flex;flex-direction:column}
+.pane>h4{margin:0;padding:10px 14px;font-size:var(--t-cap);font-weight:650;
+  background:var(--surface-2);border-bottom:1px solid var(--border);
+  display:flex;gap:10px;align-items:baseline;justify-content:space-between;
+  flex-wrap:wrap}
+.pane>h4 .p{font-size:var(--t-xs);color:var(--faint);font-weight:400;
+            word-break:break-all}
+.pane.good>h4{background:var(--ok-bg);color:var(--ok);
+              border-bottom-color:var(--ok)}
+.pane.bad>h4{background:var(--crit-bg);color:var(--crit);
+             border-bottom-color:var(--crit)}
+.pane.good>h4 .p,.pane.bad>h4 .p{color:currentColor;opacity:.72}
+.pane pre{margin:0;padding:13px 14px;overflow-x:auto;font-family:var(--mono);
+  font-size:12px;line-height:1.62;flex:1}
+.pane pre .cm{color:var(--faint)}
+.pane .why{padding:11px 14px;font-size:var(--t-cap);color:var(--dim);
+  border-top:1px solid var(--border);background:var(--surface)}
+
+/* ── findings ─────────────────────────────────────────────────── */
+.finding{background:var(--surface);border:1px solid var(--border);
+  border-radius:4px;padding:19px 21px;margin-bottom:13px;
+  border-left:3px solid var(--border-hi)}
+.finding[hidden]{display:none}
+.finding>h3{margin:0;font-size:16.5px;display:flex;flex-wrap:wrap;gap:10px;
+            align-items:baseline;font-weight:650}
+.finding>h3 .id{font-family:var(--mono);font-size:var(--t-cap);color:var(--faint);
+                font-weight:400}
+.finding.crit{border-left-color:var(--crit)}
+.finding.high{border-left-color:var(--high)}
+.finding.med{border-left-color:var(--med)}
+.finding.low{border-left-color:var(--low)}
+.finding.info{border-left-color:var(--info)}
+.finding .locline{font-size:var(--t-sm);color:var(--dim);margin:8px 0 0;
+  word-break:break-all;max-width:none}
+.field{margin-top:16px}
+.field>.k{font-size:var(--t-xs);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);font-weight:500;display:block;margin-bottom:6px}
+.scenario{background:var(--surface-2);border-radius:4px;padding:12px 14px;
+  font-size:var(--t-cap);border-left:2px solid var(--border-hi)}
+.scenario ol{margin:0;padding-left:20px;max-width:var(--measure)}
+.scenario li{padding:2px 0}
+.scenario li::marker{font-family:var(--mono);color:var(--faint);font-size:.9em}
+.scenario .then{color:var(--crit);font-weight:600}
+
+/* ── misc ─────────────────────────────────────────────────────── */
+ul.plain,ol.plain{padding-left:22px;margin:12px 0}
+ul.plain li,ol.plain li{padding:3px 0}
+ul.plain li::marker{color:var(--faint)}
+.note{border-left:2px solid var(--border-hi);padding:2px 0 2px 14px;
+      margin:16px 0;color:var(--dim);font-size:var(--t-cap)}
+.empty{color:var(--faint);font-style:italic;font-size:var(--t-cap)}
+ol.actions{counter-reset:a;list-style:none;padding:0;margin:16px 0;
+           display:flex;flex-direction:column;gap:9px}
+ol.actions li{counter-increment:a;position:relative;
+  padding:14px 17px 14px 48px;background:var(--surface);
+  border:1px solid var(--border);border-radius:4px;max-width:none}
+ol.actions li::before{content:counter(a);position:absolute;left:15px;top:14px;
+  width:22px;height:22px;border-radius:3px;background:var(--accent-soft);
+  color:var(--accent);font-size:var(--t-sm);font-weight:600;display:grid;
+  place-items:center;font-family:var(--mono)}
+ol.actions .impact{display:block;font-size:var(--t-cap);color:var(--dim);
+                   margin-top:6px;max-width:var(--measure)}
+footer{margin-top:50px;padding-top:19px;border-top:1px solid var(--border);
+  font-family:var(--mono);font-size:var(--t-sm);color:var(--faint)}
+
+.chart{margin:18px 0;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:12px 14px}
+.chart figcaption{font-size:var(--t-cap);color:var(--dim);margin-bottom:8px}
+.chart figcaption b{color:var(--text)}
+.chart-box{position:relative;overflow-x:auto}
+.chart svg{width:100%;min-width:560px;height:auto;display:block}
+.chart .g{stroke:var(--border);stroke-width:1}
+.chart .g.z{stroke:var(--border-hi)}
+.chart .ax{fill:var(--faint);font-family:var(--mono);font-size:11px}
+.chart .ln{fill:none;stroke:var(--text);stroke-width:1.5;stroke-linejoin:round}
+.chart .th{fill:none;stroke-width:1.6}
+.chart .thA{stroke:var(--accent)} .chart .thB{stroke:var(--high)}
+.chart .entry{stroke-dasharray:2 3} .chart .exit{stroke-dasharray:7 4}
+.chart .now{fill:var(--crit);stroke:var(--surface);stroke-width:2}
+.chart .lab{font-family:var(--mono);font-size:11px;fill:var(--dim)}
+.chart .lab.a{fill:var(--accent)} .chart .lab.b{fill:var(--high)} .chart .nowl{fill:var(--crit);font-weight:600}
+.cap-note{font-size:var(--t-cap);color:var(--dim);margin:8px 0 0}
+.sevmap{font-size:var(--t-cap);color:var(--dim)}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:9px;margin:18px 0}
+.kpi div{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:12px 14px}
+.kpi b{display:block;font-family:var(--mono);font-size:22px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:var(--t-sm);color:var(--dim)}
+@media (max-width:920px){.wrap{grid-template-columns:minmax(0,1fr);padding:0 16px 72px}}
+main{min-width:0}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<aside class="side">
+  <p class="kicker">목차</p>
+  <nav id="toc">
+    <a href="#summary"><span class="n">1</span>요약</a>
+    <a href="#flow"><span class="n">2</span>동작 흐름</a>
+    <a href="#rules"><span class="n">3</span>핵심 규칙</a>
+    <a href="#findings"><span class="n">4</span>발견 사항</a>
+    <a href="#compare"><span class="n">5</span>대조</a>
+    <a href="#actions"><span class="n">6</span>권장 조치</a>
+    <a href="#verify"><span class="n">7</span>검증 기록</a>
+  </nav>
+  <button class="theme-btn" id="themeBtn" type="button">테마 전환</button>
+</aside>
+<main>
+<header>
+  <h1>김프 박스 매매 전략</h1>
+  <div class="meta" data-required="meta">
+    <div><b>저장소</b><span>premium-spread</span></div>
+    <div><b>브랜치</b><span>docs/kimp-box-range-analysis @ f5647fa</span></div>
+    <div><b>분석 일시</b><span>2026-11-19</span></div>
+    <div><b>관점</b><span>현재 위치 · 기대값 · 전략 선택</span></div>
+    <div><b>현재 시점</b><span>2026-11-19 13:59 UTC</span></div>
+  </div>
+  <p class="verdict" data-required="verdict">
+    <span class="kicker">결론</span>
+    지금 김프 1.99%는 90일·180일 박스의 <b>상위 3.3% · 1.7%</b>로 상단을 벗어나 있다. 여기서 진입하면 30일 기대값(환율 제외)이 -0.12%라 <b>신규 진입은 하지 않고, 보유 중이면 청산 구간</b>이다. 다음 진입은 김프가 <b>180일 P30(-0.93%) 아래로 내려올 때</b>(전략 A)이며, 그때의 표본 외 기대 수익은 한국 진입금 대비 연 7.7~10.6%(환율 제외, 비용 0.6~0.3%p)다.
+  </p>
+</header>
+
+<section id="summary">
+  <h2><span class="num">1</span>요약</h2>
+  <div class="stat-row" data-required="stats">
+    <button class="stat" data-sev="crit" aria-pressed="false"><span class="n">0</span><span class="l">치명</span></button>
+    <button class="stat" data-sev="high" aria-pressed="false"><span class="n">3</span><span class="l">높음</span></button>
+    <button class="stat" data-sev="med"  aria-pressed="false"><span class="n">2</span><span class="l">보통</span></button>
+    <button class="stat" data-sev="low"  aria-pressed="false"><span class="n">0</span><span class="l">낮음</span></button>
+    <button class="stat" data-sev="info" aria-pressed="false"><span class="n">2</span><span class="l">정보</span></button>
+  </div>
+  <p class="sevmap">심각도는 매매 판단에 미치는 무게다 — 높음: 판단을 바꾸는 사실, 보통: 기대값을 깎는 조건, 정보: 근거 기록. 수익률은 모두 <b>한국 현물 진입 금액 대비</b>이고, 자본 대비는 § 3에서 따로 환산한다.</p>
+  <div class="kpi">
+    <div><b>1.99%</b><span>현재 김프 (Bithumb vs Binance 선물)</span></div>
+    <div><b>0.39%p</b><span>180일 박스 P95 초과분</span></div>
+    <div><b>-0.12%</b><span>지금 진입 시 30일 기대값 (환율 제외)</span></div>
+    <div><b>-0.93%</b><span>다음 진입선 · 전략 A (180일 P30)</span></div>
+  </div>
+  <div data-required="summary-body">
+    <p><b>지금:</b> 박스 상단이다. 이 구간(상위 10%)에서 진입한 과거 357일을 보면 30일 뒤 김프는 평균 -1.59%p 움직였다. 펀딩비 수취(+1.39%)가 그 하락을 겨우 메워 기대값은 0 근처이고, 하위 10%는 -3.86%다.</p>
+    <p><b>전략:</b> 박스 하위 10%에서 진입하면 30일 기대값이 +2.61%이고 비용 0.3%p를 넘길 확률은 87%다. 이 비대칭을 규칙으로 만든 전략 A(180일 P30 아래 진입 → P50 회귀 시 청산)가 2023~2026 표본 외 구간에서 연 10.6%(환율 제외, 비용 0.3%p)를 냈다. 주변 파라미터 36개도 전부 양수였다.</p>
+    <p><b>조심할 것:</b> ① 이 구조는 USD/KRW Long이라 거래당 환율 성분(검증 구간 최대 ±3.7%)이 거래당 김프 이익(평균 1.15%p)보다 크다. ② 수익의 약 20%가 펀딩비인데 펀딩비가 최근 절반으로 줄었다. ③ 보유 중 BTC가 최대 66% 올랐다 — 선물 Short는 1배에 가깝게 둬야 한다.</p>
+  </div>
+  
+<figure class="chart">
+  <figcaption><b>최근 1년 김프와 두 전략의 기준선</b> · 실선 = 일별 김프 · 점선 = 진입선 · 파선 = 청산선 · 원 = 현재(2026-11-19 13:59 UTC)</figcaption>
+  <div class="chart-box">
+  <svg viewBox="0 0 1000 300" role="img" aria-label="최근 1년 김프, 180일 P30·P50, 90일 P20·P90 기준선, 현재값">
+    <line x1="44" x2="882" y1="254.0" y2="254.0" class="g"/><text x="38" y="258.0" class="ax" text-anchor="end">-3%</text><line x1="44" x2="882" y1="227.3" y2="227.3" class="g"/><text x="38" y="231.3" class="ax" text-anchor="end">-2%</text><line x1="44" x2="882" y1="200.7" y2="200.7" class="g"/><text x="38" y="204.7" class="ax" text-anchor="end">-1%</text><line x1="44" x2="882" y1="174.1" y2="174.1" class="g z"/><text x="38" y="178.1" class="ax" text-anchor="end">0%</text><line x1="44" x2="882" y1="147.5" y2="147.5" class="g"/><text x="38" y="151.5" class="ax" text-anchor="end">1%</text><line x1="44" x2="882" y1="120.8" y2="120.8" class="g"/><text x="38" y="124.8" class="ax" text-anchor="end">2%</text><line x1="44" x2="882" y1="94.2" y2="94.2" class="g"/><text x="38" y="98.2" class="ax" text-anchor="end">3%</text><line x1="44" x2="882" y1="67.6" y2="67.6" class="g"/><text x="38" y="71.6" class="ax" text-anchor="end">4%</text><line x1="44" x2="882" y1="41.0" y2="41.0" class="g"/><text x="38" y="45.0" class="ax" text-anchor="end">5%</text><line x1="44" x2="882" y1="14.3" y2="14.3" class="g"/><text x="38" y="18.3" class="ax" text-anchor="end">6%</text><text x="142.7" y="292" class="ax">2026-01</text><text x="349.4" y="292" class="ax">2026-04</text><text x="558.3" y="292" class="ax">2026-07</text><text x="769.5" y="292" class="ax">2026-10</text>
+    <path d="M44.0,164.7 L46.3,163.5 L48.6,163.5 L50.9,161.5 L53.2,161.5 L55.5,161.5 L57.8,161.5 L60.1,158.2 L62.4,155.6 L64.7,155.6 L67.0,150.3 L69.3,147.5 L71.6,146.2 L73.8,145.8 L76.1,145.3 L78.4,143.4 L80.7,143.4 L83.0,142.0 L85.3,140.5 L87.6,138.6 L89.9,137.6 L92.2,137.6 L94.5,137.6 L96.8,136.0 L99.1,136.0 L101.4,136.0 L103.7,135.8 L106.0,135.4 L108.3,135.6 L110.6,135.6 L112.9,135.6 L115.2,135.6 L117.5,135.6 L119.8,136.6 L122.1,137.6 L124.4,137.6 L126.7,137.6 L128.9,137.6 L131.2,137.6 L133.5,138.2 L135.8,138.6 L138.1,139.4 L140.4,139.4 L142.7,139.5 L145.0,139.5 L147.3,140.9 L149.6,141.5 L151.9,141.5 L154.2,142.9 L156.5,144.7 L158.8,145.3 L161.1,146.4 L163.4,149.0 L165.7,149.0 L168.0,149.5 L170.3,150.5 L172.6,150.7 L174.9,151.1 L177.2,151.8 L179.5,152.7 L181.8,152.9 L184.0,153.6 L186.3,154.1 L188.6,154.9 L190.9,154.9 L193.2,154.9 L195.5,154.9 L197.8,154.9 L200.1,154.9 L202.4,154.9 L204.7,154.9 L207.0,154.9 L209.3,154.9 L211.6,154.9 L213.9,154.9 L216.2,154.9 L218.5,154.9 L220.8,154.9 L223.1,154.9 L225.4,156.6 L227.7,156.6 L230.0,156.6 L232.3,156.6 L234.6,156.6 L236.9,156.6 L239.2,156.6 L241.4,156.6 L243.7,156.6 L246.0,156.6 L248.3,156.6 L250.6,156.6 L252.9,156.6 L255.2,156.6 L257.5,156.6 L259.8,156.6 L262.1,156.6 L264.4,156.6 L266.7,156.6 L269.0,156.6 L271.3,156.6 L273.6,156.6 L275.9,156.6 L278.2,156.6 L280.5,156.6 L282.8,156.8 L285.1,157.5 L287.4,159.1 L289.7,159.3 L292.0,160.2 L294.3,160.6 L296.5,161.9 L298.8,162.3 L301.1,164.0 L303.4,164.9 L305.7,165.4 L308.0,166.1 L310.3,167.9 L312.6,168.5 L314.9,170.6 L317.2,172.5 L319.5,174.7 L321.8,175.5 L324.1,178.4 L326.4,180.0 L328.7,180.3 L331.0,180.3 L333.3,180.3 L335.6,181.4 L337.9,181.4 L340.2,181.4 L342.5,181.4 L344.8,181.4 L347.1,181.4 L349.4,181.4 L351.6,181.4 L353.9,181.4 L356.2,181.4 L358.5,181.4 L360.8,181.4 L363.1,181.4 L365.4,181.4 L367.7,181.4 L370.0,181.4 L372.3,181.4 L374.6,181.4 L376.9,181.4 L379.2,181.4 L381.5,181.4 L383.8,181.4 L386.1,181.4 L388.4,181.4 L390.7,181.4 L393.0,181.4 L395.3,181.4 L397.6,181.4 L399.9,181.4 L402.2,181.4 L404.5,181.4 L406.8,181.4 L409.0,181.4 L411.3,181.4 L413.6,181.4 L415.9,181.4 L418.2,181.4 L420.5,181.4 L422.8,181.4 L425.1,181.4 L427.4,181.4 L429.7,181.4 L432.0,181.4 L434.3,181.4 L436.6,181.4 L438.9,181.4 L441.2,181.4 L443.5,181.4 L445.8,184.0 L448.1,184.0 L450.4,186.2 L452.7,187.2 L455.0,187.8 L457.3,187.8 L459.6,188.1 L461.9,189.1 L464.1,190.7 L466.4,191.2 L468.7,191.9 L471.0,193.4 L473.3,193.4 L475.6,193.9 L477.9,194.9 L480.2,195.1 L482.5,195.4 L484.8,195.9 L487.1,197.5 L489.4,203.1 L491.7,207.7 L494.0,208.5 L496.3,208.6 L498.6,208.6 L500.9,208.9 L503.2,210.0 L505.5,210.3 L507.8,211.5 L510.1,213.4 L512.4,211.5 L514.7,211.5 L517.0,211.5 L519.2,210.3 L521.5,210.2 L523.8,210.2 L526.1,209.1 L528.4,209.1 L530.7,211.5 L533.0,211.5 L535.3,211.5 L537.6,211.8 L539.9,213.4 L542.2,213.9 L544.5,214.6 L546.8,214.6 L549.1,214.6 L551.4,214.6 L553.7,214.6 L556.0,215.6 L558.3,215.6 L560.6,215.8 L562.9,216.0 L565.2,216.2 L567.5,216.2 L569.8,216.2 L572.1,217.0 L574.4,217.0 L576.6,217.0 L578.9,217.0 L581.2,217.0 L583.5,217.0 L585.8,217.0 L588.1,217.0 L590.4,217.0 L592.7,217.0 L595.0,217.0 L597.3,217.0 L599.6,217.0 L601.9,217.0 L604.2,217.0 L606.5,217.0 L608.8,217.0 L611.1,217.0 L613.4,217.0 L615.7,217.0 L618.0,217.0 L620.3,217.0 L622.6,217.0 L624.9,217.0 L627.2,217.0 L629.5,217.0 L631.7,217.0 L634.0,217.0 L636.3,217.0 L638.6,217.0 L640.9,217.0 L643.2,217.0 L645.5,217.0 L647.8,217.0 L650.1,217.0 L652.4,217.0 L654.7,217.0 L657.0,217.0 L659.3,217.0 L661.6,217.0 L663.9,217.0 L666.2,217.0 L668.5,217.0 L670.8,217.0 L673.1,217.0 L675.4,217.0 L677.7,217.0 L680.0,217.0 L682.3,216.2 L684.6,216.2 L686.8,216.2 L689.1,216.2 L691.4,216.2 L693.7,215.6 L696.0,214.6 L698.3,214.2 L700.6,213.1 L702.9,211.8 L705.2,211.5 L707.5,210.4 L709.8,208.4 L712.1,207.2 L714.4,206.7 L716.7,206.6 L719.0,206.6 L721.3,206.2 L723.6,206.2 L725.9,206.2 L728.2,206.2 L730.5,206.2 L732.8,206.2 L735.1,206.2 L737.4,205.4 L739.7,204.7 L742.0,205.4 L744.2,205.4 L746.5,205.4 L748.8,205.4 L751.1,204.7 L753.4,204.7 L755.7,204.7 L758.0,204.2 L760.3,203.7 L762.6,203.6 L764.9,201.7 L767.2,200.2 L769.5,199.5 L771.8,198.7 L774.1,197.1 L776.4,195.8 L778.7,194.8 L781.0,194.6 L783.3,193.8 L785.6,193.2 L787.9,192.9 L790.2,192.9 L792.5,192.9 L794.8,192.7 L797.1,191.6 L799.3,191.0 L801.6,190.3 L803.9,190.3 L806.2,188.8 L808.5,187.3 L810.8,186.8 L813.1,186.6 L815.4,185.9 L817.7,184.2 L820.0,184.2 L822.3,184.2 L824.6,184.2 L826.9,183.4 L829.2,183.4 L831.5,182.8 L833.8,182.5 L836.1,182.5 L838.4,182.2 L840.7,181.9 L843.0,181.0 L845.3,180.7 L847.6,180.7 L849.9,180.3 L852.2,180.3 L854.4,180.3 L856.7,179.1 L859.0,178.3 L861.3,178.3 L863.6,176.2 L865.9,175.4 L868.2,175.4 L870.5,175.4 L872.8,174.8 L875.1,173.6 L877.4,173.3 L879.7,173.3" class="th thB entry"/><path d="M44.0,25.3 L46.3,25.3 L48.6,25.3 L50.9,25.3 L53.2,25.3 L55.5,25.3 L57.8,25.3 L60.1,25.3 L62.4,25.3 L64.7,25.3 L67.0,25.3 L69.3,25.3 L71.6,25.3 L73.8,25.3 L76.1,25.3 L78.4,25.3 L80.7,25.3 L83.0,25.3 L85.3,25.3 L87.6,25.3 L89.9,25.3 L92.2,25.3 L94.5,25.3 L96.8,25.3 L99.1,25.3 L101.4,25.3 L103.7,25.3 L106.0,25.3 L108.3,25.3 L110.6,25.3 L112.9,25.3 L115.2,25.3 L117.5,25.3 L119.8,25.3 L122.1,25.3 L124.4,25.3 L126.7,25.3 L128.9,25.3 L131.2,25.3 L133.5,25.3 L135.8,25.3 L138.1,25.3 L140.4,25.3 L142.7,25.3 L145.0,25.3 L147.3,25.3 L149.6,25.3 L151.9,25.3 L154.2,25.3 L156.5,25.3 L158.8,25.3 L161.1,25.3 L163.4,27.7 L165.7,30.3 L168.0,46.6 L170.3,49.8 L172.6,56.1 L174.9,57.0 L177.2,60.4 L179.5,61.1 L181.8,61.1 L184.0,62.6 L186.3,63.9 L188.6,67.0 L190.9,76.4 L193.2,79.6 L195.5,79.7 L197.8,79.7 L200.1,79.7 L202.4,79.7 L204.7,80.1 L207.0,88.4 L209.3,92.2 L211.6,102.5 L213.9,102.5 L216.2,107.1 L218.5,109.1 L220.8,111.3 L223.1,111.7 L225.4,112.5 L227.7,113.1 L230.0,113.1 L232.3,113.1 L234.6,113.1 L236.9,113.1 L239.2,113.1 L241.4,114.0 L243.7,114.2 L246.0,115.7 L248.3,114.2 L250.6,114.0 L252.9,113.1 L255.2,112.6 L257.5,113.1 L259.8,114.0 L262.1,114.2 L264.4,116.6 L266.7,116.9 L269.0,116.9 L271.3,117.5 L273.6,117.5 L275.9,118.8 L278.2,118.8 L280.5,119.4 L282.8,119.4 L285.1,119.4 L287.4,119.4 L289.7,119.4 L292.0,119.4 L294.3,119.4 L296.5,119.4 L298.8,119.4 L301.1,119.4 L303.4,119.4 L305.7,119.4 L308.0,119.4 L310.3,119.4 L312.6,119.4 L314.9,119.4 L317.2,119.4 L319.5,119.4 L321.8,119.4 L324.1,119.4 L326.4,119.4 L328.7,119.4 L331.0,119.4 L333.3,119.9 L335.6,119.9 L337.9,119.9 L340.2,119.9 L342.5,119.9 L344.8,119.9 L347.1,119.9 L349.4,119.9 L351.6,119.9 L353.9,119.9 L356.2,119.9 L358.5,119.9 L360.8,119.9 L363.1,119.9 L365.4,119.9 L367.7,119.9 L370.0,119.9 L372.3,119.9 L374.6,119.9 L376.9,119.9 L379.2,119.9 L381.5,119.9 L383.8,119.9 L386.1,119.9 L388.4,119.9 L390.7,119.9 L393.0,119.9 L395.3,119.9 L397.6,119.9 L399.9,119.9 L402.2,119.9 L404.5,119.9 L406.8,119.9 L409.0,119.9 L411.3,119.9 L413.6,119.9 L415.9,119.9 L418.2,120.8 L420.5,122.7 L422.8,122.7 L425.1,124.6 L427.4,125.1 L429.7,125.1 L432.0,125.1 L434.3,125.1 L436.6,125.1 L438.9,125.1 L441.2,125.1 L443.5,125.5 L445.8,126.1 L448.1,128.4 L450.4,128.4 L452.7,129.3 L455.0,129.7 L457.3,131.3 L459.6,131.6 L461.9,139.7 L464.1,141.5 L466.4,142.9 L468.7,144.5 L471.0,145.0 L473.3,145.6 L475.6,145.8 L477.9,149.0 L480.2,149.7 L482.5,149.8 L484.8,151.0 L487.1,151.0 L489.4,151.0 L491.7,151.0 L494.0,151.0 L496.3,151.0 L498.6,151.0 L500.9,151.0 L503.2,151.0 L505.5,151.0 L507.8,151.0 L510.1,151.0 L512.4,151.0 L514.7,151.0 L517.0,151.0 L519.2,151.0 L521.5,151.0 L523.8,151.0 L526.1,151.0 L528.4,151.0 L530.7,151.0 L533.0,151.0 L535.3,151.0 L537.6,151.0 L539.9,151.0 L542.2,151.0 L544.5,151.0 L546.8,151.0 L549.1,151.0 L551.4,151.0 L553.7,151.0 L556.0,151.0 L558.3,151.0 L560.6,151.0 L562.9,151.0 L565.2,151.0 L567.5,151.0 L569.8,151.0 L572.1,151.0 L574.4,151.0 L576.6,151.0 L578.9,151.0 L581.2,151.0 L583.5,151.0 L585.8,151.0 L588.1,151.0 L590.4,151.0 L592.7,151.0 L595.0,151.0 L597.3,152.3 L599.6,153.9 L601.9,153.9 L604.2,153.9 L606.5,153.9 L608.8,153.9 L611.1,153.9 L613.4,154.2 L615.7,154.2 L618.0,154.8 L620.3,157.3 L622.6,157.3 L624.9,162.4 L627.2,165.1 L629.5,167.2 L631.7,169.9 L634.0,172.8 L636.3,178.0 L638.6,179.0 L640.9,179.0 L643.2,181.9 L645.5,181.9 L647.8,181.9 L650.1,182.1 L652.4,182.1 L654.7,181.6 L657.0,181.6 L659.3,181.6 L661.6,179.6 L663.9,179.0 L666.2,178.5 L668.5,178.5 L670.8,178.5 L673.1,178.5 L675.4,178.5 L677.7,178.5 L680.0,178.5 L682.3,178.5 L684.6,178.5 L686.8,177.8 L689.1,177.1 L691.4,176.0 L693.7,175.6 L696.0,174.3 L698.3,173.0 L700.6,172.5 L702.9,172.0 L705.2,171.2 L707.5,169.7 L709.8,165.1 L712.1,162.6 L714.4,156.6 L716.7,155.7 L719.0,154.8 L721.3,150.9 L723.6,146.7 L725.9,144.7 L728.2,144.1 L730.5,143.4 L732.8,143.4 L735.1,143.4 L737.4,143.4 L739.7,143.4 L742.0,143.4 L744.2,143.4 L746.5,143.4 L748.8,143.4 L751.1,143.4 L753.4,143.4 L755.7,143.4 L758.0,143.4 L760.3,143.4 L762.6,143.4 L764.9,143.4 L767.2,143.4 L769.5,143.4 L771.8,143.4 L774.1,143.4 L776.4,143.4 L778.7,143.4 L781.0,143.4 L783.3,143.4 L785.6,142.1 L787.9,140.9 L790.2,140.4 L792.5,135.9 L794.8,135.9 L797.1,135.9 L799.3,135.9 L801.6,135.9 L803.9,135.9 L806.2,135.9 L808.5,135.9 L810.8,135.9 L813.1,135.9 L815.4,135.9 L817.7,135.9 L820.0,135.9 L822.3,135.9 L824.6,135.4 L826.9,135.4 L829.2,135.4 L831.5,135.4 L833.8,135.4 L836.1,135.4 L838.4,135.4 L840.7,135.4 L843.0,135.4 L845.3,135.4 L847.6,135.4 L849.9,135.4 L852.2,135.4 L854.4,135.4 L856.7,135.4 L859.0,135.4 L861.3,135.4 L863.6,135.4 L865.9,135.4 L868.2,134.8 L870.5,134.3 L872.8,133.2 L875.1,132.1 L877.4,131.9 L879.7,131.5" class="th thB exit"/>
+    <path d="M44.0,167.8 L46.3,167.8 L48.6,167.8 L50.9,167.8 L53.2,167.8 L55.5,167.8 L57.8,167.8 L60.1,167.8 L62.4,167.8 L64.7,167.8 L67.0,167.8 L69.3,167.8 L71.6,167.8 L73.8,167.8 L76.1,167.8 L78.4,167.8 L80.7,167.8 L83.0,167.8 L85.3,167.8 L87.6,167.8 L89.9,167.5 L92.2,167.5 L94.5,167.5 L96.8,167.5 L99.1,167.5 L101.4,167.5 L103.7,167.5 L106.0,167.5 L108.3,167.5 L110.6,167.5 L112.9,167.5 L115.2,167.5 L117.5,167.5 L119.8,167.5 L122.1,167.5 L124.4,167.5 L126.7,167.5 L128.9,167.5 L131.2,167.5 L133.5,167.5 L135.8,167.5 L138.1,167.5 L140.4,167.0 L142.7,166.4 L145.0,166.4 L147.3,166.0 L149.6,165.5 L151.9,165.5 L154.2,165.0 L156.5,165.0 L158.8,164.8 L161.1,164.5 L163.4,163.9 L165.7,163.4 L168.0,162.9 L170.3,161.5 L172.6,161.5 L174.9,161.5 L177.2,161.5 L179.5,161.5 L181.8,161.5 L184.0,161.3 L186.3,160.9 L188.6,160.7 L190.9,160.6 L193.2,160.4 L195.5,160.2 L197.8,159.4 L200.1,159.1 L202.4,157.9 L204.7,157.3 L207.0,156.8 L209.3,156.8 L211.6,156.8 L213.9,156.8 L216.2,156.8 L218.5,156.6 L220.8,155.5 L223.1,154.7 L225.4,154.7 L227.7,154.2 L230.0,153.7 L232.3,153.0 L234.6,152.7 L236.9,152.3 L239.2,151.7 L241.4,151.4 L243.7,151.2 L246.0,151.0 L248.3,150.8 L250.6,150.6 L252.9,149.6 L255.2,149.1 L257.5,149.0 L259.8,148.9 L262.1,148.1 L264.4,147.6 L266.7,146.4 L269.0,146.0 L271.3,145.8 L273.6,145.8 L275.9,145.4 L278.2,145.2 L280.5,145.2 L282.8,145.2 L285.1,145.2 L287.4,145.2 L289.7,145.3 L292.0,145.3 L294.3,145.3 L296.5,145.3 L298.8,145.3 L301.1,145.3 L303.4,145.3 L305.7,145.3 L308.0,145.3 L310.3,145.3 L312.6,145.3 L314.9,145.9 L317.2,145.9 L319.5,145.9 L321.8,145.9 L324.1,145.9 L326.4,146.4 L328.7,147.6 L331.0,148.9 L333.3,149.0 L335.6,149.1 L337.9,149.6 L340.2,150.6 L342.5,150.8 L344.8,151.1 L347.1,151.6 L349.4,151.8 L351.6,152.3 L353.9,152.7 L356.2,153.0 L358.5,153.7 L360.8,154.2 L363.1,154.7 L365.4,155.2 L367.7,155.7 L370.0,155.7 L372.3,156.6 L374.6,156.8 L376.9,157.6 L379.2,158.8 L381.5,159.1 L383.8,159.1 L386.1,159.3 L388.4,159.3 L390.7,159.3 L393.0,159.3 L395.3,159.3 L397.6,159.7 L399.9,159.8 L402.2,160.0 L404.5,160.0 L406.8,160.0 L409.0,160.0 L411.3,160.0 L413.6,160.0 L415.9,160.1 L418.2,160.1 L420.5,160.1 L422.8,160.1 L425.1,160.1 L427.4,160.2 L429.7,160.2 L432.0,160.2 L434.3,160.2 L436.6,160.2 L438.9,160.2 L441.2,160.2 L443.5,160.5 L445.8,160.9 L448.1,161.4 L450.4,161.9 L452.7,162.1 L455.0,162.3 L457.3,162.5 L459.6,163.1 L461.9,163.7 L464.1,164.0 L466.4,164.5 L468.7,165.0 L471.0,165.4 L473.3,165.9 L475.6,166.5 L477.9,167.5 L480.2,168.0 L482.5,168.5 L484.8,169.7 L487.1,169.9 L489.4,170.3 L491.7,170.8 L494.0,172.0 L496.3,172.1 L498.6,172.5 L500.9,173.4 L503.2,174.7 L505.5,174.9 L507.8,175.4 L510.1,176.3 L512.4,177.8 L514.7,178.1 L517.0,178.6 L519.2,179.4 L521.5,180.0 L523.8,180.4 L526.1,181.5 L528.4,183.3 L530.7,183.7 L533.0,184.4 L535.3,185.7 L537.6,186.3 L539.9,187.2 L542.2,187.8 L544.5,188.2 L546.8,189.3 L549.1,190.6 L551.4,190.8 L553.7,191.2 L556.0,191.4 L558.3,191.7 L560.6,192.6 L562.9,193.4 L565.2,193.5 L567.5,193.9 L569.8,194.8 L572.1,194.8 L574.4,194.9 L576.6,195.1 L578.9,195.4 L581.2,195.4 L583.5,195.4 L585.8,195.4 L588.1,195.4 L590.4,196.0 L592.7,197.1 L595.0,197.1 L597.3,197.1 L599.6,197.1 L601.9,198.8 L604.2,198.8 L606.5,200.0 L608.8,201.5 L611.1,201.5 L613.4,201.5 L615.7,201.5 L618.0,201.5 L620.3,201.5 L622.6,201.5 L624.9,201.5 L627.2,201.5 L629.5,201.5 L631.7,201.5 L634.0,201.5 L636.3,201.5 L638.6,201.5 L640.9,201.5 L643.2,201.5 L645.5,201.5 L647.8,201.5 L650.1,201.5 L652.4,201.5 L654.7,201.5 L657.0,201.5 L659.3,201.5 L661.6,201.5 L663.9,201.5 L666.2,201.5 L668.5,201.5 L670.8,201.5 L673.1,201.5 L675.4,202.0 L677.7,202.0 L680.0,202.3 L682.3,202.9 L684.6,202.9 L686.8,202.9 L689.1,202.9 L691.4,202.9 L693.7,202.9 L696.0,202.9 L698.3,202.9 L700.6,202.9 L702.9,202.9 L705.2,202.9 L707.5,202.9 L709.8,202.9 L712.1,202.9 L714.4,202.9 L716.7,202.9 L719.0,202.3 L721.3,201.5 L723.6,200.4 L725.9,199.6 L728.2,198.8 L730.5,198.8 L732.8,197.3 L735.1,197.3 L737.4,197.3 L739.7,197.3 L742.0,198.8 L744.2,199.6 L746.5,200.4 L748.8,201.5 L751.1,201.5 L753.4,201.5 L755.7,201.5 L758.0,201.5 L760.3,201.5 L762.6,201.5 L764.9,201.5 L767.2,201.5 L769.5,201.5 L771.8,201.5 L774.1,201.5 L776.4,201.5 L778.7,201.5 L781.0,201.5 L783.3,201.5 L785.6,201.5 L787.9,201.5 L790.2,201.5 L792.5,201.5 L794.8,201.5 L797.1,201.5 L799.3,201.5 L801.6,201.5 L803.9,201.5 L806.2,201.5 L808.5,201.5 L810.8,201.5 L813.1,201.5 L815.4,201.5 L817.7,201.5 L820.0,201.5 L822.3,201.5 L824.6,201.5 L826.9,201.5 L829.2,201.5 L831.5,201.5 L833.8,201.5 L836.1,201.5 L838.4,201.5 L840.7,201.5 L843.0,201.5 L845.3,201.5 L847.6,201.5 L849.9,201.5 L852.2,201.5 L854.4,201.5 L856.7,201.5 L859.0,201.5 L861.3,201.5 L863.6,201.5 L865.9,201.5 L868.2,201.5 L870.5,201.5 L872.8,201.5 L875.1,200.4 L877.4,200.4 L879.7,199.6" class="th thA entry"/><path d="M44.0,145.5 L46.3,145.5 L48.6,145.5 L50.9,145.5 L53.2,145.5 L55.5,145.5 L57.8,145.5 L60.1,145.5 L62.4,145.5 L64.7,145.5 L67.0,145.5 L69.3,145.5 L71.6,145.5 L73.8,145.5 L76.1,145.5 L78.4,145.5 L80.7,145.5 L83.0,145.5 L85.3,145.5 L87.6,145.2 L89.9,144.8 L92.2,144.8 L94.5,144.8 L96.8,144.8 L99.1,145.2 L101.4,145.2 L103.7,144.8 L106.0,144.8 L108.3,144.6 L110.6,144.9 L112.9,145.2 L115.2,145.5 L117.5,145.9 L119.8,145.9 L122.1,145.9 L124.4,146.1 L126.7,146.1 L128.9,145.9 L131.2,145.9 L133.5,145.9 L135.8,145.8 L138.1,145.5 L140.4,145.5 L142.7,145.5 L145.0,145.5 L147.3,145.5 L149.6,145.5 L151.9,145.5 L154.2,145.5 L156.5,145.5 L158.8,145.5 L161.1,145.5 L163.4,145.5 L165.7,145.2 L168.0,145.2 L170.3,145.2 L172.6,145.2 L174.9,145.2 L177.2,145.2 L179.5,145.2 L181.8,145.2 L184.0,145.2 L186.3,145.2 L188.6,145.2 L190.9,144.9 L193.2,143.8 L195.5,142.7 L197.8,142.1 L200.1,141.5 L202.4,141.3 L204.7,141.0 L207.0,140.8 L209.3,140.5 L211.6,140.1 L213.9,139.6 L216.2,139.0 L218.5,138.5 L220.8,138.2 L223.1,137.9 L225.4,137.9 L227.7,137.9 L230.0,137.9 L232.3,137.9 L234.6,137.3 L236.9,136.7 L239.2,136.0 L241.4,135.5 L243.7,135.2 L246.0,134.7 L248.3,134.0 L250.6,133.5 L252.9,133.3 L255.2,133.2 L257.5,132.9 L259.8,132.5 L262.1,132.4 L264.4,132.3 L266.7,131.9 L269.0,131.4 L271.3,131.4 L273.6,131.4 L275.9,131.4 L278.2,130.9 L280.5,130.9 L282.8,130.9 L285.1,130.9 L287.4,130.9 L289.7,130.9 L292.0,130.9 L294.3,130.9 L296.5,130.9 L298.8,130.9 L301.1,130.9 L303.4,130.9 L305.7,130.9 L308.0,130.9 L310.3,130.9 L312.6,130.9 L314.9,130.9 L317.2,130.9 L319.5,130.9 L321.8,130.9 L324.1,130.9 L326.4,131.4 L328.7,131.9 L331.0,131.9 L333.3,132.3 L335.6,132.4 L337.9,132.5 L340.2,132.9 L342.5,133.2 L344.8,133.3 L347.1,133.3 L349.4,133.3 L351.6,133.3 L353.9,133.5 L356.2,133.5 L358.5,133.5 L360.8,134.0 L363.1,134.7 L365.4,135.7 L367.7,136.7 L370.0,137.3 L372.3,137.9 L374.6,138.2 L376.9,138.5 L379.2,139.0 L381.5,139.6 L383.8,140.4 L386.1,140.8 L388.4,141.0 L390.7,141.3 L393.0,141.3 L395.3,141.5 L397.6,142.1 L399.9,142.8 L402.2,143.9 L404.5,144.8 L406.8,144.9 L409.0,145.0 L411.3,145.1 L413.6,145.4 L415.9,145.7 L418.2,146.0 L420.5,147.5 L422.8,149.0 L425.1,149.1 L427.4,149.5 L429.7,149.8 L432.0,149.8 L434.3,149.8 L436.6,149.8 L438.9,149.8 L441.2,150.2 L443.5,150.6 L445.8,150.8 L448.1,151.0 L450.4,151.3 L452.7,151.6 L455.0,151.9 L457.3,152.3 L459.6,152.6 L461.9,152.7 L464.1,153.2 L466.4,153.8 L468.7,154.0 L471.0,154.1 L473.3,154.4 L475.6,154.7 L477.9,155.0 L480.2,155.2 L482.5,155.2 L484.8,155.3 L487.1,155.4 L489.4,156.0 L491.7,156.6 L494.0,156.9 L496.3,157.3 L498.6,157.5 L500.9,157.7 L503.2,158.3 L505.5,158.9 L507.8,159.1 L510.1,159.1 L512.4,159.4 L514.7,159.8 L517.0,159.9 L519.2,160.0 L521.5,160.1 L523.8,160.3 L526.1,160.5 L528.4,161.0 L530.7,161.6 L533.0,162.0 L535.3,162.1 L537.6,162.3 L539.9,162.6 L542.2,163.3 L544.5,163.8 L546.8,164.1 L549.1,164.6 L551.4,165.0 L553.7,165.5 L556.0,166.0 L558.3,166.8 L560.6,167.6 L562.9,168.0 L565.2,168.8 L567.5,169.7 L569.8,169.7 L572.1,170.0 L574.4,171.1 L576.6,172.0 L578.9,172.2 L581.2,172.5 L583.5,173.7 L585.8,173.7 L588.1,173.7 L590.4,174.9 L592.7,175.5 L595.0,176.7 L597.3,178.0 L599.6,178.8 L601.9,179.5 L604.2,180.1 L606.5,180.5 L608.8,182.0 L611.1,183.4 L613.4,183.4 L615.7,183.4 L618.0,183.4 L620.3,183.7 L622.6,183.7 L624.9,184.8 L627.2,185.8 L629.5,185.8 L631.7,185.8 L634.0,186.1 L636.3,186.6 L638.6,186.6 L640.9,186.6 L643.2,186.6 L645.5,186.6 L647.8,186.6 L650.1,186.6 L652.4,186.8 L654.7,186.8 L657.0,186.8 L659.3,186.9 L661.6,186.9 L663.9,186.9 L666.2,186.9 L668.5,186.9 L670.8,186.9 L673.1,186.9 L675.4,187.0 L677.7,187.4 L680.0,187.8 L682.3,187.9 L684.6,188.2 L686.8,188.2 L689.1,188.2 L691.4,188.2 L693.7,188.2 L696.0,188.2 L698.3,187.9 L700.6,187.8 L702.9,187.4 L705.2,187.0 L707.5,187.0 L709.8,187.0 L712.1,186.9 L714.4,186.7 L716.7,186.4 L719.0,186.1 L721.3,185.9 L723.6,185.7 L725.9,184.8 L728.2,183.9 L730.5,183.6 L732.8,183.3 L735.1,182.9 L737.4,182.6 L739.7,182.6 L742.0,182.9 L744.2,183.3 L746.5,183.6 L748.8,183.6 L751.1,183.9 L753.4,183.9 L755.7,183.9 L758.0,183.9 L760.3,183.9 L762.6,183.9 L764.9,183.9 L767.2,183.9 L769.5,183.9 L771.8,183.9 L774.1,183.9 L776.4,183.9 L778.7,183.9 L781.0,183.9 L783.3,183.9 L785.6,183.9 L787.9,183.9 L790.2,183.9 L792.5,183.9 L794.8,183.9 L797.1,183.9 L799.3,183.9 L801.6,183.9 L803.9,183.9 L806.2,183.9 L808.5,183.9 L810.8,183.9 L813.1,183.9 L815.4,183.9 L817.7,183.9 L820.0,183.9 L822.3,183.9 L824.6,183.9 L826.9,183.9 L829.2,183.9 L831.5,183.9 L833.8,183.9 L836.1,183.9 L838.4,183.9 L840.7,183.9 L843.0,183.9 L845.3,183.9 L847.6,183.9 L849.9,183.9 L852.2,183.9 L854.4,183.9 L856.7,183.9 L859.0,183.6 L861.3,183.6 L863.6,183.0 L865.9,182.6 L868.2,182.3 L870.5,182.0 L872.8,181.3 L875.1,180.7 L877.4,180.5 L879.7,180.0" class="th thA exit"/>
+    <path d="M44.0,132.6 L46.3,135.1 L48.6,111.7 L50.9,113.1 L53.2,92.6 L55.5,111.5 L57.8,109.3 L60.1,126.5 L62.4,112.6 L64.7,121.3 L67.0,117.6 L69.3,119.5 L71.6,116.8 L73.8,124.4 L76.1,134.2 L78.4,145.2 L80.7,138.3 L83.0,132.4 L85.3,131.2 L87.6,133.3 L89.9,141.3 L92.2,142.5 L94.5,132.4 L96.8,152.8 L99.1,140.8 L101.4,136.4 L103.7,129.4 L106.0,144.6 L108.3,153.6 L110.6,151.6 L112.9,152.7 L115.2,149.2 L117.5,148.9 L119.8,159.1 L122.1,156.6 L124.4,119.1 L126.7,127.8 L128.9,126.9 L131.2,138.2 L133.5,145.8 L135.8,139.2 L138.1,154.5 L140.4,159.0 L142.7,150.7 L145.0,164.8 L147.3,165.3 L149.6,168.1 L151.9,163.8 L154.2,170.2 L156.5,154.0 L158.8,156.5 L161.1,150.5 L163.4,138.8 L165.7,150.9 L168.0,157.2 L170.3,178.0 L172.6,174.8 L174.9,171.9 L177.2,165.7 L179.5,167.9 L181.8,161.9 L184.0,160.2 L186.3,160.3 L188.6,141.2 L190.9,140.9 L193.2,137.0 L195.5,133.7 L197.8,120.5 L200.1,130.3 L202.4,130.6 L204.7,140.0 L207.0,121.8 L209.3,120.0 L211.6,88.7 L213.9,124.2 L216.2,114.2 L218.5,120.9 L220.8,133.2 L223.1,162.0 L225.4,149.0 L227.7,145.0 L230.0,146.2 L232.3,129.2 L234.6,122.9 L236.9,114.2 L239.2,119.5 L241.4,133.2 L243.7,116.9 L246.0,104.6 L248.3,100.1 L250.6,97.6 L252.9,112.2 L255.2,125.5 L257.5,124.8 L259.8,131.5 L262.1,129.3 L264.4,125.2 L266.7,128.6 L269.0,141.6 L271.3,145.0 L273.6,143.1 L275.9,126.2 L278.2,151.7 L280.5,180.2 L282.8,202.0 L285.1,191.5 L287.4,194.8 L289.7,196.4 L292.0,174.6 L294.3,183.6 L296.5,195.3 L298.8,193.4 L301.1,193.6 L303.4,213.8 L305.7,227.7 L308.0,208.6 L310.3,223.8 L312.6,210.1 L314.9,193.4 L317.2,210.0 L319.5,186.0 L321.8,191.1 L324.1,179.9 L326.4,180.8 L328.7,175.2 L331.0,178.4 L333.3,186.9 L335.6,172.1 L337.9,159.7 L340.2,158.7 L342.5,152.1 L344.8,177.7 L347.1,172.3 L349.4,172.8 L351.6,155.2 L353.9,161.2 L356.2,166.2 L358.5,155.4 L360.8,179.1 L363.1,159.8 L365.4,160.0 L367.7,155.4 L370.0,169.7 L372.3,163.7 L374.6,159.1 L376.9,170.3 L379.2,160.8 L381.5,164.4 L383.8,169.6 L386.1,157.4 L388.4,151.1 L390.7,140.5 L393.0,155.3 L395.3,162.3 L397.6,175.7 L399.9,160.1 L402.2,157.9 L404.5,144.7 L406.8,155.2 L409.0,145.7 L411.3,152.6 L413.6,162.3 L415.9,149.8 L418.2,149.8 L420.5,154.2 L422.8,154.0 L425.1,162.9 L427.4,154.9 L429.7,131.6 L432.0,129.8 L434.3,145.8 L436.6,149.3 L438.9,157.6 L441.2,167.4 L443.5,188.0 L445.8,183.2 L448.1,195.8 L450.4,188.7 L452.7,187.8 L455.0,185.6 L457.3,190.6 L459.6,208.6 L461.9,195.0 L464.1,208.5 L466.4,215.7 L468.7,208.6 L471.0,216.0 L473.3,218.5 L475.6,211.1 L477.9,213.3 L480.2,207.5 L482.5,213.7 L484.8,220.5 L487.1,228.2 L489.4,253.8 L491.7,253.9 L494.0,260.7 L496.3,242.9 L498.6,236.9 L500.9,225.0 L503.2,236.6 L505.5,227.1 L507.8,216.0 L510.1,203.6 L512.4,217.9 L514.7,194.8 L517.0,192.3 L519.2,190.6 L521.5,191.4 L523.8,183.9 L526.1,194.9 L528.4,215.5 L530.7,206.5 L533.0,202.1 L535.3,211.5 L537.6,225.5 L539.9,214.4 L542.2,217.0 L544.5,202.7 L546.8,203.4 L549.1,211.5 L551.4,206.1 L553.7,217.1 L556.0,210.2 L558.3,228.2 L560.6,230.4 L562.9,217.2 L565.2,214.2 L567.5,212.8 L569.8,218.9 L572.1,201.3 L574.4,198.6 L576.6,199.4 L578.9,193.1 L581.2,190.4 L583.5,187.8 L585.8,194.6 L588.1,205.2 L590.4,206.6 L592.7,193.6 L595.0,186.2 L597.3,191.0 L599.6,203.6 L601.9,195.6 L604.2,207.0 L606.5,204.6 L608.8,190.2 L611.1,170.1 L613.4,165.3 L615.7,173.1 L618.0,191.3 L620.3,178.6 L622.6,200.0 L624.9,192.7 L627.2,179.0 L629.5,183.3 L631.7,188.4 L634.0,187.0 L636.3,183.9 L638.6,176.0 L640.9,182.2 L643.2,179.7 L645.5,177.9 L647.8,181.8 L650.1,186.6 L652.4,177.2 L654.7,182.5 L657.0,186.8 L659.3,172.5 L661.6,174.4 L663.9,175.8 L666.2,180.7 L668.5,185.7 L670.8,182.7 L673.1,208.0 L675.4,196.8 L677.7,204.1 L680.0,203.5 L682.3,194.7 L684.6,171.4 L686.8,163.3 L689.1,172.1 L691.4,155.2 L693.7,147.0 L696.0,151.4 L698.3,155.7 L700.6,156.7 L702.9,142.3 L705.2,144.8 L707.5,129.4 L709.8,133.3 L712.1,134.4 L714.4,140.9 L716.7,144.1 L719.0,143.5 L721.3,136.0 L723.6,140.9 L725.9,134.8 L728.2,135.5 L730.5,152.9 L732.8,157.8 L735.1,172.5 L737.4,178.8 L739.7,208.7 L742.0,208.4 L744.2,206.2 L746.5,221.7 L748.8,192.7 L751.1,178.2 L753.4,174.6 L755.7,180.2 L758.0,169.2 L760.3,161.3 L762.6,173.2 L764.9,180.8 L767.2,169.1 L769.5,167.3 L771.8,157.0 L774.1,145.9 L776.4,147.2 L778.7,146.9 L781.0,154.6 L783.3,128.3 L785.6,132.1 L787.9,121.2 L790.2,131.5 L792.5,137.7 L794.8,139.2 L797.1,153.6 L799.3,146.6 L801.6,156.6 L803.9,145.8 L806.2,141.7 L808.5,138.0 L810.8,148.0 L813.1,162.4 L815.4,167.8 L817.7,148.2 L820.0,152.5 L822.3,131.9 L824.6,139.6 L826.9,159.0 L829.2,160.1 L831.5,173.3 L833.8,170.5 L836.1,149.1 L838.4,146.1 L840.7,162.1 L843.0,168.5 L845.3,165.9 L847.6,170.3 L849.9,171.5 L852.2,170.4 L854.4,175.3 L856.7,173.4 L859.0,146.6 L861.3,148.4 L863.6,139.9 L865.9,131.4 L868.2,128.5 L870.5,96.9 L872.8,90.0 L875.1,118.1 L877.4,128.0 L879.7,122.2" class="ln"/>
+    <circle cx="882.0" cy="121.0" r="5" class="now"/>
+    <text x="874.0" y="112.0" class="lab nowl" text-anchor="end">현재 1.99%</text>
+    <text x="890.0" y="135.5" class="lab b">B 청산 1.60</text><text x="890.0" y="177.3" class="lab b">B 진입 0.03</text><text x="890.0" y="190.3" class="lab a">A 청산 -0.22</text><text x="890.0" y="203.6" class="lab a">A 진입 -0.96</text>
+  </svg>
+  </div>
+  <p class="cap-note">기준선은 매일 직전 180일(A)·90일(B) 분포로 다시 계산된다. 현재 김프는 두 전략의 청산선보다 위에 있다.</p>
+</figure>
+</section>
+
+<section id="flow">
+  <h2><span class="num">2</span>동작 흐름</h2>
+  <div data-required="flow">
+    <div class="flow">
+      <div class="flow-node"><div class="t">지난 분석의 일별 김프 재사용 + 펀딩비·실시간 스냅샷 추가</div><div class="loc">docs/work/kimp-box-range-analysis/fetch.py:83</div>
+        <div class="d">Binance <code>/fapi/v1/fundingRate</code> 2019-09~ 8시간 간격, 현재 시점 Bithumb ticker · Binance 선물 bookTicker 중간값 · Twelve Data USD/KRW.</div></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-node"><div class="t">손익 = 앱 Tracking 공식 + 펀딩 − 비용</div><div class="loc">docs/work/kimp-box-range-analysis/strategy.py:25-36</div>
+        <div class="d"><code>(K1−K0) + (F0−F1)×FX1</code>를 한국 진입금으로 나눈다(<code>.ai/context/project-overview.md</code> §4와 같음). 환율 노출 성분 <code>F0×(FX1−FX0)/K0</code>를 따로 떼어 "환율 제외" 수치를 만든다.</div></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-node"><div class="t">① 현재 위치</div><div class="loc">docs/work/kimp-box-range-analysis/strategy.py:42-50</div><div class="d">30·90·180·365일 박스 분위수와 현재 순위·z.</div></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-node"><div class="t">② 위치별 조건부 기대값</div><div class="loc">docs/work/kimp-box-range-analysis/strategy.py:69-72</div><div class="d">매일 그날의 박스 내 순위로 구간을 나누고, 그날 진입해 7·14·30·60일 보유한 결과를 모은다.</div></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-node"><div class="t">③ 전략 288개 grid · walk-forward</div><div class="loc">docs/work/kimp-box-range-analysis/strategy.py:97-113</div><div class="d">파라미터는 2019-09~2022에서만 고르고, 2023-01~2026-11은 한 번도 보지 않은 검증 구간으로만 쓴다.</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="rules">
+  <h2><span class="num">3</span>핵심 규칙</h2>
+  <div data-required="rules">
+    <h3>방향 제약 — 할 수 있는 매매는 하나뿐</h3>
+    <div class="tbl-wrap"><table class="rules"><thead><tr><th>김프 위치</th><th>가능한 행동</th><th>이유</th></tr></thead><tbody><tr><td class="">박스 하단 (P30 아래)</td><td class=""><b>진입</b>: 한국 현물 매수 + Binance 선물 Short 동일 수량</td><td class="">김프가 오르면 이익. 평균회귀가 유리한 방향</td></tr><tr><td class="">박스 중앙</td><td class="">보유 유지 또는 청산</td><td class="">전략 A는 P50 도달 시 청산</td></tr><tr><td class="">박스 상단 (P90 위) ← 지금</td><td class=""><b>신규 진입 금지</b>, 보유분 청산</td><td class="">반대 방향(한국 현물 공매도)은 개인이 할 수 없다. 쉬는 것이 유일한 선택</td></tr></tbody></table></div>
+    <h3>두 후보 전략의 현재 기준선</h3>
+    <div class="tbl-wrap"><table class="rules"><thead><tr><th>전략</th><th>진입</th><th>청산</th><th>최대 보유</th><th>지금 기준 진입선</th><th>지금 기준 청산선</th><th>현재 김프</th></tr></thead><tbody><tr><td class="">A (추천)</td><td class="">180일 P30 아래</td><td class="">180일 P50 이상</td><td class="">120일</td><td class="num">-0.93%</td><td class="num">-0.20%</td><td class="num">1.99%</td></tr><tr><td class="">B (대안)</td><td class="">90일 P20 아래</td><td class="">90일 P90 이상</td><td class="">60일</td><td class="num">0.06%</td><td class="num">1.61%</td><td class="num">1.99%</td></tr></tbody></table></div>
+    <h3>자본 대비 환산</h3>
+    <p>필요 자본 = 한국 매수금 + 해외 증거금(명목/레버리지). 1배면 한국 진입금의 2.0배, 2배면 1.5배다. 전략 A의 표본 외 연 10.6%는 1배 기준 자본 대비 <b>연 5.3%</b>, 시장에 나가 있는 시간은 42%다. 나머지 시간의 현금은 별도 운용할 수 있다.</p>
+  </div>
+</section>
+
+<section id="findings">
+  <h2><span class="num">4</span>발견 사항</h2>
+  <div id="findingList" data-required="findings">
+
+    <article class="finding info" data-sev="info">
+      <h3><span class="id">F1</span><span class="badge info">정보</span>현재 김프 1.99%는 90·180일 박스의 P95 위에 있다</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:42-50</p>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>박스 기간</th><th>P5</th><th>P25</th><th>P50</th><th>P75</th><th>P95</th><th>현재 순위</th><th>z</th><th>P95 대비</th></tr></thead><tbody><tr><td class="">30일</td><td class="num">0.03</td><td class="num">0.22</td><td class="num">0.88</td><td class="num">1.51</td><td class="num">2.54</td><td class="num">상위 10.0%</td><td class="num">1.23</td><td class="num">-0.55%p</td></tr><tr><td class="">90일</td><td class="num">-1.12</td><td class="num">0.14</td><td class="num">0.78</td><td class="num">1.28</td><td class="num">1.85</td><td class="num">상위 3.3%</td><td class="num">1.46</td><td class="num">+0.14%p</td></tr><tr><td class="">180일</td><td class="num">-1.99</td><td class="num">-1.11</td><td class="num">-0.20</td><td class="num">0.78</td><td class="num">1.61</td><td class="num">상위 1.7%</td><td class="num">1.82</td><td class="num">+0.39%p</td></tr><tr><td class="">365일</td><td class="num">-1.64</td><td class="num">-0.61</td><td class="num">0.44</td><td class="num">1.21</td><td class="num">2.10</td><td class="num">상위 6.8%</td><td class="num">1.39</td><td class="num">-0.10%p</td></tr></tbody></table></div>
+      <div class="field"><span class="k">근거</span><p>2026-11-19 13:59 UTC 실시간 값: Bithumb 86,674,000원, Binance 선물 중간가 64,014.65 USDT, USD/KRW 1327.51. 90일 P95보다 0.14%p, 180일 P95보다 0.39%p 높다. 30·365일 박스에서도 P90 위다. 180일 평균이 -0.18%라서 지난 반년 기준으로 지금은 이례적으로 높은 구간이다.</p></div>
+    </article>
+
+    <article class="finding high" data-sev="high">
+      <h3><span class="id">F2</span><span class="badge high">높음</span>지금 진입하면 30일 기대값은 0 근처 — 하단 진입과 기대값 차이가 약 2.7%p</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:69-72</p>
+      <div class="code"><div class="loc"><span>strategy.py:69-72</span><em>진입 순위별 H일 보유 결과 수집</em></div><pre>                g, f = trade_ret(i, i + H)
+                x = fx_term(i, i + H)
+                rows.append((r, H, g, f, g + f, g - x + f, main.iloc[i + H] - main.iloc[i]))
+    t = pd.DataFrame(rows, columns=[&quot;rank&quot;, &quot;H&quot;, &quot;gross&quot;, &quot;fund&quot;, &quot;tot&quot;, &quot;tot_ex_fx&quot;, &quot;dP&quot;])</pre></div>
+      <h3>180일 박스 기준, 30일 보유</h3>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>진입 시 박스 내 순위(%)</th><th>표본</th><th>독립 표본</th><th>30일 ΔP</th><th>펀딩 수취</th><th>기대값(환율 제외)</th><th>하위 10%</th><th>비용 0.3%p 초과 확률</th></tr></thead><tbody><tr><td class="">0–10</td><td class="num">336</td><td class="num">~11</td><td class="num">+1.62</td><td class="num">+0.99</td><td class="num">+2.61</td><td class="num">+0.14</td><td class="num">87%</td></tr><tr><td class="">10–25</td><td class="num">350</td><td class="num">~11</td><td class="num">+0.66</td><td class="num">+0.63</td><td class="num">+1.26</td><td class="num">-0.89</td><td class="num">67%</td></tr><tr><td class="">25–50</td><td class="num">554</td><td class="num">~18</td><td class="num">+0.11</td><td class="num">+0.75</td><td class="num">+0.86</td><td class="num">-1.84</td><td class="num">58%</td></tr><tr><td class="">50–75</td><td class="num">510</td><td class="num">~17</td><td class="num">-0.26</td><td class="num">+0.77</td><td class="num">+0.58</td><td class="num">-1.96</td><td class="num">47%</td></tr><tr><td class="">75–90</td><td class="num">309</td><td class="num">~10</td><td class="num">-0.44</td><td class="num">+1.00</td><td class="num">+0.61</td><td class="num">-2.96</td><td class="num">36%</td></tr><tr><td class="">90–100 ◀ 현재</td><td class="num">357</td><td class="num">~11</td><td class="num">-1.59</td><td class="num">+1.39</td><td class="num">-0.12</td><td class="num">-3.86</td><td class="num">32%</td></tr></tbody></table></div>
+      <h3>90일 박스 기준, 30일 보유</h3>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>진입 시 박스 내 순위(%)</th><th>표본</th><th>독립 표본</th><th>30일 ΔP</th><th>펀딩 수취</th><th>기대값(환율 제외)</th><th>하위 10%</th><th>비용 0.3%p 초과 확률</th></tr></thead><tbody><tr><td class="">0–10</td><td class="num">404</td><td class="num">~13</td><td class="num">+1.39</td><td class="num">+1.06</td><td class="num">+2.48</td><td class="num">-0.44</td><td class="num">81%</td></tr><tr><td class="">10–25</td><td class="num">383</td><td class="num">~12</td><td class="num">+0.57</td><td class="num">+0.81</td><td class="num">+1.33</td><td class="num">-1.25</td><td class="num">65%</td></tr><tr><td class="">25–50</td><td class="num">511</td><td class="num">~17</td><td class="num">+0.08</td><td class="num">+0.82</td><td class="num">+0.90</td><td class="num">-1.71</td><td class="num">56%</td></tr><tr><td class="">50–75</td><td class="num">519</td><td class="num">~17</td><td class="num">-0.15</td><td class="num">+0.87</td><td class="num">+0.73</td><td class="num">-2.34</td><td class="num">48%</td></tr><tr><td class="">75–90</td><td class="num">321</td><td class="num">~10</td><td class="num">-0.50</td><td class="num">+1.02</td><td class="num">+0.56</td><td class="num">-2.56</td><td class="num">40%</td></tr><tr><td class="">90–100 ◀ 현재</td><td class="num">368</td><td class="num">~12</td><td class="num">-1.49</td><td class="num">+1.14</td><td class="num">-0.25</td><td class="num">-3.77</td><td class="num">36%</td></tr></tbody></table></div>
+      <div class="field"><span class="k">실패 시나리오 (실제 데이터)</span>
+        <div class="scenario"><ol>
+          <li>김프가 180일 박스 상위 10%일 때 "박스 상단 돌파, 추세 시작"이라고 보고 진입</li>
+          <li>과거 357번(독립 표본 약 11번)의 같은 상황에서 30일 뒤 김프는 평균 -1.59%p</li>
+          <li class="then">환율 제외 기대값 -0.12%, 비용 0.3%p를 넘길 확률 32%, 하위 10% -3.86%. 펀딩비가 없었다면 음수다</li>
+        </ol></div></div>
+      <div class="field"><span class="k">근거</span><p>순위가 낮을수록 기대값이 단조롭게 커진다(0–10 구간 +2.61% → 90–100 구간 -0.12%). 90일 박스도 같은 모양이다. 매일 표본을 쓰므로 30일 창이 겹친다 — "독립 표본" 열이 실제 정보량에 가깝고, 상단 구간은 약 11개뿐이다 <span class="badge guess">추정 — 겹침 보정은 단순 나눗셈</span>.</p></div>
+    </article>
+
+    <article class="finding high" data-sev="high">
+      <h3><span class="id">F3</span><span class="badge high">높음</span>이 구조는 BTC 중립이지만 USD/KRW Long이다 — 거래당 환율 성분이 목표 수익보다 크다</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:25-36</p>
+      <div class="code"><div class="loc"><span>strategy.py:25-36</span><em>손익 분해: gross 와 환율 성분</em></div><pre>def trade_ret(i, j):
+    &quot;&quot;&quot;i 일에 진입, j 일에 청산 시 Long KR + Short Binance 선물 gross 수익률(%, 한국 진입 금액 대비).&quot;&quot;&quot;
+    a, b = day.iloc[i], day.iloc[j]
+    kpnl = b.kr - a.kr
+    fpnl = (a.fu - b.fu) * b.fx
+    fund_pct = (b.cumf - a.cumf) * a.fu * a.fx / a.kr   # 해외 명목가 대비 펀딩을 한국 진입금액 대비로 환산
+    return (kpnl + fpnl) / a.kr * 100, fund_pct * 100
+
+def fx_term(i, j):
+    &quot;&quot;&quot;gross 중 환율 노출 성분: F0*(FX1-FX0)/K0. 이 구조는 BTC 중립이지만 USD/KRW Long 이다.&quot;&quot;&quot;
+    a, b = day.iloc[i], day.iloc[j]
+    return a.fu * (b.fx - a.fx) / a.kr * 100</pre></div>
+      <div class="field"><span class="k">실패 시나리오 (실제 데이터)</span>
+        <div class="scenario"><ol>
+          <li>2026-09-18, 김프 -1.30%에서 전략 A 진입 (USD/KRW 1,389원)</li>
+          <li>2026-09-23, 김프 -0.15%로 회귀해 목표 도달 청산. 김프 회귀 이익 +1.16%</li>
+          <li class="then">그 사이 USD/KRW 1,366원(−1.7%). 환율 성분 -1.70%로 이익이 사라져 순손익 -0.74%</li>
+        </ol></div></div>
+      <div class="field"><span class="k">근거</span><p>BTC 달러 가격과 김프가 그대로여도 환율이 1% 오르면 한국 현물 가치가 1% 오르고 선물 Short는 그대로다. 따라서 포지션은 한국 진입금만큼 달러 Long이다(해외 증거금 USDT까지 치면 그보다 크다). 2026년 USD/KRW는 4월 1,490원에서 11월 1,328원으로 내려왔다. 검증 구간 전체로는 A -3.3%, B -0.7%로 상쇄됐지만, 거래 하나하나에는 거래당 김프 이익(A 평균 1.15%p)보다 큰 잡음이다(검증 구간 최대 A ±3.7%, B ±4.3%). 게다가 환율이 내리면 김프가 오르므로(지난 분석 β=−0.70), "김프 회귀"로 보이는 이익 일부가 이 손실과 짝을 이룬다.</p></div>
+    </article>
+
+    <article class="finding high" data-sev="high">
+      <h3><span class="id">F4</span><span class="badge high">높음</span>보유 중 BTC가 최대 66% 올랐다 — 선물 Short 레버리지 2배 이상이면 강제청산 구간</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:210-213</p>
+      <div class="code"><div class="loc"><span>strategy.py:210-213</span><em>거래별 보유 중 BTC 최대 상승률</em></div><pre>    ups = []
+    for _, r in full.iterrows():
+        seg = df.fu[(df.index &gt;= r[&quot;in&quot;]) &amp; (df.index &lt;= r.out)].dropna()
+        ups.append(seg.max() / seg.iloc[0] - 1)</pre></div>
+      <div class="field"><span class="k">실패 시나리오</span>
+        <div class="scenario"><ol>
+          <li>자본 효율을 높이려 Binance 선물 Short를 3배로 잡는다(증거금 = 명목의 33%)</li>
+          <li>보유 중 BTC가 +66% 오른다(전략 A의 실제 최대값). 상위 10% 거래도 +19%</li>
+          <li class="then">Short는 약 +30% 근처에서 청산된다. 한국 현물 이익은 남지만 헤지가 사라져 이후 BTC 하락을 그대로 맞는다</li>
+        </ol></div></div>
+      <div class="field"><span class="k">근거</span><p>B는 최대 60%, 상위 10% 44%다. 청산 가격은 증거금 방식·유지증거금률에 따라 다르다 <span class="badge guess">추정 — 거래소 청산 공식은 적용하지 않음</span>. 1배(증거금 = 명목)라도 증거금 추가나 한국 현물 일부 매도·이체로 재조정할 계획이 필요하다.</p></div>
+    </article>
+
+    <article class="finding med" data-sev="med">
+      <h3><span class="id">F5</span><span class="badge med">보통</span>수익의 상당 부분이 펀딩비인데, 펀딩비가 최근 절반으로 줄었다</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:25-36</p>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>전략 (검증 · 비용 0.3%p)</th><th>김프 회귀</th><th>환율</th><th>펀딩비</th><th>비용</th><th>합계 (%/년)</th></tr></thead><tbody><tr><td class="">A 180일 P30→P50</td><td class="num">10.9</td><td class="num">-0.9</td><td class="num">2.5</td><td class="num">-2.9</td><td class="num">9.8</td></tr><tr><td class="">B 90일 P20→P90</td><td class="num">6.6</td><td class="num">-0.2</td><td class="num">3.5</td><td class="num">-1.4</td><td class="num">8.5</td></tr><tr><td class="">기준선: 2023-01-01부터 계속 보유</td><td class="num">1.7</td><td class="num">1.5</td><td class="num">7.1</td><td class="num">-0.1</td><td class="num">10.2</td></tr></tbody></table></div>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>연도</th><th>2019</th><th>2020</th><th>2021</th><th>2022</th><th>2023</th><th>2024</th><th>2025</th><th>2026</th></tr></thead><tbody><tr><td class="">Short 펀딩 수취(%)</td><td class="num">2.31</td><td class="num">17.24</td><td class="num">30.61</td><td class="num">4.16</td><td class="num">7.87</td><td class="num">11.96</td><td class="num">5.13</td><td class="num">2.96</td></tr></tbody></table></div>
+      <div class="field"><span class="k">실패 시나리오</span>
+        <div class="scenario"><ol>
+          <li>검증 구간(2023~2026) 성과 연 10.6%를 앞으로의 기대값으로 쓴다</li>
+          <li>그 구간 펀딩비는 연 7.1%였지만 최근 365일은 3.5%, 최근 30일은 0.59%다</li>
+          <li class="then">펀딩비가 지금 수준으로 유지되면 A의 기대값은 연 약 9.3%, B는 약 6.9%로 내려간다(환율 제외, 비용 0.3%p)</li>
+        </ol></div></div>
+      <div class="field"><span class="k">근거</span><p>A의 펀딩 수취는 연 2.5%, B는 연 3.5%였다. B가 오래 보유하는 만큼 펀딩 의존도가 높다. "계속 보유" 기준선은 연 10.2% 중 펀딩이 연 7.1%라 사실상 펀딩 수취 전략이다. 펀딩비는 강세장에 높고 약세·횡보장에 낮다 <span class="badge guess">추정</span>.</p></div>
+    </article>
+
+    <article class="finding med" data-sev="med">
+      <h3><span class="id">F6</span><span class="badge med">보통</span>전략 A는 거래가 잦아 비용에 민감하다 — 왕복 1.0%p면 연 3.9%</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:97-113</p>
+      <h3>전략 A — 180일 P30 → P50, 120일</h3>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>구간</th><th>거래</th><th>승률</th><th>최악 거래(%)</th><th>시장 노출</th><th>연환산</th><th>연환산(환율 제외)</th></tr></thead><tbody><tr><td class="">학습 2019-09~2022 · 비용 0.3%p</td><td class="num">44</td><td class="num">82%</td><td class="num">-0.73</td><td class="num">32%</td><td class="num">21.1%</td><td class="num">22.7%</td></tr><tr><td class="">검증 2023~2026 · 비용 0.3%p</td><td class="num">37</td><td class="num">70%</td><td class="num">-1.58</td><td class="num">42%</td><td class="num">9.8%</td><td class="num">10.6%</td></tr><tr><td class="">검증 · 비용 0.6%p</td><td class="num">37</td><td class="num">57%</td><td class="num">-1.88</td><td class="num">42%</td><td class="num">6.9%</td><td class="num">7.7%</td></tr><tr><td class="">검증 · 비용 1.0%p</td><td class="num">37</td><td class="num">46%</td><td class="num">-2.28</td><td class="num">42%</td><td class="num">3.1%</td><td class="num">3.9%</td></tr></tbody></table></div>
+      <h3>전략 B — 90일 P20 → P90, 60일</h3>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>구간</th><th>거래</th><th>승률</th><th>최악 거래(%)</th><th>시장 노출</th><th>연환산</th><th>연환산(환율 제외)</th></tr></thead><tbody><tr><td class="">학습 2019-09~2022 · 비용 0.3%p</td><td class="num">18</td><td class="num">83%</td><td class="num">-0.51</td><td class="num">50%</td><td class="num">21.1%</td><td class="num">20.0%</td></tr><tr><td class="">검증 2023~2026 · 비용 0.3%p</td><td class="num">18</td><td class="num">83%</td><td class="num">-4.19</td><td class="num">57%</td><td class="num">8.5%</td><td class="num">8.7%</td></tr><tr><td class="">검증 · 비용 0.6%p</td><td class="num">18</td><td class="num">67%</td><td class="num">-4.49</td><td class="num">57%</td><td class="num">7.1%</td><td class="num">7.3%</td></tr><tr><td class="">검증 · 비용 1.0%p</td><td class="num">18</td><td class="num">56%</td><td class="num">-4.89</td><td class="num">57%</td><td class="num">5.3%</td><td class="num">5.5%</td></tr></tbody></table></div>
+      <div class="field"><span class="k">실패 시나리오</span>
+        <div class="scenario"><ol>
+          <li>Bithumb 일반 수수료(0.25%)와 Binance 선물 시장가(0.05%)로 진입·청산하고, 호가 스프레드·슬리피지가 왕복 0.2%p 붙는다 → 왕복 약 0.8~1.0%p</li>
+          <li>전략 A는 검증 구간에 37번 거래했다(연 약 10회)</li>
+          <li class="then">연 10.6% → 3.9%, 승률 70% → 46%. 이 비용이면 B(연 5.5%)가 낫다</li>
+        </ol></div></div>
+      <div class="field"><span class="k">근거</span><p>A는 거래당 김프 이익이 작고(평균 1.15%p) 자주 거래한다. B는 거래당 이익이 크지만(평균 1.43%p) 최악 거래가 -4.19%로 꼬리가 깊다. 학습 구간 성과(연 21%)는 검증 구간에서 절반 이하로 줄었다 — 2020~2021 고펀딩·고변동 시기가 학습 구간에 몰려 있기 때문이다 <span class="badge guess">추정</span>.</p></div>
+    </article>
+
+    <article class="finding info" data-sev="info">
+      <h3><span class="id">F7</span><span class="badge info">정보</span>파라미터를 우연히 고른 결과는 아니다 — 주변 조합 전부 표본 외 양수</h3>
+      <p class="locline">docs/work/kimp-box-range-analysis/strategy.py:175-175</p>
+      <div class="tbl-wrap"><table class="rules"><thead><tr><th>후보</th><th>주변 조합</th><th>검증 양수 비율</th><th>중앙값(연, 환율 제외)</th><th>최솟값</th></tr></thead><tbody><tr><td class="">A</td><td class="num">36</td><td class="num">100%</td><td class="num">10.8%</td><td class="num">8.6%</td></tr><tr><td class="">B</td><td class="num">36</td><td class="num">100%</td><td class="num">8.6%</td><td class="num">4.8%</td></tr><tr><td class="">전체 grid (비용 0.3%p)</td><td class="num">264</td><td class="num">100%</td><td class="num">8.2%</td><td class="num">—</td></tr><tr><td class="">전체 grid (비용 0.6%p)</td><td class="num">264</td><td class="num">100%</td><td class="num">6.0%</td><td class="num">—</td></tr></tbody></table></div>
+      <div class="field"><span class="k">근거</span><p>박스 기간 ±절반, 진입 분위 ±0.1, 청산 분위 ±0.2, 보유 한도 ½배를 바꾼 조합을 모두 검증 구간에 돌렸다. 박스 하단 진입이라는 구조 자체가 수익을 낸 것이고, 특정 숫자에 기대지 않는다. 다만 이 견고함에는 검증 구간 내내 펀딩비가 양수였던 영향도 들어 있다(F5).</p></div>
+    </article>
+
+  </div>
+</section>
+
+<section id="compare">
+  <h2><span class="num">5</span>대조</h2>
+  <p class="note">같은 3.9년(2023-01~2026-11)을 두 방식으로 보낸 결과. 수치는 한국 진입금 대비, 비용 0.3%p.</p>
+  <div data-required="compare">
+    <div class="compare">
+      <div class="pane good">
+        <h4><span>전략 A — 박스 하단에서만 진입</span><span class="p">strategy.py:175</span></h4>
+<pre>거래            37회 · 승률 70%
+시장 노출       42%
+연환산          9.8%  (환율 제외 10.6%)
+최악 거래       -1.58%
+펀딩 의존       연 2.5%</pre>
+        <div class="why">시간의 절반 이상은 현금이라 그 돈을 따로 굴릴 수 있다. 꼬리가 얕다.</div>
+      </div>
+      <div class="pane bad">
+        <h4><span>기준선 — 2023-01-01부터 계속 보유</span><span class="p">strategy.py:159</span></h4>
+<pre>거래            1회 (진입 후 보유)
+시장 노출       100%
+연환산          10.2%  (환율 제외 8.7%)
+김프 성분       6.6%  (BTC 3.85배 상승분 포함)
+펀딩 의존       연 7.1%</pre>
+        <div class="why">대부분이 펀딩 수취다. BTC가 3.85배 오르는 동안 Short 증거금을 계속 채워야 했다(F4). 펀딩이 지금 수준이면 기대값이 크게 준다.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="actions">
+  <h2><span class="num">6</span>권장 조치</h2>
+  <ol class="actions" data-required="actions">
+    <li><b>지금은 신규 진입하지 않는다. 보유 중이면 청산한다.</b> 현재 1.99%는 A의 청산선(-0.20%)과 B의 청산선(1.61%)보다 모두 위다.
+      <span class="impact">근거: F1·F2 · 바로 실행 가능</span></li>
+    <li><b>전략 A를 기본으로 한다:</b> 김프가 직전 180일 P30(현재 -0.93%) 아래로 내려오면 한국 현물 매수 + Binance 선물 Short 같은 수량. 180일 P50(현재 -0.20%) 이상이면 청산, 120일이 지나면 무조건 청산. 기준선은 매주 다시 계산한다.
+      <span class="impact">조건: 왕복 비용 0.4%p 이하(Bithumb 수수료 쿠폰·지정가, Binance 지정가). 비용이 0.8%p를 넘으면 B(90일 P20 → P90, 60일)로 바꾼다 · 근거: F6·F7</span></li>
+    <li><b>선물 Short는 1배로 잡고, BTC +20%마다 증거금을 보충하거나 양쪽을 줄이는 규칙을 미리 정한다.</b>
+      <span class="impact">근거: F4 — 보유 중 BTC 최대 +66% · 자본 대비 기대 수익은 1배 기준 연 약 4.7~5.3% (펀딩 현재 수준~검증 구간 수준)</span></li>
+    <li><b>환율 노출을 인정하거나 헤지한다.</b> 헤지하려면 한국 진입금만큼 USD/KRW Short(예: KRX 미국달러선물)가 필요하다. 헤지하지 않으면 "김프 목표 도달 = 이익"이 아님을 기록에 남기고, 환율이 직전 1~3일 1% 넘게 움직였으면 진입을 하루 미룬다.
+      <span class="impact">근거: F3 · 달러선물은 별도 계좌·예탁금 필요 <span class="badge guess">추정 — 이번 분석에서 확인하지 않음</span></span></li>
+    <li><b>앱 알림으로 감시한다.</b> premium-spread의 임계값 알림에 A의 진입선·청산선을 걸고 주 1회 갱신한다. 펀딩비(최근 30일 합 0.59%)가 연 2% 아래로 떨어지면 기대값을 다시 계산한다.
+      <span class="impact">기준선 자동 갱신(이동 분위수 알림)은 앱에 없는 기능이라 넣으려면 별도 작업(orchestrator) 필요</span></li>
+  </ol>
+</section>
+
+<section id="verify">
+  <h2><span class="num">7</span>검증 기록</h2>
+  <h3>읽은 파일 · 실행한 명령</h3>
+  <ul class="plain" data-required="verify-done">
+    <li><code>.ai/context/project-overview.md</code> §4 — Tracking 손익 공식 (<code>foreignPnlKrw = (entry − current) × qty × currentFxRate</code>)</li>
+    <li><code>fetch.py funding</code> → 펀딩비 7,882건(2019-09~), <code>fetch.py now</code> → 현재 스냅샷</li>
+    <li><code>strategy.py</code> → <code>strategy_results.json</code> (grid 288개 × 비용 2종 × 학습/검증, 후보 2개 × 주변 36개, 약 11초)</li>
+    <li>환율 성분이 큰 거래(2026-09-18~10-07, −3.66%)는 원시 환율(1,382~1,389 → 1,338~1,340원)로 실제 변동임을 확인</li>
+    <li>지난 분석(<code>analysis.html</code>)의 일별 김프 시계열을 그대로 재사용</li>
+  </ul>
+  <h3>확인하지 못한 것 · 가정</h3>
+  <ul class="plain" data-required="verify-open">
+    <li><b>투자 조언이 아니다</b> — 과거 데이터 통계다. 표본 외 구간도 3.9년 한 번뿐이다.</li>
+    <li><b>일 1회(KST 00:00) 판단·체결 가정</b> — 실제로는 장중 진입이 가능해 결과가 다를 수 있다. 체결가는 1시간봉 종가다.</li>
+    <li><b>비용은 왕복 고정값(0.3/0.6/1.0%p)</b> — 실제 수수료 등급·쿠폰·슬리피지는 확인하지 않았다.</li>
+    <li><b>환전·이체 비용과 시간</b> — KRW 입금, USDT 확보·이체 비용은 넣지 않았다. 양쪽 자본을 미리 나눠 둔다고 가정했다.</li>
+    <li><b>세금</b> — 고려하지 않았다.</li>
+    <li><b>강제청산</b> — 1배 Short가 청산되지 않는다고 가정했다(F4).</li>
+    <li><b>독립 표본</b> — 조건부 기대값은 겹치는 창을 쓴다. 신뢰구간은 계산하지 않았다.</li>
+  </ul>
+</section>
+
+<footer data-required="footer">
+  premium-spread · docs/kimp-box-range-analysis@f5647fa · 2026-11-19 · 읽기 전용 분석 (앱 코드 변경 없음)
+</footer>
+</main>
+</div>
+
+<script>
+(function(){
+  // 테마 토글 (localStorage 는 차단될 수 있으므로 전부 방어)
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  try{ var s=localStorage.getItem('ar-theme'); if(s) root.setAttribute('data-theme',s); }catch(e){}
+  btn&&btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme');
+    var next = cur==='dark' ? 'light' : cur==='light' ? 'dark'
+      : (window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches?'light':'dark');
+    root.setAttribute('data-theme',next);
+    try{ localStorage.setItem('ar-theme',next); }catch(e){}
+  });
+
+  // 심각도 필터
+  var stats=[].slice.call(document.querySelectorAll('.stat'));
+  var items=[].slice.call(document.querySelectorAll('#findingList .finding'));
+  stats.forEach(function(b){
+    b.addEventListener('click',function(){
+      var on=b.getAttribute('aria-pressed')==='true';
+      stats.forEach(function(o){o.setAttribute('aria-pressed','false');});
+      b.setAttribute('aria-pressed', on?'false':'true');
+      var sev=on?null:b.dataset.sev;
+      items.forEach(function(it){ it.hidden = !!sev && it.dataset.sev!==sev; });
+    });
+  });
+
+  // 목차 하이라이트
+  var links=[].slice.call(document.querySelectorAll('#toc a'));
+  var map={}; links.forEach(function(a){ var t=document.querySelector(a.hash); if(t) map[t.id]=a; });
+  if(window.IntersectionObserver){
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(!e.isIntersecting) return;
+        links.forEach(function(a){a.classList.remove('on');});
+        map[e.target.id]&&map[e.target.id].classList.add('on');
+      });
+    },{rootMargin:'-12% 0px -70% 0px'});
+    Object.keys(map).forEach(function(id){ io.observe(document.getElementById(id)); });
+  }
+})();
+</script>
+</body>
+</html>

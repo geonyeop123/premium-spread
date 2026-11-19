@@ -80,8 +80,37 @@ def fx():
     print("fx_hourly", len(rows), file=sys.stderr)
 
 
+def funding():
+    """Binance USDT-M 펀딩비 이력 (8시간 간격, 공개 API). Short 는 rate>0 일 때 받는다."""
+    rows, t = [], int(datetime(2019, 9, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    while True:
+        d = get(f"https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&startTime={t}&limit=1000")
+        if not d:
+            break
+        rows += [(int(x["fundingTime"]) // 1000, float(x["fundingRate"])) for x in d]
+        if len(d) < 1000:
+            break
+        t = int(d[-1]["fundingTime"]) + 1
+        time.sleep(0.2)
+    json.dump(rows, open(f"{OUT}/funding.json", "w"))
+    print("funding", len(rows), file=sys.stderr)
+
+
+def now():
+    """현재 시점 스냅샷: Bithumb 체결가, Binance 선물 호가 중간값, Twelve Data USD/KRW."""
+    kr = get("https://api.bithumb.com/v1/ticker?markets=KRW-BTC")[0]
+    bt = get("https://fapi.binance.com/fapi/v1/ticker/bookTicker?symbol=BTCUSDT")
+    fx = get(f"https://api.twelvedata.com/price?symbol=USD/KRW&apikey={KEY}")
+    fu = (float(bt["bidPrice"]) + float(bt["askPrice"])) / 2
+    snap = {"at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"), "bithumb_krw": float(kr["trade_price"]),
+            "binance_fut_mid_usdt": fu, "usdkrw": float(fx["price"])}
+    snap["premium_pct"] = (snap["bithumb_krw"] - fu * snap["usdkrw"]) / (fu * snap["usdkrw"]) * 100
+    json.dump(snap, open(f"{OUT}/now.json", "w"))
+    print(json.dumps(snap), file=sys.stderr)
+
+
 if __name__ == "__main__":
     which = sys.argv[1]
     {"spot": lambda: binance("https://api.binance.com", "/api/v3/klines", "binance_spot"),
      "fut": lambda: binance("https://fapi.binance.com", "/fapi/v1/klines", "binance_fut"),
-     "bithumb": bithumb, "fx": fx}[which]()
+     "bithumb": bithumb, "fx": fx, "funding": funding, "now": now}[which]()
